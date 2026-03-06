@@ -1,0 +1,424 @@
+import { requireApiKey } from "@/lib/api-key-auth";
+import { insertChatLog } from "@/lib/chat-log";
+import { gatewayDb } from "@/lib/db";
+import { jsonError } from "@/lib/http";
+import { fetchUpstreamChat, proxyChatCompletion } from "@/lib/proxy";
+import { checkUserRateLimit } from "@/lib/ratelimit";
+import { selectModelRoute } from "@/lib/router";
+import { estimateRequestTokens } from "@/lib/token-estimate";
+import { countTextTokens } from "@/lib/tokenizer";
+
+function checkQuota(userId: number, estimatedTokens: number) {
+  const user = gatewayDb
+    .prepare("SELECT quota_tokens, quota_requests, used_tokens, used_requests FROM users WHERE id = ?")
+    .get(userId) as
+    | {
+        quota_tokens: number | null;
+        quota_requests: number | null;
+        used_tokens: number;
+        used_requests: number;
+      }
+    | undefined;
+
+  if (!user) {
+    return { ok: false, reason: "用户不存在" };
+  }
+
+  if (user.quota_requests !== null && user.used_requests >= user.quota_requests) {
+    return { ok: false, reason: "请求配额已用尽" };
+  }
+
+  if (user.quota_tokens !== null && user.used_tokens + estimatedTokens > user.quota_tokens) {
+    return { ok: false, reason: "Token 配额已用尽" };
+  }
+
+  return { ok: true as const };
+}
+
+function addUsage(userId: number, tokens: number, requests = 1) {
+  gatewayDb
+    .prepare(
+      `UPDATE users
+       SET used_tokens = used_tokens + ?, used_requests = used_requests + ?
+       WHERE id = ?`,
+    )
+    .run(tokens, requests, userId);
+}
+
+function extractText(value: unknown) {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (!item || typeof item !== "object") return "";
+        const text = (item as Record<string, unknown>).text;
+        return typeof text === "string" ? text : "";
+      })
+      .join("");
+  }
+  return "";
+}
+
+function countPromptTokensFromBody(body: Record<string, unknown>, model: string) {
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  const promptText = messages
+    .map((message) => {
+      if (!message || typeof message !== "object") return "";
+      const m = message as Record<string, unknown>;
+      return [extractText(m.content), extractText(m.reasoning), extractText(m.reasoning_content)].join("\n");
+    })
+    .join("\n");
+  return Math.max(0, countTextTokens(promptText, model));
+}
+
+function extractCompletionTextFromJsonResponse(text: string) {
+  try {
+    const parsed = JSON.parse(text) as {
+      choices?: Array<{
+        message?: Record<string, unknown>;
+        delta?: Record<string, unknown>;
+        text?: string;
+      }>;
+    };
+    const choices = Array.isArray(parsed.choices) ? parsed.choices : [];
+    return choices
+      .map((choice) => {
+        const message = choice?.message ?? {};
+        const delta = choice?.delta ?? {};
+        return [
+          extractText(choice?.text),
+          extractText(message.content),
+          extractText(message.reasoning),
+          extractText(message.reasoning_content),
+          extractText(delta.content),
+          extractText(delta.reasoning),
+          extractText(delta.reasoning_content),
+        ].join("");
+      })
+      .join("");
+  } catch {
+    return "";
+  }
+}
+
+function extractSseDataEvents(buffer: string) {
+  const events: string[] = [];
+  let remainder = buffer.replace(/\r\n/g, "\n");
+
+  while (true) {
+    const idx = remainder.indexOf("\n\n");
+    if (idx === -1) break;
+    const rawEvent = remainder.slice(0, idx);
+    remainder = remainder.slice(idx + 2);
+
+    const lines = rawEvent.split("\n");
+    const dataLines = lines
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart());
+    if (dataLines.length > 0) {
+      events.push(dataLines.join("\n"));
+    }
+  }
+
+  return { events, remainder };
+}
+
+function extractDeltaText(delta: unknown) {
+  if (!delta || typeof delta !== "object") return "";
+  const d = delta as Record<string, unknown>;
+  const parts: string[] = [];
+
+  const pushText = (value: unknown) => {
+    if (typeof value === "string" && value.length > 0) {
+      parts.push(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (!item || typeof item !== "object") continue;
+        const text = (item as Record<string, unknown>).text;
+        if (typeof text === "string" && text.length > 0) {
+          parts.push(text);
+        }
+      }
+    }
+  };
+
+  pushText(d.content);
+  pushText(d.reasoning);
+  pushText(d.reasoning_content);
+
+  return parts.join("");
+}
+
+export async function POST(request: Request) {
+  const startedAt = Date.now();
+  const auth = requireApiKey(request);
+  if (!auth) {
+    return jsonError("认证失败，未提供 API Key。", 401, {
+      type: "auth_error",
+      param: "None",
+      code: "401",
+    });
+  }
+
+  const logRejected = (statusCode: number, message: string, alias: string | null, body: unknown) => {
+    insertChatLog({
+      user_id: auth.user.id,
+      key_id: auth.key.id,
+      channel_id: null,
+      model_alias: alias,
+      real_model: null,
+      stream: false,
+      status_code: statusCode,
+      estimated_tokens: null,
+      total_tokens: null,
+      latency_ms: Date.now() - startedAt,
+      error_message: message,
+      request_body: body,
+      response_body: null,
+    });
+  };
+
+  const rawBody = await request.json().catch(() => null);
+  if (!rawBody || typeof rawBody !== "object") {
+    logRejected(400, "请求参数不正确", null, rawBody);
+    return jsonError("请求参数不正确", 400);
+  }
+
+  const body = rawBody as Record<string, unknown>;
+  const alias = body.model;
+  if (typeof alias !== "string" || alias.length === 0) {
+    logRejected(400, "缺少模型参数 model", null, body);
+    return jsonError("缺少模型参数 model", 400);
+  }
+
+  const estimatedTokens = estimateRequestTokens(body);
+  const quota = checkQuota(auth.user.id, estimatedTokens);
+  if (!quota.ok) {
+    logRejected(429, quota.reason, alias, body);
+    return jsonError(quota.reason, 429);
+  }
+
+  const rate = checkUserRateLimit(auth.user, estimatedTokens);
+  if (!rate.ok) {
+    logRejected(429, rate.reason, alias, body);
+    return jsonError(rate.reason, 429);
+  }
+
+  const route = selectModelRoute(alias);
+  if (!route) {
+    logRejected(404, "模型别名不存在或已禁用", alias, body);
+    return jsonError("模型别名不存在或已禁用", 404);
+  }
+
+  const stream = body.stream === true;
+  if (stream) {
+    const streamOptions =
+      body.stream_options && typeof body.stream_options === "object"
+        ? (body.stream_options as Record<string, unknown>)
+        : {};
+
+    const outgoingBody: Record<string, unknown> = {
+      ...body,
+      model: route.model.real_model,
+      stream: true,
+      stream_options: streamOptions,
+    };
+
+    let upstream: Response;
+    try {
+      upstream = await fetchUpstreamChat(route, outgoingBody);
+    } catch {
+      addUsage(auth.user.id, estimatedTokens, 1);
+      insertChatLog({
+        user_id: auth.user.id,
+        key_id: auth.key.id,
+        channel_id: route.channel.id,
+        model_alias: alias,
+        real_model: route.model.real_model,
+        stream: true,
+        status_code: 502,
+        estimated_tokens: estimatedTokens,
+        total_tokens: estimatedTokens,
+        latency_ms: Date.now() - startedAt,
+        error_message: "上游请求失败",
+        request_body: outgoingBody,
+        response_body: null,
+      });
+      return jsonError("上游请求失败", 502, {
+        type: "upstream_error",
+        param: "None",
+        code: "502",
+      });
+    }
+
+    if (!upstream.body) {
+      const text = await upstream.text().catch(() => "");
+      addUsage(auth.user.id, estimatedTokens, 1);
+      insertChatLog({
+        user_id: auth.user.id,
+        key_id: auth.key.id,
+        channel_id: route.channel.id,
+        model_alias: alias,
+        real_model: route.model.real_model,
+        stream: true,
+        status_code: upstream.status,
+        estimated_tokens: estimatedTokens,
+        total_tokens: estimatedTokens,
+        latency_ms: Date.now() - startedAt,
+        error_message: upstream.status >= 400 ? `上游流式请求失败: ${upstream.status}` : null,
+        request_body: outgoingBody,
+        response_body: text || null,
+      });
+      return new Response(text, {
+        status: upstream.status,
+        headers: {
+          "content-type": upstream.headers.get("content-type") ?? "application/json",
+        },
+      });
+    }
+
+    const reader = upstream.body.getReader();
+    const decoder = new TextDecoder();
+
+    let firstTokenLatencyMs: number | null = null;
+    const localPromptTokens = countPromptTokensFromBody(body, route.model.real_model);
+    let completionText = "";
+    let sseBuffer = "";
+
+    let finalized = false;
+    const finalize = () => {
+      if (finalized) return;
+      finalized = true;
+      const totalLatencyMs = Date.now() - startedAt;
+      const success = upstream.status < 400;
+      const actualCompletionTokens = success ? Math.max(0, countTextTokens(completionText, route.model.real_model)) : 0;
+      const actualTotalTokens = localPromptTokens + actualCompletionTokens;
+      const outputTps =
+        success && actualCompletionTokens > 0
+          ? Number(((actualCompletionTokens * 1000) / Math.max(1, totalLatencyMs)).toFixed(2))
+          : null;
+
+      addUsage(auth.user.id, Math.max(1, actualTotalTokens), 1);
+      insertChatLog({
+        user_id: auth.user.id,
+        key_id: auth.key.id,
+        channel_id: route.channel.id,
+        model_alias: alias,
+        real_model: route.model.real_model,
+        stream: true,
+        status_code: upstream.status,
+        estimated_tokens: estimatedTokens,
+        prompt_tokens: localPromptTokens,
+        completion_tokens: actualCompletionTokens,
+        total_tokens: actualTotalTokens,
+        latency_ms: totalLatencyMs,
+        first_token_latency_ms: success ? firstTokenLatencyMs : null,
+        output_tps: outputTps,
+        error_message: upstream.status >= 400 ? `上游流式请求失败: ${upstream.status}` : null,
+        request_body: outgoingBody,
+        response_body: null,
+      });
+    };
+
+    const streamOut = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (!value) continue;
+
+            controller.enqueue(value);
+            const decoded = decoder.decode(value, { stream: true });
+            sseBuffer += decoded;
+
+            const parsed = extractSseDataEvents(sseBuffer);
+            sseBuffer = parsed.remainder;
+
+            for (const data of parsed.events) {
+              if (data === "[DONE]") {
+                continue;
+              }
+              try {
+                const json = JSON.parse(data) as {
+                  choices?: Array<{ delta?: Record<string, unknown> }>;
+                };
+
+                const choices = Array.isArray(json.choices) ? json.choices : [];
+                for (const choice of choices) {
+                  const deltaText = extractDeltaText(choice?.delta);
+                  if (deltaText.length > 0) {
+                    completionText += deltaText;
+                    if (firstTokenLatencyMs === null) {
+                      firstTokenLatencyMs = Date.now() - startedAt;
+                    }
+                  }
+                }
+              } catch {
+                // Keep forwarding stream even if one event is not JSON.
+              }
+            }
+          }
+          controller.close();
+        } catch (error) {
+          controller.error(error);
+        } finally {
+          finalize();
+        }
+      },
+      cancel() {
+        finalize();
+      },
+    });
+
+    return new Response(streamOut, {
+      status: upstream.status,
+      headers: {
+        "content-type": upstream.headers.get("content-type") ?? "text/event-stream",
+        "cache-control": upstream.headers.get("cache-control") ?? "no-cache",
+        connection: upstream.headers.get("connection") ?? "keep-alive",
+      },
+    });
+  }
+
+  const proxied = await proxyChatCompletion(route, body, false);
+  const text = await proxied.text();
+  const localPromptTokens = countPromptTokensFromBody(body, route.model.real_model);
+  const completionText = extractCompletionTextFromJsonResponse(text);
+  const localCompletionTokens = proxied.status < 400 ? Math.max(0, countTextTokens(completionText, route.model.real_model)) : 0;
+  const localTotalTokens = localPromptTokens + localCompletionTokens;
+
+  const outputTps =
+    proxied.status < 400 && localCompletionTokens > 0
+      ? Number(((localCompletionTokens * 1000) / Math.max(1, Date.now() - startedAt)).toFixed(2))
+      : null;
+
+  addUsage(auth.user.id, Math.max(1, localTotalTokens), 1);
+  insertChatLog({
+    user_id: auth.user.id,
+    key_id: auth.key.id,
+    channel_id: route.channel.id,
+    model_alias: alias,
+    real_model: route.model.real_model,
+    stream: false,
+    status_code: proxied.status,
+    estimated_tokens: estimatedTokens,
+    prompt_tokens: localPromptTokens,
+    completion_tokens: localCompletionTokens,
+    total_tokens: localTotalTokens,
+    latency_ms: Date.now() - startedAt,
+    output_tps: outputTps,
+    error_message: proxied.status >= 400 ? `上游请求失败: ${proxied.status}` : null,
+    request_body: body,
+    response_body: text,
+  });
+
+  return new Response(text, {
+    status: proxied.status,
+    headers: {
+      "content-type": proxied.headers.get("content-type") ?? "application/json",
+    },
+  });
+}

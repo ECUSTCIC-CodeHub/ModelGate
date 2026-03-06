@@ -1,0 +1,110 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { ReactNode } from "react";
+import { Button } from "@/components/ui/button";
+import { clearSession } from "@/lib/client-auth";
+import { cn } from "@/lib/utils";
+
+type Role = "admin" | "user";
+
+type DashboardShellProps = {
+  role: Role;
+  title: string;
+  subtitle?: string;
+  right?: ReactNode;
+  children: ReactNode;
+};
+
+const adminMenus = [
+  { href: "/dashboard", label: "控制台首页" },
+  { href: "/dashboard/logs", label: "日志看板" },
+  { href: "/dashboard/channels", label: "渠道管理" },
+  { href: "/dashboard/users", label: "用户管理" },
+  { href: "/dashboard/settings", label: "系统设置" },
+  { href: "/dashboard/keys", label: "我的 Key" },
+  { href: "/dashboard/profile", label: "个人资料" },
+];
+
+const userMenus = [
+  { href: "/dashboard", label: "控制台首页" },
+  { href: "/dashboard/logs", label: "日志看板" },
+  { href: "/dashboard/keys", label: "我的 Key" },
+  { href: "/dashboard/profile", label: "个人资料" },
+];
+
+export function DashboardShell({ role, title, subtitle, right, children }: DashboardShellProps) {
+  const pathname = usePathname();
+  const menus = role === "admin" ? adminMenus : userMenus;
+
+  function onLogout() {
+    clearSession();
+    window.location.href = "/login";
+  }
+
+  return (
+    <main className="h-screen overflow-hidden bg-black text-zinc-100">
+      <div className="flex h-full w-full gap-4 px-4 py-4 xl:px-6">
+        <aside className="hidden h-full w-60 shrink-0 rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4 shadow-sm md:flex md:flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <p className="mb-3 text-sm font-semibold text-zinc-100">VLM Control</p>
+            <nav className="space-y-1">
+              {menus.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "block rounded-md px-3 py-2 text-sm",
+                    pathname === item.href
+                      ? "bg-zinc-100 text-zinc-900"
+                      : "text-zinc-300 hover:bg-zinc-900",
+                  )}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          </div>
+          <Button variant="secondary" className="mt-4 w-full bg-zinc-800 text-zinc-100 hover:bg-zinc-700" onClick={onLogout}>
+            退出登录
+          </Button>
+        </aside>
+
+        <section className="min-w-0 flex-1 overflow-hidden">
+          <div className="flex h-full flex-col overflow-hidden">
+          <header className="mb-4 shrink-0 rounded-2xl border border-zinc-800 bg-zinc-950/80 p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+                {subtitle ? <p className="mt-1 text-sm text-zinc-400">{subtitle}</p> : null}
+              </div>
+              {right ? <div className="flex items-center gap-2">{right}</div> : null}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2 md:hidden">
+              {menus.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "rounded-md border px-3 py-1 text-sm",
+                    pathname === item.href
+                      ? "border-zinc-200 bg-zinc-100 text-zinc-900"
+                      : "border-zinc-700 bg-zinc-900 text-zinc-300",
+                  )}
+                >
+                  {item.label}
+                </Link>
+              ))}
+              <Button variant="secondary" size="sm" className="bg-zinc-800 text-zinc-100 hover:bg-zinc-700" onClick={onLogout}>退出登录</Button>
+            </div>
+          </header>
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+            {children}
+          </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}

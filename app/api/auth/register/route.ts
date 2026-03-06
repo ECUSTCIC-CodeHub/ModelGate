@@ -1,0 +1,57 @@
+import { z } from "zod";
+import { gatewayDb, type DbUser } from "@/lib/db";
+import { hashPassword, issueAuthTokens, sanitizeUser } from "@/lib/auth";
+import { jsonError, jsonOk } from "@/lib/http";
+import { getGatewaySettings } from "@/lib/settings";
+import { USERNAME_SCHEMA } from "@/lib/username";
+import { friendlyCredentialPayloadError } from "@/lib/validation";
+
+const schema = z.object({
+  username: USERNAME_SCHEMA,
+  password: z.string().min(8),
+});
+
+export async function POST(request: Request) {
+  const body = await request.json().catch(() => null);
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) return jsonError(friendlyCredentialPayloadError(parsed.error), 400);
+
+  const settings = getGatewaySettings();
+
+  const adminCount = gatewayDb.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin'").get() as {
+    count: number;
+  };
+
+  if (settings.registration_enabled !== 1 && adminCount.count > 0) {
+    return jsonError("注册功能已关闭", 403);
+  }
+
+  const existing = gatewayDb
+    .prepare("SELECT id FROM users WHERE username = ?")
+    .get(parsed.data.username) as { id: number } | undefined;
+
+  if (existing) return jsonError("用户名已存在", 409);
+
+  const role: "admin" | "user" = adminCount.count === 0 ? "admin" : "user";
+  const passwordHash = await hashPassword(parsed.data.password);
+
+  const result = gatewayDb
+    .prepare(
+      `INSERT INTO users (username, password_hash, role, rpm, qps, tpm, enabled)
+       VALUES (?, ?, ?, ?, ?, ?, 1)`,
+    )
+    .run(parsed.data.username, passwordHash, role, settings.default_rpm, settings.default_qps, settings.default_tpm);
+
+  const user = gatewayDb
+    .prepare("SELECT * FROM users WHERE id = ?")
+    .get(result.lastInsertRowid) as DbUser;
+
+  return jsonOk(
+    {
+      message: "注册成功。",
+      user: sanitizeUser(user),
+      ...issueAuthTokens(user),
+    },
+    201,
+  );
+}
