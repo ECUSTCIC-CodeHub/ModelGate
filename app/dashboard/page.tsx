@@ -139,7 +139,7 @@ export default function DashboardHomePage() {
               <CardDescription>按小时聚合</CardDescription>
             </CardHeader>
             <CardContent className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={280}>
                 <BarChart data={summary?.hourly_tokens ?? []}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
                   <XAxis
