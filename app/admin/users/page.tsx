@@ -170,16 +170,22 @@ export default function AdminUsersPage() {
       role="admin"
       title="用户管理"
       subtitle="管理员可增删改查用户与限制参数"
-      right={<Button onClick={onCreateClick}>新增用户</Button>}
     >
-      <div className="space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>用户列表</CardTitle>
-            <CardDescription>共 {rows.length} 条</CardDescription>
+      <div className="flex h-full min-h-0 flex-col gap-4">
+        <Card className="flex min-h-0 flex-1 flex-col">
+          <CardHeader className="shrink-0">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle>用户列表</CardTitle>
+                <CardDescription>共 {rows.length} 条</CardDescription>
+              </div>
+              <Button onClick={onCreateClick}>新增用户</Button>
+            </div>
           </CardHeader>
-          <CardContent>
-            <Table>
+          <CardContent className="flex min-h-0 flex-1 flex-col px-0 pb-2 pt-0">
+            <div className="min-h-0 flex-1 overflow-x-auto px-6">
+              <div className="h-full w-full overflow-auto rounded-md border border-zinc-800">
+                <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>ID</TableHead>
@@ -191,29 +197,31 @@ export default function AdminUsersPage() {
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell>{row.id}</TableCell>
-                    <TableCell>{row.username}</TableCell>
-                    <TableCell>
-                      <Badge variant={row.role === "admin" ? "default" : "secondary"}>{row.role === "admin" ? "管理员" : "普通用户"}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={row.enabled ? "default" : "secondary"}>{row.enabled ? "启用" : "禁用"}</Badge>
-                    </TableCell>
-                    <TableCell>{row.rpm}/{row.qps}/{row.tpm}</TableCell>
-                    <TableCell>
-                      T:{row.quota_tokens ?? "-"} / R:{row.quota_requests ?? "-"}
-                    </TableCell>
-                    <TableCell className="space-x-2 text-right">
-                      <Button size="sm" variant="outline" onClick={() => onEditClick(row)}>编辑</Button>
-                      <Button size="sm" variant="secondary" onClick={() => remove(row.id)}>删除</Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                  <TableBody>
+                    {rows.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell>{row.id}</TableCell>
+                        <TableCell>{row.username}</TableCell>
+                        <TableCell>
+                          <Badge variant={row.role === "admin" ? "default" : "secondary"}>{row.role === "admin" ? "管理员" : "普通用户"}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={row.enabled ? "default" : "secondary"}>{row.enabled ? "启用" : "禁用"}</Badge>
+                        </TableCell>
+                        <TableCell>{row.rpm}/{row.qps}/{row.tpm}</TableCell>
+                        <TableCell>
+                          T:{row.quota_tokens ?? "-"} / R:{row.quota_requests ?? "-"}
+                        </TableCell>
+                        <TableCell className="space-x-2 text-right">
+                          <Button size="sm" variant="outline" onClick={() => onEditClick(row)}>编辑</Button>
+                          <Button size="sm" variant="secondary" onClick={() => remove(row.id)}>删除</Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>

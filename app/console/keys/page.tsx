@@ -101,16 +101,23 @@ export default function ConsoleKeysPage() {
       role={role}
       title="我的 API 密钥"
       subtitle="管理用于网关调用的密钥"
-      right={<Button onClick={createKey}>创建密钥</Button>}
     >
-      <Card>
-        <CardHeader>
-          <CardTitle>密钥列表</CardTitle>
-          <CardDescription>{loading ? "加载中..." : `共 ${keys.length} 条`}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {error ? <p className="mb-3 text-sm text-red-600">{error}</p> : null}
-          <Table>
+      <div className="flex h-full min-h-0 flex-col gap-4">
+        <Card className="flex min-h-0 flex-1 flex-col">
+          <CardHeader className="shrink-0">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle>密钥列表</CardTitle>
+                <CardDescription>{loading ? "加载中..." : `共 ${keys.length} 条`}</CardDescription>
+              </div>
+              <Button onClick={createKey}>创建密钥</Button>
+            </div>
+          </CardHeader>
+          <CardContent className="flex min-h-0 flex-1 flex-col px-0 pb-2 pt-0">
+            {error ? <p className="px-6 pb-2 text-sm text-red-600">{error}</p> : null}
+            <div className="min-h-0 flex-1 overflow-x-auto px-6">
+              <div className="h-full w-full overflow-auto rounded-md border border-zinc-800">
+                <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>ID</TableHead>
@@ -119,29 +126,32 @@ export default function ConsoleKeysPage() {
                 <TableHead className="text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {keys.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell>{row.id}</TableCell>
-                  <TableCell className="font-mono text-xs md:text-sm">{row.key}</TableCell>
-                  <TableCell>
-                    <Badge variant={row.enabled ? "default" : "secondary"}>{row.enabled ? "启用" : "禁用"}</Badge>
-                  </TableCell>
-                  <TableCell className="space-x-2 text-right">
-                    <Button size="sm" variant="outline" onClick={() => void copyKey(row.key)}>
-                      复制
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => toggleKey(row.id, row.enabled !== 1)}>
-                      {row.enabled ? "禁用" : "启用"}
-                    </Button>
-                    <Button size="sm" variant="secondary" onClick={() => deleteKey(row.id)}>删除</Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                  <TableBody>
+                    {keys.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell>{row.id}</TableCell>
+                        <TableCell className="font-mono text-xs md:text-sm">{row.key}</TableCell>
+                        <TableCell>
+                          <Badge variant={row.enabled ? "default" : "secondary"}>{row.enabled ? "启用" : "禁用"}</Badge>
+                        </TableCell>
+                        <TableCell className="space-x-2 text-right">
+                          <Button size="sm" variant="outline" onClick={() => void copyKey(row.key)}>
+                            复制
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => toggleKey(row.id, row.enabled !== 1)}>
+                            {row.enabled ? "禁用" : "启用"}
+                          </Button>
+                          <Button size="sm" variant="secondary" onClick={() => deleteKey(row.id)}>删除</Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </DashboardShell>
   );
 }

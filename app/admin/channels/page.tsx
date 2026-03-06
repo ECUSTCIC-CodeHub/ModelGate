@@ -334,107 +334,115 @@ export default function AdminChannelsPage() {
       role="admin"
       title="渠道管理"
       subtitle="一个页面管理多个渠道；展开渠道后管理该渠道的多个模型"
-      right={<Button onClick={openCreateChannel}>新增渠道</Button>}
     >
-      <div className="space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>渠道列表</CardTitle>
-            <CardDescription>共 {channels.length} 条</CardDescription>
+      <div className="flex h-full min-h-0 flex-col gap-4">
+        <Card className="flex min-h-0 flex-1 flex-col">
+          <CardHeader className="shrink-0">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle>渠道列表</CardTitle>
+                <CardDescription>共 {channels.length} 条</CardDescription>
+              </div>
+              <Button onClick={openCreateChannel}>新增渠道</Button>
+            </div>
           </CardHeader>
-          <CardContent>
-            {error ? <p className="mb-3 text-sm text-red-400">{error}</p> : null}
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>名称</TableHead>
-                  <TableHead>Base URL</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>权重</TableHead>
-                  <TableHead>超时</TableHead>
-                  <TableHead>模型数</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {channels.map((row) => {
-                  const expanded = expandedChannelIds.includes(row.id);
-                  const channelModelsList = row.models ?? [];
+          <CardContent className="flex min-h-0 flex-1 flex-col px-0 pb-2 pt-0">
+            {error ? <p className="px-6 pb-2 text-sm text-red-400">{error}</p> : null}
+            <div className="min-h-0 flex-1 overflow-x-auto px-6">
+              <div className="h-full w-full overflow-auto rounded-md border border-zinc-800">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>ID</TableHead>
+                      <TableHead>名称</TableHead>
+                      <TableHead>Base URL</TableHead>
+                      <TableHead>状态</TableHead>
+                      <TableHead>权重</TableHead>
+                      <TableHead>超时</TableHead>
+                      <TableHead>模型数</TableHead>
+                      <TableHead className="text-right">操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {channels.map((row) => {
+                      const expanded = expandedChannelIds.includes(row.id);
+                      const channelModelsList = row.models ?? [];
 
-                  return (
-                    <Fragment key={row.id}>
-                      <TableRow>
-                        <TableCell>{row.id}</TableCell>
-                        <TableCell>{row.name}</TableCell>
-                        <TableCell className="max-w-72 truncate">{row.base_url}</TableCell>
-                        <TableCell>
-                          <Badge variant={row.enabled ? "default" : "secondary"}>{row.enabled ? "启用" : "禁用"}</Badge>
-                        </TableCell>
-                        <TableCell>{row.weight}</TableCell>
-                        <TableCell>{row.timeout}s</TableCell>
-                        <TableCell>{channelModelsList.length}</TableCell>
-                        <TableCell className="space-x-2 text-right">
-                          <Button size="sm" variant="outline" onClick={() => toggleChannelExpand(row.id)}>
-                            {expanded ? "收起模型" : "展开模型"}
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => openEditChannel(row)}>编辑</Button>
-                          <Button size="sm" variant="outline" onClick={() => toggleChannel(row)}>
-                            {row.enabled ? "禁用" : "启用"}
-                          </Button>
-                          <Button size="sm" variant="secondary" onClick={() => removeChannel(row.id)}>删除</Button>
-                        </TableCell>
-                      </TableRow>
-                      {expanded ? (
-                        <TableRow key={`${row.id}-models`}>
-                          <TableCell colSpan={8} className="bg-zinc-950/40">
-                            <div className="space-y-3 py-2">
-                              <div className="flex items-center justify-between">
-                                <p className="text-sm text-zinc-300">渠道模型（{channelModelsList.length}）</p>
-                                <Button size="sm" onClick={() => openCreateModel(row.id)}>新增模型</Button>
-                              </div>
+                      return (
+                        <Fragment key={row.id}>
+                          <TableRow>
+                            <TableCell>{row.id}</TableCell>
+                            <TableCell>{row.name}</TableCell>
+                            <TableCell className="max-w-72 truncate">{row.base_url}</TableCell>
+                            <TableCell>
+                              <Badge variant={row.enabled ? "default" : "secondary"}>{row.enabled ? "启用" : "禁用"}</Badge>
+                            </TableCell>
+                            <TableCell>{row.weight}</TableCell>
+                            <TableCell>{row.timeout}s</TableCell>
+                            <TableCell>{channelModelsList.length}</TableCell>
+                            <TableCell className="space-x-2 text-right">
+                              <Button size="sm" variant="outline" onClick={() => toggleChannelExpand(row.id)}>
+                                {expanded ? "收起模型" : "展开模型"}
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => openEditChannel(row)}>编辑</Button>
+                              <Button size="sm" variant="outline" onClick={() => toggleChannel(row)}>
+                                {row.enabled ? "禁用" : "启用"}
+                              </Button>
+                              <Button size="sm" variant="secondary" onClick={() => removeChannel(row.id)}>删除</Button>
+                            </TableCell>
+                          </TableRow>
+                          {expanded ? (
+                            <TableRow key={`${row.id}-models`}>
+                              <TableCell colSpan={8} className="bg-zinc-950/40">
+                                <div className="space-y-3 py-2">
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-sm text-zinc-300">渠道模型（{channelModelsList.length}）</p>
+                                    <Button size="sm" onClick={() => openCreateModel(row.id)}>新增模型</Button>
+                                  </div>
 
-                              <div className="rounded-lg border border-zinc-800">
-                                <Table>
-                                  <TableHeader>
-                                    <TableRow>
-                                      <TableHead>ID</TableHead>
-                                      <TableHead>别名</TableHead>
-                                      <TableHead>真实模型</TableHead>
-                                      <TableHead>状态</TableHead>
-                                      <TableHead>权重</TableHead>
-                                      <TableHead className="text-right">操作</TableHead>
-                                    </TableRow>
-                                  </TableHeader>
-                                  <TableBody>
-                                    {channelModelsList.map((model) => (
-                                      <TableRow key={model.id}>
-                                        <TableCell>{model.id}</TableCell>
-                                        <TableCell>{model.alias}</TableCell>
-                                        <TableCell>{model.real_model}</TableCell>
-                                        <TableCell>
-                                          <Badge variant={model.enabled ? "default" : "secondary"}>{model.enabled ? "启用" : "禁用"}</Badge>
-                                        </TableCell>
-                                        <TableCell>{model.weight}</TableCell>
-                                        <TableCell className="space-x-2 text-right">
-                                          <Button size="sm" variant="outline" onClick={() => openEditModel(model)}>编辑</Button>
-                                          <Button size="sm" variant="outline" onClick={() => toggleModel(model)}>{model.enabled ? "禁用" : "启用"}</Button>
-                                          <Button size="sm" variant="secondary" onClick={() => removeModel(model.id)}>删除</Button>
-                                        </TableCell>
-                                      </TableRow>
-                                    ))}
-                                  </TableBody>
-                                </Table>
-                              </div>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ) : null}
-                    </Fragment>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                                  <div className="rounded-lg border border-zinc-800">
+                                    <Table>
+                                      <TableHeader>
+                                        <TableRow>
+                                          <TableHead>ID</TableHead>
+                                          <TableHead>别名</TableHead>
+                                          <TableHead>真实模型</TableHead>
+                                          <TableHead>状态</TableHead>
+                                          <TableHead>权重</TableHead>
+                                          <TableHead className="text-right">操作</TableHead>
+                                        </TableRow>
+                                      </TableHeader>
+                                      <TableBody>
+                                        {channelModelsList.map((model) => (
+                                          <TableRow key={model.id}>
+                                            <TableCell>{model.id}</TableCell>
+                                            <TableCell>{model.alias}</TableCell>
+                                            <TableCell>{model.real_model}</TableCell>
+                                            <TableCell>
+                                              <Badge variant={model.enabled ? "default" : "secondary"}>{model.enabled ? "启用" : "禁用"}</Badge>
+                                            </TableCell>
+                                            <TableCell>{model.weight}</TableCell>
+                                            <TableCell className="space-x-2 text-right">
+                                              <Button size="sm" variant="outline" onClick={() => openEditModel(model)}>编辑</Button>
+                                              <Button size="sm" variant="outline" onClick={() => toggleModel(model)}>{model.enabled ? "禁用" : "启用"}</Button>
+                                              <Button size="sm" variant="secondary" onClick={() => removeModel(model.id)}>删除</Button>
+                                            </TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </div>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ) : null}
+                        </Fragment>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
