@@ -12,20 +12,21 @@
         docker buildx build -t ${IMAGE}:latest -t ${IMAGE}:${CNB_BRANCH} --platform linux/amd64,linux/arm64 --push .
 
 .push: &push
-  - stages:
-      - name: auto-tag
-        image: cnbcool/git-auto-tag:latest
-        settings:
-          blockWhenFail: false
-          branch: $CNB_BRANCH
-          repoUrlHttps: $CNB_REPO_URL_HTTPS
-        exports:
-          tag: NEW_TAG
-      - name: show tag
-        script: echo $NEW_TAG
+  stages:
+    - name: auto-tag
+      image: cnbcool/git-auto-tag:latest
+      settings:
+        blockWhenFail: false
+        branch: $CNB_BRANCH
+        repoUrlHttps: $CNB_REPO_URL_HTTPS
+      exports:
+        tag: NEW_TAG
+    - name: show tag
+      script: echo $NEW_TAG
 
 main:
-  push: *push
+  push:
+    - *push
 
 $:
   vscode:
@@ -34,7 +35,8 @@ $:
       services:
         - vscode
         - docker
-  tag_push: *build
+  tag_push:
+    - *build
 
   web_trigger_view:
     vscode:
