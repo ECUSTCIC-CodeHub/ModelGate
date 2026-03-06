@@ -43,7 +43,7 @@ export default function RegisterPage() {
         <Card>
           <CardHeader className="text-center">
             <CardTitle>注册</CardTitle>
-            <CardDescription>创建账号（用户名仅支持英文字母和数字）</CardDescription>
+            <CardDescription>创建账号</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={onSubmit} className="space-y-4">
