@@ -1,0 +1,5 @@
+branch:
+  - buttons:
+      - name: 预览示例
+        event: web_trigger_view
+        isDefault: true

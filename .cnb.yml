@@ -35,3 +35,18 @@ $:
         - vscode
         - docker
   tag_push: *build
+
+  web_trigger_view:
+    vscode:
+      - runner:
+          cpus: 4
+        services:
+          - name: vscode
+            options:
+              onlyPreview: true
+              launch: |
+                # 启动docker服务并且挂在到8686端口
+                docker run -d --rm -p 8686:3000 --name ${CNB_REPO_SLUG_LOWERCASE} ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}
+              keepAliveTimeout: 3600000
+              daemon: false
+          - docker
