@@ -41,9 +41,9 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT UNIQUE NOT NULL CHECK(length(username) >= 3 AND username NOT GLOB '*[^A-Za-z0-9]*'),
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL CHECK(role IN ('admin', 'user')),
-  rpm INTEGER DEFAULT 60,
-  qps INTEGER DEFAULT 1,
-  tpm INTEGER DEFAULT 60000,
+  rpm INTEGER DEFAULT -1,
+  qps INTEGER DEFAULT -1,
+  tpm INTEGER DEFAULT -1,
   quota_tokens INTEGER,
   quota_requests INTEGER,
   used_tokens INTEGER DEFAULT 0,
@@ -112,8 +112,8 @@ if (hasNameColumn || hasQpmColumn || !hasQpsColumn) {
   }
 
   const qpsExpr = hasQpmColumn
-    ? "CASE WHEN qpm IS NULL OR qpm < 60 THEN 1 ELSE CAST((qpm + 59) / 60 AS INTEGER) END"
-    : "CASE WHEN qps IS NULL OR qps < 1 THEN 1 ELSE qps END";
+    ? "CASE WHEN qpm IS NULL THEN -1 WHEN qpm < 0 THEN -1 ELSE CAST((qpm + 59) / 60 AS INTEGER) END"
+    : "CASE WHEN qps IS NULL THEN -1 WHEN qps < -1 THEN -1 ELSE qps END";
 
   db.pragma("foreign_keys = OFF");
   try {
@@ -124,9 +124,9 @@ if (hasNameColumn || hasQpmColumn || !hasQpsColumn) {
       username TEXT UNIQUE NOT NULL CHECK(length(username) >= 3 AND username NOT GLOB '*[^A-Za-z0-9]*'),
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL CHECK(role IN ('admin', 'user')),
-      rpm INTEGER DEFAULT 60,
-      qps INTEGER DEFAULT 1,
-      tpm INTEGER DEFAULT 60000,
+      rpm INTEGER DEFAULT -1,
+      qps INTEGER DEFAULT -1,
+      tpm INTEGER DEFAULT -1,
       quota_tokens INTEGER,
       quota_requests INTEGER,
       used_tokens INTEGER DEFAULT 0,
@@ -240,9 +240,9 @@ if (!isKvSettings) {
   );
   INSERT INTO settings_new (key, value) VALUES
     ('registration_enabled', '${legacy?.registration_enabled === 0 ? "0" : "1"}'),
-    ('default_qps', '${Math.max(0, legacy?.default_qps ?? 0)}'),
-    ('default_rpm', '${Math.max(0, legacy?.default_rpm ?? 0)}'),
-    ('default_tpm', '${Math.max(0, legacy?.default_tpm ?? 0)}');
+    ('default_qps', '${Math.max(-1, legacy?.default_qps ?? -1)}'),
+    ('default_rpm', '${Math.max(-1, legacy?.default_rpm ?? -1)}'),
+    ('default_tpm', '${Math.max(-1, legacy?.default_tpm ?? -1)}');
   DROP TABLE settings;
   ALTER TABLE settings_new RENAME TO settings;
   COMMIT;
@@ -255,11 +255,27 @@ const initSetting = db.prepare(
    ON CONFLICT(key) DO NOTHING`,
 );
 initSetting.run("registration_enabled", "1");
-initSetting.run("default_qps", "0");
-initSetting.run("default_rpm", "0");
-initSetting.run("default_tpm", "0");
+initSetting.run("default_qps", "-1");
+initSetting.run("default_rpm", "-1");
+initSetting.run("default_tpm", "-1");
 initSetting.run("upstream_retry_enabled", "1");
 initSetting.run("upstream_retry_max_attempts", "3");
+
+// Historical compatibility (one-time):
+// previous versions used 0 as "unlimited"; now -1 is unlimited.
+const limitSemanticsMigrated = db
+  .prepare("SELECT value FROM settings WHERE key = 'limit_unlimited_value_migrated'")
+  .get() as { value: string } | undefined;
+
+if (!limitSemanticsMigrated) {
+  db.exec(`
+  UPDATE settings SET value = '-1' WHERE key IN ('default_qps', 'default_rpm', 'default_tpm') AND value = '0';
+  UPDATE users SET qps = -1 WHERE qps = 0;
+  UPDATE users SET rpm = -1 WHERE rpm = 0;
+  UPDATE users SET tpm = -1 WHERE tpm = 0;
+  `);
+  initSetting.run("limit_unlimited_value_migrated", "1");
+}
 
 export type DbChannel = {
   id: number;

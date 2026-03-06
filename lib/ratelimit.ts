@@ -27,21 +27,21 @@ function takeToken(bucketKey: string, capacity: number, refillPerWindow: number,
 export function checkUserRateLimit(user: DbUser, estimatedTokens: number) {
   const userPrefix = `user:${user.id}`;
 
-  if (user.rpm > 0) {
+  if (user.rpm >= 0) {
     const rpmOk = takeToken(`${userPrefix}:rpm`, user.rpm, user.rpm, 60000, 1);
     if (!rpmOk) {
       return { ok: false, reason: "RPM 超限" };
     }
   }
 
-  if (user.qps > 0) {
+  if (user.qps >= 0) {
     const qpsOk = takeToken(`${userPrefix}:qps`, user.qps, user.qps, 1000, 1);
     if (!qpsOk) {
       return { ok: false, reason: "QPS 超限" };
     }
   }
 
-  if (user.tpm > 0) {
+  if (user.tpm >= 0) {
     const tpmNeed = Math.max(1, estimatedTokens);
     const tpmOk = takeToken(`${userPrefix}:tpm`, user.tpm, user.tpm, 60000, tpmNeed);
     if (!tpmOk) {

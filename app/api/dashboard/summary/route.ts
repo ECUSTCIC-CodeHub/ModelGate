@@ -86,6 +86,10 @@ export async function GET(request: Request) {
     )
     .all(...whereArgs);
 
+  const topChannelWhereSql = isAdmin
+    ? "WHERE l.status_code < 400 AND l.channel_id IS NOT NULL"
+    : "WHERE l.user_id = ? AND l.status_code < 400 AND l.channel_id IS NOT NULL";
+
   const topChannels = gatewayDb
     .prepare(
       `SELECT
@@ -94,7 +98,7 @@ export async function GET(request: Request) {
          COALESCE(SUM(l.total_tokens), 0) AS total_tokens
        FROM logs l
        LEFT JOIN channels c ON c.id = l.channel_id
-       ${whereSql ? whereSql.replaceAll("user_id", "l.user_id") : ""}
+       ${topChannelWhereSql}
        GROUP BY channel_name
        ORDER BY total_tokens DESC, request_count DESC
        LIMIT 5`,

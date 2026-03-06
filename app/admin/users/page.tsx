@@ -48,9 +48,9 @@ const initialForm: UserForm = {
   new_password: "",
   role: "user",
   enabled: true,
-  rpm: 0,
-  qps: 0,
-  tpm: 0,
+  rpm: -1,
+  qps: -1,
+  tpm: -1,
   quota_tokens: "",
   quota_requests: "",
 };
@@ -65,7 +65,8 @@ function formatNumber(value: number | null | undefined) {
 }
 
 function formatLimit(value: number | null | undefined) {
-  if (value === null || value === undefined || value <= 0) return "∞";
+  if (value === null || value === undefined) return "-";
+  if (value < 0) return "∞";
   return formatNumber(value);
 }
 
@@ -255,76 +256,95 @@ export default function AdminUsersPage() {
         title={editingId === null ? "新增用户" : `编辑用户 #${editingId}`}
         description={editingId === null ? "创建新用户账号" : "修改角色、限速与配额"}
       >
-        <form onSubmit={onSubmit} className="grid gap-3 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label>用户名</Label>
-            <Input
-              pattern="[A-Za-z0-9]+"
-              title="仅支持英文字母和数字"
-              value={form.username}
-              onChange={(e) => setForm({ ...form, username: e.target.value })}
-            />
-          </div>
-          {editingId === null ? (
-            <div className="space-y-2">
-              <Label>密码</Label>
-              <Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+            <p className="text-sm font-medium text-zinc-100">基础信息</p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>用户名</Label>
+                <Input
+                  pattern="[A-Za-z0-9]+"
+                  title="仅支持英文字母和数字"
+                  value={form.username}
+                  onChange={(e) => setForm({ ...form, username: e.target.value })}
+                />
+              </div>
+              {editingId === null ? (
+                <div className="space-y-2">
+                  <Label>密码</Label>
+                  <Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label>重置密码（可选）</Label>
+                  <Input
+                    type="password"
+                    placeholder="留空表示不修改"
+                    value={form.new_password}
+                    onChange={(e) => setForm({ ...form, new_password: e.target.value })}
+                  />
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label>角色</Label>
+                <select
+                  className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
+                  value={form.role}
+                  onChange={(e) => setForm({ ...form, role: e.target.value as "admin" | "user" })}
+                >
+                  <option value="user">普通用户</option>
+                  <option value="admin">管理员</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label>状态</Label>
+                <select
+                  className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
+                  value={form.enabled ? "1" : "0"}
+                  onChange={(e) => setForm({ ...form, enabled: e.target.value === "1" })}
+                >
+                  <option value="1">启用</option>
+                  <option value="0">禁用</option>
+                </select>
+              </div>
             </div>
-          ) : null}
-          {editingId !== null ? (
-            <div className="space-y-2">
-              <Label>重置密码（可选）</Label>
-              <Input
-                type="password"
-                placeholder="留空表示不修改"
-                value={form.new_password}
-                onChange={(e) => setForm({ ...form, new_password: e.target.value })}
-              />
+          </div>
+
+          <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+            <p className="text-sm font-medium text-zinc-100">限速配置</p>
+            <p className="text-xs text-zinc-500">`-1` 表示无限，`0` 表示禁止请求。</p>
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="space-y-2">
+                <Label>RPM</Label>
+                <Input type="number" min={-1} value={form.rpm} onChange={(e) => setForm({ ...form, rpm: Number(e.target.value) })} />
+              </div>
+              <div className="space-y-2">
+                <Label>QPS</Label>
+                <Input type="number" min={-1} value={form.qps} onChange={(e) => setForm({ ...form, qps: Number(e.target.value) })} />
+              </div>
+              <div className="space-y-2">
+                <Label>TPM</Label>
+                <Input type="number" min={-1} value={form.tpm} onChange={(e) => setForm({ ...form, tpm: Number(e.target.value) })} />
+              </div>
             </div>
-          ) : null}
-          <div className="space-y-2">
-            <Label>角色</Label>
-            <select
-              className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
-              value={form.role}
-              onChange={(e) => setForm({ ...form, role: e.target.value as "admin" | "user" })}
-            >
-              <option value="user">普通用户</option>
-              <option value="admin">管理员</option>
-            </select>
           </div>
-          <div className="space-y-2">
-            <Label>状态</Label>
-            <select
-              className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
-              value={form.enabled ? "1" : "0"}
-              onChange={(e) => setForm({ ...form, enabled: e.target.value === "1" })}
-            >
-              <option value="1">启用</option>
-              <option value="0">禁用</option>
-            </select>
+
+          <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+            <p className="text-sm font-medium text-zinc-100">配额配置</p>
+            <p className="text-xs text-zinc-500">留空表示不限制总配额。</p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>总请求配额（可空）</Label>
+                <Input value={form.quota_requests} onChange={(e) => setForm({ ...form, quota_requests: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>总 Token 配额（可空）</Label>
+                <Input value={form.quota_tokens} onChange={(e) => setForm({ ...form, quota_tokens: e.target.value })} />
+              </div>
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label>RPM</Label>
-            <Input type="number" value={form.rpm} onChange={(e) => setForm({ ...form, rpm: Number(e.target.value) })} />
-          </div>
-          <div className="space-y-2">
-            <Label>QPS</Label>
-            <Input type="number" value={form.qps} onChange={(e) => setForm({ ...form, qps: Number(e.target.value) })} />
-          </div>
-          <div className="space-y-2">
-            <Label>TPM</Label>
-            <Input type="number" value={form.tpm} onChange={(e) => setForm({ ...form, tpm: Number(e.target.value) })} />
-          </div>
-          <div className="space-y-2">
-            <Label>总 Token 配额(可空)</Label>
-            <Input value={form.quota_tokens} onChange={(e) => setForm({ ...form, quota_tokens: e.target.value })} />
-          </div>
-          <div className="space-y-2">
-            <Label>总请求配额(可空)</Label>
-            <Input value={form.quota_requests} onChange={(e) => setForm({ ...form, quota_requests: e.target.value })} />
-          </div>
-          <div className="md:col-span-2 flex justify-end gap-2 pt-2">
+
+          <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="outline" onClick={() => setDrawerOpen(false)}>取消</Button>
             <Button type="submit">{editingId === null ? "创建" : "保存"}</Button>
           </div>

@@ -12,9 +12,9 @@ const createSchema = z.object({
   password: z.string().min(8),
   role: z.enum(["admin", "user"]).optional(),
   enabled: z.boolean().optional(),
-  rpm: z.number().int().min(0).optional(),
-  qps: z.number().int().min(0).optional(),
-  tpm: z.number().int().min(0).optional(),
+  rpm: z.number().int().min(-1).optional(),
+  qps: z.number().int().min(-1).optional(),
+  tpm: z.number().int().min(-1).optional(),
   quota_tokens: z.number().int().nonnegative().nullable().optional(),
   quota_requests: z.number().int().nonnegative().nullable().optional(),
 });

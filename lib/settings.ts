@@ -2,9 +2,9 @@ import { gatewayDb } from "@/lib/db";
 
 const DEFAULTS = {
   registration_enabled: 1,
-  default_qps: 0,
-  default_rpm: 0,
-  default_tpm: 0,
+  default_qps: -1,
+  default_rpm: -1,
+  default_tpm: -1,
   upstream_retry_enabled: 1,
   upstream_retry_max_attempts: 3,
 } as const;
@@ -20,10 +20,12 @@ export type GatewaySettings = {
   upstream_retry_max_attempts: number;
 };
 
-function nonNegativeInt(value: string | null | undefined, fallback: number) {
+function rateLimitInt(value: string | null | undefined, fallback: number) {
   const num = Number(value);
   if (!Number.isFinite(num)) return fallback;
-  return Math.max(0, Math.trunc(num));
+  const intVal = Math.trunc(num);
+  if (intVal < -1) return -1;
+  return intVal;
 }
 
 function positiveInt(value: string | null | undefined, fallback: number) {
@@ -43,9 +45,9 @@ export function getGatewaySettings(): GatewaySettings {
 
   return {
     registration_enabled: map.get("registration_enabled") === "0" ? 0 : 1,
-    default_qps: nonNegativeInt(map.get("default_qps"), DEFAULTS.default_qps),
-    default_rpm: nonNegativeInt(map.get("default_rpm"), DEFAULTS.default_rpm),
-    default_tpm: nonNegativeInt(map.get("default_tpm"), DEFAULTS.default_tpm),
+    default_qps: rateLimitInt(map.get("default_qps"), DEFAULTS.default_qps),
+    default_rpm: rateLimitInt(map.get("default_rpm"), DEFAULTS.default_rpm),
+    default_tpm: rateLimitInt(map.get("default_tpm"), DEFAULTS.default_tpm),
     upstream_retry_enabled: map.get("upstream_retry_enabled") === "0" ? 0 : 1,
     upstream_retry_max_attempts: positiveInt(
       map.get("upstream_retry_max_attempts"),
@@ -64,9 +66,9 @@ export function setGatewaySettings(input: {
 }) {
   const values: Record<SettingsKey, string> = {
     registration_enabled: input.registration_enabled ? "1" : "0",
-    default_qps: String(Math.max(0, Math.trunc(input.default_qps))),
-    default_rpm: String(Math.max(0, Math.trunc(input.default_rpm))),
-    default_tpm: String(Math.max(0, Math.trunc(input.default_tpm))),
+    default_qps: String(Math.max(-1, Math.trunc(input.default_qps))),
+    default_rpm: String(Math.max(-1, Math.trunc(input.default_rpm))),
+    default_tpm: String(Math.max(-1, Math.trunc(input.default_tpm))),
     upstream_retry_enabled: input.upstream_retry_enabled ? "1" : "0",
     upstream_retry_max_attempts: String(Math.max(1, Math.trunc(input.upstream_retry_max_attempts))),
   };

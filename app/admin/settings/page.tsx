@@ -14,9 +14,9 @@ import { authedFetch, clearSession } from "@/lib/client-auth";
 export default function AdminSettingsPage() {
   const router = useRouter();
   const [registrationEnabled, setRegistrationEnabled] = useState(true);
-  const [defaultQps, setDefaultQps] = useState(0);
-  const [defaultRpm, setDefaultRpm] = useState(0);
-  const [defaultTpm, setDefaultTpm] = useState(0);
+  const [defaultQps, setDefaultQps] = useState(-1);
+  const [defaultRpm, setDefaultRpm] = useState(-1);
+  const [defaultTpm, setDefaultTpm] = useState(-1);
   const [upstreamRetryEnabled, setUpstreamRetryEnabled] = useState(true);
   const [upstreamRetryMaxAttempts, setUpstreamRetryMaxAttempts] = useState(3);
   const { toast } = useToast();
@@ -42,9 +42,9 @@ export default function AdminSettingsPage() {
     const data = await response.json();
     if (response.ok) {
       setRegistrationEnabled(data.data.registration_enabled === 1);
-      setDefaultQps(Number(data.data.default_qps ?? 0));
-      setDefaultRpm(Number(data.data.default_rpm ?? 0));
-      setDefaultTpm(Number(data.data.default_tpm ?? 0));
+      setDefaultQps(Number(data.data.default_qps ?? -1));
+      setDefaultRpm(Number(data.data.default_rpm ?? -1));
+      setDefaultTpm(Number(data.data.default_tpm ?? -1));
       setUpstreamRetryEnabled(data.data.upstream_retry_enabled !== 0);
       setUpstreamRetryMaxAttempts(Number(data.data.upstream_retry_max_attempts ?? 3));
     }
@@ -96,34 +96,34 @@ export default function AdminSettingsPage() {
                   <p className="text-sm text-zinc-300">默认 QPS</p>
                   <input
                     type="number"
-                    min={0}
+                    min={-1}
                     className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
                     value={defaultQps}
                     onChange={(e) => setDefaultQps(Number(e.target.value))}
                   />
-                  <p className="text-xs text-zinc-500">0 表示不限速</p>
+                  <p className="text-xs text-zinc-500">-1 表示不限速，0 表示禁止请求</p>
                 </div>
                 <div className="space-y-2">
                   <p className="text-sm text-zinc-300">默认 RPM</p>
                   <input
                     type="number"
-                    min={0}
+                    min={-1}
                     className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
                     value={defaultRpm}
                     onChange={(e) => setDefaultRpm(Number(e.target.value))}
                   />
-                  <p className="text-xs text-zinc-500">0 表示不限速</p>
+                  <p className="text-xs text-zinc-500">-1 表示不限速，0 表示禁止请求</p>
                 </div>
                 <div className="space-y-2">
                   <p className="text-sm text-zinc-300">默认 TPM</p>
                   <input
                     type="number"
-                    min={0}
+                    min={-1}
                     className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
                     value={defaultTpm}
                     onChange={(e) => setDefaultTpm(Number(e.target.value))}
                   />
-                  <p className="text-xs text-zinc-500">0 表示不限速</p>
+                  <p className="text-xs text-zinc-500">-1 表示不限速，0 表示禁止请求</p>
                 </div>
               </div>
             </CardContent>

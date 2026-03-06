@@ -181,7 +181,7 @@ export async function POST(request: Request) {
   }
   const auth = authResult.context;
 
-  const logRejected = (statusCode: number, message: string, alias: string | null) => {
+  const logRejected = (statusCode: number, message: string, alias: string | null, estimatedTokens?: number) => {
     insertChatLog({
       user_id: auth.user.id,
       key_id: auth.key.id,
@@ -190,8 +190,8 @@ export async function POST(request: Request) {
       real_model: null,
       stream: false,
       status_code: statusCode,
-      estimated_tokens: null,
-      total_tokens: null,
+      estimated_tokens: estimatedTokens ?? null,
+      total_tokens: estimatedTokens ?? 0,
       latency_ms: Date.now() - startedAt,
       error_message: message,
     });
@@ -213,13 +213,13 @@ export async function POST(request: Request) {
   const estimatedTokens = estimateRequestTokens(body);
   const quota = checkQuota(auth.user.id, estimatedTokens);
   if (!quota.ok) {
-    logRejected(429, quota.reason, alias);
+    logRejected(429, quota.reason, alias, estimatedTokens);
     return jsonError(quota.reason, 429);
   }
 
   const rate = checkUserRateLimit(auth.user, estimatedTokens);
   if (!rate.ok) {
-    logRejected(429, rate.reason, alias);
+    logRejected(429, rate.reason, alias, estimatedTokens);
     return jsonError(rate.reason, 429);
   }
 
