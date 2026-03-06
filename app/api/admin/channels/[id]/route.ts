@@ -61,8 +61,8 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
 
   const { id } = await context.params;
   const tx = gatewayDb.transaction(() => {
-    gatewayDb.prepare("DELETE FROM models WHERE channel_id = ?").run(id);
-    gatewayDb.prepare("DELETE FROM channels WHERE id = ?").run(id);
+    gatewayDb.prepare("UPDATE models SET enabled = 0, deleted_at = CURRENT_TIMESTAMP WHERE channel_id = ? AND deleted_at IS NULL").run(id);
+    gatewayDb.prepare("UPDATE channels SET enabled = 0 WHERE id = ?").run(id);
   });
   tx();
   return jsonOk({ ok: true, message: "渠道删除成功。" });

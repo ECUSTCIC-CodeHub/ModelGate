@@ -15,7 +15,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   if (!channel) return jsonError("渠道不存在", 404);
 
   const models = gatewayDb
-    .prepare("SELECT id, alias, real_model, channel_id, enabled, weight, created_at FROM models WHERE channel_id = ? ORDER BY id DESC")
+    .prepare("SELECT id, alias, real_model, channel_id, enabled, weight, created_at FROM models WHERE channel_id = ? AND deleted_at IS NULL ORDER BY id DESC")
     .all(id);
 
   return jsonOk({ data: { ...channel, models } });

@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import { authedFetch, clearSession } from "@/lib/client-auth";
 type KeyRow = { id: number; key: string; enabled: number; created_at: string };
 
 export default function ConsoleKeysPage() {
+  const router = useRouter();
   const [keys, setKeys] = useState<KeyRow[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -24,7 +26,7 @@ export default function ConsoleKeysPage() {
     const me = await authedFetch("/api/dashboard/profile");
     if (!me.ok) {
       clearSession();
-      window.location.href = "/login";
+      router.push("/login");
       return;
     }
 
@@ -44,7 +46,7 @@ export default function ConsoleKeysPage() {
 
   useEffect(() => {
     void load().finally(() => setLoading(false));
-  }, []);
+  }, [router]);
 
   async function copyKey(value: string) {
     try {

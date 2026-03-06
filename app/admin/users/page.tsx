@@ -2,6 +2,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,14 +44,15 @@ const initialForm: UserForm = {
   password: "",
   role: "user",
   enabled: true,
-  rpm: 60,
-  qps: 1,
-  tpm: 60000,
+  rpm: 0,
+  qps: 0,
+  tpm: 0,
   quota_tokens: "",
   quota_requests: "",
 };
 
 export default function AdminUsersPage() {
+  const router = useRouter();
   const [rows, setRows] = useState<UserRow[]>([]);
   const [form, setForm] = useState<UserForm>(initialForm);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -61,12 +63,12 @@ export default function AdminUsersPage() {
     const me = await authedFetch("/api/dashboard/profile");
     if (!me.ok) {
       clearSession();
-      window.location.href = "/login";
+      router.push("/login");
       return false;
     }
     const data = await me.json();
     if (data.user.role !== "admin") {
-      window.location.href = "/dashboard/keys";
+      router.push("/dashboard/keys");
       return false;
     }
     return true;
@@ -81,7 +83,7 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [router]);
 
   function onCreateClick() {
     setEditingId(null);

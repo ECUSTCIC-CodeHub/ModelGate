@@ -72,7 +72,7 @@ export function sanitizeUser(user: DbUser): Omit<DbUser, "password_hash"> {
 
 function findEnabledUserById(id: number) {
   return gatewayDb
-    .prepare("SELECT * FROM users WHERE id = ? AND enabled = 1")
+    .prepare("SELECT * FROM users WHERE id = ? AND enabled = 1 AND deleted_at IS NULL")
     .get(id) as DbUser | undefined;
 }
 

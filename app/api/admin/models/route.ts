@@ -20,6 +20,7 @@ export async function GET(request: Request) {
       `SELECT m.*, c.name AS channel_name
        FROM models m
        JOIN channels c ON c.id = m.channel_id
+       WHERE m.deleted_at IS NULL
        ORDER BY m.id DESC`,
     )
     .all();
@@ -53,6 +54,6 @@ export async function POST(request: Request) {
       parsed.data.weight ?? 1,
     );
 
-  const row = gatewayDb.prepare("SELECT * FROM models WHERE id = ?").get(result.lastInsertRowid);
+  const row = gatewayDb.prepare("SELECT * FROM models WHERE id = ? AND deleted_at IS NULL").get(result.lastInsertRowid);
   return jsonOk({ message: "模型创建成功。", data: row }, 201);
 }

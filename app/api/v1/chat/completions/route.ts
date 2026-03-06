@@ -1,4 +1,4 @@
-import { requireApiKey } from "@/lib/api-key-auth";
+import { checkApiKeyAuth } from "@/lib/api-key-auth";
 import { insertChatLog } from "@/lib/chat-log";
 import { gatewayDb } from "@/lib/db";
 import { jsonError } from "@/lib/http";
@@ -11,7 +11,7 @@ import { countTextTokens } from "@/lib/tokenizer";
 
 function checkQuota(userId: number, estimatedTokens: number) {
   const user = gatewayDb
-    .prepare("SELECT quota_tokens, quota_requests, used_tokens, used_requests FROM users WHERE id = ?")
+    .prepare("SELECT quota_tokens, quota_requests, used_tokens, used_requests FROM users WHERE id = ? AND deleted_at IS NULL")
     .get(userId) as
     | {
         quota_tokens: number | null;
@@ -41,7 +41,7 @@ function addUsage(userId: number, tokens: number, requests = 1) {
     .prepare(
       `UPDATE users
        SET used_tokens = used_tokens + ?, used_requests = used_requests + ?
-       WHERE id = ?`,
+       WHERE id = ? AND deleted_at IS NULL`,
     )
     .run(tokens, requests, userId);
 }
@@ -160,16 +160,17 @@ function shouldRetryUpstreamStatus(status: number) {
 
 export async function POST(request: Request) {
   const startedAt = Date.now();
-  const auth = requireApiKey(request);
-  if (!auth) {
-    return jsonError("认证失败，未提供 API Key。", 401, {
+  const authResult = checkApiKeyAuth(request);
+  if (!authResult.ok) {
+    return jsonError(authResult.reason === "missing" ? "认证失败，未提供 API Key。" : "认证失败，API Key 无效或已禁用。", 401, {
       type: "auth_error",
       param: "None",
       code: "401",
     });
   }
+  const auth = authResult.context;
 
-  const logRejected = (statusCode: number, message: string, alias: string | null, body: unknown) => {
+  const logRejected = (statusCode: number, message: string, alias: string | null) => {
     insertChatLog({
       user_id: auth.user.id,
       key_id: auth.key.id,
@@ -182,40 +183,38 @@ export async function POST(request: Request) {
       total_tokens: null,
       latency_ms: Date.now() - startedAt,
       error_message: message,
-      request_body: body,
-      response_body: null,
     });
   };
 
   const rawBody = await request.json().catch(() => null);
   if (!rawBody || typeof rawBody !== "object") {
-    logRejected(400, "请求参数不正确", null, rawBody);
+    logRejected(400, "请求参数不正确", null);
     return jsonError("请求参数不正确", 400);
   }
 
   const body = rawBody as Record<string, unknown>;
   const alias = body.model;
   if (typeof alias !== "string" || alias.length === 0) {
-    logRejected(400, "缺少模型参数 model", null, body);
+    logRejected(400, "缺少模型参数 model", null);
     return jsonError("缺少模型参数 model", 400);
   }
 
   const estimatedTokens = estimateRequestTokens(body);
   const quota = checkQuota(auth.user.id, estimatedTokens);
   if (!quota.ok) {
-    logRejected(429, quota.reason, alias, body);
+    logRejected(429, quota.reason, alias);
     return jsonError(quota.reason, 429);
   }
 
   const rate = checkUserRateLimit(auth.user, estimatedTokens);
   if (!rate.ok) {
-    logRejected(429, rate.reason, alias, body);
+    logRejected(429, rate.reason, alias);
     return jsonError(rate.reason, 429);
   }
 
   const existingRoute = selectModelRoute(alias);
   if (!existingRoute) {
-    logRejected(404, "模型别名不存在或已禁用", alias, body);
+    logRejected(404, "模型别名不存在或已禁用", alias);
     return jsonError("模型别名不存在或已禁用", 404);
   }
 
@@ -236,7 +235,6 @@ export async function POST(request: Request) {
     | {
         ok: true;
         route: RoutedModel;
-        outgoingBody: Record<string, unknown>;
         upstream: Response;
         attemptedChannels: number[];
         attemptedChannelNames: string[];
@@ -244,7 +242,6 @@ export async function POST(request: Request) {
     | {
         ok: false;
         route: RoutedModel | null;
-        outgoingBody: Record<string, unknown> | null;
         attemptedChannels: number[];
         attemptedChannelNames: string[];
       }
@@ -252,7 +249,6 @@ export async function POST(request: Request) {
     const attemptedChannels: number[] = [];
     const attemptedChannelNames: string[] = [];
     let lastNetworkRoute: RoutedModel | null = null;
-    let lastNetworkBody: Record<string, unknown> | null = null;
 
     for (let attempt = 1; attempt <= maxRouteAttempts; attempt += 1) {
       const route = selectModelRoute(alias, { excludeChannelIds: attemptedChannels });
@@ -278,14 +274,12 @@ export async function POST(request: Request) {
         return {
           ok: true,
           route,
-          outgoingBody,
           upstream,
           attemptedChannels: [...attemptedChannels],
           attemptedChannelNames: [...attemptedChannelNames],
         };
       } catch {
         lastNetworkRoute = route;
-        lastNetworkBody = outgoingBody;
         if (retryEnabled && attempt < maxRouteAttempts) {
           continue;
         }
@@ -296,7 +290,6 @@ export async function POST(request: Request) {
     return {
       ok: false,
       route: lastNetworkRoute,
-      outgoingBody: lastNetworkBody,
       attemptedChannels: [...attemptedChannels],
       attemptedChannelNames: [...attemptedChannelNames],
     };
@@ -323,8 +316,6 @@ export async function POST(request: Request) {
       route_attempts: Math.max(1, picked.attemptedChannels.length),
       attempted_channels: picked.attemptedChannelNames.join(" -> "),
       error_message: "上游请求失败",
-      request_body: picked.outgoingBody ?? baseOutgoingBody,
-      response_body: null,
     });
     return jsonError("上游请求失败", 502, {
       type: "upstream_error",
@@ -333,7 +324,7 @@ export async function POST(request: Request) {
     });
   }
 
-  const { route, outgoingBody, upstream, attemptedChannels, attemptedChannelNames } = picked;
+  const { route, upstream, attemptedChannels, attemptedChannelNames } = picked;
 
   if (stream) {
     const localPromptTokens = countPromptTokensFromBody(body, route.model.real_model);
@@ -358,8 +349,6 @@ export async function POST(request: Request) {
         route_attempts: Math.max(1, attemptedChannels.length),
         attempted_channels: attemptedChannelNames.join(" -> "),
         error_message: `上游流式请求失败: ${upstream.status}`,
-        request_body: outgoingBody,
-        response_body: text || null,
       });
       return new Response(text, {
         status: upstream.status,
@@ -398,8 +387,6 @@ export async function POST(request: Request) {
         route_attempts: Math.max(1, attemptedChannels.length),
         attempted_channels: attemptedChannelNames.join(" -> "),
         error_message: null,
-        request_body: outgoingBody,
-        response_body: text || null,
       });
       return new Response(text, {
         status: upstream.status,
@@ -448,8 +435,6 @@ export async function POST(request: Request) {
         route_attempts: Math.max(1, attemptedChannels.length),
         attempted_channels: attemptedChannelNames.join(" -> "),
         error_message: upstream.status >= 400 ? `上游流式请求失败: ${upstream.status}` : null,
-        request_body: outgoingBody,
-        response_body: null,
       });
     };
 
@@ -544,8 +529,6 @@ export async function POST(request: Request) {
     route_attempts: Math.max(1, attemptedChannels.length),
     attempted_channels: attemptedChannelNames.join(" -> "),
     error_message: upstream.status >= 400 ? `上游请求失败: ${upstream.status}` : null,
-    request_body: outgoingBody,
-    response_body: text,
   });
 
   return new Response(text, {

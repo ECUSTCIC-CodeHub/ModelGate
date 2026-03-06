@@ -28,7 +28,7 @@ export async function GET(request: Request) {
 
   const channels = gatewayDb.prepare("SELECT * FROM channels ORDER BY id DESC").all() as Array<Record<string, unknown> & { id: number }>;
   const models = gatewayDb
-    .prepare("SELECT id, alias, real_model, channel_id, enabled, weight, created_at FROM models ORDER BY id DESC")
+    .prepare("SELECT id, alias, real_model, channel_id, enabled, weight, created_at FROM models WHERE deleted_at IS NULL ORDER BY id DESC")
     .all() as Array<{
     id: number;
     alias: string;

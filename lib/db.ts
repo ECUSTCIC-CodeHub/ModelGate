@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
-import path from "node:path";
 import fs from "node:fs";
+import path from "node:path";
 
 const dataDir = path.join(process.cwd(), "data");
 const dbPath = path.join(dataDir, "gateway.db");
@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS models (
   enabled INTEGER DEFAULT 1,
   weight INTEGER DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  deleted_at DATETIME,
   FOREIGN KEY (channel_id) REFERENCES channels(id)
 );
 
@@ -48,7 +49,8 @@ CREATE TABLE IF NOT EXISTS users (
   used_tokens INTEGER DEFAULT 0,
   used_requests INTEGER DEFAULT 0,
   enabled INTEGER DEFAULT 1,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  deleted_at DATETIME
 );
 
 CREATE TABLE IF NOT EXISTS keys (
@@ -57,6 +59,7 @@ CREATE TABLE IF NOT EXISTS keys (
   user_id INTEGER NOT NULL,
   enabled INTEGER DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  deleted_at DATETIME,
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
@@ -66,7 +69,7 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS chat_logs (
+CREATE TABLE IF NOT EXISTS logs (
   id INTEGER PRIMARY KEY,
   user_id INTEGER NOT NULL,
   key_id INTEGER NOT NULL,
@@ -85,8 +88,6 @@ CREATE TABLE IF NOT EXISTS chat_logs (
   route_attempts INTEGER DEFAULT 1,
   attempted_channels TEXT,
   error_message TEXT,
-  request_body TEXT,
-  response_body TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -94,8 +95,8 @@ CREATE INDEX IF NOT EXISTS idx_keys_key ON keys(key);
 CREATE INDEX IF NOT EXISTS idx_models_alias_enabled ON models(alias, enabled);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
-CREATE INDEX IF NOT EXISTS idx_chat_logs_created_at ON chat_logs(created_at);
-CREATE INDEX IF NOT EXISTS idx_chat_logs_user_id ON chat_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
 `);
 
 const userColumns = db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
@@ -114,59 +115,91 @@ if (hasNameColumn || hasQpmColumn || !hasQpsColumn) {
 
   db.pragma("foreign_keys = OFF");
   try {
-    try {
-      db.exec(`
-      BEGIN;
-      CREATE TABLE users_new (
-        id INTEGER PRIMARY KEY,
-        username TEXT UNIQUE NOT NULL CHECK(length(username) >= 3 AND username NOT GLOB '*[^A-Za-z0-9]*'),
-        password_hash TEXT NOT NULL,
-        role TEXT NOT NULL CHECK(role IN ('admin', 'user')),
-        rpm INTEGER DEFAULT 60,
-        qps INTEGER DEFAULT 1,
-        tpm INTEGER DEFAULT 60000,
-        quota_tokens INTEGER,
-        quota_requests INTEGER,
-        used_tokens INTEGER DEFAULT 0,
-        used_requests INTEGER DEFAULT 0,
-        enabled INTEGER DEFAULT 1,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
+    db.exec(`
+    BEGIN;
+    CREATE TABLE users_new (
+      id INTEGER PRIMARY KEY,
+      username TEXT UNIQUE NOT NULL CHECK(length(username) >= 3 AND username NOT GLOB '*[^A-Za-z0-9]*'),
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('admin', 'user')),
+      rpm INTEGER DEFAULT 60,
+      qps INTEGER DEFAULT 1,
+      tpm INTEGER DEFAULT 60000,
+      quota_tokens INTEGER,
+      quota_requests INTEGER,
+      used_tokens INTEGER DEFAULT 0,
+      used_requests INTEGER DEFAULT 0,
+      enabled INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      deleted_at DATETIME
+    );
 
-      INSERT INTO users_new (
-        id, username, password_hash, role, rpm, qps, tpm,
-        quota_tokens, quota_requests, used_tokens, used_requests, enabled, created_at
-      )
-      SELECT
-        id,
-        CASE
-          WHEN username IS NULL OR length(username) < 3 OR username GLOB '*[^A-Za-z0-9]*' THEN 'user' || id
-          ELSE username
-        END,
-        password_hash, role, rpm, ${qpsExpr}, tpm,
-        quota_tokens, quota_requests, used_tokens, used_requests, enabled, created_at
-      FROM users;
+    INSERT INTO users_new (
+      id, username, password_hash, role, rpm, qps, tpm,
+      quota_tokens, quota_requests, used_tokens, used_requests, enabled, created_at, deleted_at
+    )
+    SELECT
+      id,
+      CASE
+        WHEN username IS NULL OR length(username) < 3 OR username GLOB '*[^A-Za-z0-9]*' THEN 'user' || id
+        ELSE username
+      END,
+      password_hash, role, rpm, ${qpsExpr}, tpm,
+      quota_tokens, quota_requests, used_tokens, used_requests, enabled, created_at, NULL
+    FROM users;
 
-      DROP TABLE users;
-      ALTER TABLE users_new RENAME TO users;
-      CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-      CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
-      COMMIT;
-      `);
-    } catch (error) {
-      const message = String(error);
-      if (
-        !message.includes("no such column: qpm") &&
-        !message.includes("table users_new already exists") &&
-        !message.includes("database schema has changed")
-      ) {
-        throw error;
-      }
-      db.exec("ROLLBACK;");
-    }
+    DROP TABLE users;
+    ALTER TABLE users_new RENAME TO users;
+    CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+    CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+    COMMIT;
+    `);
+  } catch {
+    db.exec("ROLLBACK;");
   } finally {
     db.pragma("foreign_keys = ON");
   }
+}
+
+const ensureColumn = (table: string, column: string, ddl: string) => {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (!columns.some((col) => col.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+  }
+};
+
+ensureColumn("users", "deleted_at", "deleted_at DATETIME");
+ensureColumn("keys", "deleted_at", "deleted_at DATETIME");
+ensureColumn("models", "deleted_at", "deleted_at DATETIME");
+ensureColumn("logs", "first_token_latency_ms", "first_token_latency_ms INTEGER");
+ensureColumn("logs", "output_tps", "output_tps REAL");
+ensureColumn("logs", "route_attempts", "route_attempts INTEGER DEFAULT 1");
+ensureColumn("logs", "attempted_channels", "attempted_channels TEXT");
+
+const tableExists = (name: string) => {
+  const row = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get(name) as { name: string } | undefined;
+  return Boolean(row);
+};
+
+if (tableExists("chat_logs")) {
+  db.exec(`
+  INSERT OR IGNORE INTO logs (
+    id, user_id, key_id, channel_id, model_alias, real_model, stream, status_code,
+    estimated_tokens, prompt_tokens, completion_tokens, total_tokens, latency_ms,
+    first_token_latency_ms, output_tps, route_attempts, attempted_channels, error_message, created_at
+  )
+  SELECT
+    id, user_id, key_id, channel_id, model_alias, real_model, stream, status_code,
+    estimated_tokens, prompt_tokens, completion_tokens, total_tokens, latency_ms,
+    first_token_latency_ms, output_tps, COALESCE(route_attempts, 1), attempted_channels, error_message, created_at
+  FROM chat_logs;
+  `);
+
+  db.exec("DROP INDEX IF EXISTS idx_chat_logs_created_at");
+  db.exec("DROP INDEX IF EXISTS idx_chat_logs_user_id");
+  db.exec("DROP TABLE chat_logs");
 }
 
 const settingsColumns = db.prepare("PRAGMA table_info(settings)").all() as Array<{ name: string }>;
@@ -192,59 +225,26 @@ if (!isKvSettings) {
   );
   INSERT INTO settings_new (key, value) VALUES
     ('registration_enabled', '${legacy?.registration_enabled === 0 ? "0" : "1"}'),
-    ('default_qps', '${Math.max(1, legacy?.default_qps ?? 1)}'),
-    ('default_rpm', '${Math.max(1, legacy?.default_rpm ?? 60)}'),
-    ('default_tpm', '${Math.max(1, legacy?.default_tpm ?? 60000)}');
+    ('default_qps', '${Math.max(0, legacy?.default_qps ?? 0)}'),
+    ('default_rpm', '${Math.max(0, legacy?.default_rpm ?? 0)}'),
+    ('default_tpm', '${Math.max(0, legacy?.default_tpm ?? 0)}');
   DROP TABLE settings;
   ALTER TABLE settings_new RENAME TO settings;
   COMMIT;
   `);
 }
 
-db.prepare(
+const initSetting = db.prepare(
   `INSERT INTO settings (key, value)
    VALUES (?, ?)
    ON CONFLICT(key) DO NOTHING`,
-).run("registration_enabled", "1");
-db.prepare(
-  `INSERT INTO settings (key, value)
-   VALUES (?, ?)
-   ON CONFLICT(key) DO NOTHING`,
-).run("default_qps", "1");
-db.prepare(
-  `INSERT INTO settings (key, value)
-   VALUES (?, ?)
-   ON CONFLICT(key) DO NOTHING`,
-).run("default_rpm", "60");
-db.prepare(
-  `INSERT INTO settings (key, value)
-   VALUES (?, ?)
-   ON CONFLICT(key) DO NOTHING`,
-).run("default_tpm", "60000");
-db.prepare(
-  `INSERT INTO settings (key, value)
-   VALUES (?, ?)
-   ON CONFLICT(key) DO NOTHING`,
-).run("upstream_retry_enabled", "1");
-db.prepare(
-  `INSERT INTO settings (key, value)
-   VALUES (?, ?)
-   ON CONFLICT(key) DO NOTHING`,
-).run("upstream_retry_max_attempts", "3");
-
-const chatLogColumns = db.prepare("PRAGMA table_info(chat_logs)").all() as Array<{ name: string }>;
-if (!chatLogColumns.some((col) => col.name === "first_token_latency_ms")) {
-  db.exec("ALTER TABLE chat_logs ADD COLUMN first_token_latency_ms INTEGER");
-}
-if (!chatLogColumns.some((col) => col.name === "output_tps")) {
-  db.exec("ALTER TABLE chat_logs ADD COLUMN output_tps REAL");
-}
-if (!chatLogColumns.some((col) => col.name === "route_attempts")) {
-  db.exec("ALTER TABLE chat_logs ADD COLUMN route_attempts INTEGER DEFAULT 1");
-}
-if (!chatLogColumns.some((col) => col.name === "attempted_channels")) {
-  db.exec("ALTER TABLE chat_logs ADD COLUMN attempted_channels TEXT");
-}
+);
+initSetting.run("registration_enabled", "1");
+initSetting.run("default_qps", "0");
+initSetting.run("default_rpm", "0");
+initSetting.run("default_tpm", "0");
+initSetting.run("upstream_retry_enabled", "1");
+initSetting.run("upstream_retry_max_attempts", "3");
 
 export type DbChannel = {
   id: number;
@@ -265,6 +265,7 @@ export type DbModel = {
   enabled: number;
   weight: number;
   created_at: string;
+  deleted_at: string | null;
 };
 
 export type DbUser = {
@@ -281,6 +282,7 @@ export type DbUser = {
   used_requests: number;
   enabled: number;
   created_at: string;
+  deleted_at: string | null;
 };
 
 export type DbKey = {
@@ -289,9 +291,10 @@ export type DbKey = {
   user_id: number;
   enabled: number;
   created_at: string;
+  deleted_at: string | null;
 };
 
-export type DbChatLog = {
+export type DbLog = {
   id: number;
   user_id: number;
   key_id: number;
@@ -310,8 +313,6 @@ export type DbChatLog = {
   route_attempts: number | null;
   attempted_channels: string | null;
   error_message: string | null;
-  request_body: string | null;
-  response_body: string | null;
   created_at: string;
 };
 

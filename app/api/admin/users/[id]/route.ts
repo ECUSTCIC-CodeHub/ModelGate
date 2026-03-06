@@ -2,15 +2,16 @@ import { z } from "zod";
 import { gatewayDb } from "@/lib/db";
 import { ensureAdmin } from "@/lib/guards";
 import { jsonError, jsonOk } from "@/lib/http";
+import { softDeleteUser } from "@/lib/services/soft-delete-service";
 import { USERNAME_SCHEMA } from "@/lib/username";
 
 const updateSchema = z.object({
   username: USERNAME_SCHEMA.optional(),
   role: z.enum(["admin", "user"]).optional(),
   enabled: z.boolean().optional(),
-  rpm: z.number().int().min(1).optional(),
-  qps: z.number().int().min(1).optional(),
-  tpm: z.number().int().min(1).optional(),
+  rpm: z.number().int().min(0).optional(),
+  qps: z.number().int().min(0).optional(),
+  tpm: z.number().int().min(0).optional(),
   quota_tokens: z.number().int().nonnegative().nullable().optional(),
   quota_requests: z.number().int().nonnegative().nullable().optional(),
 });
@@ -27,7 +28,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const existing = gatewayDb
     .prepare(
       `SELECT id, username, role, enabled, rpm, qps, tpm, quota_tokens, quota_requests
-       FROM users WHERE id = ?`,
+       FROM users WHERE id = ? AND deleted_at IS NULL`,
     )
     .get(id) as
     | {
@@ -84,7 +85,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const row = gatewayDb
     .prepare(
       `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, enabled, created_at
-       FROM users WHERE id = ?`,
+       FROM users WHERE id = ? AND deleted_at IS NULL`,
     )
     .get(id);
 
@@ -96,12 +97,12 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
   if ("error" in guard) return guard.error;
 
   const { id } = await context.params;
-  const adminCount = gatewayDb.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND enabled = 1").get() as {
+  const adminCount = gatewayDb.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND enabled = 1 AND deleted_at IS NULL").get() as {
     count: number;
   };
 
   const target = gatewayDb
-    .prepare("SELECT role, enabled FROM users WHERE id = ?")
+    .prepare("SELECT role, enabled FROM users WHERE id = ? AND deleted_at IS NULL")
     .get(id) as { role: "admin" | "user"; enabled: number } | undefined;
 
   if (!target) return jsonError("用户不存在", 404);
@@ -109,7 +110,6 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     return jsonError("不能删除最后一个启用的管理员", 400);
   }
 
-  gatewayDb.prepare("DELETE FROM keys WHERE user_id = ?").run(id);
-  gatewayDb.prepare("DELETE FROM users WHERE id = ?").run(id);
+  softDeleteUser(id);
   return jsonOk({ ok: true, message: "用户删除成功。" });
 }

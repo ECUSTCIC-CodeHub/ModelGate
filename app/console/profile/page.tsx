@@ -1,7 +1,8 @@
-/* eslint-disable react-hooks/set-state-in-effect */
+/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +22,7 @@ type User = {
 };
 
 export default function ConsoleProfilePage() {
+  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<"admin" | "user">("user");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -31,7 +33,7 @@ export default function ConsoleProfilePage() {
     const me = await authedFetch("/api/dashboard/profile");
     if (!me.ok) {
       clearSession();
-      window.location.href = "/login";
+      router.push("/login");
       return;
     }
     const data = await me.json();
@@ -41,7 +43,7 @@ export default function ConsoleProfilePage() {
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [router]);
 
   async function onChangePassword(event: FormEvent) {
     event.preventDefault();

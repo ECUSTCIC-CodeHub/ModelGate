@@ -12,7 +12,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   const row = gatewayDb
     .prepare(
       `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, enabled, created_at
-       FROM users WHERE id = ?`,
+       FROM users WHERE id = ? AND deleted_at IS NULL`,
     )
     .get(id);
 

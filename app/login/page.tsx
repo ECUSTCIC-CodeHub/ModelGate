@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +12,7 @@ import { getApiMessage } from "@/lib/api-message";
 import { setSession } from "@/lib/client-auth";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const { toast } = useToast();
@@ -32,7 +34,7 @@ export default function LoginPage() {
 
     setSession({ accessToken: data.access_token, refreshToken: data.refresh_token });
     toast({ variant: "success", description: getApiMessage(data, "登录成功。") });
-    window.location.href = data.user.role === "admin" ? "/dashboard" : "/dashboard/keys";
+    router.push(data.user.role === "admin" ? "/dashboard" : "/dashboard/keys");
   }
 
   return (

@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     if (payload.type !== "refresh") return jsonError("刷新令牌无效", 401);
 
     const user = gatewayDb
-      .prepare("SELECT * FROM users WHERE id = ? AND enabled = 1")
+      .prepare("SELECT * FROM users WHERE id = ? AND enabled = 1 AND deleted_at IS NULL")
       .get(Number(payload.sub)) as DbUser | undefined;
 
     if (!user) return jsonError("刷新令牌无效", 401);

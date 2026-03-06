@@ -11,7 +11,7 @@ export function listEnabledAliases() {
       `SELECT DISTINCT m.alias
        FROM models m
        JOIN channels c ON c.id = m.channel_id
-       WHERE m.enabled = 1 AND c.enabled = 1
+       WHERE m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL
        ORDER BY m.alias ASC`,
     )
     .all() as { alias: string }[];
@@ -29,6 +29,7 @@ export function selectModelRoute(alias: string, options?: { excludeChannelIds?: 
           m.enabled as model_enabled,
           m.weight as model_weight,
           m.created_at as model_created_at,
+          m.deleted_at as model_deleted_at,
           c.id as channel_id_2,
           c.name,
           c.base_url,
@@ -39,7 +40,7 @@ export function selectModelRoute(alias: string, options?: { excludeChannelIds?: 
           c.created_at as channel_created_at
        FROM models m
        JOIN channels c ON c.id = m.channel_id
-       WHERE m.alias = ? AND m.enabled = 1 AND c.enabled = 1`,
+       WHERE m.alias = ? AND m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL`,
     )
     .all(alias) as Array<{
     model_id: number;
@@ -49,6 +50,7 @@ export function selectModelRoute(alias: string, options?: { excludeChannelIds?: 
     model_enabled: number;
     model_weight: number;
     model_created_at: string;
+    model_deleted_at: string | null;
     channel_id_2: number;
     name: string;
     base_url: string;
@@ -82,6 +84,7 @@ export function selectModelRoute(alias: string, options?: { excludeChannelIds?: 
           enabled: item.row.model_enabled,
           weight: item.row.model_weight,
           created_at: item.row.model_created_at,
+          deleted_at: item.row.model_deleted_at,
         },
         channel: {
           id: item.row.channel_id_2,
@@ -106,6 +109,7 @@ export function selectModelRoute(alias: string, options?: { excludeChannelIds?: 
       enabled: weighted[0].row.model_enabled,
       weight: weighted[0].row.model_weight,
       created_at: weighted[0].row.model_created_at,
+      deleted_at: weighted[0].row.model_deleted_at,
     },
     channel: {
       id: weighted[0].row.channel_id_2,

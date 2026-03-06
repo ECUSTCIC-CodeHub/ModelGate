@@ -27,20 +27,26 @@ function takeToken(bucketKey: string, capacity: number, refillPerWindow: number,
 export function checkUserRateLimit(user: DbUser, estimatedTokens: number) {
   const userPrefix = `user:${user.id}`;
 
-  const rpmOk = takeToken(`${userPrefix}:rpm`, Math.max(1, user.rpm), Math.max(1, user.rpm), 60000, 1);
-  if (!rpmOk) {
-    return { ok: false, reason: "RPM exceeded" };
+  if (user.rpm > 0) {
+    const rpmOk = takeToken(`${userPrefix}:rpm`, user.rpm, user.rpm, 60000, 1);
+    if (!rpmOk) {
+      return { ok: false, reason: "RPM 超限" };
+    }
   }
 
-  const qpsOk = takeToken(`${userPrefix}:qps`, Math.max(1, user.qps), Math.max(1, user.qps), 1000, 1);
-  if (!qpsOk) {
-    return { ok: false, reason: "QPS exceeded" };
+  if (user.qps > 0) {
+    const qpsOk = takeToken(`${userPrefix}:qps`, user.qps, user.qps, 1000, 1);
+    if (!qpsOk) {
+      return { ok: false, reason: "QPS 超限" };
+    }
   }
 
-  const tpmNeed = Math.max(1, estimatedTokens);
-  const tpmOk = takeToken(`${userPrefix}:tpm`, Math.max(1, user.tpm), Math.max(1, user.tpm), 60000, tpmNeed);
-  if (!tpmOk) {
-    return { ok: false, reason: "TPM exceeded" };
+  if (user.tpm > 0) {
+    const tpmNeed = Math.max(1, estimatedTokens);
+    const tpmOk = takeToken(`${userPrefix}:tpm`, user.tpm, user.tpm, 60000, tpmNeed);
+    if (!tpmOk) {
+      return { ok: false, reason: "TPM 超限" };
+    }
   }
 
   return { ok: true as const };

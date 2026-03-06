@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { clearSession } from "@/lib/client-auth";
@@ -34,19 +34,20 @@ const userMenus = [
   { href: "/dashboard/profile", label: "个人资料" },
 ];
 
-export function DashboardShell({ role, title, subtitle, right, children }: DashboardShellProps) {
+export function DashboardShell({ role, right, children }: DashboardShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const menus = role === "admin" ? adminMenus : userMenus;
 
   function onLogout() {
     clearSession();
-    window.location.href = "/login";
+    router.push("/login");
   }
 
   return (
     <main className="h-screen overflow-hidden bg-black text-zinc-100">
       <div className="flex h-full w-full gap-4 px-4 py-4 xl:px-6">
-        <aside className="hidden h-full w-60 shrink-0 rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4 shadow-sm md:flex md:flex-col">
+        <aside className="sticky top-4 hidden h-[calc(100vh-2rem)] w-60 shrink-0 rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4 shadow-sm md:flex md:flex-col">
           <div className="min-h-0 flex-1 overflow-y-auto">
             <p className="mb-3 text-sm font-semibold text-zinc-100">VLM Control</p>
             <nav className="space-y-1">
@@ -72,15 +73,16 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
         </aside>
 
         <section className="min-w-0 flex-1 overflow-hidden">
-          <div className="flex h-full flex-col overflow-hidden">
-          <header className="mb-4 shrink-0 rounded-2xl border border-zinc-800 bg-zinc-950/80 p-5 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-                {subtitle ? <p className="mt-1 text-sm text-zinc-400">{subtitle}</p> : null}
+          <div className="flex h-full min-h-0 flex-col">
+          <header className={cn(
+            "mb-4 shrink-0 rounded-2xl border border-zinc-800 bg-zinc-950/80 p-5 shadow-sm",
+            !right ? "md:hidden" : "",
+          )}>
+            {right ? (
+              <div className="flex items-start justify-end gap-3">
+                <div className="flex items-center gap-2">{right}</div>
               </div>
-              {right ? <div className="flex items-center gap-2">{right}</div> : null}
-            </div>
+            ) : null}
             <div className="mt-4 flex flex-wrap gap-2 md:hidden">
               {menus.map((item) => (
                 <Link
@@ -99,7 +101,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
               <Button variant="secondary" size="sm" className="bg-zinc-800 text-zinc-100 hover:bg-zinc-700" onClick={onLogout}>退出登录</Button>
             </div>
           </header>
-          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          <div className="min-h-0 flex-1 overflow-hidden pr-1">
             {children}
           </div>
           </div>

@@ -18,7 +18,7 @@ export async function POST(request: Request) {
 
   const settings = getGatewaySettings();
 
-  const adminCount = gatewayDb.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin'").get() as {
+  const adminCount = gatewayDb.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL").get() as {
     count: number;
   };
 
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     .run(parsed.data.username, passwordHash, role, settings.default_rpm, settings.default_qps, settings.default_tpm);
 
   const user = gatewayDb
-    .prepare("SELECT * FROM users WHERE id = ?")
+    .prepare("SELECT * FROM users WHERE id = ? AND deleted_at IS NULL")
     .get(result.lastInsertRowid) as DbUser;
 
   return jsonOk(

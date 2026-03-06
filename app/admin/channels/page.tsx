@@ -3,6 +3,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { Fragment } from "react";
+import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -82,6 +83,7 @@ const initialModelForm: ModelForm = {
 };
 
 export default function AdminChannelsPage() {
+  const router = useRouter();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [error, setError] = useState("");
   const [expandedChannelIds, setExpandedChannelIds] = useState<number[]>([]);
@@ -100,12 +102,12 @@ export default function AdminChannelsPage() {
     const me = await authedFetch("/api/dashboard/profile");
     if (!me.ok) {
       clearSession();
-      window.location.href = "/login";
+      router.push("/login");
       return false;
     }
     const data = await me.json();
     if (data.user.role !== "admin") {
-      window.location.href = "/dashboard/keys";
+      router.push("/dashboard/keys");
       return false;
     }
     return true;
@@ -127,7 +129,7 @@ export default function AdminChannelsPage() {
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [router]);
 
   function toggleChannelExpand(id: number) {
     setExpandedChannelIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -485,7 +487,7 @@ export default function AdminChannelsPage() {
                       <option value="1">启用</option>
                       <option value="0">禁用</option>
                     </select>
-                    <Button type="button" variant="secondary" size="sm" onClick={() => removeChannelModelDraft(index)}>删</Button>
+                    <Button type="button" variant="secondary" size="sm" onClick={() => removeChannelModelDraft(index)}>Delete</Button>
                   </div>
                 </div>
               ))}

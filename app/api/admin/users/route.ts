@@ -12,9 +12,9 @@ const createSchema = z.object({
   password: z.string().min(8),
   role: z.enum(["admin", "user"]).optional(),
   enabled: z.boolean().optional(),
-  rpm: z.number().int().min(1).optional(),
-  qps: z.number().int().min(1).optional(),
-  tpm: z.number().int().min(1).optional(),
+  rpm: z.number().int().min(0).optional(),
+  qps: z.number().int().min(0).optional(),
+  tpm: z.number().int().min(0).optional(),
   quota_tokens: z.number().int().nonnegative().nullable().optional(),
   quota_requests: z.number().int().nonnegative().nullable().optional(),
 });
@@ -26,7 +26,7 @@ export async function GET(request: Request) {
   const rows = gatewayDb
     .prepare(
       `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, enabled, created_at
-       FROM users ORDER BY id DESC`,
+       FROM users WHERE deleted_at IS NULL ORDER BY id DESC`,
     )
     .all();
 
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
   const row = gatewayDb
     .prepare(
       `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, enabled, created_at
-       FROM users WHERE id = ?`,
+       FROM users WHERE id = ? AND deleted_at IS NULL`,
     )
     .get(result.lastInsertRowid);
 

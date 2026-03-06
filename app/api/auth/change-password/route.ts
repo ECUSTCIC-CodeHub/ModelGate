@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   if (!parsed.success) return jsonError(friendlyCredentialPayloadError(parsed.error), 400);
 
   const user = gatewayDb
-    .prepare("SELECT * FROM users WHERE id = ?")
+    .prepare("SELECT * FROM users WHERE id = ? AND deleted_at IS NULL")
     .get(guard.auth.user.id) as DbUser;
 
   const ok = await comparePassword(parsed.data.current_password, user.password_hash);
