@@ -5,6 +5,8 @@ const DEFAULTS = {
   default_qps: 1,
   default_rpm: 60,
   default_tpm: 60000,
+  upstream_retry_enabled: 1,
+  upstream_retry_max_attempts: 3,
 } as const;
 
 type SettingsKey = keyof typeof DEFAULTS;
@@ -14,6 +16,8 @@ export type GatewaySettings = {
   default_qps: number;
   default_rpm: number;
   default_tpm: number;
+  upstream_retry_enabled: number;
+  upstream_retry_max_attempts: number;
 };
 
 function positiveInt(value: string | null | undefined, fallback: number) {
@@ -24,7 +28,9 @@ function positiveInt(value: string | null | undefined, fallback: number) {
 
 export function getGatewaySettings(): GatewaySettings {
   const rows = gatewayDb
-    .prepare("SELECT key, value FROM settings WHERE key IN ('registration_enabled', 'default_qps', 'default_rpm', 'default_tpm')")
+    .prepare(
+      "SELECT key, value FROM settings WHERE key IN ('registration_enabled', 'default_qps', 'default_rpm', 'default_tpm', 'upstream_retry_enabled', 'upstream_retry_max_attempts')",
+    )
     .all() as Array<{ key: string; value: string }>;
 
   const map = new Map(rows.map((row) => [row.key, row.value]));
@@ -34,6 +40,11 @@ export function getGatewaySettings(): GatewaySettings {
     default_qps: positiveInt(map.get("default_qps"), DEFAULTS.default_qps),
     default_rpm: positiveInt(map.get("default_rpm"), DEFAULTS.default_rpm),
     default_tpm: positiveInt(map.get("default_tpm"), DEFAULTS.default_tpm),
+    upstream_retry_enabled: map.get("upstream_retry_enabled") === "0" ? 0 : 1,
+    upstream_retry_max_attempts: positiveInt(
+      map.get("upstream_retry_max_attempts"),
+      DEFAULTS.upstream_retry_max_attempts,
+    ),
   };
 }
 
@@ -42,12 +53,16 @@ export function setGatewaySettings(input: {
   default_qps: number;
   default_rpm: number;
   default_tpm: number;
+  upstream_retry_enabled: boolean;
+  upstream_retry_max_attempts: number;
 }) {
   const values: Record<SettingsKey, string> = {
     registration_enabled: input.registration_enabled ? "1" : "0",
     default_qps: String(Math.max(1, Math.trunc(input.default_qps))),
     default_rpm: String(Math.max(1, Math.trunc(input.default_rpm))),
     default_tpm: String(Math.max(1, Math.trunc(input.default_tpm))),
+    upstream_retry_enabled: input.upstream_retry_enabled ? "1" : "0",
+    upstream_retry_max_attempts: String(Math.max(1, Math.trunc(input.upstream_retry_max_attempts))),
   };
 
   const upsert = gatewayDb.prepare(

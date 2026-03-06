@@ -17,7 +17,8 @@ export function listEnabledAliases() {
     .all() as { alias: string }[];
 }
 
-export function selectModelRoute(alias: string): RoutedModel | null {
+export function selectModelRoute(alias: string, options?: { excludeChannelIds?: number[] }): RoutedModel | null {
+  const exclude = new Set(options?.excludeChannelIds ?? []);
   const rows = gatewayDb
     .prepare(
       `SELECT
@@ -58,9 +59,10 @@ export function selectModelRoute(alias: string): RoutedModel | null {
     channel_created_at: string;
   }>;
 
-  if (rows.length === 0) return null;
+  const candidateRows = rows.filter((row) => !exclude.has(row.channel_id_2));
+  if (candidateRows.length === 0) return null;
 
-  const weighted = rows.map((r) => ({
+  const weighted = candidateRows.map((r) => ({
     row: r,
     weight: Math.max(1, r.model_weight) * Math.max(1, r.channel_weight),
   }));

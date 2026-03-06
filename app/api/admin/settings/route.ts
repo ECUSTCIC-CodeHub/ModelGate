@@ -8,13 +8,15 @@ const schema = z.object({
   default_qps: z.number().int().min(1),
   default_rpm: z.number().int().min(1),
   default_tpm: z.number().int().min(1),
+  upstream_retry_enabled: z.boolean(),
+  upstream_retry_max_attempts: z.number().int().min(1).max(10),
 });
 
 export async function GET(request: Request) {
   const guard = ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
-  return jsonOk({ message: "系统设置更新成功。", data: getGatewaySettings() });
+  return jsonOk({ message: "系统设置获取成功。", data: getGatewaySettings() });
 }
 
 export async function PUT(request: Request) {
@@ -26,5 +28,5 @@ export async function PUT(request: Request) {
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
   setGatewaySettings(parsed.data);
-  return jsonOk({ data: getGatewaySettings() });
+  return jsonOk({ message: "系统设置更新成功。", data: getGatewaySettings() });
 }

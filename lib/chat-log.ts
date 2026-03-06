@@ -15,6 +15,8 @@ type ChatLogInput = {
   latency_ms: number;
   first_token_latency_ms?: number | null;
   output_tps?: number | null;
+  route_attempts?: number | null;
+  attempted_channels?: string | null;
   error_message?: string | null;
   request_body?: unknown;
   response_body?: unknown;
@@ -36,8 +38,8 @@ export function insertChatLog(input: ChatLogInput) {
       `INSERT INTO chat_logs (
          user_id, key_id, channel_id, model_alias, real_model,
          stream, status_code, estimated_tokens, prompt_tokens, completion_tokens, total_tokens,
-         latency_ms, first_token_latency_ms, output_tps, error_message, request_body, response_body
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         latency_ms, first_token_latency_ms, output_tps, route_attempts, attempted_channels, error_message, request_body, response_body
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       input.user_id,
@@ -54,6 +56,8 @@ export function insertChatLog(input: ChatLogInput) {
       input.latency_ms,
       input.first_token_latency_ms ?? null,
       input.output_tps ?? null,
+      input.route_attempts ?? 1,
+      input.attempted_channels ?? null,
       input.error_message ?? null,
       safeStringify(input.request_body),
       safeStringify(input.response_body),

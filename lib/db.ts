@@ -82,6 +82,8 @@ CREATE TABLE IF NOT EXISTS chat_logs (
   latency_ms INTEGER,
   first_token_latency_ms INTEGER,
   output_tps REAL,
+  route_attempts INTEGER DEFAULT 1,
+  attempted_channels TEXT,
   error_message TEXT,
   request_body TEXT,
   response_body TEXT,
@@ -219,6 +221,16 @@ db.prepare(
    VALUES (?, ?)
    ON CONFLICT(key) DO NOTHING`,
 ).run("default_tpm", "60000");
+db.prepare(
+  `INSERT INTO settings (key, value)
+   VALUES (?, ?)
+   ON CONFLICT(key) DO NOTHING`,
+).run("upstream_retry_enabled", "1");
+db.prepare(
+  `INSERT INTO settings (key, value)
+   VALUES (?, ?)
+   ON CONFLICT(key) DO NOTHING`,
+).run("upstream_retry_max_attempts", "3");
 
 const chatLogColumns = db.prepare("PRAGMA table_info(chat_logs)").all() as Array<{ name: string }>;
 if (!chatLogColumns.some((col) => col.name === "first_token_latency_ms")) {
@@ -226,6 +238,12 @@ if (!chatLogColumns.some((col) => col.name === "first_token_latency_ms")) {
 }
 if (!chatLogColumns.some((col) => col.name === "output_tps")) {
   db.exec("ALTER TABLE chat_logs ADD COLUMN output_tps REAL");
+}
+if (!chatLogColumns.some((col) => col.name === "route_attempts")) {
+  db.exec("ALTER TABLE chat_logs ADD COLUMN route_attempts INTEGER DEFAULT 1");
+}
+if (!chatLogColumns.some((col) => col.name === "attempted_channels")) {
+  db.exec("ALTER TABLE chat_logs ADD COLUMN attempted_channels TEXT");
 }
 
 export type DbChannel = {
@@ -289,6 +307,8 @@ export type DbChatLog = {
   latency_ms: number | null;
   first_token_latency_ms: number | null;
   output_tps: number | null;
+  route_attempts: number | null;
+  attempted_channels: string | null;
   error_message: string | null;
   request_body: string | null;
   response_body: string | null;

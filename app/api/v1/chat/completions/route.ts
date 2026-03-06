@@ -2,9 +2,10 @@ import { requireApiKey } from "@/lib/api-key-auth";
 import { insertChatLog } from "@/lib/chat-log";
 import { gatewayDb } from "@/lib/db";
 import { jsonError } from "@/lib/http";
-import { fetchUpstreamChat, proxyChatCompletion } from "@/lib/proxy";
+import { fetchUpstreamChat } from "@/lib/proxy";
 import { checkUserRateLimit } from "@/lib/ratelimit";
-import { selectModelRoute } from "@/lib/router";
+import { selectModelRoute, type RoutedModel } from "@/lib/router";
+import { getGatewaySettings } from "@/lib/settings";
 import { estimateRequestTokens } from "@/lib/token-estimate";
 import { countTextTokens } from "@/lib/tokenizer";
 
@@ -151,6 +152,12 @@ function extractDeltaText(delta: unknown) {
   return parts.join("");
 }
 
+const RETRYABLE_UPSTREAM_STATUS = new Set([401, 429, 500, 502, 503, 504]);
+
+function shouldRetryUpstreamStatus(status: number) {
+  return RETRYABLE_UPSTREAM_STATUS.has(status);
+}
+
 export async function POST(request: Request) {
   const startedAt = Date.now();
   const auth = requireApiKey(request);
@@ -206,56 +213,133 @@ export async function POST(request: Request) {
     return jsonError(rate.reason, 429);
   }
 
-  const route = selectModelRoute(alias);
-  if (!route) {
+  const existingRoute = selectModelRoute(alias);
+  if (!existingRoute) {
     logRejected(404, "模型别名不存在或已禁用", alias, body);
     return jsonError("模型别名不存在或已禁用", 404);
   }
 
+  const settings = getGatewaySettings();
+  const retryEnabled = settings.upstream_retry_enabled === 1;
+  const maxRouteAttempts = retryEnabled ? Math.max(1, settings.upstream_retry_max_attempts) : 1;
   const stream = body.stream === true;
-  if (stream) {
-    const streamOptions =
-      body.stream_options && typeof body.stream_options === "object"
-        ? (body.stream_options as Record<string, unknown>)
-        : {};
+  const streamOptions =
+    body.stream_options && typeof body.stream_options === "object"
+      ? (body.stream_options as Record<string, unknown>)
+      : {};
 
-    const outgoingBody: Record<string, unknown> = {
-      ...body,
-      model: route.model.real_model,
-      stream: true,
-      stream_options: streamOptions,
-    };
+  const baseOutgoingBody: Record<string, unknown> = stream
+    ? { ...body, stream: true, stream_options: streamOptions }
+    : body;
 
-    let upstream: Response;
-    try {
-      upstream = await fetchUpstreamChat(route, outgoingBody);
-    } catch {
-      addUsage(auth.user.id, estimatedTokens, 1);
-      insertChatLog({
-        user_id: auth.user.id,
-        key_id: auth.key.id,
-        channel_id: route.channel.id,
-        model_alias: alias,
-        real_model: route.model.real_model,
-        stream: true,
-        status_code: 502,
-        estimated_tokens: estimatedTokens,
-        total_tokens: estimatedTokens,
-        latency_ms: Date.now() - startedAt,
-        error_message: "上游请求失败",
-        request_body: outgoingBody,
-        response_body: null,
-      });
-      return jsonError("上游请求失败", 502, {
-        type: "upstream_error",
-        param: "None",
-        code: "502",
-      });
+  const requestUpstreamWithFallback = async (): Promise<
+    | {
+        ok: true;
+        route: RoutedModel;
+        outgoingBody: Record<string, unknown>;
+        upstream: Response;
+        attemptedChannels: number[];
+        attemptedChannelNames: string[];
+      }
+    | {
+        ok: false;
+        route: RoutedModel | null;
+        outgoingBody: Record<string, unknown> | null;
+        attemptedChannels: number[];
+        attemptedChannelNames: string[];
+      }
+  > => {
+    const attemptedChannels: number[] = [];
+    const attemptedChannelNames: string[] = [];
+    let lastNetworkRoute: RoutedModel | null = null;
+    let lastNetworkBody: Record<string, unknown> | null = null;
+
+    for (let attempt = 1; attempt <= maxRouteAttempts; attempt += 1) {
+      const route = selectModelRoute(alias, { excludeChannelIds: attemptedChannels });
+      if (!route) break;
+      attemptedChannels.push(route.channel.id);
+      attemptedChannelNames.push(route.channel.name);
+
+      const outgoingBody: Record<string, unknown> = {
+        ...baseOutgoingBody,
+        model: route.model.real_model,
+      };
+
+      try {
+        const upstream = await fetchUpstreamChat(route, outgoingBody);
+        if (
+          retryEnabled &&
+          shouldRetryUpstreamStatus(upstream.status) &&
+          attempt < maxRouteAttempts
+        ) {
+          await upstream.text().catch(() => "");
+          continue;
+        }
+        return {
+          ok: true,
+          route,
+          outgoingBody,
+          upstream,
+          attemptedChannels: [...attemptedChannels],
+          attemptedChannelNames: [...attemptedChannelNames],
+        };
+      } catch {
+        lastNetworkRoute = route;
+        lastNetworkBody = outgoingBody;
+        if (retryEnabled && attempt < maxRouteAttempts) {
+          continue;
+        }
+        break;
+      }
     }
 
-    if (!upstream.body) {
+    return {
+      ok: false,
+      route: lastNetworkRoute,
+      outgoingBody: lastNetworkBody,
+      attemptedChannels: [...attemptedChannels],
+      attemptedChannelNames: [...attemptedChannelNames],
+    };
+  };
+
+  const picked = await requestUpstreamWithFallback();
+  if (!picked.ok) {
+    addUsage(auth.user.id, Math.max(1, estimatedTokens), 1);
+    insertChatLog({
+      user_id: auth.user.id,
+      key_id: auth.key.id,
+      channel_id: picked.route?.channel.id ?? null,
+      model_alias: alias,
+      real_model: picked.route?.model.real_model ?? null,
+      stream,
+      status_code: 502,
+      estimated_tokens: estimatedTokens,
+      prompt_tokens: null,
+      completion_tokens: 0,
+      total_tokens: estimatedTokens,
+      latency_ms: Date.now() - startedAt,
+      first_token_latency_ms: null,
+      output_tps: null,
+      route_attempts: Math.max(1, picked.attemptedChannels.length),
+      attempted_channels: picked.attemptedChannelNames.join(" -> "),
+      error_message: "上游请求失败",
+      request_body: picked.outgoingBody ?? baseOutgoingBody,
+      response_body: null,
+    });
+    return jsonError("上游请求失败", 502, {
+      type: "upstream_error",
+      param: "None",
+      code: "502",
+    });
+  }
+
+  const { route, outgoingBody, upstream, attemptedChannels, attemptedChannelNames } = picked;
+
+  if (stream) {
+    const localPromptTokens = countPromptTokensFromBody(body, route.model.real_model);
+    if (upstream.status >= 400) {
       const text = await upstream.text().catch(() => "");
-      addUsage(auth.user.id, estimatedTokens, 1);
+      addUsage(auth.user.id, Math.max(1, localPromptTokens), 1);
       insertChatLog({
         user_id: auth.user.id,
         key_id: auth.key.id,
@@ -265,9 +349,55 @@ export async function POST(request: Request) {
         stream: true,
         status_code: upstream.status,
         estimated_tokens: estimatedTokens,
-        total_tokens: estimatedTokens,
+        prompt_tokens: localPromptTokens,
+        completion_tokens: 0,
+        total_tokens: localPromptTokens,
         latency_ms: Date.now() - startedAt,
-        error_message: upstream.status >= 400 ? `上游流式请求失败: ${upstream.status}` : null,
+        first_token_latency_ms: null,
+        output_tps: null,
+        route_attempts: Math.max(1, attemptedChannels.length),
+        attempted_channels: attemptedChannelNames.join(" -> "),
+        error_message: `上游流式请求失败: ${upstream.status}`,
+        request_body: outgoingBody,
+        response_body: text || null,
+      });
+      return new Response(text, {
+        status: upstream.status,
+        headers: {
+          "content-type": upstream.headers.get("content-type") ?? "application/json",
+        },
+      });
+    }
+
+    if (!upstream.body) {
+      const text = await upstream.text().catch(() => "");
+      const completionText = extractCompletionTextFromJsonResponse(text);
+      const completionTokens = Math.max(0, countTextTokens(completionText, route.model.real_model));
+      const totalTokens = localPromptTokens + completionTokens;
+      const outputTps =
+        completionTokens > 0
+          ? Number(((completionTokens * 1000) / Math.max(1, Date.now() - startedAt)).toFixed(2))
+          : null;
+
+      addUsage(auth.user.id, Math.max(1, totalTokens), 1);
+      insertChatLog({
+        user_id: auth.user.id,
+        key_id: auth.key.id,
+        channel_id: route.channel.id,
+        model_alias: alias,
+        real_model: route.model.real_model,
+        stream: true,
+        status_code: upstream.status,
+        estimated_tokens: estimatedTokens,
+        prompt_tokens: localPromptTokens,
+        completion_tokens: completionTokens,
+        total_tokens: totalTokens,
+        latency_ms: Date.now() - startedAt,
+        first_token_latency_ms: null,
+        output_tps: outputTps,
+        route_attempts: Math.max(1, attemptedChannels.length),
+        attempted_channels: attemptedChannelNames.join(" -> "),
+        error_message: null,
         request_body: outgoingBody,
         response_body: text || null,
       });
@@ -283,7 +413,6 @@ export async function POST(request: Request) {
     const decoder = new TextDecoder();
 
     let firstTokenLatencyMs: number | null = null;
-    const localPromptTokens = countPromptTokensFromBody(body, route.model.real_model);
     let completionText = "";
     let sseBuffer = "";
 
@@ -316,6 +445,8 @@ export async function POST(request: Request) {
         latency_ms: totalLatencyMs,
         first_token_latency_ms: success ? firstTokenLatencyMs : null,
         output_tps: outputTps,
+        route_attempts: Math.max(1, attemptedChannels.length),
+        attempted_channels: attemptedChannelNames.join(" -> "),
         error_message: upstream.status >= 400 ? `上游流式请求失败: ${upstream.status}` : null,
         request_body: outgoingBody,
         response_body: null,
@@ -383,15 +514,15 @@ export async function POST(request: Request) {
     });
   }
 
-  const proxied = await proxyChatCompletion(route, body, false);
-  const text = await proxied.text();
+  const text = await upstream.text();
   const localPromptTokens = countPromptTokensFromBody(body, route.model.real_model);
   const completionText = extractCompletionTextFromJsonResponse(text);
-  const localCompletionTokens = proxied.status < 400 ? Math.max(0, countTextTokens(completionText, route.model.real_model)) : 0;
+  const localCompletionTokens =
+    upstream.status < 400 ? Math.max(0, countTextTokens(completionText, route.model.real_model)) : 0;
   const localTotalTokens = localPromptTokens + localCompletionTokens;
 
   const outputTps =
-    proxied.status < 400 && localCompletionTokens > 0
+    upstream.status < 400 && localCompletionTokens > 0
       ? Number(((localCompletionTokens * 1000) / Math.max(1, Date.now() - startedAt)).toFixed(2))
       : null;
 
@@ -403,22 +534,24 @@ export async function POST(request: Request) {
     model_alias: alias,
     real_model: route.model.real_model,
     stream: false,
-    status_code: proxied.status,
+    status_code: upstream.status,
     estimated_tokens: estimatedTokens,
     prompt_tokens: localPromptTokens,
     completion_tokens: localCompletionTokens,
     total_tokens: localTotalTokens,
     latency_ms: Date.now() - startedAt,
     output_tps: outputTps,
-    error_message: proxied.status >= 400 ? `上游请求失败: ${proxied.status}` : null,
-    request_body: body,
+    route_attempts: Math.max(1, attemptedChannels.length),
+    attempted_channels: attemptedChannelNames.join(" -> "),
+    error_message: upstream.status >= 400 ? `上游请求失败: ${upstream.status}` : null,
+    request_body: outgoingBody,
     response_body: text,
   });
 
   return new Response(text, {
-    status: proxied.status,
+    status: upstream.status,
     headers: {
-      "content-type": proxied.headers.get("content-type") ?? "application/json",
+      "content-type": upstream.headers.get("content-type") ?? "application/json",
     },
   });
 }

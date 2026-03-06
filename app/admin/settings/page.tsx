@@ -15,6 +15,8 @@ export default function AdminSettingsPage() {
   const [defaultQps, setDefaultQps] = useState(1);
   const [defaultRpm, setDefaultRpm] = useState(60);
   const [defaultTpm, setDefaultTpm] = useState(60000);
+  const [upstreamRetryEnabled, setUpstreamRetryEnabled] = useState(true);
+  const [upstreamRetryMaxAttempts, setUpstreamRetryMaxAttempts] = useState(3);
   const { toast } = useToast();
 
   async function ensureAdmin() {
@@ -41,6 +43,8 @@ export default function AdminSettingsPage() {
       setDefaultQps(Number(data.data.default_qps ?? 1));
       setDefaultRpm(Number(data.data.default_rpm ?? 60));
       setDefaultTpm(Number(data.data.default_tpm ?? 60000));
+      setUpstreamRetryEnabled(data.data.upstream_retry_enabled !== 0);
+      setUpstreamRetryMaxAttempts(Number(data.data.upstream_retry_max_attempts ?? 3));
     }
   }
 
@@ -56,6 +60,8 @@ export default function AdminSettingsPage() {
         default_qps: defaultQps,
         default_rpm: defaultRpm,
         default_tpm: defaultTpm,
+        upstream_retry_enabled: upstreamRetryEnabled,
+        upstream_retry_max_attempts: upstreamRetryMaxAttempts,
       }),
     });
     const data = await response.json().catch(() => null);
@@ -112,6 +118,25 @@ export default function AdminSettingsPage() {
                 onChange={(e) => setDefaultTpm(Number(e.target.value))}
               />
             </div>
+          </div>
+          <div className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium text-zinc-100">开启上游失败自动切换</p>
+              <p className="text-xs text-zinc-500">当上游返回 401、429、5xx 时自动路由到其它渠道。</p>
+            </div>
+            <Switch checked={upstreamRetryEnabled} onCheckedChange={setUpstreamRetryEnabled} />
+          </div>
+          <div className="space-y-2">
+            <p className="text-sm text-zinc-300">最大路由尝试次数</p>
+            <input
+              type="number"
+              min={1}
+              max={10}
+              className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 md:w-64"
+              value={upstreamRetryMaxAttempts}
+              onChange={(e) => setUpstreamRetryMaxAttempts(Number(e.target.value))}
+            />
+            <p className="text-xs text-zinc-500">默认 3，表示最多尝试 3 个渠道后返回错误。</p>
           </div>
           <Button onClick={save}>保存设置</Button>
         </CardContent>
