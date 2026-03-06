@@ -21,6 +21,11 @@ type User = {
   tpm: number;
 };
 
+function formatLimit(value: number | null | undefined) {
+  if (value === null || value === undefined || value <= 0) return "∞";
+  return String(value);
+}
+
 export default function ConsoleProfilePage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
@@ -63,32 +68,14 @@ export default function ConsoleProfilePage() {
 
   return (
     <DashboardShell role={role} title="个人资料" subtitle="账号安全与限制参数">
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>账户信息</CardTitle>
-            <CardDescription>当前登录用户信息</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm text-zinc-300">
-            {!user ? (
-              <p>Loading...</p>
-            ) : (
-              <>
-                <p><span className="font-medium text-zinc-100">用户名：</span>{user.username}</p>
-                <p><span className="font-medium text-zinc-100">角色：</span>{user.role === "admin" ? "管理员" : "普通用户"}</p>
-                <p><span className="font-medium text-zinc-100">RPM/QPS/TPM：</span>{user.rpm}/{user.qps}/{user.tpm}</p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
+      <div className="grid gap-4 xl:grid-cols-3">
+        <Card className="xl:col-span-2">
           <CardHeader>
             <CardTitle>修改密码</CardTitle>
-            <CardDescription>建议使用高强度密码。</CardDescription>
+            <CardDescription>建议使用至少 8 位，并包含字母与数字。</CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={onChangePassword} className="space-y-4">
+            <form onSubmit={onChangePassword} className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="current_password">当前密码</Label>
                 <Input
@@ -107,8 +94,30 @@ export default function ConsoleProfilePage() {
                   onChange={(e) => setNewPassword(e.target.value)}
                 />
               </div>
-              <Button type="submit">更新密码</Button>
+              <div className="md:col-span-2">
+                <Button type="submit">更新密码</Button>
+              </div>
             </form>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>当前账号</CardTitle>
+            <CardDescription>当前会话与限速信息</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm text-zinc-300">
+            {!user ? (
+              <p>加载中...</p>
+            ) : (
+              <>
+                <p><span className="font-medium text-zinc-100">用户名：</span>{user.username}</p>
+                <p><span className="font-medium text-zinc-100">角色：</span>{user.role === "admin" ? "管理员" : "普通用户"}</p>
+                <p><span className="font-medium text-zinc-100">RPM：</span>{formatLimit(user.rpm)}</p>
+                <p><span className="font-medium text-zinc-100">QPS：</span>{formatLimit(user.qps)}</p>
+                <p><span className="font-medium text-zinc-100">TPM：</span>{formatLimit(user.tpm)}</p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>

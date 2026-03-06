@@ -10,7 +10,11 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 
   const { id } = await context.params;
   const row = gatewayDb
-    .prepare("SELECT id, key, user_id, enabled, created_at FROM keys WHERE id = ? AND user_id = ? AND deleted_at IS NULL")
+    .prepare(
+      `SELECT id, key, user_id, used_tokens, used_requests, enabled, created_at
+       FROM keys
+       WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
+    )
     .get(id, guard.auth.user.id);
 
   if (!row) return jsonError("密钥不存在", 404);

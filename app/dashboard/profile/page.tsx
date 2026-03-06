@@ -1,1 +1,5 @@
-export { default } from "@/app/console/profile/page";
+import { redirect } from "next/navigation";
+
+export default function DashboardProfileRedirectPage() {
+  redirect("/dashboard");
+}

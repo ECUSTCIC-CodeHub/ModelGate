@@ -57,6 +57,8 @@ CREATE TABLE IF NOT EXISTS keys (
   id INTEGER PRIMARY KEY,
   key TEXT UNIQUE NOT NULL,
   user_id INTEGER NOT NULL,
+  used_tokens INTEGER DEFAULT 0,
+  used_requests INTEGER DEFAULT 0,
   enabled INTEGER DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   deleted_at DATETIME,
@@ -165,16 +167,29 @@ const ensureColumn = (table: string, column: string, ddl: string) => {
   const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
   if (!columns.some((col) => col.name === column)) {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+    return true;
   }
+  return false;
 };
 
 ensureColumn("users", "deleted_at", "deleted_at DATETIME");
 ensureColumn("keys", "deleted_at", "deleted_at DATETIME");
+const addedKeyUsedTokens = ensureColumn("keys", "used_tokens", "used_tokens INTEGER DEFAULT 0");
+const addedKeyUsedRequests = ensureColumn("keys", "used_requests", "used_requests INTEGER DEFAULT 0");
 ensureColumn("models", "deleted_at", "deleted_at DATETIME");
 ensureColumn("logs", "first_token_latency_ms", "first_token_latency_ms INTEGER");
 ensureColumn("logs", "output_tps", "output_tps REAL");
 ensureColumn("logs", "route_attempts", "route_attempts INTEGER DEFAULT 1");
 ensureColumn("logs", "attempted_channels", "attempted_channels TEXT");
+
+if (addedKeyUsedTokens || addedKeyUsedRequests) {
+  db.exec(`
+  UPDATE keys
+  SET
+    used_requests = COALESCE((SELECT COUNT(*) FROM logs WHERE logs.key_id = keys.id), 0),
+    used_tokens = COALESCE((SELECT SUM(COALESCE(logs.total_tokens, 0)) FROM logs WHERE logs.key_id = keys.id), 0)
+  `);
+}
 
 const tableExists = (name: string) => {
   const row = db
@@ -289,6 +304,8 @@ export type DbKey = {
   id: number;
   key: string;
   user_id: number;
+  used_tokens: number;
+  used_requests: number;
   enabled: number;
   created_at: string;
   deleted_at: string | null;

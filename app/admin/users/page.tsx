@@ -55,6 +55,20 @@ const initialForm: UserForm = {
   quota_requests: "",
 };
 
+function formatNumber(value: number | null | undefined) {
+  if (value === null || value === undefined) return "-";
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`;
+  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `${(value / 1_000).toFixed(2)}k`;
+  return String(value);
+}
+
+function formatLimit(value: number | null | undefined) {
+  if (value === null || value === undefined || value <= 0) return "∞";
+  return formatNumber(value);
+}
+
 export default function AdminUsersPage() {
   const router = useRouter();
   const [rows, setRows] = useState<UserRow[]>([]);
@@ -199,8 +213,10 @@ export default function AdminUsersPage() {
                   <TableHead>角色</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>限速</TableHead>
-                  <TableHead>累计用量</TableHead>
-                  <TableHead>配额</TableHead>
+                  <TableHead>累计请求</TableHead>
+                  <TableHead>累计 Token</TableHead>
+                  <TableHead>请求配额</TableHead>
+                  <TableHead>Token 配额</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
@@ -215,11 +231,11 @@ export default function AdminUsersPage() {
                         <TableCell>
                           <Badge variant={row.enabled ? "default" : "secondary"}>{row.enabled ? "启用" : "禁用"}</Badge>
                         </TableCell>
-                        <TableCell>{row.rpm}/{row.qps}/{row.tpm}</TableCell>
-                        <TableCell>R:{row.used_requests ?? 0} / T:{row.used_tokens ?? 0}</TableCell>
-                        <TableCell>
-                          T:{row.quota_tokens ?? "-"} / R:{row.quota_requests ?? "-"}
-                        </TableCell>
+                        <TableCell>{formatLimit(row.rpm)}/{formatLimit(row.qps)}/{formatLimit(row.tpm)}</TableCell>
+                        <TableCell>{formatNumber(row.used_requests)}</TableCell>
+                        <TableCell>{formatNumber(row.used_tokens)}</TableCell>
+                        <TableCell>{row.quota_requests === null ? "无限制" : formatNumber(row.quota_requests)}</TableCell>
+                        <TableCell>{row.quota_tokens === null ? "无限制" : formatNumber(row.quota_tokens)}</TableCell>
                         <TableCell className="space-x-2 text-right">
                           <Button size="sm" variant="outline" onClick={() => onEditClick(row)}>编辑</Button>
                           <Button size="sm" variant="secondary" onClick={() => remove(row.id)}>删除</Button>

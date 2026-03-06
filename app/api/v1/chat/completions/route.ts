@@ -36,14 +36,25 @@ function checkQuota(userId: number, estimatedTokens: number) {
   return { ok: true as const };
 }
 
-function addUsage(userId: number, tokens: number, requests = 1) {
-  gatewayDb
-    .prepare(
-      `UPDATE users
-       SET used_tokens = used_tokens + ?, used_requests = used_requests + ?
-       WHERE id = ? AND deleted_at IS NULL`,
-    )
-    .run(tokens, requests, userId);
+function addUsage(userId: number, keyId: number, tokens: number, requests = 1) {
+  const tx = gatewayDb.transaction(() => {
+    gatewayDb
+      .prepare(
+        `UPDATE users
+         SET used_tokens = used_tokens + ?, used_requests = used_requests + ?
+         WHERE id = ? AND deleted_at IS NULL`,
+      )
+      .run(tokens, requests, userId);
+
+    gatewayDb
+      .prepare(
+        `UPDATE keys
+         SET used_tokens = used_tokens + ?, used_requests = used_requests + ?
+         WHERE id = ? AND deleted_at IS NULL`,
+      )
+      .run(tokens, requests, keyId);
+  });
+  tx();
 }
 
 function extractText(value: unknown) {
@@ -297,7 +308,7 @@ export async function POST(request: Request) {
 
   const picked = await requestUpstreamWithFallback();
   if (!picked.ok) {
-    addUsage(auth.user.id, Math.max(1, estimatedTokens), 1);
+    addUsage(auth.user.id, auth.key.id, Math.max(1, estimatedTokens), 1);
     insertChatLog({
       user_id: auth.user.id,
       key_id: auth.key.id,
@@ -330,7 +341,7 @@ export async function POST(request: Request) {
     const localPromptTokens = countPromptTokensFromBody(body, route.model.real_model);
     if (upstream.status >= 400) {
       const text = await upstream.text().catch(() => "");
-      addUsage(auth.user.id, Math.max(1, localPromptTokens), 1);
+      addUsage(auth.user.id, auth.key.id, Math.max(1, localPromptTokens), 1);
       insertChatLog({
         user_id: auth.user.id,
         key_id: auth.key.id,
@@ -368,7 +379,7 @@ export async function POST(request: Request) {
           ? Number(((completionTokens * 1000) / Math.max(1, Date.now() - startedAt)).toFixed(2))
           : null;
 
-      addUsage(auth.user.id, Math.max(1, totalTokens), 1);
+      addUsage(auth.user.id, auth.key.id, Math.max(1, totalTokens), 1);
       insertChatLog({
         user_id: auth.user.id,
         key_id: auth.key.id,
@@ -416,7 +427,7 @@ export async function POST(request: Request) {
           ? Number(((actualCompletionTokens * 1000) / Math.max(1, totalLatencyMs)).toFixed(2))
           : null;
 
-      addUsage(auth.user.id, Math.max(1, actualTotalTokens), 1);
+      addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1);
       insertChatLog({
         user_id: auth.user.id,
         key_id: auth.key.id,
@@ -511,7 +522,7 @@ export async function POST(request: Request) {
       ? Number(((localCompletionTokens * 1000) / Math.max(1, Date.now() - startedAt)).toFixed(2))
       : null;
 
-  addUsage(auth.user.id, Math.max(1, localTotalTokens), 1);
+  addUsage(auth.user.id, auth.key.id, Math.max(1, localTotalTokens), 1);
   insertChatLog({
     user_id: auth.user.id,
     key_id: auth.key.id,

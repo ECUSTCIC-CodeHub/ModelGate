@@ -12,7 +12,23 @@ import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
 import { authedFetch, clearSession } from "@/lib/client-auth";
 
-type KeyRow = { id: number; key: string; enabled: number; created_at: string };
+type KeyRow = {
+  id: number;
+  key: string;
+  used_tokens: number;
+  used_requests: number;
+  enabled: number;
+  created_at: string;
+};
+
+function formatNumber(value: number | null | undefined) {
+  if (value === null || value === undefined) return "-";
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`;
+  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `${(value / 1_000).toFixed(2)}k`;
+  return String(value);
+}
 
 export default function ConsoleKeysPage() {
   const router = useRouter();
@@ -122,6 +138,8 @@ export default function ConsoleKeysPage() {
               <TableRow>
                 <TableHead>ID</TableHead>
                 <TableHead>Key</TableHead>
+                <TableHead>累计请求</TableHead>
+                <TableHead>累计 Token</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead className="text-right">操作</TableHead>
               </TableRow>
@@ -131,6 +149,8 @@ export default function ConsoleKeysPage() {
                       <TableRow key={row.id}>
                         <TableCell>{row.id}</TableCell>
                         <TableCell className="font-mono text-xs md:text-sm">{row.key}</TableCell>
+                        <TableCell>{formatNumber(row.used_requests)}</TableCell>
+                        <TableCell>{formatNumber(row.used_tokens)}</TableCell>
                         <TableCell>
                           <Badge variant={row.enabled ? "default" : "secondary"}>{row.enabled ? "启用" : "禁用"}</Badge>
                         </TableCell>
