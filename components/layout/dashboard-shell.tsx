@@ -49,7 +49,6 @@ export function DashboardShell({ role, right, children }: DashboardShellProps) {
       <div className="flex h-full w-full gap-4 px-4 py-4 xl:px-6">
         <aside className="sticky top-4 hidden h-[calc(100vh-2rem)] w-60 shrink-0 rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4 shadow-sm md:flex md:flex-col">
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <p className="mb-3 text-sm font-semibold text-zinc-100">VLM Control</p>
             <nav className="space-y-1">
               {menus.map((item) => (
                 <Link

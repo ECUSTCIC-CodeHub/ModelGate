@@ -41,7 +41,7 @@ function formatDuration(ms: number | null | undefined) {
 
 export default function DashboardHomePage() {
   const router = useRouter();
-  const [ready, setReady] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<Role>("user");
   const [summary, setSummary] = useState<Summary | null>(null);
 
@@ -67,7 +67,7 @@ export default function DashboardHomePage() {
           setSummary(summaryData.data ?? null);
         }
       })
-      .finally(() => setReady(true));
+      .finally(() => setLoading(false));
   }, [router]);
 
   const topModelColumns = useMemo<Array<ColumnDef<{ model_name: string; request_count: number; total_tokens: number }>>>(
@@ -116,21 +116,20 @@ export default function DashboardHomePage() {
     [],
   );
 
-  if (!ready) return null;
   const isAdmin = role === "admin";
 
   return (
     <DashboardShell role={role} title="欢迎" subtitle="控制台总览与快捷入口">
-      <div className="space-y-4 pb-2">
+      <div className="h-full min-h-0 space-y-4 overflow-y-auto pb-4 pr-1">
         <div className="grid gap-4 md:grid-cols-4 xl:grid-cols-8">
-          <Card><CardHeader><CardDescription>总请求数</CardDescription><CardTitle>{summary?.total_requests ?? 0}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>失败请求数</CardDescription><CardTitle>{summary?.failed_requests ?? 0}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>总 Token</CardDescription><CardTitle>{summary?.total_tokens ?? 0}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>密钥数</CardDescription><CardTitle>{summary?.total_keys ?? 0}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>{isAdmin ? "活跃用户" : "我的角色"}</CardDescription><CardTitle>{isAdmin ? (summary?.active_users ?? 0) : "普通用户"}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>成功率</CardDescription><CardTitle>{(summary?.success_rate ?? 0).toFixed(2)}%</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>平均用时</CardDescription><CardTitle>{formatDuration(summary?.avg_latency_ms)}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>平均输出速度</CardDescription><CardTitle>{(summary?.avg_output_tps ?? 0).toFixed(2)} token/s</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>总请求数</CardDescription><CardTitle>{loading ? "-" : (summary?.total_requests ?? 0)}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>失败请求数</CardDescription><CardTitle>{loading ? "-" : (summary?.failed_requests ?? 0)}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>总 Token</CardDescription><CardTitle>{loading ? "-" : (summary?.total_tokens ?? 0)}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>密钥数</CardDescription><CardTitle>{loading ? "-" : (summary?.total_keys ?? 0)}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>{isAdmin ? "活跃用户" : "我的角色"}</CardDescription><CardTitle>{loading ? "-" : (isAdmin ? (summary?.active_users ?? 0) : "普通用户")}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>成功率</CardDescription><CardTitle>{loading ? "-" : `${(summary?.success_rate ?? 0).toFixed(2)}%`}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>平均用时</CardDescription><CardTitle>{loading ? "-" : formatDuration(summary?.avg_latency_ms)}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>平均输出速度</CardDescription><CardTitle>{loading ? "-" : `${(summary?.avg_output_tps ?? 0).toFixed(2)} token/s`}</CardTitle></CardHeader></Card>
         </div>
 
         <div className="grid gap-4 xl:grid-cols-3">

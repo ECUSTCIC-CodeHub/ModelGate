@@ -25,11 +25,14 @@ type UserRow = {
   tpm: number;
   quota_tokens: number | null;
   quota_requests: number | null;
+  used_tokens: number;
+  used_requests: number;
 };
 
 type UserForm = {
   username: string;
   password: string;
+  new_password: string;
   role: "admin" | "user";
   enabled: boolean;
   rpm: number;
@@ -42,6 +45,7 @@ type UserForm = {
 const initialForm: UserForm = {
   username: "",
   password: "",
+  new_password: "",
   role: "user",
   enabled: true,
   rpm: 0,
@@ -96,6 +100,7 @@ export default function AdminUsersPage() {
     setForm({
       username: row.username,
       password: "",
+      new_password: "",
       role: row.role,
       enabled: row.enabled === 1,
       rpm: row.rpm,
@@ -119,6 +124,7 @@ export default function AdminUsersPage() {
       tpm: form.tpm,
       quota_tokens: form.quota_tokens.trim() === "" ? null : Number(form.quota_tokens),
       quota_requests: form.quota_requests.trim() === "" ? null : Number(form.quota_requests),
+      ...(form.new_password.trim() ? { new_password: form.new_password.trim() } : {}),
     };
 
     if (editingId === null) {
@@ -193,6 +199,7 @@ export default function AdminUsersPage() {
                   <TableHead>角色</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>限速</TableHead>
+                  <TableHead>累计用量</TableHead>
                   <TableHead>配额</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
@@ -209,6 +216,7 @@ export default function AdminUsersPage() {
                           <Badge variant={row.enabled ? "default" : "secondary"}>{row.enabled ? "启用" : "禁用"}</Badge>
                         </TableCell>
                         <TableCell>{row.rpm}/{row.qps}/{row.tpm}</TableCell>
+                        <TableCell>R:{row.used_requests ?? 0} / T:{row.used_tokens ?? 0}</TableCell>
                         <TableCell>
                           T:{row.quota_tokens ?? "-"} / R:{row.quota_requests ?? "-"}
                         </TableCell>
@@ -245,6 +253,17 @@ export default function AdminUsersPage() {
             <div className="space-y-2">
               <Label>密码</Label>
               <Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+            </div>
+          ) : null}
+          {editingId !== null ? (
+            <div className="space-y-2">
+              <Label>重置密码（可选）</Label>
+              <Input
+                type="password"
+                placeholder="留空表示不修改"
+                value={form.new_password}
+                onChange={(e) => setForm({ ...form, new_password: e.target.value })}
+              />
             </div>
           ) : null}
           <div className="space-y-2">

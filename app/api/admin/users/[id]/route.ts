@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { hashPassword } from "@/lib/auth";
 import { gatewayDb } from "@/lib/db";
 import { ensureAdmin } from "@/lib/guards";
 import { jsonError, jsonOk } from "@/lib/http";
@@ -14,6 +15,7 @@ const updateSchema = z.object({
   tpm: z.number().int().min(0).optional(),
   quota_tokens: z.number().int().nonnegative().nullable().optional(),
   quota_requests: z.number().int().nonnegative().nullable().optional(),
+  new_password: z.string().min(8).optional(),
 });
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -64,23 +66,48 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           : 0,
   };
 
-  gatewayDb
-    .prepare(
-      `UPDATE users
-       SET username = ?, role = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?, quota_tokens = ?, quota_requests = ?
-       WHERE id = ?`,
-    )
-    .run(
-      merged.username,
-      merged.role,
-      merged.enabled,
-      merged.rpm,
-      merged.qps,
-      merged.tpm,
-      merged.quota_tokens,
-      merged.quota_requests,
-      id,
-    );
+  const nextPasswordHash = parsed.data.new_password
+    ? await hashPassword(parsed.data.new_password)
+    : null;
+
+  if (nextPasswordHash) {
+    gatewayDb
+      .prepare(
+        `UPDATE users
+         SET username = ?, role = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?, quota_tokens = ?, quota_requests = ?, password_hash = ?
+         WHERE id = ?`,
+      )
+      .run(
+        merged.username,
+        merged.role,
+        merged.enabled,
+        merged.rpm,
+        merged.qps,
+        merged.tpm,
+        merged.quota_tokens,
+        merged.quota_requests,
+        nextPasswordHash,
+        id,
+      );
+  } else {
+    gatewayDb
+      .prepare(
+        `UPDATE users
+         SET username = ?, role = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?, quota_tokens = ?, quota_requests = ?
+         WHERE id = ?`,
+      )
+      .run(
+        merged.username,
+        merged.role,
+        merged.enabled,
+        merged.rpm,
+        merged.qps,
+        merged.tpm,
+        merged.quota_tokens,
+        merged.quota_requests,
+        id,
+      );
+  }
 
   const row = gatewayDb
     .prepare(

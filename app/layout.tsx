@@ -3,7 +3,7 @@ import "./globals.css";
 import { ToastProvider } from "@/components/ui/toast";
 
 export const metadata: Metadata = {
-  title: "VLM Control",
+  title: "ModelGate",
   description: "Multi-tenant LLM Gateway + Web Console",
 };
 
