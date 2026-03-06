@@ -1,3 +1,32 @@
+.build: &build
+  services:
+    - name: docker
+      options:
+        rootlessBuildkitd:
+          enabled: true
+  env:
+    IMAGE: ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}
+  stages:
+    - name: docker build & push
+      script: |
+        docker buildx build -t ${IMAGE}:latest -t ${IMAGE}:${CNB_BRANCH} --platform linux/amd64,linux/arm64 --push .
+
+.push: &push
+  - stages:
+      - name: auto-tag
+        image: cnbcool/git-auto-tag:latest
+        settings:
+          blockWhenFail: false
+          branch: $CNB_BRANCH
+          repoUrlHttps: $CNB_REPO_URL_HTTPS
+        exports:
+          tag: NEW_TAG
+      - name: show tag
+        script: echo $NEW_TAG
+
+main:
+  push: *push
+
 $:
   vscode:
     - docker:
@@ -5,3 +34,4 @@ $:
       services:
         - vscode
         - docker
+  tag_push: *build
