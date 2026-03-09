@@ -2,10 +2,13 @@ FROM node:20-bookworm-slim AS build
 
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV TZ=Asia/Shanghai
 
 # better-sqlite3 may require native build toolchain during npm install.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 make g++ \
+  && apt-get install -y --no-install-recommends python3 make g++ tzdata \
+  && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
+  && echo $TZ > /etc/timezone \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
@@ -22,6 +25,13 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
+ENV TZ=Asia/Shanghai
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends tzdata \
+  && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
+  && echo $TZ > /etc/timezone \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
