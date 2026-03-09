@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { z } from "zod";
 import { gatewayDb } from "@/lib/db";
 import { ensureAdmin } from "@/lib/guards";

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { jsonError } from "@/lib/http";
 
 function notFound() {

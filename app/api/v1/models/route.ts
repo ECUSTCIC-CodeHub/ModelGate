@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { checkApiKeyAuth } from "@/lib/api-key-auth";
 import { jsonError, jsonOk } from "@/lib/http";
 import { listEnabledAliases } from "@/lib/router";

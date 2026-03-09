@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { z } from "zod";
 import { issueAuthTokens, verifyRefreshToken } from "@/lib/auth";
 import { gatewayDb, type DbUser } from "@/lib/db";

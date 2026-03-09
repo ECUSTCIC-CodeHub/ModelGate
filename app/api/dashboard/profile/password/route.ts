@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { z } from "zod";
 import { comparePassword, hashPassword } from "@/lib/auth";
 import { gatewayDb, type DbUser } from "@/lib/db";

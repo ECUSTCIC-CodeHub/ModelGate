@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { z } from "zod";
 import { ensureAdmin } from "@/lib/guards";
 import { jsonError, jsonOk } from "@/lib/http";

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { gatewayDb } from "@/lib/db";
 import { ensureWebUser } from "@/lib/guards";
 import { jsonError, jsonOk } from "@/lib/http";

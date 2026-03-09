@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { jsonOk } from "@/lib/http";
 
 export async function POST() {

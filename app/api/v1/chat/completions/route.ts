@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { checkApiKeyAuth } from "@/lib/api-key-auth";
 import { insertChatLog } from "@/lib/chat-log";
 import { gatewayDb } from "@/lib/db";

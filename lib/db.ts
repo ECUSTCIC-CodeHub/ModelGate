@@ -1,18 +1,29 @@
-import Database from "better-sqlite3";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
+import type BetterSqlite3 from "better-sqlite3";
 
 const dataDir = path.join(process.cwd(), "data");
 const dbPath = path.join(dataDir, "gateway.db");
+const SQLITE_BUSY_TIMEOUT_MS = 30_000;
+const require = createRequire(import.meta.url);
 
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
-}
+const initializeGatewayDb = () => {
+  const Database = require("better-sqlite3") as typeof import("better-sqlite3");
 
-const db = new Database(dbPath);
-db.pragma("journal_mode = WAL");
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
 
-db.exec(`
+  const db = new Database(dbPath, { timeout: SQLITE_BUSY_TIMEOUT_MS });
+  db.pragma(`busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
+
+  const journalMode = db.pragma("journal_mode", { simple: true });
+  if (journalMode !== "wal") {
+    db.pragma("journal_mode = WAL");
+  }
+
+  db.exec(`
 CREATE TABLE IF NOT EXISTS channels (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
@@ -101,11 +112,11 @@ CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
 `);
 
-const userColumns = db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
-const hasNameColumn = userColumns.some((col) => col.name === "name");
-const hasQpmColumn = userColumns.some((col) => col.name === "qpm");
-const hasQpsColumn = userColumns.some((col) => col.name === "qps");
-if (hasNameColumn || hasQpmColumn || !hasQpsColumn) {
+  const userColumns = db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
+  const hasNameColumn = userColumns.some((col) => col.name === "name");
+  const hasQpmColumn = userColumns.some((col) => col.name === "qpm");
+  const hasQpsColumn = userColumns.some((col) => col.name === "qps");
+  if (hasNameColumn || hasQpmColumn || !hasQpsColumn) {
   const hasUsername = userColumns.some((col) => col.name === "username");
   if (!hasUsername) {
     throw new Error("users table must contain username column");
@@ -161,45 +172,45 @@ if (hasNameColumn || hasQpmColumn || !hasQpsColumn) {
   } finally {
     db.pragma("foreign_keys = ON");
   }
-}
-
-const ensureColumn = (table: string, column: string, ddl: string) => {
-  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
-  if (!columns.some((col) => col.name === column)) {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
-    return true;
   }
-  return false;
-};
 
-ensureColumn("users", "deleted_at", "deleted_at DATETIME");
-ensureColumn("keys", "deleted_at", "deleted_at DATETIME");
-const addedKeyUsedTokens = ensureColumn("keys", "used_tokens", "used_tokens INTEGER DEFAULT 0");
-const addedKeyUsedRequests = ensureColumn("keys", "used_requests", "used_requests INTEGER DEFAULT 0");
-ensureColumn("models", "deleted_at", "deleted_at DATETIME");
-ensureColumn("logs", "first_token_latency_ms", "first_token_latency_ms INTEGER");
-ensureColumn("logs", "output_tps", "output_tps REAL");
-ensureColumn("logs", "route_attempts", "route_attempts INTEGER DEFAULT 1");
-ensureColumn("logs", "attempted_channels", "attempted_channels TEXT");
+  const ensureColumn = (table: string, column: string, ddl: string) => {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((col) => col.name === column)) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+      return true;
+    }
+    return false;
+  };
 
-if (addedKeyUsedTokens || addedKeyUsedRequests) {
-  db.exec(`
+  ensureColumn("users", "deleted_at", "deleted_at DATETIME");
+  ensureColumn("keys", "deleted_at", "deleted_at DATETIME");
+  const addedKeyUsedTokens = ensureColumn("keys", "used_tokens", "used_tokens INTEGER DEFAULT 0");
+  const addedKeyUsedRequests = ensureColumn("keys", "used_requests", "used_requests INTEGER DEFAULT 0");
+  ensureColumn("models", "deleted_at", "deleted_at DATETIME");
+  ensureColumn("logs", "first_token_latency_ms", "first_token_latency_ms INTEGER");
+  ensureColumn("logs", "output_tps", "output_tps REAL");
+  ensureColumn("logs", "route_attempts", "route_attempts INTEGER DEFAULT 1");
+  ensureColumn("logs", "attempted_channels", "attempted_channels TEXT");
+
+  if (addedKeyUsedTokens || addedKeyUsedRequests) {
+    db.exec(`
   UPDATE keys
   SET
     used_requests = COALESCE((SELECT COUNT(*) FROM logs WHERE logs.key_id = keys.id), 0),
     used_tokens = COALESCE((SELECT SUM(COALESCE(logs.total_tokens, 0)) FROM logs WHERE logs.key_id = keys.id), 0)
   `);
-}
+  }
 
-const tableExists = (name: string) => {
-  const row = db
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
-    .get(name) as { name: string } | undefined;
-  return Boolean(row);
-};
+  const tableExists = (name: string) => {
+    const row = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+      .get(name) as { name: string } | undefined;
+    return Boolean(row);
+  };
 
-if (tableExists("chat_logs")) {
-  db.exec(`
+  if (tableExists("chat_logs")) {
+    db.exec(`
   INSERT OR IGNORE INTO logs (
     id, user_id, key_id, channel_id, model_alias, real_model, stream, status_code,
     estimated_tokens, prompt_tokens, completion_tokens, total_tokens, latency_ms,
@@ -212,14 +223,14 @@ if (tableExists("chat_logs")) {
   FROM chat_logs;
   `);
 
-  db.exec("DROP INDEX IF EXISTS idx_chat_logs_created_at");
-  db.exec("DROP INDEX IF EXISTS idx_chat_logs_user_id");
-  db.exec("DROP TABLE chat_logs");
-}
+    db.exec("DROP INDEX IF EXISTS idx_chat_logs_created_at");
+    db.exec("DROP INDEX IF EXISTS idx_chat_logs_user_id");
+    db.exec("DROP TABLE chat_logs");
+  }
 
-const settingsColumns = db.prepare("PRAGMA table_info(settings)").all() as Array<{ name: string }>;
-const isKvSettings = settingsColumns.some((col) => col.name === "key") && settingsColumns.some((col) => col.name === "value");
-if (!isKvSettings) {
+  const settingsColumns = db.prepare("PRAGMA table_info(settings)").all() as Array<{ name: string }>;
+  const isKvSettings = settingsColumns.some((col) => col.name === "key") && settingsColumns.some((col) => col.name === "value");
+  if (!isKvSettings) {
   const legacy = db
     .prepare("SELECT registration_enabled, default_qps, default_rpm, default_tpm FROM settings LIMIT 1")
     .get() as
@@ -247,35 +258,38 @@ if (!isKvSettings) {
   ALTER TABLE settings_new RENAME TO settings;
   COMMIT;
   `);
-}
+  }
 
-const initSetting = db.prepare(
-  `INSERT INTO settings (key, value)
-   VALUES (?, ?)
-   ON CONFLICT(key) DO NOTHING`,
-);
-initSetting.run("registration_enabled", "1");
-initSetting.run("default_qps", "-1");
-initSetting.run("default_rpm", "-1");
-initSetting.run("default_tpm", "-1");
-initSetting.run("upstream_retry_enabled", "1");
-initSetting.run("upstream_retry_max_attempts", "3");
+  const initSetting = db.prepare(
+    `INSERT INTO settings (key, value)
+     VALUES (?, ?)
+     ON CONFLICT(key) DO NOTHING`,
+  );
+  initSetting.run("registration_enabled", "1");
+  initSetting.run("default_qps", "-1");
+  initSetting.run("default_rpm", "-1");
+  initSetting.run("default_tpm", "-1");
+  initSetting.run("upstream_retry_enabled", "1");
+  initSetting.run("upstream_retry_max_attempts", "3");
 
 // Historical compatibility (one-time):
 // previous versions used 0 as "unlimited"; now -1 is unlimited.
-const limitSemanticsMigrated = db
-  .prepare("SELECT value FROM settings WHERE key = 'limit_unlimited_value_migrated'")
-  .get() as { value: string } | undefined;
+  const limitSemanticsMigrated = db
+    .prepare("SELECT value FROM settings WHERE key = 'limit_unlimited_value_migrated'")
+    .get() as { value: string } | undefined;
 
-if (!limitSemanticsMigrated) {
-  db.exec(`
+  if (!limitSemanticsMigrated) {
+    db.exec(`
   UPDATE settings SET value = '-1' WHERE key IN ('default_qps', 'default_rpm', 'default_tpm') AND value = '0';
   UPDATE users SET qps = -1 WHERE qps = 0;
   UPDATE users SET rpm = -1 WHERE rpm = 0;
   UPDATE users SET tpm = -1 WHERE tpm = 0;
   `);
-  initSetting.run("limit_unlimited_value_migrated", "1");
-}
+    initSetting.run("limit_unlimited_value_migrated", "1");
+  }
+
+  return db;
+};
 
 export type DbChannel = {
   id: number;
@@ -349,4 +363,18 @@ export type DbLog = {
   created_at: string;
 };
 
-export const gatewayDb = db;
+let gatewayDbInstance: BetterSqlite3.Database | null = null;
+
+const getGatewayDb = () => {
+  if (!gatewayDbInstance) {
+    gatewayDbInstance = initializeGatewayDb();
+  }
+  return gatewayDbInstance;
+};
+
+export const gatewayDb = new Proxy({} as BetterSqlite3.Database, {
+  get(_target, prop) {
+    const value = getGatewayDb()[prop as keyof BetterSqlite3.Database];
+    return typeof value === "function" ? value.bind(getGatewayDb()) : value;
+  },
+});
