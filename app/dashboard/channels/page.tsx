@@ -87,6 +87,7 @@ export default function AdminChannelsPage() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [error, setError] = useState("");
   const [expandedChannelIds, setExpandedChannelIds] = useState<number[]>([]);
+  const [testingModelId, setTestingModelId] = useState<number | null>(null);
 
   const [channelDrawerOpen, setChannelDrawerOpen] = useState(false);
   const [channelEditingId, setChannelEditingId] = useState<number | null>(null);
@@ -248,6 +249,42 @@ export default function AdminChannelsPage() {
       return;
     }
     toast({ variant: "error", description: getApiMessage(data, "删除渠道失败。") });
+  }
+
+  async function testModel(row: ModelRow) {
+    setTestingModelId(row.id);
+    try {
+      const response = await authedFetch(`/api/dashboard/models/${row.id}/test`, {
+        method: "POST",
+      });
+      const data = await response.json().catch(() => null);
+      const payload = data?.data as
+        | {
+            status: number | null;
+            latency_ms: number;
+            body_preview: string;
+          }
+        | undefined;
+
+      const suffix = payload
+        ? `HTTP ${payload.status ?? "-"}，${payload.latency_ms}ms${payload.body_preview ? `，${payload.body_preview}` : ""}`
+        : "";
+
+      if (response.ok) {
+        toast({
+          variant: "success",
+          description: suffix ? `模型测试成功。${suffix}` : getApiMessage(data, "模型测试成功。"),
+        });
+        return;
+      }
+
+      toast({
+        variant: "error",
+        description: suffix ? `模型测试失败。${suffix}` : getApiMessage(data, "模型测试失败。"),
+      });
+    } finally {
+      setTestingModelId(null);
+    }
   }
 
   function openCreateModel(channelId: number) {
@@ -423,6 +460,14 @@ export default function AdminChannelsPage() {
                                             </TableCell>
                                             <TableCell>{model.weight}</TableCell>
                                             <TableCell className="space-x-2 text-right">
+                                              <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => testModel(model)}
+                                                disabled={testingModelId === model.id}
+                                              >
+                                                {testingModelId === model.id ? "测试中..." : "测试"}
+                                              </Button>
                                               <Button size="sm" variant="outline" onClick={() => openEditModel(model)}>编辑</Button>
                                               <Button size="sm" variant="outline" onClick={() => toggleModel(model)}>{model.enabled ? "禁用" : "启用"}</Button>
                                               <Button size="sm" variant="secondary" onClick={() => removeModel(model.id)}>删除</Button>

@@ -36,6 +36,7 @@ export default function ConsoleKeysPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(true);
     const [role, setRole] = useState<"admin" | "user">("user");
+    const [baseUrlExample, setBaseUrlExample] = useState("HOST/api/v1");
     const { toast } = useToast();
 
     async function load() {
@@ -61,6 +62,7 @@ export default function ConsoleKeysPage() {
     }
 
     useEffect(() => {
+        setBaseUrlExample(`${window.location.origin}/api/v1`);
         void load().finally(() => setLoading(false));
     }, [router]);
 
@@ -116,7 +118,7 @@ export default function ConsoleKeysPage() {
         <DashboardShell
             role={role}
             title="我的 API 密钥"
-            subtitle="管理用于网关调用的密钥"
+            subtitle="管理用于网关调用的密钥，base_url 使用 HOST/api/v1 的 OpenAI 兼容格式"
         >
             <div className="flex h-full min-h-0 flex-col gap-4">
                 <Card className="flex min-h-0 flex-1 flex-col">
@@ -125,6 +127,9 @@ export default function ConsoleKeysPage() {
                             <div>
                                 <CardTitle>密钥列表</CardTitle>
                                 <CardDescription>{loading ? "加载中..." : `共 ${keys.length} 条`}</CardDescription>
+                                <p className="mt-2 text-sm text-zinc-400">
+                                    创建后可按 OpenAI 兼容方式调用，`base_url` 请填写当前站点的 API 地址：`{baseUrlExample}`。
+                                </p>
                             </div>
                             <Button onClick={createKey}>创建密钥</Button>
                         </div>
