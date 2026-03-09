@@ -36,12 +36,14 @@ const adminMenus = [
   { href: "/dashboard/users", label: "用户管理" },
   { href: "/dashboard/settings", label: "系统设置" },
   { href: "/dashboard/keys", label: "我的 Key" },
+  { href: "/dashboard/models", label: "可用模型" },
 ];
 
 const userMenus = [
   { href: "/dashboard", label: "首页" },
   { href: "/dashboard/logs", label: "请求日志" },
   { href: "/dashboard/keys", label: "我的 Key" },
+  { href: "/dashboard/models", label: "可用模型" },
 ];
 
 export function DashboardShell({ role, right, children }: DashboardShellProps) {
