@@ -4,6 +4,50 @@ import { gatewayDb } from "@/lib/db";
 import { ensureWebUser } from "@/lib/guards";
 import { jsonOk } from "@/lib/http";
 
+function estimateConcurrency(rows: Array<{ end_ms: number; latency_ms: number }>) {
+  const now = Date.now();
+  const windowStart = now - 24 * 60 * 60 * 1000;
+  const events: Array<{ ts: number; delta: number }> = [];
+
+  for (const row of rows) {
+    if (!Number.isFinite(row.end_ms) || !Number.isFinite(row.latency_ms) || row.latency_ms <= 0) continue;
+    const end = Math.min(now, row.end_ms);
+    const start = Math.max(windowStart, end - row.latency_ms);
+    if (end <= start) continue;
+    events.push({ ts: start, delta: 1 });
+    events.push({ ts: end, delta: -1 });
+  }
+
+  if (events.length === 0) {
+    return { estimated_peak_concurrency: 0, estimated_avg_concurrency: 0 };
+  }
+
+  events.sort((a, b) => (a.ts === b.ts ? a.delta - b.delta : a.ts - b.ts));
+
+  let active = 0;
+  let peak = 0;
+  let weightedTotal = 0;
+  let previousTs = windowStart;
+
+  for (const event of events) {
+    if (event.ts > previousTs) {
+      weightedTotal += active * (event.ts - previousTs);
+      previousTs = event.ts;
+    }
+    active += event.delta;
+    if (active > peak) peak = active;
+  }
+
+  if (previousTs < now) {
+    weightedTotal += active * (now - previousTs);
+  }
+
+  return {
+    estimated_peak_concurrency: peak,
+    estimated_avg_concurrency: Number((weightedTotal / (24 * 60 * 60 * 1000)).toFixed(2)),
+  };
+}
+
 export async function GET(request: Request) {
   const guard = ensureWebUser(request);
   if ("error" in guard) return guard.error;
@@ -18,6 +62,7 @@ export async function GET(request: Request) {
          COUNT(*) AS total_requests,
          COALESCE(SUM(total_tokens), 0) AS total_tokens,
          COALESCE(SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END), 0) AS failed_requests,
+         COALESCE(SUM(CASE WHEN status_code = 429 THEN 1 ELSE 0 END), 0) AS rate_limited_requests,
          COALESCE(AVG(CASE WHEN status_code < 400 THEN latency_ms END), 0) AS avg_latency_ms,
          COALESCE(AVG(CASE WHEN status_code < 400 THEN output_tps END), 0) AS avg_output_tps,
          COALESCE(SUM(CASE WHEN route_attempts > 1 THEN 1 ELSE 0 END), 0) AS retry_requests
@@ -28,6 +73,7 @@ export async function GET(request: Request) {
     total_requests: number;
     total_tokens: number;
     failed_requests: number;
+    rate_limited_requests: number;
     avg_latency_ms: number;
     avg_output_tps: number;
     retry_requests: number;
@@ -123,6 +169,23 @@ export async function GET(request: Request) {
     )
     .all(...whereArgs);
 
+  const concurrencyRows = gatewayDb
+    .prepare(
+      `SELECT
+         CAST(unixepoch(created_at) * 1000 AS INTEGER) AS end_ms,
+         latency_ms
+       FROM logs
+       ${whereSql ? `${whereSql} AND` : "WHERE"} channel_id IS NOT NULL
+         AND latency_ms IS NOT NULL
+         AND latency_ms > 0
+         AND created_at >= datetime('now', '-24 hours')`,
+    )
+    .all(...whereArgs) as Array<{ end_ms: number; latency_ms: number }>;
+
+  const concurrency = estimateConcurrency(concurrencyRows);
+  const successRateBase = Math.max(0, (summary.total_requests ?? 0) - (summary.rate_limited_requests ?? 0));
+  const successCount = Math.max(0, successRateBase - ((summary.failed_requests ?? 0) - (summary.rate_limited_requests ?? 0)));
+
   return jsonOk({
     data: {
       total_requests: summary.total_requests ?? 0,
@@ -133,9 +196,12 @@ export async function GET(request: Request) {
       avg_latency_ms: summary.avg_latency_ms ?? 0,
       avg_output_tps: summary.avg_output_tps ?? 0,
       retry_requests: summary.retry_requests ?? 0,
-      success_rate: (summary.total_requests ?? 0) > 0
-        ? Number((((summary.total_requests - summary.failed_requests) / summary.total_requests) * 100).toFixed(2))
+      rate_limited_requests: summary.rate_limited_requests ?? 0,
+      success_rate: successRateBase > 0
+        ? Number(((successCount / successRateBase) * 100).toFixed(2))
         : 0,
+      estimated_peak_concurrency: concurrency.estimated_peak_concurrency,
+      estimated_avg_concurrency: concurrency.estimated_avg_concurrency,
       hourly_tokens: hourlyTokens,
       top_models: topModels,
       top_channels: topChannels,

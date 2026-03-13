@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SideDrawer } from "@/components/ui/side-drawer";
 import { useToast } from "@/components/ui/toast";
-import { authedFetch, clearSession } from "@/lib/client-auth";
+import { authedFetch, clearSession, getCachedProfile, getOrFetchProfile } from "@/lib/client-auth";
 import { getApiMessage } from "@/lib/api-message";
 import { cn } from "@/lib/utils";
 
@@ -51,44 +51,19 @@ export function DashboardShell({ role, right, children }: DashboardShellProps) {
   const router = useRouter();
   const menus = role === "admin" ? adminMenus : userMenus;
   const { toast } = useToast();
-  const [profileBrief, setProfileBrief] = useState<ProfileBrief | null>(() => {
-    if (typeof window === "undefined") return null;
-    const raw = sessionStorage.getItem("vlm-profile-brief");
-    if (!raw) return null;
-    try {
-      const parsed = JSON.parse(raw) as { ts: number; data: ProfileBrief };
-      if (Date.now() - parsed.ts < 60_000) return parsed.data;
-    } catch {
-      return null;
-    }
-    return null;
-  });
+  const [profileBrief, setProfileBrief] = useState<ProfileBrief | null>(() => getCachedProfile());
   const [passwordDrawerOpen, setPasswordDrawerOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
 
   useEffect(() => {
-    const cacheKey = "vlm-profile-brief";
     if (profileBrief) return;
-
-    void authedFetch("/api/dashboard/profile")
-      .then(async (resp) => {
-        if (!resp.ok) return;
-        const data = await resp.json();
-        const next = data?.user as ProfileBrief | undefined;
-        if (!next) return;
-        setProfileBrief(next);
-        if (typeof window !== "undefined") {
-          sessionStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: next }));
-        }
-      })
-      .catch(() => {});
+    void getOrFetchProfile().then((next) => {
+      if (next) setProfileBrief(next);
+    });
   }, [profileBrief]);
 
   function onLogout() {
-    if (typeof window !== "undefined") {
-      sessionStorage.removeItem("vlm-profile-brief");
-    }
     clearSession();
     router.push("/login");
   }
@@ -129,7 +104,7 @@ export function DashboardShell({ role, right, children }: DashboardShellProps) {
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "block rounded-md px-3 py-2 text-sm",
+                    "block rounded-md border border-transparent px-3 py-2 text-sm transition-colors",
                     pathname === item.href
                       ? "bg-zinc-100 text-zinc-900"
                       : "text-zinc-300 hover:bg-zinc-900",
@@ -141,11 +116,16 @@ export function DashboardShell({ role, right, children }: DashboardShellProps) {
             </nav>
           </div>
           {profileBrief ? (
-            <div className="mb-2 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-xs text-zinc-300">
-              <p className="font-medium text-zinc-100">{profileBrief.username}</p>
-              <p className="mt-1">RPM: {formatLimit(profileBrief.rpm)}</p>
-              <p>QPS: {formatLimit(profileBrief.qps)}</p>
-              <p>TPM: {formatLimit(profileBrief.tpm)}</p>
+            <div className="mb-2 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-3 text-xs text-zinc-300">
+              <p className="truncate text-sm font-medium text-zinc-100">{profileBrief.username}</p>
+              <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
+                <span className="text-zinc-500">RPM</span>
+                <span className="text-right font-medium text-zinc-200">{formatLimit(profileBrief.rpm)}</span>
+                <span className="text-zinc-500">QPS</span>
+                <span className="text-right font-medium text-zinc-200">{formatLimit(profileBrief.qps)}</span>
+                <span className="text-zinc-500">TPM</span>
+                <span className="text-right font-medium text-zinc-200">{formatLimit(profileBrief.tpm)}</span>
+              </div>
             </div>
           ) : null}
           <Button
@@ -177,7 +157,7 @@ export function DashboardShell({ role, right, children }: DashboardShellProps) {
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "rounded-md border px-3 py-1 text-sm",
+                    "rounded-md border px-3 py-1 text-sm transition-colors",
                     pathname === item.href
                       ? "border-zinc-200 bg-zinc-100 text-zinc-900"
                       : "border-zinc-700 bg-zinc-900 text-zinc-300",

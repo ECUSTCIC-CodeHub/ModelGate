@@ -6,14 +6,23 @@ import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { SideDrawer } from "@/components/ui/side-drawer";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
-import { authedFetch, clearSession } from "@/lib/client-auth";
+import { authedFetch, clearSession, getOrFetchProfile } from "@/lib/client-auth";
 
 type UserRow = {
   id: number;
@@ -76,33 +85,56 @@ export default function AdminUsersPage() {
   const [form, setForm] = useState<UserForm>(initialForm);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [keyword, setKeyword] = useState("");
+  const pageSize = 20;
   const { toast } = useToast();
 
   async function ensureAdmin() {
-    const me = await authedFetch("/api/dashboard/profile");
-    if (!me.ok) {
+    const profile = await getOrFetchProfile();
+    if (!profile) {
       clearSession();
       router.push("/login");
       return false;
     }
-    const data = await me.json();
-    if (data.user.role !== "admin") {
+    if (profile.role !== "admin") {
       router.push("/dashboard/keys");
       return false;
     }
     return true;
   }
 
-  async function load() {
+  async function load(nextPage = page, nextKeyword = keyword) {
     if (!(await ensureAdmin())) return;
-    const response = await authedFetch("/api/dashboard/users");
+    const offset = (nextPage - 1) * pageSize;
+    const params = new URLSearchParams({
+      limit: String(pageSize),
+      offset: String(offset),
+    });
+    if (nextKeyword.trim()) params.set("keyword", nextKeyword.trim());
+
+    const response = await authedFetch(`/api/dashboard/users?${params.toString()}`);
     const data = await response.json();
-    if (response.ok) setRows(data.data);
+    if (response.ok) {
+      setRows(data.data ?? []);
+      setTotal(data.paging?.total ?? 0);
+      setPage(nextPage);
+    }
   }
 
   useEffect(() => {
-    void load();
+    void load(1).finally(() => setLoading(false));
   }, [router]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const pageWindow = (() => {
+    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+    if (page <= 3) return [1, 2, 3, 4, 5];
+    if (page >= totalPages - 2) return [totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+    return [page - 2, page - 1, page, page + 1, page + 2];
+  })();
 
   function onCreateClick() {
     setEditingId(null);
@@ -152,7 +184,7 @@ export default function AdminUsersPage() {
         toast({ variant: "success", description: getApiMessage(data, "创建用户成功。") });
         setDrawerOpen(false);
         setForm(initialForm);
-        await load();
+        await load(page);
         return;
       }
       toast({ variant: "error", description: getApiMessage(data, "创建用户失败。") });
@@ -169,7 +201,7 @@ export default function AdminUsersPage() {
       setDrawerOpen(false);
       setEditingId(null);
       setForm(initialForm);
-      await load();
+      await load(page);
       return;
     }
     toast({ variant: "error", description: getApiMessage(data, "更新用户失败。") });
@@ -180,7 +212,8 @@ export default function AdminUsersPage() {
     const data = await response.json().catch(() => null);
     if (response.ok) {
       toast({ variant: "success", description: getApiMessage(data, "删除用户成功。") });
-      await load();
+      const nextPage = rows.length === 1 && page > 1 ? page - 1 : page;
+      await load(nextPage);
       return;
     }
     toast({ variant: "error", description: getApiMessage(data, "删除用户失败。") });
@@ -198,9 +231,25 @@ export default function AdminUsersPage() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <CardTitle>用户列表</CardTitle>
-                <CardDescription>共 {rows.length} 条</CardDescription>
               </div>
-              <Button onClick={onCreateClick}>新增用户</Button>
+              <div className="flex w-full max-w-md items-center gap-2">
+                <Input
+                  placeholder="搜索用户名"
+                  value={keyword}
+                  onChange={(e) => setKeyword(e.target.value)}
+                />
+                <Button variant="outline" onClick={() => void load(1)}>搜索</Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setKeyword("");
+                    void load(1, "");
+                  }}
+                >
+                  重置
+                </Button>
+                <Button onClick={onCreateClick}>新增用户</Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="flex min-h-0 flex-1 flex-col px-0 pb-2 pt-0">
@@ -209,7 +258,7 @@ export default function AdminUsersPage() {
                 <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>ID</TableHead>
+                  <TableHead>序号</TableHead>
                   <TableHead>用户名</TableHead>
                   <TableHead>角色</TableHead>
                   <TableHead>状态</TableHead>
@@ -222,9 +271,9 @@ export default function AdminUsersPage() {
                 </TableRow>
               </TableHeader>
                   <TableBody>
-                    {rows.map((row) => (
+                    {rows.map((row, index) => (
                       <TableRow key={row.id}>
-                        <TableCell>{row.id}</TableCell>
+                        <TableCell>{(page - 1) * pageSize + index + 1}</TableCell>
                         <TableCell>{row.username}</TableCell>
                         <TableCell>
                           <Badge variant={row.role === "admin" ? "default" : "secondary"}>{row.role === "admin" ? "管理员" : "普通用户"}</Badge>
@@ -235,8 +284,8 @@ export default function AdminUsersPage() {
                         <TableCell>{formatLimit(row.rpm)}/{formatLimit(row.qps)}/{formatLimit(row.tpm)}</TableCell>
                         <TableCell>{formatNumber(row.used_requests)}</TableCell>
                         <TableCell>{formatNumber(row.used_tokens)}</TableCell>
-                        <TableCell>{row.quota_requests === null ? "无限制" : formatNumber(row.quota_requests)}</TableCell>
-                        <TableCell>{row.quota_tokens === null ? "无限制" : formatNumber(row.quota_tokens)}</TableCell>
+                        <TableCell>{row.quota_requests === null ? "∞" : formatNumber(row.quota_requests)}</TableCell>
+                        <TableCell>{row.quota_tokens === null ? "∞" : formatNumber(row.quota_tokens)}</TableCell>
                         <TableCell className="space-x-2 text-right">
                           <Button size="sm" variant="outline" onClick={() => onEditClick(row)}>编辑</Button>
                           <Button size="sm" variant="secondary" onClick={() => remove(row.id)}>删除</Button>
@@ -246,6 +295,51 @@ export default function AdminUsersPage() {
                   </TableBody>
                 </Table>
               </div>
+            </div>
+            <div className="mt-4 px-6">
+              <Pagination>
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious onClick={() => page > 1 && void load(page - 1)} disabled={page <= 1} />
+                  </PaginationItem>
+                  {pageWindow[0] > 1 ? (
+                    <>
+                      <PaginationItem>
+                        <PaginationLink onClick={() => void load(1)} isActive={page === 1}>1</PaginationLink>
+                      </PaginationItem>
+                      {pageWindow[0] > 2 ? (
+                        <PaginationItem>
+                          <PaginationEllipsis />
+                        </PaginationItem>
+                      ) : null}
+                    </>
+                  ) : null}
+                  {pageWindow.map((pageNumber) => (
+                    <PaginationItem key={pageNumber}>
+                      <PaginationLink onClick={() => void load(pageNumber)} isActive={pageNumber === page}>
+                        {pageNumber}
+                      </PaginationLink>
+                    </PaginationItem>
+                  ))}
+                  {pageWindow[pageWindow.length - 1] < totalPages ? (
+                    <>
+                      {pageWindow[pageWindow.length - 1] < totalPages - 1 ? (
+                        <PaginationItem>
+                          <PaginationEllipsis />
+                        </PaginationItem>
+                      ) : null}
+                      <PaginationItem>
+                        <PaginationLink onClick={() => void load(totalPages)} isActive={page === totalPages}>
+                          {totalPages}
+                        </PaginationLink>
+                      </PaginationItem>
+                    </>
+                  ) : null}
+                  <PaginationItem>
+                    <PaginationNext onClick={() => page < totalPages && void load(page + 1)} disabled={page >= totalPages} />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
             </div>
           </CardContent>
         </Card>
@@ -311,35 +405,40 @@ export default function AdminUsersPage() {
           </div>
 
           <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
-            <p className="text-sm font-medium text-zinc-100">限速配置</p>
-            <p className="text-xs text-zinc-500">`-1` 表示无限，`0` 表示禁止请求。</p>
+            <p className="text-sm font-medium text-zinc-100">配额配置</p>
+            <p className="text-xs text-zinc-500">`-1` 表示无限，`0` 表示禁止；总量配额留空也表示不限制。</p>
             <div className="grid gap-3 md:grid-cols-3">
               <div className="space-y-2">
-                <Label>RPM</Label>
+                <Label>RPM 配额</Label>
                 <Input type="number" min={-1} value={form.rpm} onChange={(e) => setForm({ ...form, rpm: Number(e.target.value) })} />
               </div>
               <div className="space-y-2">
-                <Label>QPS</Label>
+                <Label>QPS 配额</Label>
                 <Input type="number" min={-1} value={form.qps} onChange={(e) => setForm({ ...form, qps: Number(e.target.value) })} />
               </div>
               <div className="space-y-2">
-                <Label>TPM</Label>
+                <Label>TPM 配额</Label>
                 <Input type="number" min={-1} value={form.tpm} onChange={(e) => setForm({ ...form, tpm: Number(e.target.value) })} />
               </div>
             </div>
-          </div>
-
-          <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
-            <p className="text-sm font-medium text-zinc-100">配额配置</p>
-            <p className="text-xs text-zinc-500">留空表示不限制总配额。</p>
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>总请求配额（可空）</Label>
-                <Input value={form.quota_requests} onChange={(e) => setForm({ ...form, quota_requests: e.target.value })} />
+                <Input
+                  type="number"
+                  min={-1}
+                  value={form.quota_requests}
+                  onChange={(e) => setForm({ ...form, quota_requests: e.target.value })}
+                />
               </div>
               <div className="space-y-2">
                 <Label>总 Token 配额（可空）</Label>
-                <Input value={form.quota_tokens} onChange={(e) => setForm({ ...form, quota_tokens: e.target.value })} />
+                <Input
+                  type="number"
+                  min={-1}
+                  value={form.quota_tokens}
+                  onChange={(e) => setForm({ ...form, quota_tokens: e.target.value })}
+                />
               </div>
             </div>
           </div>

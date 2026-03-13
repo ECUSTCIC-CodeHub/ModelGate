@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
-import { authedFetch, clearSession } from "@/lib/client-auth";
+import { authedFetch, clearSession, getCachedProfile, getOrFetchProfile } from "@/lib/client-auth";
 
 type ModelItem = {
   id: string;
@@ -17,22 +17,20 @@ type ModelItem = {
 
 export default function AvailableModelsPage() {
   const router = useRouter();
-  const [role, setRole] = useState<"admin" | "user">("user");
+  const [role, setRole] = useState<"admin" | "user">(() => getCachedProfile()?.role ?? "user");
   const [rows, setRows] = useState<ModelItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const { toast } = useToast();
 
   async function load() {
-    const me = await authedFetch("/api/dashboard/profile");
-    if (!me.ok) {
+    const profile = await getOrFetchProfile();
+    if (!profile) {
       clearSession();
       router.push("/login");
       return;
     }
-
-    const meData = await me.json();
-    setRole(meData.user.role as "admin" | "user");
+    setRole(profile.role as "admin" | "user");
 
     const response = await authedFetch("/api/dashboard/available-models");
     const data = await response.json().catch(() => null);
@@ -61,7 +59,6 @@ export default function AvailableModelsPage() {
           <CardHeader className="shrink-0">
             <div>
               <CardTitle>模型列表</CardTitle>
-              <CardDescription>{loading ? "加载中..." : `共 ${rows.length} 条`}</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="flex min-h-0 flex-1 flex-col px-0 pb-2 pt-0">

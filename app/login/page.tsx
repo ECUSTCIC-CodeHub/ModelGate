@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
-import { setSession } from "@/lib/client-auth";
+import { setCachedProfile, setSession } from "@/lib/client-auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -33,6 +33,7 @@ export default function LoginPage() {
     }
 
     setSession({ accessToken: data.access_token, refreshToken: data.refresh_token });
+    if (data.user) setCachedProfile(data.user);
     toast({ variant: "success", description: getApiMessage(data, "登录成功。") });
     router.push(data.user.role === "admin" ? "/dashboard" : "/dashboard/keys");
   }

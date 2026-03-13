@@ -5,7 +5,17 @@ export type Session = {
   refreshToken: string;
 };
 
+export type CachedProfile = {
+  id: number;
+  username: string;
+  role: "admin" | "user";
+  rpm: number;
+  qps: number;
+  tpm: number;
+};
+
 const KEY = "vlm-session";
+const PROFILE_KEY = "vlm-profile";
 
 export function getSession(): Session | null {
   if (typeof window === "undefined") return null;
@@ -22,8 +32,37 @@ export function setSession(session: Session) {
   localStorage.setItem(KEY, JSON.stringify(session));
 }
 
+export function getCachedProfile(): CachedProfile | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(PROFILE_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as CachedProfile;
+  } catch {
+    return null;
+  }
+}
+
+export function setCachedProfile(profile: CachedProfile) {
+  localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+}
+
 export function clearSession() {
   localStorage.removeItem(KEY);
+  localStorage.removeItem(PROFILE_KEY);
+}
+
+export async function getOrFetchProfile() {
+  const cached = getCachedProfile();
+  if (cached) return cached;
+
+  const response = await authedFetch("/api/dashboard/profile");
+  if (!response.ok) return null;
+  const data = await response.json().catch(() => null);
+  const user = data?.user as CachedProfile | undefined;
+  if (!user) return null;
+  setCachedProfile(user);
+  return user;
 }
 
 export async function authedFetch(input: string, init?: RequestInit) {

@@ -1,7 +1,45 @@
 import { NextResponse } from "next/server";
 
+const UTC_TIMESTAMP_KEYS = new Set(["created_at", "updated_at", "deleted_at", "hour"]);
+
+function toShanghaiIsoString(value: string) {
+  const normalized = value.includes("T") ? value : value.replace(" ", "T");
+  const withZone = /(?:Z|[+-]\d{2}:\d{2})$/.test(normalized) ? normalized : `${normalized}Z`;
+  const date = new Date(withZone);
+  if (Number.isNaN(date.getTime())) return value;
+
+  const shifted = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+  const year = shifted.getUTCFullYear();
+  const month = String(shifted.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(shifted.getUTCDate()).padStart(2, "0");
+  const hours = String(shifted.getUTCHours()).padStart(2, "0");
+  const minutes = String(shifted.getUTCMinutes()).padStart(2, "0");
+  const seconds = String(shifted.getUTCSeconds()).padStart(2, "0");
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
+function normalizeTimeFields<T>(input: T): T {
+  if (Array.isArray(input)) {
+    return input.map((item) => normalizeTimeFields(item)) as T;
+  }
+
+  if (!input || typeof input !== "object") {
+    return input;
+  }
+
+  const record = input as Record<string, unknown>;
+  return Object.fromEntries(
+    Object.entries(record).map(([key, value]) => {
+      if (typeof value === "string" && UTC_TIMESTAMP_KEYS.has(key)) {
+        return [key, toShanghaiIsoString(value)];
+      }
+      return [key, normalizeTimeFields(value)];
+    }),
+  ) as T;
+}
+
 export function jsonOk(data: unknown, status = 200) {
-  return NextResponse.json(data, { status });
+  return NextResponse.json(normalizeTimeFields(data), { status });
 }
 
 type ApiErrorType =

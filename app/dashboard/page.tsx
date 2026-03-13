@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
-import { authedFetch, clearSession, getSession } from "@/lib/client-auth";
+import { authedFetch, clearSession, getCachedProfile, getOrFetchProfile, getSession } from "@/lib/client-auth";
+import { formatNumber, formatTokenCount } from "@/lib/utils";
 
 type Role = "admin" | "user";
 
@@ -22,7 +23,10 @@ type Summary = {
   avg_latency_ms: number;
   avg_output_tps: number;
   retry_requests: number;
+  rate_limited_requests: number;
   success_rate: number;
+  estimated_peak_concurrency: number;
+  estimated_avg_concurrency: number;
   hourly_tokens: Array<{ hour: string; tokens: number }>;
   top_models: Array<{ model_name: string; request_count: number; total_tokens: number }>;
   top_channels: Array<{ channel_name: string; request_count: number; total_tokens: number }>;
@@ -42,7 +46,7 @@ function formatDuration(ms: number | null | undefined) {
 export default function DashboardHomePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [role, setRole] = useState<Role>("user");
+  const [role, setRole] = useState<Role>(() => (getCachedProfile()?.role as Role | undefined) ?? "user");
   const [summary, setSummary] = useState<Summary | null>(null);
 
   useEffect(() => {
@@ -52,15 +56,14 @@ export default function DashboardHomePage() {
       return;
     }
 
-    void Promise.all([authedFetch("/api/dashboard/profile"), authedFetch("/api/dashboard/summary")])
-      .then(async ([profileResp, summaryResp]) => {
-        if (!profileResp.ok) {
+    void Promise.all([getOrFetchProfile(), authedFetch("/api/dashboard/summary")])
+      .then(async ([profile, summaryResp]) => {
+        if (!profile) {
           clearSession();
           router.push("/login");
           return;
         }
-        const me = await profileResp.json();
-        setRole(me.user.role as Role);
+        setRole(profile.role as Role);
 
         if (summaryResp.ok) {
           const summaryData = await summaryResp.json();
@@ -73,8 +76,12 @@ export default function DashboardHomePage() {
   const topModelColumns = useMemo<Array<ColumnDef<{ model_name: string; request_count: number; total_tokens: number }>>>(
     () => [
       { accessorKey: "model_name", header: "模型" },
-      { accessorKey: "request_count", header: "请求数" },
-      { accessorKey: "total_tokens", header: "Token" },
+      { accessorKey: "request_count", header: "请求数", cell: ({ row }) => formatNumber(row.original.request_count) },
+      {
+        accessorKey: "total_tokens",
+        header: "Token",
+        cell: ({ row }) => <span title={formatNumber(row.original.total_tokens)}>{formatTokenCount(row.original.total_tokens)}</span>,
+      },
     ],
     [],
   );
@@ -82,15 +89,19 @@ export default function DashboardHomePage() {
   const topChannelColumns = useMemo<Array<ColumnDef<{ channel_name: string; request_count: number; total_tokens: number }>>>(
     () => [
       { accessorKey: "channel_name", header: "渠道" },
-      { accessorKey: "request_count", header: "请求数" },
-      { accessorKey: "total_tokens", header: "Token" },
+      { accessorKey: "request_count", header: "请求数", cell: ({ row }) => formatNumber(row.original.request_count) },
+      {
+        accessorKey: "total_tokens",
+        header: "Token",
+        cell: ({ row }) => <span title={formatNumber(row.original.total_tokens)}>{formatTokenCount(row.original.total_tokens)}</span>,
+      },
     ],
     [],
   );
 
   const recentLogColumns = useMemo<Array<ColumnDef<{ id: number; model_name: string; status_code: number; total_tokens: number; latency_ms: number; created_at: string }>>>(
     () => [
-      { accessorKey: "id", header: "ID" },
+      { id: "serial", header: "序号", cell: ({ row }) => row.index + 1 },
       { accessorKey: "model_name", header: "模型" },
       {
         accessorKey: "status_code",
@@ -101,7 +112,11 @@ export default function DashboardHomePage() {
           </Badge>
         ),
       },
-      { accessorKey: "total_tokens", header: "Token" },
+      {
+        accessorKey: "total_tokens",
+        header: "Token",
+        cell: ({ row }) => <span title={formatNumber(row.original.total_tokens)}>{formatTokenCount(row.original.total_tokens)}</span>,
+      },
       {
         accessorKey: "latency_ms",
         header: "用时",
@@ -121,15 +136,17 @@ export default function DashboardHomePage() {
   return (
     <DashboardShell role={role} title="欢迎" subtitle="控制台总览与快捷入口">
       <div className="h-full min-h-0 space-y-4 overflow-y-auto pb-4 pr-1">
-        <div className="grid gap-4 md:grid-cols-4 xl:grid-cols-8">
-          <Card><CardHeader><CardDescription>总请求数</CardDescription><CardTitle>{loading ? "-" : (summary?.total_requests ?? 0)}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>失败请求数</CardDescription><CardTitle>{loading ? "-" : (summary?.failed_requests ?? 0)}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>总 Token</CardDescription><CardTitle>{loading ? "-" : (summary?.total_tokens ?? 0)}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>密钥数</CardDescription><CardTitle>{loading ? "-" : (summary?.total_keys ?? 0)}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>{isAdmin ? "活跃用户" : "我的角色"}</CardDescription><CardTitle>{loading ? "-" : (isAdmin ? (summary?.active_users ?? 0) : "普通用户")}</CardTitle></CardHeader></Card>
+        <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-5">
+          <Card><CardHeader><CardDescription>总请求数</CardDescription><CardTitle>{loading ? "-" : formatNumber(summary?.total_requests)}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>失败请求数</CardDescription><CardTitle>{loading ? "-" : formatNumber(summary?.failed_requests)}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>总 Token</CardDescription><CardTitle title={formatNumber(summary?.total_tokens)}>{loading ? "-" : formatTokenCount(summary?.total_tokens)}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>密钥数</CardDescription><CardTitle>{loading ? "-" : formatNumber(summary?.total_keys)}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>{isAdmin ? "活跃用户" : "我的角色"}</CardDescription><CardTitle>{loading ? "-" : (isAdmin ? formatNumber(summary?.active_users) : "普通用户")}</CardTitle></CardHeader></Card>
           <Card><CardHeader><CardDescription>成功率</CardDescription><CardTitle>{loading ? "-" : `${(summary?.success_rate ?? 0).toFixed(2)}%`}</CardTitle></CardHeader></Card>
           <Card><CardHeader><CardDescription>平均用时</CardDescription><CardTitle>{loading ? "-" : formatDuration(summary?.avg_latency_ms)}</CardTitle></CardHeader></Card>
           <Card><CardHeader><CardDescription>平均输出速度</CardDescription><CardTitle>{loading ? "-" : `${(summary?.avg_output_tps ?? 0).toFixed(2)} token/s`}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>估算峰值并发（24h）</CardDescription><CardTitle>{loading ? "-" : formatNumber(summary?.estimated_peak_concurrency)}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>估算平均并发（24h）</CardDescription><CardTitle>{loading ? "-" : (summary?.estimated_avg_concurrency ?? 0).toFixed(2)}</CardTitle></CardHeader></Card>
         </div>
 
         <div className="grid gap-4 xl:grid-cols-3">
@@ -149,10 +166,16 @@ export default function DashboardHomePage() {
                     tick={{ fill: "#a1a1aa", fontSize: 12 }}
                     tickFormatter={(value: string) => value.slice(11, 16)}
                   />
-                  <YAxis tickLine={false} axisLine={false} tick={{ fill: "#a1a1aa", fontSize: 12 }} />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: "#a1a1aa", fontSize: 12 }}
+                    tickFormatter={(value: number) => formatTokenCount(value)}
+                  />
                   <Tooltip
                     contentStyle={{ background: "#0a0a0a", border: "1px solid #27272a", borderRadius: 8 }}
                     labelFormatter={(label) => String(label).replace("T", " ")}
+                    formatter={(value: number | string | undefined) => [formatTokenCount(typeof value === "number" ? value : Number(value)), "Token"]}
                   />
                   <Bar dataKey="tokens" fill="#d4d4d8" radius={[4, 4, 0, 0]} />
                 </BarChart>
@@ -172,9 +195,6 @@ export default function DashboardHomePage() {
               {isAdmin ? <Button variant="outline" onClick={() => router.push("/dashboard/channels")}>渠道管理</Button> : null}
               {isAdmin ? <Button variant="outline" onClick={() => router.push("/dashboard/users")}>用户管理</Button> : null}
               {isAdmin ? <Button variant="outline" onClick={() => router.push("/dashboard/settings")}>系统设置</Button> : null}
-              <div className="mt-2 rounded-md border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-sm text-zinc-400">
-                本日重试请求：<span className="font-medium text-zinc-100">{summary?.retry_requests ?? 0}</span>
-              </div>
             </CardContent>
           </Card>
         </div>

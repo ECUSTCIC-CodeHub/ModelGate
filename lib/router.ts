@@ -11,7 +11,7 @@ export function listEnabledAliases() {
       `SELECT DISTINCT m.alias
        FROM models m
        JOIN channels c ON c.id = m.channel_id
-       WHERE m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL
+       WHERE m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL AND m.alias != '*'
        ORDER BY m.alias ASC`,
     )
     .all() as { alias: string }[];
@@ -19,30 +19,30 @@ export function listEnabledAliases() {
 
 export function selectModelRoute(alias: string, options?: { excludeChannelIds?: number[] }): RoutedModel | null {
   const exclude = new Set(options?.excludeChannelIds ?? []);
-  const rows = gatewayDb
-    .prepare(
-      `SELECT
-          m.id as model_id,
-          m.alias,
-          m.real_model,
-          m.channel_id,
-          m.enabled as model_enabled,
-          m.weight as model_weight,
-          m.created_at as model_created_at,
-          m.deleted_at as model_deleted_at,
-          c.id as channel_id_2,
-          c.name,
-          c.base_url,
-          c.api_key,
-          c.enabled as channel_enabled,
-          c.weight as channel_weight,
-          c.timeout,
-          c.created_at as channel_created_at
-       FROM models m
-       JOIN channels c ON c.id = m.channel_id
-       WHERE m.alias = ? AND m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL`,
-    )
-    .all(alias) as Array<{
+  const query = gatewayDb.prepare(
+    `SELECT
+        m.id as model_id,
+        m.alias,
+        m.real_model,
+        m.channel_id,
+        m.enabled as model_enabled,
+        m.weight as model_weight,
+        m.created_at as model_created_at,
+        m.deleted_at as model_deleted_at,
+        c.id as channel_id_2,
+        c.name,
+        c.base_url,
+        c.api_key,
+        c.enabled as channel_enabled,
+        c.weight as channel_weight,
+        c.timeout,
+        c.created_at as channel_created_at
+     FROM models m
+     JOIN channels c ON c.id = m.channel_id
+     WHERE m.alias = ? AND m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL`,
+  );
+
+  const findRows = (targetAlias: string) => query.all(targetAlias) as Array<{
     model_id: number;
     alias: string;
     real_model: string;
@@ -61,7 +61,11 @@ export function selectModelRoute(alias: string, options?: { excludeChannelIds?: 
     channel_created_at: string;
   }>;
 
-  const candidateRows = rows.filter((row) => !exclude.has(row.channel_id_2));
+  const exactRows = findRows(alias).filter((row) => !exclude.has(row.channel_id_2));
+  const candidateRows = exactRows.length > 0
+    ? exactRows
+    : findRows("*").filter((row) => !exclude.has(row.channel_id_2));
+
   if (candidateRows.length === 0) return null;
 
   const weighted = candidateRows.map((r) => ({

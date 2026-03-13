@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
-import { authedFetch, clearSession } from "@/lib/client-auth";
+import { authedFetch, clearSession, getCachedProfile, getOrFetchProfile } from "@/lib/client-auth";
 
 type KeyRow = {
     id: number;
@@ -35,20 +35,18 @@ export default function ConsoleKeysPage() {
     const [keys, setKeys] = useState<KeyRow[]>([]);
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(true);
-    const [role, setRole] = useState<"admin" | "user">("user");
+    const [role, setRole] = useState<"admin" | "user">(() => getCachedProfile()?.role ?? "user");
     const [baseUrlExample, setBaseUrlExample] = useState("HOST/api/v1");
     const { toast } = useToast();
 
     async function load() {
-        const me = await authedFetch("/api/dashboard/profile");
-        if (!me.ok) {
+        const profile = await getOrFetchProfile();
+        if (!profile) {
             clearSession();
             router.push("/login");
             return;
         }
-
-        const meData = await me.json();
-        setRole(meData.user.role);
+        setRole(profile.role);
 
         const response = await authedFetch("/api/dashboard/keys");
         const data = await response.json();
@@ -126,9 +124,8 @@ export default function ConsoleKeysPage() {
                         <div className="flex items-start justify-between gap-3">
                             <div>
                                 <CardTitle>密钥列表</CardTitle>
-                                <CardDescription>{loading ? "加载中..." : `共 ${keys.length} 条`}</CardDescription>
                                 <p className="mt-2 text-sm text-zinc-400">
-                                    创建后可按 OpenAI 兼容方式调用，`base_url` 请填写当前站点的 API 地址：`{baseUrlExample}`。
+                                    OpenAI 兼容调用：`base_url` 填 <span className="font-mono text-zinc-200">{baseUrlExample}</span>，`api_key` 用下方创建的 Key，`model` 请到“可用模型”页面查看后填写。
                                 </p>
                             </div>
                             <Button onClick={createKey}>创建密钥</Button>
@@ -141,7 +138,7 @@ export default function ConsoleKeysPage() {
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead>ID</TableHead>
+                                            <TableHead>序号</TableHead>
                                             <TableHead>Key</TableHead>
                                             <TableHead>累计请求</TableHead>
                                             <TableHead>累计 Token</TableHead>
@@ -150,9 +147,9 @@ export default function ConsoleKeysPage() {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {keys.map((row) => (
+                                        {keys.map((row, index) => (
                                             <TableRow key={row.id}>
-                                                <TableCell>{row.id}</TableCell>
+                                                <TableCell>{index + 1}</TableCell>
                                                 <TableCell className="font-mono text-xs md:text-sm">{row.key}</TableCell>
                                                 <TableCell>{formatNumber(row.used_requests)}</TableCell>
                                                 <TableCell>{formatNumber(row.used_tokens)}</TableCell>

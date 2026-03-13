@@ -20,7 +20,8 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { authedFetch, clearSession } from "@/lib/client-auth";
+import { authedFetch, clearSession, getCachedProfile, getOrFetchProfile } from "@/lib/client-auth";
+import { formatNumber, formatTokenCount } from "@/lib/utils";
 
 type LogRow = {
   id: number;
@@ -68,7 +69,7 @@ export default function AdminLogsPage() {
   const [rows, setRows] = useState<LogRow[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [role, setRole] = useState<"admin" | "user">("admin");
+  const [role, setRole] = useState<"admin" | "user">(() => getCachedProfile()?.role ?? "admin");
   const [page, setPage] = useState(1);
   const pageSize = 20;
   const [total, setTotal] = useState(0);
@@ -77,14 +78,13 @@ export default function AdminLogsPage() {
   const [filterChannel, setFilterChannel] = useState("");
 
   async function load(nextPage = page) {
-    const me = await authedFetch("/api/dashboard/profile");
-    if (!me.ok) {
+    const profile = await getOrFetchProfile();
+    if (!profile) {
       clearSession();
       router.push("/login");
       return;
     }
-    const meData = await me.json();
-    const nextRole = meData.user.role as "admin" | "user";
+    const nextRole = profile.role as "admin" | "user";
     setRole(nextRole);
 
     const offset = (nextPage - 1) * pageSize;
@@ -118,7 +118,11 @@ export default function AdminLogsPage() {
   })();
 
   const columns = useMemo<Array<ColumnDef<LogRow>>>(() => {
-    const cols: Array<ColumnDef<LogRow>> = [{ accessorKey: "id", header: "ID" }];
+    const cols: Array<ColumnDef<LogRow>> = [{
+      id: "serial",
+      header: "序号",
+      cell: ({ row }) => (page - 1) * pageSize + row.index + 1,
+    }];
 
     if (role === "admin") {
       cols.push({ accessorKey: "username", header: "用户" });
@@ -168,7 +172,7 @@ export default function AdminLogsPage() {
       {
         accessorKey: "total_tokens",
         header: "Token",
-        cell: ({ row }) => row.original.total_tokens ?? 0,
+        cell: ({ row }) => <span title={formatNumber(row.original.total_tokens ?? 0)}>{formatTokenCount(row.original.total_tokens ?? 0)}</span>,
       },
       {
         accessorKey: "first_token_latency_ms",
@@ -206,7 +210,7 @@ export default function AdminLogsPage() {
     );
 
     return cols;
-  }, [role]);
+  }, [page, role]);
 
   return (
     <DashboardShell
@@ -219,9 +223,9 @@ export default function AdminLogsPage() {
           className="grid gap-4"
           style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}
         >
-          <Card><CardHeader><CardDescription>总请求数</CardDescription><CardTitle>{summary?.total_requests ?? 0}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>失败请求数</CardDescription><CardTitle>{summary?.failed_requests ?? 0}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>总 Token</CardDescription><CardTitle>{summary?.total_tokens ?? 0}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>总请求数</CardDescription><CardTitle>{formatNumber(summary?.total_requests)}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>失败请求数</CardDescription><CardTitle>{formatNumber(summary?.failed_requests)}</CardTitle></CardHeader></Card>
+          <Card><CardHeader><CardDescription>总 Token</CardDescription><CardTitle title={formatNumber(summary?.total_tokens)}>{formatTokenCount(summary?.total_tokens)}</CardTitle></CardHeader></Card>
           <Card><CardHeader><CardDescription>平均首 Token 用时</CardDescription><CardTitle>{formatDuration(summary?.avg_first_token_latency_ms)}</CardTitle></CardHeader></Card>
           <Card><CardHeader><CardDescription>平均输出速度</CardDescription><CardTitle>{(summary?.avg_output_tps ?? 0).toFixed(2)} token/s</CardTitle></CardHeader></Card>
         </div>
@@ -229,9 +233,6 @@ export default function AdminLogsPage() {
         <Card className="flex min-h-0 flex-1 flex-col">
           <CardHeader className="shrink-0">
             <CardTitle>请求记录</CardTitle>
-            <CardDescription>
-              {loading ? "加载中..." : `第 ${page} / ${totalPages} 页，共 ${total} 条`}
-            </CardDescription>
             <div className="grid gap-3 pt-2 md:grid-cols-4">
               {role === "admin" ? (
                 <Input

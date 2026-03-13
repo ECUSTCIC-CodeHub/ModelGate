@@ -15,10 +15,15 @@ const updateSchema = z.object({
   rpm: z.number().int().min(-1).optional(),
   qps: z.number().int().min(-1).optional(),
   tpm: z.number().int().min(-1).optional(),
-  quota_tokens: z.number().int().nonnegative().nullable().optional(),
-  quota_requests: z.number().int().nonnegative().nullable().optional(),
+  quota_tokens: z.number().int().min(-1).nullable().optional(),
+  quota_requests: z.number().int().min(-1).nullable().optional(),
   new_password: z.string().min(8).optional(),
 });
+
+function normalizeQuota(value: number | null | undefined) {
+  if (value === null || value === undefined || value < 0) return null;
+  return value;
+}
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
   const guard = ensureAdmin(request);
@@ -60,6 +65,14 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const merged = {
     ...existing,
     ...parsed.data,
+    quota_tokens:
+      parsed.data.quota_tokens === undefined
+        ? existing.quota_tokens
+        : normalizeQuota(parsed.data.quota_tokens),
+    quota_requests:
+      parsed.data.quota_requests === undefined
+        ? existing.quota_requests
+        : normalizeQuota(parsed.data.quota_requests),
     enabled:
       parsed.data.enabled === undefined
         ? existing.enabled

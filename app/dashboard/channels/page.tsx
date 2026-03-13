@@ -14,7 +14,7 @@ import { SideDrawer } from "@/components/ui/side-drawer";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
-import { authedFetch, clearSession } from "@/lib/client-auth";
+import { authedFetch, clearSession, getOrFetchProfile } from "@/lib/client-auth";
 
 type ModelRow = {
   id: number;
@@ -100,14 +100,13 @@ export default function AdminChannelsPage() {
   const { toast } = useToast();
 
   async function ensureAdmin() {
-    const me = await authedFetch("/api/dashboard/profile");
-    if (!me.ok) {
+    const profile = await getOrFetchProfile();
+    if (!profile) {
       clearSession();
       router.push("/login");
       return false;
     }
-    const data = await me.json();
-    if (data.user.role !== "admin") {
+    if (profile.role !== "admin") {
       router.push("/dashboard/keys");
       return false;
     }
@@ -378,7 +377,6 @@ export default function AdminChannelsPage() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <CardTitle>渠道列表</CardTitle>
-                <CardDescription>共 {channels.length} 条</CardDescription>
               </div>
               <Button onClick={openCreateChannel}>新增渠道</Button>
             </div>
@@ -390,7 +388,7 @@ export default function AdminChannelsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>ID</TableHead>
+                      <TableHead>序号</TableHead>
                       <TableHead>名称</TableHead>
                       <TableHead>Base URL</TableHead>
                       <TableHead>状态</TableHead>
@@ -401,14 +399,14 @@ export default function AdminChannelsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {channels.map((row) => {
+                    {channels.map((row, channelIndex) => {
                       const expanded = expandedChannelIds.includes(row.id);
                       const channelModelsList = row.models ?? [];
 
                       return (
                         <Fragment key={row.id}>
                           <TableRow>
-                            <TableCell>{row.id}</TableCell>
+                            <TableCell>{channelIndex + 1}</TableCell>
                             <TableCell>{row.name}</TableCell>
                             <TableCell className="max-w-72 truncate">{row.base_url}</TableCell>
                             <TableCell>
@@ -441,7 +439,7 @@ export default function AdminChannelsPage() {
                                     <Table>
                                       <TableHeader>
                                         <TableRow>
-                                          <TableHead>ID</TableHead>
+                                          <TableHead>序号</TableHead>
                                           <TableHead>别名</TableHead>
                                           <TableHead>真实模型</TableHead>
                                           <TableHead>状态</TableHead>
@@ -450,9 +448,9 @@ export default function AdminChannelsPage() {
                                         </TableRow>
                                       </TableHeader>
                                       <TableBody>
-                                        {channelModelsList.map((model) => (
+                                        {channelModelsList.map((model, modelIndex) => (
                                           <TableRow key={model.id}>
-                                            <TableCell>{model.id}</TableCell>
+                                            <TableCell>{modelIndex + 1}</TableCell>
                                             <TableCell>{model.alias}</TableCell>
                                             <TableCell>{model.real_model}</TableCell>
                                             <TableCell>
@@ -526,6 +524,7 @@ export default function AdminChannelsPage() {
                 <p className="text-sm font-medium">初始模型列表（可选）</p>
                 <Button type="button" variant="outline" size="sm" onClick={addChannelModelDraft}>添加模型</Button>
               </div>
+              <p className="text-xs text-zinc-500">别名就是客户端请求时传入的 `model`（或 model_id）。支持 `*` 作为兜底模型，未命中其他别名时会自动回退到它。</p>
               {channelModels.map((item, index) => (
                 <div key={index} className="grid gap-2 md:grid-cols-4 rounded-md border border-zinc-800 p-2">
                   <Input placeholder="别名" value={item.alias} onChange={(e) => updateChannelModelDraft(index, { alias: e.target.value })} />
@@ -561,6 +560,9 @@ export default function AdminChannelsPage() {
         description="当前模型只归属于一个渠道"
       >
         <form onSubmit={submitModel} className="grid gap-3 md:grid-cols-2">
+          <div className="md:col-span-2">
+            <p className="text-xs text-zinc-500">别名就是客户端请求时传入的 `model`（或 model_id）。支持 `*` 作为兜底模型。</p>
+          </div>
           <div className="space-y-2">
             <Label>别名</Label>
             <Input value={modelForm.alias} onChange={(e) => setModelForm({ ...modelForm, alias: e.target.value })} />

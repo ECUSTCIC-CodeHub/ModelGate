@@ -10,6 +10,8 @@ const schema = z.object({
   default_qps: z.number().int().min(-1),
   default_rpm: z.number().int().min(-1),
   default_tpm: z.number().int().min(-1),
+  default_quota_requests: z.number().int().min(-1),
+  default_quota_tokens: z.number().int().min(-1),
   upstream_retry_enabled: z.boolean(),
   upstream_retry_max_attempts: z.number().int().min(1).max(10),
 });
