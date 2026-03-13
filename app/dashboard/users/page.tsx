@@ -85,7 +85,6 @@ export default function AdminUsersPage() {
   const [form, setForm] = useState<UserForm>(initialForm);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [keyword, setKeyword] = useState("");
@@ -125,7 +124,7 @@ export default function AdminUsersPage() {
   }
 
   useEffect(() => {
-    void load(1).finally(() => setLoading(false));
+    void load(1);
   }, [router]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));

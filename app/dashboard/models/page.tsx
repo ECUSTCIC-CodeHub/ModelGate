@@ -3,8 +3,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuthProfile } from "@/components/providers/auth-provider";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
@@ -17,7 +18,8 @@ type ModelItem = {
 
 export default function AvailableModelsPage() {
   const router = useRouter();
-  const [role, setRole] = useState<"admin" | "user">(() => getCachedProfile()?.role ?? "user");
+  const initialProfile = useAuthProfile();
+  const [role, setRole] = useState<"admin" | "user">(() => initialProfile?.role ?? getCachedProfile()?.role ?? "user");
   const [rows, setRows] = useState<ModelItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -27,7 +29,7 @@ export default function AvailableModelsPage() {
     const profile = await getOrFetchProfile();
     if (!profile) {
       clearSession();
-      router.push("/login");
+      router.replace("/login");
       return;
     }
     setRole(profile.role as "admin" | "user");

@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { NextResponse } from "next/server";
 import { gatewayDb, type DbUser } from "@/lib/db";
 import { parseBearerToken } from "@/lib/http";
 
@@ -7,6 +8,8 @@ const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET ?? "dev-access-secret-change
 const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET ?? "dev-refresh-secret-change-me";
 const ACCESS_EXPIRES_SECONDS = Number(process.env.JWT_ACCESS_EXPIRES_SECONDS ?? 900);
 const REFRESH_EXPIRES_SECONDS = Number(process.env.JWT_REFRESH_EXPIRES_SECONDS ?? 604800);
+export const ACCESS_COOKIE_NAME = "vlm-access-token";
+export const REFRESH_COOKIE_NAME = "vlm-refresh-token";
 
 type TokenType = "access" | "refresh";
 
@@ -76,15 +79,39 @@ function findEnabledUserById(id: number) {
     .get(id) as DbUser | undefined;
 }
 
+function parseCookie(cookieHeader: string | null, name: string) {
+  if (!cookieHeader) return null;
+  const pair = cookieHeader
+    .split(";")
+    .map((item) => item.trim())
+    .find((item) => item.startsWith(`${name}=`));
+  if (!pair) return null;
+  return decodeURIComponent(pair.slice(name.length + 1));
+}
+
+export function getAccessTokenFromRequest(request: Request) {
+  const bearerToken = parseBearerToken(request.headers.get("authorization"));
+  if (bearerToken) return bearerToken;
+  return parseCookie(request.headers.get("cookie"), ACCESS_COOKIE_NAME);
+}
+
+export function getRefreshTokenFromRequest(request: Request) {
+  return parseCookie(request.headers.get("cookie"), REFRESH_COOKIE_NAME);
+}
+
+export function getAuthContextFromAccessToken(token: string): AuthContext | null {
+  const payload = verifyAccessToken(token);
+  if (payload.type !== "access") return null;
+  const user = findEnabledUserById(Number(payload.sub));
+  if (!user) return null;
+  return { user: sanitizeUser(user), token };
+}
+
 export function requireWebAuth(request: Request): AuthContext | null {
   try {
-    const token = parseBearerToken(request.headers.get("authorization"));
+    const token = getAccessTokenFromRequest(request);
     if (!token) return null;
-    const payload = verifyAccessToken(token);
-    if (payload.type !== "access") return null;
-    const user = findEnabledUserById(Number(payload.sub));
-    if (!user) return null;
-    return { user: sanitizeUser(user), token };
+    return getAuthContextFromAccessToken(token);
   } catch {
     return null;
   }
@@ -102,4 +129,51 @@ export function issueAuthTokens(user: Pick<DbUser, "id" | "username" | "role">) 
     token_type: "Bearer",
     expires_in_seconds: ACCESS_EXPIRES_SECONDS,
   };
+}
+
+function buildCookieOptions(maxAge: number) {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge,
+  };
+}
+
+export function applyAuthCookies(
+  response: NextResponse,
+  tokens: Pick<ReturnType<typeof issueAuthTokens>, "access_token" | "refresh_token">,
+) {
+  response.cookies.set(ACCESS_COOKIE_NAME, tokens.access_token, buildCookieOptions(ACCESS_EXPIRES_SECONDS));
+  response.cookies.set(REFRESH_COOKIE_NAME, tokens.refresh_token, buildCookieOptions(REFRESH_EXPIRES_SECONDS));
+  return response;
+}
+
+export function clearAuthCookies(response: NextResponse) {
+  response.cookies.set(ACCESS_COOKIE_NAME, "", buildCookieOptions(0));
+  response.cookies.set(REFRESH_COOKIE_NAME, "", buildCookieOptions(0));
+  return response;
+}
+
+export function getServerProfileFromCookieStore(cookieStore: { get: (name: string) => { value: string } | undefined }) {
+  const accessToken = cookieStore.get(ACCESS_COOKIE_NAME)?.value;
+  const refreshToken = cookieStore.get(REFRESH_COOKIE_NAME)?.value;
+
+  try {
+    if (accessToken) {
+      const accessUser = getAuthContextFromAccessToken(accessToken)?.user;
+      if (accessUser) return accessUser;
+    }
+  } catch {}
+
+  try {
+    if (!refreshToken) return null;
+    const payload = verifyRefreshToken(refreshToken);
+    if (payload.type !== "refresh") return null;
+    const user = findEnabledUserById(Number(payload.sub));
+    return user ? sanitizeUser(user) : null;
+  } catch {
+    return null;
+  }
 }

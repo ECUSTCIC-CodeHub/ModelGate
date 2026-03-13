@@ -3,10 +3,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuthProfile } from "@/components/providers/auth-provider";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
@@ -32,10 +33,10 @@ function formatNumber(value: number | null | undefined) {
 
 export default function ConsoleKeysPage() {
     const router = useRouter();
+    const initialProfile = useAuthProfile();
     const [keys, setKeys] = useState<KeyRow[]>([]);
     const [error, setError] = useState("");
-    const [loading, setLoading] = useState(true);
-    const [role, setRole] = useState<"admin" | "user">(() => getCachedProfile()?.role ?? "user");
+    const [role, setRole] = useState<"admin" | "user">(() => initialProfile?.role ?? getCachedProfile()?.role ?? "user");
     const [baseUrlExample, setBaseUrlExample] = useState("HOST/api/v1");
     const { toast } = useToast();
 
@@ -43,7 +44,7 @@ export default function ConsoleKeysPage() {
         const profile = await getOrFetchProfile();
         if (!profile) {
             clearSession();
-            router.push("/login");
+            router.replace("/login");
             return;
         }
         setRole(profile.role);
@@ -61,7 +62,7 @@ export default function ConsoleKeysPage() {
 
     useEffect(() => {
         setBaseUrlExample(`${window.location.origin}/api/v1`);
-        void load().finally(() => setLoading(false));
+        void load();
     }, [router]);
 
     async function copyKey(value: string) {

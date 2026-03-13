@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { gatewayDb, type DbUser } from "@/lib/db";
-import { hashPassword, issueAuthTokens, sanitizeUser } from "@/lib/auth";
+import { applyAuthCookies, hashPassword, issueAuthTokens, sanitizeUser } from "@/lib/auth";
 import { jsonError, jsonOk } from "@/lib/http";
 import { getGatewaySettings } from "@/lib/settings";
 import { USERNAME_SCHEMA } from "@/lib/username";
@@ -57,12 +57,11 @@ export async function POST(request: Request) {
     .prepare("SELECT * FROM users WHERE id = ? AND deleted_at IS NULL")
     .get(result.lastInsertRowid) as DbUser;
 
-  return jsonOk(
-    {
-      message: "注册成功。",
-      user: sanitizeUser(user),
-      ...issueAuthTokens(user),
-    },
-    201,
-  );
+  const payload = {
+    message: "注册成功。",
+    user: sanitizeUser(user),
+    ...issueAuthTokens(user),
+  };
+
+  return applyAuthCookies(jsonOk(payload, 201), payload);
 }

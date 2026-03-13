@@ -73,16 +73,17 @@ export async function authedFetch(input: string, init?: RequestInit) {
   }
   headers.set("content-type", "application/json");
 
-  let response = await fetch(input, { ...init, headers });
+  let response = await fetch(input, { ...init, headers, credentials: "same-origin" });
 
-  if (response.status !== 401 || !session?.refreshToken) {
+  if (response.status !== 401) {
     return response;
   }
 
   const refresh = await fetch("/api/auth/refresh", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ refresh_token: session.refreshToken }),
+    credentials: "same-origin",
+    body: JSON.stringify(session?.refreshToken ? { refresh_token: session.refreshToken } : {}),
   });
 
   if (!refresh.ok) {
@@ -95,8 +96,10 @@ export async function authedFetch(input: string, init?: RequestInit) {
     refresh_token: string;
   };
 
-  setSession({ accessToken: refreshData.access_token, refreshToken: refreshData.refresh_token });
-  headers.set("authorization", `Bearer ${refreshData.access_token}`);
-  response = await fetch(input, { ...init, headers });
+  if (refreshData?.access_token && refreshData?.refresh_token) {
+    setSession({ accessToken: refreshData.access_token, refreshToken: refreshData.refresh_token });
+    headers.set("authorization", `Bearer ${refreshData.access_token}`);
+  }
+  response = await fetch(input, { ...init, headers, credentials: "same-origin" });
   return response;
 }

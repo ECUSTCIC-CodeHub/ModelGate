@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
+import { KeyRound, LayoutGrid, LogOut, PanelLeftClose, Settings2, Shield, Sparkles, UserCog, Waypoints } from "lucide-react";
+import { useAuthProfile } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,28 +32,29 @@ type ProfileBrief = {
 };
 
 const adminMenus = [
-  { href: "/dashboard", label: "首页" },
-  { href: "/dashboard/logs", label: "请求日志" },
-  { href: "/dashboard/channels", label: "渠道管理" },
-  { href: "/dashboard/users", label: "用户管理" },
-  { href: "/dashboard/settings", label: "系统设置" },
-  { href: "/dashboard/keys", label: "我的 Key" },
-  { href: "/dashboard/models", label: "可用模型" },
+  { href: "/dashboard", label: "首页", icon: LayoutGrid },
+  { href: "/dashboard/logs", label: "请求日志", icon: Sparkles },
+  { href: "/dashboard/channels", label: "渠道管理", icon: Waypoints },
+  { href: "/dashboard/users", label: "用户管理", icon: UserCog },
+  { href: "/dashboard/settings", label: "系统设置", icon: Settings2 },
+  { href: "/dashboard/keys", label: "我的 Key", icon: KeyRound },
+  { href: "/dashboard/models", label: "可用模型", icon: Shield },
 ];
 
 const userMenus = [
-  { href: "/dashboard", label: "首页" },
-  { href: "/dashboard/logs", label: "请求日志" },
-  { href: "/dashboard/keys", label: "我的 Key" },
-  { href: "/dashboard/models", label: "可用模型" },
+  { href: "/dashboard", label: "首页", icon: LayoutGrid },
+  { href: "/dashboard/logs", label: "请求日志", icon: Sparkles },
+  { href: "/dashboard/keys", label: "我的 Key", icon: KeyRound },
+  { href: "/dashboard/models", label: "可用模型", icon: Shield },
 ];
 
-export function DashboardShell({ role, right, children }: DashboardShellProps) {
+export function DashboardShell({ role, title, subtitle, right, children }: DashboardShellProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const initialProfile = useAuthProfile();
   const menus = role === "admin" ? adminMenus : userMenus;
   const { toast } = useToast();
-  const [profileBrief, setProfileBrief] = useState<ProfileBrief | null>(() => getCachedProfile());
+  const [profileBrief, setProfileBrief] = useState<ProfileBrief | null>(() => initialProfile ?? getCachedProfile());
   const [passwordDrawerOpen, setPasswordDrawerOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -64,8 +67,10 @@ export function DashboardShell({ role, right, children }: DashboardShellProps) {
   }, [profileBrief]);
 
   function onLogout() {
-    clearSession();
-    router.push("/login");
+    void fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" }).finally(() => {
+      clearSession();
+      router.replace("/login");
+    });
   }
 
   function formatLimit(value: number | null | undefined) {
@@ -94,84 +99,115 @@ export function DashboardShell({ role, right, children }: DashboardShellProps) {
   }
 
   return (
-    <main className="h-screen overflow-hidden bg-black text-zinc-100">
+    <main className="relative h-screen overflow-hidden text-zinc-100">
       <div className="flex h-full w-full gap-4 px-4 py-4 xl:px-6">
-        <aside className="sticky top-4 hidden h-[calc(100vh-2rem)] w-60 shrink-0 rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4 shadow-sm md:flex md:flex-col">
+        <aside className="glass-panel sticky top-4 hidden h-[calc(100vh-2rem)] w-72 shrink-0 overflow-hidden rounded-[28px] p-4 md:flex md:flex-col">
+          <div className="mb-5 rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#a6f1de_0%,#7ee0d2_100%)] text-slate-950 shadow-lg shadow-emerald-400/20">
+                <PanelLeftClose className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-zinc-100">控制台</p>
+                <p className="mt-1 text-xs text-zinc-400">模型网关管理</p>
+              </div>
+            </div>
+          </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <nav className="space-y-1">
+            <nav className="space-y-2">
               {menus.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "block rounded-md border border-transparent px-3 py-2 text-sm transition-colors",
+                    "flex items-center gap-3 rounded-2xl border px-3 py-3 text-sm transition-colors",
                     pathname === item.href
-                      ? "bg-zinc-100 text-zinc-900"
-                      : "text-zinc-300 hover:bg-zinc-900",
+                      ? "border-[rgba(159,232,216,0.2)] bg-[rgba(159,232,216,0.08)] text-white shadow-[0_10px_24px_rgba(126,224,210,0.08)]"
+                      : "border-transparent text-zinc-300 hover:border-white/8 hover:bg-white/[0.04] hover:text-white",
                   )}
                 >
+                  <item.icon className="h-4 w-4 shrink-0" />
                   {item.label}
                 </Link>
               ))}
             </nav>
           </div>
           {profileBrief ? (
-            <div className="mb-2 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-3 text-xs text-zinc-300">
-              <p className="truncate text-sm font-medium text-zinc-100">{profileBrief.username}</p>
-              <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
-                <span className="text-zinc-500">RPM</span>
-                <span className="text-right font-medium text-zinc-200">{formatLimit(profileBrief.rpm)}</span>
-                <span className="text-zinc-500">QPS</span>
-                <span className="text-right font-medium text-zinc-200">{formatLimit(profileBrief.qps)}</span>
-                <span className="text-zinc-500">TPM</span>
-                <span className="text-right font-medium text-zinc-200">{formatLimit(profileBrief.tpm)}</span>
+            <div className="mb-3 rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-4 text-xs text-zinc-300">
+              <p className="truncate text-base font-medium text-zinc-100">{profileBrief.username}</p>
+              <p className="mt-1 text-[11px] tracking-[0.2em] text-zinc-500 uppercase">{role === "admin" ? "Administrator" : "Workspace User"}</p>
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                <div className="rounded-xl bg-black/30 p-2.5">
+                  <span className="text-[10px] tracking-[0.18em] text-zinc-500 uppercase">RPM</span>
+                  <p className="mt-1 text-right text-sm font-semibold text-zinc-100">{formatLimit(profileBrief.rpm)}</p>
+                </div>
+                <div className="rounded-xl bg-black/30 p-2.5">
+                  <span className="text-[10px] tracking-[0.18em] text-zinc-500 uppercase">QPS</span>
+                  <p className="mt-1 text-right text-sm font-semibold text-zinc-100">{formatLimit(profileBrief.qps)}</p>
+                </div>
+                <div className="rounded-xl bg-black/30 p-2.5">
+                  <span className="text-[10px] tracking-[0.18em] text-zinc-500 uppercase">TPM</span>
+                  <p className="mt-1 text-right text-sm font-semibold text-zinc-100">{formatLimit(profileBrief.tpm)}</p>
+                </div>
               </div>
             </div>
           ) : null}
           <Button
             variant="outline"
-            className="mb-2 w-full border-zinc-700 bg-zinc-900 text-zinc-100 hover:bg-zinc-800"
+            className="mb-2 w-full justify-center"
             onClick={() => setPasswordDrawerOpen(true)}
           >
             修改密码
           </Button>
-          <Button variant="secondary" className="mt-4 w-full bg-zinc-800 text-zinc-100 hover:bg-zinc-700" onClick={onLogout}>
+          <Button variant="secondary" className="mt-2 w-full justify-center" onClick={onLogout}>
+            <LogOut className="h-4 w-4" />
             退出登录
           </Button>
         </aside>
 
         <section className="min-w-0 flex-1 overflow-hidden">
           <div className="flex h-full min-h-0 flex-col">
-          <header className={cn(
-            "mb-4 shrink-0 rounded-2xl border border-zinc-800 bg-zinc-950/80 p-5 shadow-sm",
-            !right ? "md:hidden" : "",
-          )}>
-            {right ? (
-              <div className="flex items-start justify-end gap-3">
-                <div className="flex items-center gap-2">{right}</div>
+            <header
+              className={cn(
+                "glass-panel mb-4 shrink-0 rounded-[28px] p-5",
+                !right ? "md:hidden" : "",
+              )}
+            >
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="max-w-3xl">
+                  <p className="text-xs font-semibold tracking-[0.26em] text-[var(--accent)] uppercase">Control Center</p>
+                  <h1 className="surface-title mt-3 text-3xl font-semibold tracking-[-0.04em] text-white">{title}</h1>
+                  {subtitle ? <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--muted)]">{subtitle}</p> : null}
+                </div>
+                {right ? (
+                  <div className="flex items-center gap-2">{right}</div>
+                ) : null}
               </div>
-            ) : null}
-            <div className="mt-4 flex flex-wrap gap-2 md:hidden">
-              {menus.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "rounded-md border px-3 py-1 text-sm transition-colors",
-                    pathname === item.href
-                      ? "border-zinc-200 bg-zinc-100 text-zinc-900"
-                      : "border-zinc-700 bg-zinc-900 text-zinc-300",
-                  )}
-                >
-                  {item.label}
-                </Link>
-              ))}
-              <Button variant="secondary" size="sm" className="bg-zinc-800 text-zinc-100 hover:bg-zinc-700" onClick={onLogout}>退出登录</Button>
+              <div className="mt-5 flex flex-wrap gap-2 md:hidden">
+                {menus.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      "inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition-colors",
+                      pathname === item.href
+                        ? "border-[rgba(159,232,216,0.2)] bg-[rgba(159,232,216,0.08)] text-white"
+                        : "border-white/8 bg-white/[0.04] text-zinc-300",
+                    )}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {item.label}
+                  </Link>
+                ))}
+                <Button variant="secondary" size="sm" onClick={onLogout}>
+                  <LogOut className="h-4 w-4" />
+                  退出登录
+                </Button>
+              </div>
+            </header>
+            <div className="min-h-0 flex-1 overflow-hidden pr-1">
+              {children}
             </div>
-          </header>
-          <div className="min-h-0 flex-1 overflow-hidden pr-1">
-            {children}
-          </div>
           </div>
         </section>
       </div>

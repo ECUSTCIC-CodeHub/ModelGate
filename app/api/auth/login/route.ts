@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { comparePassword, issueAuthTokens, sanitizeUser } from "@/lib/auth";
+import { applyAuthCookies, comparePassword, issueAuthTokens, sanitizeUser } from "@/lib/auth";
 import { gatewayDb, type DbUser } from "@/lib/db";
 import { jsonError, jsonOk } from "@/lib/http";
 
@@ -24,9 +24,11 @@ export async function POST(request: Request) {
   const ok = await comparePassword(parsed.data.password, user.password_hash);
   if (!ok) return jsonError("用户名或密码错误", 401);
 
-  return jsonOk({
+  const payload = {
     message: "登录成功。",
     user: sanitizeUser(user),
     ...issueAuthTokens(user),
-  });
+  };
+
+  return applyAuthCookies(jsonOk(payload), payload);
 }

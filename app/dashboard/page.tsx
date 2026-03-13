@@ -3,13 +3,15 @@
 import { type ColumnDef } from "@tanstack/react-table";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Activity, BadgeCheck, KeyRound, Rocket, ShieldCheck, Sparkles, Waypoints } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useAuthProfile } from "@/components/providers/auth-provider";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
-import { authedFetch, clearSession, getCachedProfile, getOrFetchProfile, getSession } from "@/lib/client-auth";
+import { authedFetch, clearSession, getCachedProfile, getOrFetchProfile } from "@/lib/client-auth";
 import { formatNumber, formatTokenCount } from "@/lib/utils";
 
 type Role = "admin" | "user";
@@ -45,22 +47,23 @@ function formatDuration(ms: number | null | undefined) {
 
 export default function DashboardHomePage() {
   const router = useRouter();
+  const initialProfile = useAuthProfile();
+  const [chartReady, setChartReady] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [role, setRole] = useState<Role>(() => (getCachedProfile()?.role as Role | undefined) ?? "user");
+  const [role, setRole] = useState<Role>(() => (initialProfile?.role as Role | undefined) ?? (getCachedProfile()?.role as Role | undefined) ?? "user");
   const [summary, setSummary] = useState<Summary | null>(null);
 
   useEffect(() => {
-    const session = getSession();
-    if (!session) {
-      router.push("/login");
-      return;
-    }
+    const frame = window.requestAnimationFrame(() => setChartReady(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
+  useEffect(() => {
     void Promise.all([getOrFetchProfile(), authedFetch("/api/dashboard/summary")])
       .then(async ([profile, summaryResp]) => {
         if (!profile) {
           clearSession();
-          router.push("/login");
+          router.replace("/login");
           return;
         }
         setRole(profile.role as Role);
@@ -132,22 +135,42 @@ export default function DashboardHomePage() {
   );
 
   const isAdmin = role === "admin";
+  const statCards = [
+    { label: "总请求数", value: loading ? "-" : formatNumber(summary?.total_requests), icon: Activity },
+    { label: "失败请求数", value: loading ? "-" : formatNumber(summary?.failed_requests), icon: Activity },
+    { label: "总 Token", value: loading ? "-" : formatTokenCount(summary?.total_tokens), icon: Sparkles, title: formatNumber(summary?.total_tokens) },
+    { label: "密钥数", value: loading ? "-" : formatNumber(summary?.total_keys), icon: KeyRound },
+    { label: isAdmin ? "活跃用户" : "我的角色", value: loading ? "-" : (isAdmin ? formatNumber(summary?.active_users) : "普通用户"), icon: ShieldCheck },
+    { label: "成功率", value: loading ? "-" : `${(summary?.success_rate ?? 0).toFixed(2)}%`, icon: BadgeCheck },
+    { label: "平均用时", value: loading ? "-" : formatDuration(summary?.avg_latency_ms), icon: Rocket },
+    { label: "平均输出速度", value: loading ? "-" : `${(summary?.avg_output_tps ?? 0).toFixed(2)} token/s`, icon: Sparkles },
+  ];
 
   return (
     <DashboardShell role={role} title="欢迎" subtitle="控制台总览与快捷入口">
       <div className="h-full min-h-0 space-y-4 overflow-y-auto pb-4 pr-1">
-        <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-5">
-          <Card><CardHeader><CardDescription>总请求数</CardDescription><CardTitle>{loading ? "-" : formatNumber(summary?.total_requests)}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>失败请求数</CardDescription><CardTitle>{loading ? "-" : formatNumber(summary?.failed_requests)}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>总 Token</CardDescription><CardTitle title={formatNumber(summary?.total_tokens)}>{loading ? "-" : formatTokenCount(summary?.total_tokens)}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>密钥数</CardDescription><CardTitle>{loading ? "-" : formatNumber(summary?.total_keys)}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>{isAdmin ? "活跃用户" : "我的角色"}</CardDescription><CardTitle>{loading ? "-" : (isAdmin ? formatNumber(summary?.active_users) : "普通用户")}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>成功率</CardDescription><CardTitle>{loading ? "-" : `${(summary?.success_rate ?? 0).toFixed(2)}%`}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>平均用时</CardDescription><CardTitle>{loading ? "-" : formatDuration(summary?.avg_latency_ms)}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>平均输出速度</CardDescription><CardTitle>{loading ? "-" : `${(summary?.avg_output_tps ?? 0).toFixed(2)} token/s`}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>估算峰值并发（24h）</CardDescription><CardTitle>{loading ? "-" : formatNumber(summary?.estimated_peak_concurrency)}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>估算平均并发（24h）</CardDescription><CardTitle>{loading ? "-" : (summary?.estimated_avg_concurrency ?? 0).toFixed(2)}</CardTitle></CardHeader></Card>
-        </div>
+        <section className="glass-panel overflow-hidden rounded-[30px] p-6 sm:p-7">
+          <div>
+            <h2 className="surface-title text-3xl font-semibold tracking-[-0.04em] text-white sm:text-4xl">运行概览</h2>
+            <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {statCards.map((item) => (
+                <div key={item.label} className="rounded-[22px] border border-white/8 bg-black/25 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm text-zinc-300">{item.label}</p>
+                      <p className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-white" title={item.title}>
+                        {item.value}
+                      </p>
+                    </div>
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(159,232,216,0.08)] text-[var(--accent)]">
+                      <item.icon className="h-5 w-5" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
 
         <div className="grid gap-4 xl:grid-cols-3">
           <Card className="xl:col-span-2">
@@ -156,43 +179,53 @@ export default function DashboardHomePage() {
               <CardDescription>按小时聚合</CardDescription>
             </CardHeader>
             <CardContent className="h-80">
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={280}>
-                <BarChart data={summary?.hourly_tokens ?? []}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-                  <XAxis
-                    dataKey="hour"
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fill: "#a1a1aa", fontSize: 12 }}
-                    tickFormatter={(value: string) => value.slice(11, 16)}
-                  />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fill: "#a1a1aa", fontSize: 12 }}
-                    tickFormatter={(value: number) => formatTokenCount(value)}
-                  />
-                  <Tooltip
-                    contentStyle={{ background: "#0a0a0a", border: "1px solid #27272a", borderRadius: 8 }}
-                    labelFormatter={(label) => String(label).replace("T", " ")}
-                    formatter={(value: number | string | undefined) => [formatTokenCount(typeof value === "number" ? value : Number(value)), "Token"]}
-                  />
-                  <Bar dataKey="tokens" fill="#d4d4d8" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              {chartReady ? (
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={280}>
+                  <BarChart data={summary?.hourly_tokens ?? []}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                    <XAxis
+                      dataKey="hour"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fill: "#94a3b8", fontSize: 12 }}
+                      tickFormatter={(value: string) => value.slice(11, 16)}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fill: "#94a3b8", fontSize: 12 }}
+                      tickFormatter={(value: number) => formatTokenCount(value)}
+                    />
+                    <Tooltip
+                      contentStyle={{ background: "rgba(8, 15, 29, 0.94)", border: "1px solid rgba(159, 232, 216, 0.16)", borderRadius: 16 }}
+                      labelFormatter={(label) => String(label).replace("T", " ")}
+                      formatter={(value: number | string | undefined) => [formatTokenCount(typeof value === "number" ? value : Number(value)), "Token"]}
+                    />
+                    <Bar dataKey="tokens" fill="url(#tokensGradient)" radius={[8, 8, 0, 0]} />
+                    <defs>
+                      <linearGradient id="tokensGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#9fe8d8" />
+                        <stop offset="100%" stopColor="#5b8dff" />
+                      </linearGradient>
+                    </defs>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full rounded-2xl border border-white/8 bg-black/10" />
+              )}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
               <CardTitle>快捷操作</CardTitle>
-              <CardDescription>常用功能一键进入</CardDescription>
+              <CardDescription>围绕最常用的日常操作重新整理</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-2">
-              <Button onClick={() => router.push("/dashboard/keys")}>新建/管理 Key</Button>
-              <Button variant="outline" onClick={() => router.push("/dashboard/logs")}>查看日志</Button>
-              <Button variant="outline" onClick={() => router.push("/dashboard/profile")}>个人资料</Button>
-              {isAdmin ? <Button variant="outline" onClick={() => router.push("/dashboard/channels")}>渠道管理</Button> : null}
+              <Button onClick={() => router.push("/dashboard/keys")}><KeyRound className="h-4 w-4" />新建/管理 Key</Button>
+              <Button variant="outline" onClick={() => router.push("/dashboard/logs")}><Sparkles className="h-4 w-4" />查看日志</Button>
+              <Button variant="outline" onClick={() => router.push("/dashboard/models")}><ShieldCheck className="h-4 w-4" />查看可用模型</Button>
+              {isAdmin ? <Button variant="outline" onClick={() => router.push("/dashboard/channels")}><Waypoints className="h-4 w-4" />渠道管理</Button> : null}
               {isAdmin ? <Button variant="outline" onClick={() => router.push("/dashboard/users")}>用户管理</Button> : null}
               {isAdmin ? <Button variant="outline" onClick={() => router.push("/dashboard/settings")}>系统设置</Button> : null}
             </CardContent>
@@ -206,7 +239,9 @@ export default function DashboardHomePage() {
               <CardDescription>按 Token 消耗排序</CardDescription>
             </CardHeader>
             <CardContent>
-              <DataTable columns={topModelColumns} data={summary?.top_models ?? []} emptyText="暂无模型数据" />
+              <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/10">
+                <DataTable columns={topModelColumns} data={summary?.top_models ?? []} emptyText="暂无模型数据" />
+              </div>
             </CardContent>
           </Card>
 
@@ -216,7 +251,9 @@ export default function DashboardHomePage() {
               <CardDescription>按 Token 消耗排序</CardDescription>
             </CardHeader>
             <CardContent>
-              <DataTable columns={topChannelColumns} data={summary?.top_channels ?? []} emptyText="暂无渠道数据" />
+              <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/10">
+                <DataTable columns={topChannelColumns} data={summary?.top_channels ?? []} emptyText="暂无渠道数据" />
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -227,7 +264,7 @@ export default function DashboardHomePage() {
             <CardDescription>最新 8 条请求记录</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="w-full overflow-x-auto rounded-md border border-zinc-800">
+            <div className="w-full overflow-x-auto rounded-2xl border border-white/10 bg-black/10">
               <DataTable
                 columns={recentLogColumns}
                 data={summary?.recent_logs ?? []}

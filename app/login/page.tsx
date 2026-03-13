@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
@@ -39,12 +39,11 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-black px-4 text-zinc-100">
+    <main className="flex min-h-screen items-center justify-center px-4 py-10">
       <div className="w-full max-w-md">
-        <Card>
-          <CardHeader className="text-center">
-            <CardTitle>登录</CardTitle>
-            <CardDescription>使用用户名和密码登录</CardDescription>
+        <Card className="rounded-[28px]">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-2xl">登录</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={onSubmit} className="space-y-4">
@@ -54,6 +53,7 @@ export default function LoginPage() {
                   id="username"
                   pattern="[A-Za-z0-9]+"
                   title="仅支持英文字母和数字"
+                  placeholder="输入用户名"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                 />
@@ -63,14 +63,15 @@ export default function LoginPage() {
                 <Input
                   id="password"
                   type="password"
+                  placeholder="输入密码"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
               <Button type="submit" className="w-full">登录</Button>
             </form>
-            <p className="mt-4 text-center text-sm text-zinc-400">
-              还没有账号？ <Link href="/register" className="underline underline-offset-4">注册</Link>
+            <p className="mt-5 text-center text-sm text-zinc-400">
+              还没有账号？ <Link href="/register" className="text-[var(--accent)] hover:text-white">注册</Link>
             </p>
           </CardContent>
         </Card>

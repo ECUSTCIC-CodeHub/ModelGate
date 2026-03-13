@@ -4,6 +4,7 @@
 import { type ColumnDef } from "@tanstack/react-table";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuthProfile } from "@/components/providers/auth-provider";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -66,10 +67,11 @@ function formatDuration(ms: number | null | undefined) {
 
 export default function AdminLogsPage() {
   const router = useRouter();
+  const initialProfile = useAuthProfile();
   const [rows, setRows] = useState<LogRow[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [role, setRole] = useState<"admin" | "user">(() => getCachedProfile()?.role ?? "admin");
+  const [role, setRole] = useState<"admin" | "user">(() => initialProfile?.role ?? getCachedProfile()?.role ?? "user");
   const [page, setPage] = useState(1);
   const pageSize = 20;
   const [total, setTotal] = useState(0);
@@ -81,7 +83,7 @@ export default function AdminLogsPage() {
     const profile = await getOrFetchProfile();
     if (!profile) {
       clearSession();
-      router.push("/login");
+      router.replace("/login");
       return;
     }
     const nextRole = profile.role as "admin" | "user";
@@ -92,9 +94,9 @@ export default function AdminLogsPage() {
       limit: String(pageSize),
       offset: String(offset),
     });
-    if (role === "admin" && filterUser.trim()) params.set("user", filterUser.trim());
+    if (nextRole === "admin" && filterUser.trim()) params.set("user", filterUser.trim());
     if (filterModel.trim()) params.set("model", filterModel.trim());
-    if (role === "admin" && filterChannel.trim()) params.set("channel", filterChannel.trim());
+    if (nextRole === "admin" && filterChannel.trim()) params.set("channel", filterChannel.trim());
 
     const response = await authedFetch(`/api/dashboard/logs?${params.toString()}`);
     if (!response.ok) return;
@@ -107,7 +109,7 @@ export default function AdminLogsPage() {
 
   useEffect(() => {
     void load(1).finally(() => setLoading(false));
-  }, [router]);
+  }, []);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const pageWindow = (() => {
