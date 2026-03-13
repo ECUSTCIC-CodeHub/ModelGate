@@ -1,8 +1,28 @@
 import { gatewayDb, type DbChannel, type DbModel } from "@/lib/db";
+import { scoreChannel } from "@/lib/channel-runtime";
 
 export type RoutedModel = {
   model: DbModel;
   channel: DbChannel;
+};
+
+type CandidateRow = {
+  model_id: number;
+  alias: string;
+  real_model: string;
+  channel_id: number;
+  model_enabled: number;
+  model_weight: number;
+  model_created_at: string;
+  model_deleted_at: string | null;
+  channel_id_2: number;
+  name: string;
+  base_url: string;
+  api_key: string;
+  channel_enabled: number;
+  channel_weight: number;
+  timeout: number;
+  channel_created_at: string;
 };
 
 export function listEnabledAliases() {
@@ -17,7 +37,32 @@ export function listEnabledAliases() {
     .all() as { alias: string }[];
 }
 
-export function selectModelRoute(alias: string, options?: { excludeChannelIds?: number[] }): RoutedModel | null {
+function mapRowToRoute(row: CandidateRow): RoutedModel {
+  return {
+    model: {
+      id: row.model_id,
+      alias: row.alias,
+      real_model: row.real_model,
+      channel_id: row.channel_id,
+      enabled: row.model_enabled,
+      weight: row.model_weight,
+      created_at: row.model_created_at,
+      deleted_at: row.model_deleted_at,
+    },
+    channel: {
+      id: row.channel_id_2,
+      name: row.name,
+      base_url: row.base_url,
+      api_key: row.api_key,
+      enabled: row.channel_enabled,
+      weight: row.channel_weight,
+      timeout: row.timeout,
+      created_at: row.channel_created_at,
+    },
+  };
+}
+
+export function listModelRoutes(alias: string, options?: { excludeChannelIds?: number[] }): RoutedModel[] {
   const exclude = new Set(options?.excludeChannelIds ?? []);
   const query = gatewayDb.prepare(
     `SELECT
@@ -42,88 +87,24 @@ export function selectModelRoute(alias: string, options?: { excludeChannelIds?: 
      WHERE m.alias = ? AND m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL`,
   );
 
-  const findRows = (targetAlias: string) => query.all(targetAlias) as Array<{
-    model_id: number;
-    alias: string;
-    real_model: string;
-    channel_id: number;
-    model_enabled: number;
-    model_weight: number;
-    model_created_at: string;
-    model_deleted_at: string | null;
-    channel_id_2: number;
-    name: string;
-    base_url: string;
-    api_key: string;
-    channel_enabled: number;
-    channel_weight: number;
-    timeout: number;
-    channel_created_at: string;
-  }>;
+  const findRows = (targetAlias: string) => query.all(targetAlias) as CandidateRow[];
 
   const exactRows = findRows(alias).filter((row) => !exclude.has(row.channel_id_2));
   const candidateRows = exactRows.length > 0
     ? exactRows
     : findRows("*").filter((row) => !exclude.has(row.channel_id_2));
 
-  if (candidateRows.length === 0) return null;
+  return candidateRows
+    .map((row) => ({
+      route: mapRowToRoute(row),
+      score: scoreChannel(row.channel_id_2, Math.max(1, row.model_weight) * Math.max(1, row.channel_weight)),
+      jitter: Math.random() * 0.001,
+    }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => (b.score + b.jitter) - (a.score + a.jitter))
+    .map((item) => item.route);
+}
 
-  const weighted = candidateRows.map((r) => ({
-    row: r,
-    weight: Math.max(1, r.model_weight) * Math.max(1, r.channel_weight),
-  }));
-
-  const totalWeight = weighted.reduce((sum, item) => sum + item.weight, 0);
-  let random = Math.random() * totalWeight;
-
-  for (const item of weighted) {
-    random -= item.weight;
-    if (random <= 0) {
-      return {
-        model: {
-          id: item.row.model_id,
-          alias: item.row.alias,
-          real_model: item.row.real_model,
-          channel_id: item.row.channel_id,
-          enabled: item.row.model_enabled,
-          weight: item.row.model_weight,
-          created_at: item.row.model_created_at,
-          deleted_at: item.row.model_deleted_at,
-        },
-        channel: {
-          id: item.row.channel_id_2,
-          name: item.row.name,
-          base_url: item.row.base_url,
-          api_key: item.row.api_key,
-          enabled: item.row.channel_enabled,
-          weight: item.row.channel_weight,
-          timeout: item.row.timeout,
-          created_at: item.row.channel_created_at,
-        },
-      };
-    }
-  }
-
-  return {
-    model: {
-      id: weighted[0].row.model_id,
-      alias: weighted[0].row.alias,
-      real_model: weighted[0].row.real_model,
-      channel_id: weighted[0].row.channel_id,
-      enabled: weighted[0].row.model_enabled,
-      weight: weighted[0].row.model_weight,
-      created_at: weighted[0].row.model_created_at,
-      deleted_at: weighted[0].row.model_deleted_at,
-    },
-    channel: {
-      id: weighted[0].row.channel_id_2,
-      name: weighted[0].row.name,
-      base_url: weighted[0].row.base_url,
-      api_key: weighted[0].row.api_key,
-      enabled: weighted[0].row.channel_enabled,
-      weight: weighted[0].row.channel_weight,
-      timeout: weighted[0].row.timeout,
-      created_at: weighted[0].row.channel_created_at,
-    },
-  };
+export function selectModelRoute(alias: string, options?: { excludeChannelIds?: number[] }): RoutedModel | null {
+  return listModelRoutes(alias, options)[0] ?? null;
 }

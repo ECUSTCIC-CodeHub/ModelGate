@@ -1,12 +1,13 @@
 export const dynamic = "force-dynamic";
 
 import { checkApiKeyAuth } from "@/lib/api-key-auth";
+import { tryAcquireChannel, type ChannelLease } from "@/lib/channel-runtime";
 import { insertChatLog } from "@/lib/chat-log";
 import { gatewayDb } from "@/lib/db";
 import { jsonError } from "@/lib/http";
 import { fetchUpstreamChat } from "@/lib/proxy";
 import { checkUserRateLimit } from "@/lib/ratelimit";
-import { selectModelRoute, type RoutedModel } from "@/lib/router";
+import { listModelRoutes, selectModelRoute, type RoutedModel } from "@/lib/router";
 import { getGatewaySettings } from "@/lib/settings";
 import { estimateRequestTokens } from "@/lib/token-estimate";
 import { countTextTokens } from "@/lib/tokenizer";
@@ -249,6 +250,7 @@ export async function POST(request: Request) {
         ok: true;
         route: RoutedModel;
         upstream: Response;
+        lease: ChannelLease;
         attemptedChannels: number[];
         attemptedChannelNames: string[];
       }
@@ -262,10 +264,22 @@ export async function POST(request: Request) {
     const attemptedChannels: number[] = [];
     const attemptedChannelNames: string[] = [];
     let lastNetworkRoute: RoutedModel | null = null;
+    let upstreamAttempts = 0;
+    const skippedChannelIds = new Set<number>();
 
-    for (let attempt = 1; attempt <= maxRouteAttempts; attempt += 1) {
-      const route = selectModelRoute(alias, { excludeChannelIds: attemptedChannels });
+    while (upstreamAttempts < maxRouteAttempts) {
+      const routes = listModelRoutes(alias, { excludeChannelIds: [...attemptedChannels, ...skippedChannelIds] });
+      const route = routes[0];
       if (!route) break;
+
+      const acquired = tryAcquireChannel(route.channel.id);
+      if (!acquired.ok) {
+        skippedChannelIds.add(route.channel.id);
+        attemptedChannelNames.push(`${route.channel.name}[${acquired.reason === "circuit_open" ? "open" : "busy"}]`);
+        continue;
+      }
+
+      upstreamAttempts += 1;
       attemptedChannels.push(route.channel.id);
       attemptedChannelNames.push(route.channel.name);
 
@@ -273,27 +287,33 @@ export async function POST(request: Request) {
         ...baseOutgoingBody,
         model: route.model.real_model,
       };
+      const attemptStartedAt = Date.now();
 
       try {
         const upstream = await fetchUpstreamChat(route, outgoingBody);
+        const latencyMs = Date.now() - attemptStartedAt;
+
         if (
           retryEnabled &&
           shouldRetryUpstreamStatus(upstream.status) &&
-          attempt < maxRouteAttempts
+          upstreamAttempts < maxRouteAttempts
         ) {
           await upstream.text().catch(() => "");
+          acquired.lease.complete({ ok: false, latencyMs });
           continue;
         }
         return {
           ok: true,
           route,
           upstream,
+          lease: acquired.lease,
           attemptedChannels: [...attemptedChannels],
           attemptedChannelNames: [...attemptedChannelNames],
         };
       } catch {
         lastNetworkRoute = route;
-        if (retryEnabled && attempt < maxRouteAttempts) {
+        acquired.lease.complete({ ok: false, latencyMs: Date.now() - attemptStartedAt });
+        if (retryEnabled && upstreamAttempts < maxRouteAttempts) {
           continue;
         }
         break;
@@ -337,12 +357,13 @@ export async function POST(request: Request) {
     });
   }
 
-  const { route, upstream, attemptedChannels, attemptedChannelNames } = picked;
+  const { route, upstream, lease, attemptedChannels, attemptedChannelNames } = picked;
 
   if (stream) {
     const localPromptTokens = countPromptTokensFromBody(body, route.model.real_model);
     if (upstream.status >= 400) {
       const text = await upstream.text().catch(() => "");
+      lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
       addUsage(auth.user.id, auth.key.id, Math.max(1, localPromptTokens), 1);
       insertChatLog({
         user_id: auth.user.id,
@@ -381,6 +402,7 @@ export async function POST(request: Request) {
           ? Number(((completionTokens * 1000) / Math.max(1, Date.now() - startedAt)).toFixed(2))
           : null;
 
+      lease.complete({ ok: upstream.status < 400, latencyMs: Date.now() - startedAt });
       addUsage(auth.user.id, auth.key.id, Math.max(1, totalTokens), 1);
       insertChatLog({
         user_id: auth.user.id,
@@ -422,6 +444,7 @@ export async function POST(request: Request) {
       finalized = true;
       const totalLatencyMs = Date.now() - startedAt;
       const success = upstream.status < 400;
+      lease.complete({ ok: success, latencyMs: totalLatencyMs });
       const actualCompletionTokens = success ? Math.max(0, countTextTokens(completionText, route.model.real_model)) : 0;
       const actualTotalTokens = localPromptTokens + actualCompletionTokens;
       const outputTps =
@@ -524,6 +547,7 @@ export async function POST(request: Request) {
       ? Number(((localCompletionTokens * 1000) / Math.max(1, Date.now() - startedAt)).toFixed(2))
       : null;
 
+  lease.complete({ ok: upstream.status < 400, latencyMs: Date.now() - startedAt });
   addUsage(auth.user.id, auth.key.id, Math.max(1, localTotalTokens), 1);
   insertChatLog({
     user_id: auth.user.id,
