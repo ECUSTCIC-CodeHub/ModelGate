@@ -132,8 +132,8 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
 
   return (
     <main className="min-h-screen bg-transparent text-zinc-100">
-      <div className="mx-auto flex min-h-screen max-w-[1600px] gap-6 px-4 py-4 lg:px-6">
-        <aside className="hidden w-72 shrink-0 lg:block">
+      <div className="flex min-h-screen gap-4 px-3 py-4 lg:gap-6 lg:px-6">
+        <aside className="hidden w-60 shrink-0 lg:block">
           <div className="sticky top-4 flex h-[calc(100vh-2rem)] flex-col rounded-xl border border-white/10 bg-[rgba(15,23,42,0.82)] p-4 shadow-xl backdrop-blur">
             <div className="space-y-4">
               <div className="px-1 py-2">
