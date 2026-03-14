@@ -169,18 +169,18 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                   <p className="truncate text-sm font-semibold text-zinc-100">{profileBrief.username}</p>
                   <p className="mt-1 text-xs text-zinc-400">{role === "admin" ? "管理员" : "普通用户"}</p>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="rounded-lg border border-white/10 bg-slate-950/50 p-2">
+                <div className="flex flex-wrap gap-2">
+                  <div className="min-w-[68px] flex-1 rounded-lg border border-white/10 bg-slate-950/50 p-2">
                     <p className="text-[11px] text-zinc-500">RPM</p>
-                    <p className="mt-1 text-sm font-medium text-zinc-100">{formatLimit(profileBrief.rpm)}</p>
+                    <p className="mt-1 truncate text-sm font-medium tabular-nums text-zinc-100">{formatLimit(profileBrief.rpm)}</p>
                   </div>
-                  <div className="rounded-lg border border-white/10 bg-slate-950/50 p-2">
+                  <div className="min-w-[68px] flex-1 rounded-lg border border-white/10 bg-slate-950/50 p-2">
                     <p className="text-[11px] text-zinc-500">QPS</p>
-                    <p className="mt-1 text-sm font-medium text-zinc-100">{formatLimit(profileBrief.qps)}</p>
+                    <p className="mt-1 truncate text-sm font-medium tabular-nums text-zinc-100">{formatLimit(profileBrief.qps)}</p>
                   </div>
-                  <div className="rounded-lg border border-white/10 bg-slate-950/50 p-2">
+                  <div className="min-w-[68px] flex-1 rounded-lg border border-white/10 bg-slate-950/50 p-2">
                     <p className="text-[11px] text-zinc-500">TPM</p>
-                    <p className="mt-1 text-sm font-medium text-zinc-100">{formatLimit(profileBrief.tpm)}</p>
+                    <p className="mt-1 truncate text-sm font-medium tabular-nums text-zinc-100">{formatLimit(profileBrief.tpm)}</p>
                   </div>
                 </div>
                 <div className="grid gap-2">

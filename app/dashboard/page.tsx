@@ -7,6 +7,7 @@ import {
   Activity,
   BadgeCheck,
   Clock3,
+  Cog,
   KeyRound,
   Rocket,
   ShieldCheck,
@@ -238,7 +239,7 @@ export default function DashboardHomePage() {
             <CardContent className="h-56 lg:h-72">
               {chartReady ? (
                 <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                  <BarChart data={summary?.hourly_tokens ?? []} margin={{ top: 8, right: 8, left: -24, bottom: 0 }}>
+                  <BarChart data={summary?.hourly_tokens ?? []} margin={{ top: 8, right: 12, left: 8, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
                     <XAxis
                       dataKey="hour"
@@ -251,7 +252,7 @@ export default function DashboardHomePage() {
                     <YAxis
                       tickLine={false}
                       axisLine={false}
-                      width={40}
+                      width={56}
                       tick={{ fill: "#94a3b8", fontSize: 11 }}
                       tickFormatter={(value: number) => formatTokenCount(value)}
                     />
@@ -295,8 +296,18 @@ export default function DashboardHomePage() {
                   管理接口与模型
                 </Button>
               ) : null}
-              {isAdmin ? <Button variant="outline" onClick={() => router.push("/dashboard/users")}>用户管理</Button> : null}
-              {isAdmin ? <Button variant="outline" onClick={() => router.push("/dashboard/settings")}>系统设置</Button> : null}
+              {isAdmin ? (
+                <Button variant="outline" onClick={() => router.push("/dashboard/users")}>
+                  <Users className="h-4 w-4" />
+                  用户管理
+                </Button>
+              ) : null}
+              {isAdmin ? (
+                <Button variant="outline" onClick={() => router.push("/dashboard/settings")}>
+                  <Cog className="h-4 w-4" />
+                  系统设置
+                </Button>
+              ) : null}
             </CardContent>
           </Card>
         </div>
