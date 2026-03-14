@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS users (
   used_tokens INTEGER DEFAULT 0,
   used_requests INTEGER DEFAULT 0,
   allowed_model_aliases TEXT DEFAULT '[]',
+  note TEXT,
   enabled INTEGER DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   deleted_at DATETIME
@@ -187,6 +188,7 @@ CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
 
   ensureColumn("users", "deleted_at", "deleted_at DATETIME");
   ensureColumn("users", "allowed_model_aliases", "allowed_model_aliases TEXT DEFAULT '[]'");
+  ensureColumn("users", "note", "note TEXT");
   ensureColumn("keys", "deleted_at", "deleted_at DATETIME");
   const addedKeyUsedTokens = ensureColumn("keys", "used_tokens", "used_tokens INTEGER DEFAULT 0");
   const addedKeyUsedRequests = ensureColumn("keys", "used_requests", "used_requests INTEGER DEFAULT 0");
@@ -331,6 +333,7 @@ export type DbUser = {
   used_tokens: number;
   used_requests: number;
   allowed_model_aliases: string;
+  note: string | null;
   enabled: number;
   created_at: string;
   deleted_at: string | null;

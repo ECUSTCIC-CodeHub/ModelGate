@@ -19,6 +19,7 @@ const updateSchema = z.object({
   quota_tokens: z.number().int().min(-1).nullable().optional(),
   quota_requests: z.number().int().min(-1).nullable().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
+  note: z.string().max(500).nullable().optional(),
   new_password: z.string().min(8).optional(),
 });
 
@@ -39,7 +40,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const existing = gatewayDb
     .prepare(
       `SELECT id, username, role, enabled, rpm, qps, tpm, quota_tokens, quota_requests
-       , allowed_model_aliases
+       , allowed_model_aliases, note
        FROM users WHERE id = ? AND deleted_at IS NULL`,
     )
     .get(id) as
@@ -54,6 +55,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         quota_tokens: number | null;
         quota_requests: number | null;
         allowed_model_aliases: string;
+        note: string | null;
       }
     | undefined;
 
@@ -81,6 +83,12 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       parsed.data.allowed_model_aliases === undefined
         ? existing.allowed_model_aliases
         : stringifyAllowedModelAliases(parsed.data.allowed_model_aliases),
+    note:
+      parsed.data.note === undefined
+        ? existing.note
+        : parsed.data.note?.trim()
+          ? parsed.data.note.trim()
+          : null,
     enabled:
       parsed.data.enabled === undefined
         ? existing.enabled
@@ -97,7 +105,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     gatewayDb
       .prepare(
         `UPDATE users
-         SET username = ?, role = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?, quota_tokens = ?, quota_requests = ?, allowed_model_aliases = ?, password_hash = ?
+         SET username = ?, role = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?, quota_tokens = ?, quota_requests = ?, allowed_model_aliases = ?, note = ?, password_hash = ?
          WHERE id = ?`,
       )
       .run(
@@ -110,6 +118,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         merged.quota_tokens,
         merged.quota_requests,
         merged.allowed_model_aliases,
+        merged.note,
         nextPasswordHash,
         id,
       );
@@ -117,7 +126,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     gatewayDb
       .prepare(
         `UPDATE users
-         SET username = ?, role = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?, quota_tokens = ?, quota_requests = ?, allowed_model_aliases = ?
+         SET username = ?, role = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?, quota_tokens = ?, quota_requests = ?, allowed_model_aliases = ?, note = ?
          WHERE id = ?`,
       )
       .run(
@@ -130,13 +139,14 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         merged.quota_tokens,
         merged.quota_requests,
         merged.allowed_model_aliases,
+        merged.note,
         id,
       );
   }
 
   const row = gatewayDb
     .prepare(
-      `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, allowed_model_aliases, enabled, created_at
+      `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, allowed_model_aliases, note, enabled, created_at
        FROM users WHERE id = ? AND deleted_at IS NULL`,
     )
     .get(id) as { allowed_model_aliases: string } & Record<string, unknown>;

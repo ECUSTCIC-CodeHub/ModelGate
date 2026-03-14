@@ -21,6 +21,7 @@ const createSchema = z.object({
   quota_tokens: z.number().int().min(-1).nullable().optional(),
   quota_requests: z.number().int().min(-1).nullable().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
+  note: z.string().max(500).nullable().optional(),
 });
 
 function normalizeQuota(value: number | null | undefined) {
@@ -42,7 +43,7 @@ export async function GET(request: Request) {
 
   const rows = gatewayDb
     .prepare(
-      `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, allowed_model_aliases, enabled, created_at
+      `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, allowed_model_aliases, note, enabled, created_at
        FROM users
        ${whereSql}
        ORDER BY id DESC
@@ -87,8 +88,8 @@ export async function POST(request: Request) {
     .prepare(
       `INSERT INTO users (
          username, password_hash, role, enabled,
-         rpm, qps, tpm, quota_tokens, quota_requests, allowed_model_aliases
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         rpm, qps, tpm, quota_tokens, quota_requests, allowed_model_aliases, note
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       parsed.data.username,
@@ -101,11 +102,12 @@ export async function POST(request: Request) {
       normalizeQuota(parsed.data.quota_tokens),
       normalizeQuota(parsed.data.quota_requests),
       stringifyAllowedModelAliases(parsed.data.allowed_model_aliases ?? []),
+      parsed.data.note?.trim() ? parsed.data.note.trim() : null,
     );
 
   const row = gatewayDb
     .prepare(
-      `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, allowed_model_aliases, enabled, created_at
+      `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, allowed_model_aliases, note, enabled, created_at
        FROM users WHERE id = ? AND deleted_at IS NULL`,
     )
     .get(result.lastInsertRowid) as { allowed_model_aliases: string } & Record<string, unknown>;

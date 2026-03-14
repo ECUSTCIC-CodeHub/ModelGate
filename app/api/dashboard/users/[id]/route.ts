@@ -14,7 +14,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   const { id } = await context.params;
   const row = gatewayDb
     .prepare(
-      `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, allowed_model_aliases, enabled, created_at
+      `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, allowed_model_aliases, note, enabled, created_at
        FROM users WHERE id = ? AND deleted_at IS NULL`,
     )
     .get(id) as { allowed_model_aliases: string } & Record<string, unknown>;

@@ -56,6 +56,7 @@ import { authedFetch, clearSession, getOrFetchProfile } from "@/lib/client-auth"
 type UserRow = {
   id: number;
   username: string;
+  note: string | null;
   role: "admin" | "user";
   enabled: number;
   rpm: number;
@@ -86,6 +87,7 @@ type UserForm = {
   quota_tokens: string;
   quota_requests: string;
   allowed_model_aliases: string[];
+  note: string;
 };
 
 const initialForm: UserForm = {
@@ -100,6 +102,7 @@ const initialForm: UserForm = {
   quota_tokens: "",
   quota_requests: "",
   allowed_model_aliases: [],
+  note: "",
 };
 
 function formatNumber(value: number | null | undefined) {
@@ -170,6 +173,7 @@ export default function AdminUsersPage() {
     const rows = Array.isArray(data?.data) ? (data.data as AliasOption[]) : [];
     const unique = new Map<string, AliasOption>();
     for (const row of rows) {
+      if (row.is_public === 1) continue;
       if (!unique.has(row.alias)) {
         unique.set(row.alias, row);
       }
@@ -201,6 +205,7 @@ export default function AdminUsersPage() {
       username: row.username,
       password: "",
       new_password: "",
+      note: row.note ?? "",
       role: row.role,
       enabled: row.enabled === 1,
       rpm: row.rpm,
@@ -235,6 +240,7 @@ export default function AdminUsersPage() {
       quota_tokens: form.quota_tokens.trim() === "" ? null : Number(form.quota_tokens),
       quota_requests: form.quota_requests.trim() === "" ? null : Number(form.quota_requests),
       allowed_model_aliases: form.allowed_model_aliases,
+      note: form.note.trim() === "" ? null : form.note.trim(),
       ...(form.new_password.trim() ? { new_password: form.new_password.trim() } : {}),
     };
 
@@ -320,6 +326,7 @@ export default function AdminUsersPage() {
                       <TableHead>序号</TableHead>
                       <TableHead>用户名</TableHead>
                       <TableHead>角色</TableHead>
+                      <TableHead>备注</TableHead>
                       <TableHead>状态</TableHead>
                       <TableHead>限速</TableHead>
                       <TableHead>累计请求</TableHead>
@@ -336,6 +343,11 @@ export default function AdminUsersPage() {
                         <TableCell>{row.username}</TableCell>
                         <TableCell>
                           <Badge variant={row.role === "admin" ? "default" : "secondary"}>{row.role === "admin" ? "管理员" : "普通用户"}</Badge>
+                        </TableCell>
+                        <TableCell className="max-w-56">
+                          <span className="block truncate text-zinc-300" title={row.note ?? ""}>
+                            {row.note?.trim() || "-"}
+                          </span>
                         </TableCell>
                         <TableCell>
                           <Badge variant={row.enabled ? "default" : "secondary"}>{row.enabled ? "启用" : "禁用"}</Badge>
@@ -481,6 +493,16 @@ export default function AdminUsersPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>管理员备注</Label>
+                  <textarea
+                    className="flex min-h-24 w-full rounded-xl border border-white/10 bg-slate-950/50 px-4 py-3 text-sm text-zinc-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] placeholder:text-zinc-500 focus-visible:border-[rgba(159,232,216,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(159,232,216,0.18)]"
+                    placeholder="仅管理员可见，可记录来源、用途、客户信息等"
+                    value={form.note}
+                    onChange={(e) => setForm({ ...form, note: e.target.value })}
+                    maxLength={500}
+                  />
+                </div>
               </div>
             </div>
 
@@ -515,7 +537,7 @@ export default function AdminUsersPage() {
 
             <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
               <p className="text-sm font-medium text-zinc-100">额外可访问模型</p>
-              <p className="text-xs text-zinc-500">公开模型默认可访问，这里配置白名单模型的额外授权。</p>
+              <p className="text-xs text-zinc-500">这里只展示非公开模型，用于配置额外白名单授权。</p>
               <div className="grid gap-2 md:grid-cols-2">
                 {aliasOptions.map((item) => (
                   <label key={item.alias} className="flex items-center gap-3 rounded-lg border border-white/10 px-3 py-3 text-sm">
