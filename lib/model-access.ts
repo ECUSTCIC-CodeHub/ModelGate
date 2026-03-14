@@ -37,6 +37,23 @@ export function canUserAccessModelAlias(user: Pick<DbUser, "role" | "allowed_mod
   return parseAllowedModelAliases(user.allowed_model_aliases).includes(alias);
 }
 
+export function hasEnabledModelAlias(alias: string) {
+  const row = gatewayDb
+    .prepare(
+      `SELECT 1
+       FROM models m
+       JOIN channels c ON c.id = m.channel_id
+       WHERE m.alias = ?
+         AND m.enabled = 1
+         AND c.enabled = 1
+         AND m.deleted_at IS NULL
+       LIMIT 1`,
+    )
+    .get(alias) as { 1: number } | undefined;
+
+  return Boolean(row);
+}
+
 export function listAccessibleModelAliases(user: Pick<DbUser, "role" | "allowed_model_aliases">) {
   const rows = gatewayDb
     .prepare(
