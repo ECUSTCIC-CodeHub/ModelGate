@@ -4,6 +4,19 @@ import { gatewayDb } from "@/lib/db";
 import { ensureWebUser } from "@/lib/guards";
 import { jsonOk } from "@/lib/http";
 
+function parseDateParam(value: string) {
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  return trimmed;
+}
+
+function addOneDay(dateText: string) {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
 export async function GET(request: Request) {
   const guard = ensureWebUser(request);
   if ("error" in guard) return guard.error;
@@ -15,6 +28,8 @@ export async function GET(request: Request) {
   const user = (url.searchParams.get("user") ?? "").trim();
   const model = (url.searchParams.get("model") ?? "").trim();
   const channel = (url.searchParams.get("channel") ?? "").trim();
+  const startDate = parseDateParam(url.searchParams.get("start_date") ?? "");
+  const endDate = parseDateParam(url.searchParams.get("end_date") ?? "");
 
   const whereClauses: string[] = [];
   const whereArgs: Array<string | number> = [];
@@ -35,6 +50,19 @@ export async function GET(request: Request) {
   if (channel) {
     whereClauses.push("c.name LIKE ?");
     whereArgs.push(`%${channel}%`);
+  }
+
+  if (startDate) {
+    whereClauses.push("l.created_at >= ?");
+    whereArgs.push(`${startDate} 00:00:00`);
+  }
+
+  if (endDate) {
+    const nextDate = addOneDay(endDate);
+    if (nextDate) {
+      whereClauses.push("l.created_at < ?");
+      whereArgs.push(`${nextDate} 00:00:00`);
+    }
   }
 
   const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";

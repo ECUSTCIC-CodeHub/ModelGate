@@ -2,12 +2,16 @@
 "use client";
 
 import { type ColumnDef } from "@tanstack/react-table";
+import { format } from "date-fns";
+import { zhCN } from "date-fns/locale";
+import { CalendarIcon, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthProfile } from "@/components/providers/auth-provider";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
@@ -20,7 +24,9 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { authedFetch, clearSession, getCachedProfile, getOrFetchProfile } from "@/lib/client-auth";
 import { formatNumber, formatTokenCount } from "@/lib/utils";
 
@@ -65,6 +71,76 @@ function formatDuration(ms: number | null | undefined) {
   return `${hour.toFixed(2)} h`;
 }
 
+function parseDateValue(value: string) {
+  if (!value) return undefined;
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function formatDateValue(date?: Date) {
+  return date ? format(date, "yyyy-MM-dd") : "";
+}
+
+type DateFilterProps = {
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+  align?: "start" | "end";
+};
+
+function DateFilter({ value, placeholder, onChange, align = "start" }: DateFilterProps) {
+  const selected = parseDateValue(value);
+
+  return (
+    <div className="min-w-0 flex-1">
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            variant="ghost"
+            className={cn(
+              "group h-11 w-full justify-start rounded-none bg-transparent px-4 text-left font-normal shadow-none hover:bg-transparent",
+              align === "start" ? "rounded-l-xl" : "rounded-r-xl",
+              !selected ? "text-zinc-500" : "text-zinc-100",
+            )}
+          >
+            <CalendarIcon className="h-4 w-4 text-zinc-500 transition-colors group-hover:text-zinc-300" />
+            <span className="truncate">{selected ? format(selected, "yyyy-MM-dd", { locale: zhCN }) : placeholder}</span>
+            {value ? (
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onChange("");
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onChange("");
+                  }
+                }}
+                className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+              >
+                <X className="h-3.5 w-3.5" />
+              </span>
+            ) : null}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align={align} className="w-auto p-0">
+          <Calendar
+            mode="single"
+            selected={selected}
+            onSelect={(date) => onChange(formatDateValue(date))}
+            locale={zhCN}
+          />
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
 export default function AdminLogsPage() {
   const router = useRouter();
   const initialProfile = useAuthProfile();
@@ -78,6 +154,8 @@ export default function AdminLogsPage() {
   const [filterUser, setFilterUser] = useState("");
   const [filterModel, setFilterModel] = useState("");
   const [filterChannel, setFilterChannel] = useState("");
+  const [filterStartDate, setFilterStartDate] = useState("");
+  const [filterEndDate, setFilterEndDate] = useState("");
   const loadSeqRef = useRef(0);
 
   async function load(
@@ -86,6 +164,8 @@ export default function AdminLogsPage() {
       user?: string;
       model?: string;
       channel?: string;
+      startDate?: string;
+      endDate?: string;
     },
   ) {
     const requestSeq = ++loadSeqRef.current;
@@ -104,6 +184,8 @@ export default function AdminLogsPage() {
     const nextFilterUser = filters?.user ?? filterUser;
     const nextFilterModel = filters?.model ?? filterModel;
     const nextFilterChannel = filters?.channel ?? filterChannel;
+    const nextFilterStartDate = filters?.startDate ?? filterStartDate;
+    const nextFilterEndDate = filters?.endDate ?? filterEndDate;
     const offset = (nextPage - 1) * pageSize;
     const params = new URLSearchParams({
       limit: String(pageSize),
@@ -112,6 +194,8 @@ export default function AdminLogsPage() {
     if (nextRole === "admin" && nextFilterUser.trim()) params.set("user", nextFilterUser.trim());
     if (nextFilterModel.trim()) params.set("model", nextFilterModel.trim());
     if (nextRole === "admin" && nextFilterChannel.trim()) params.set("channel", nextFilterChannel.trim());
+    if (nextFilterStartDate) params.set("start_date", nextFilterStartDate);
+    if (nextFilterEndDate) params.set("end_date", nextFilterEndDate);
 
     const response = await authedFetch(`/api/dashboard/logs?${params.toString()}`);
     if (requestSeq !== loadSeqRef.current) return;
@@ -253,7 +337,7 @@ export default function AdminLogsPage() {
         <Card className="flex min-h-0 flex-1 flex-col">
           <CardHeader className="shrink-0">
             <CardTitle>请求记录</CardTitle>
-            <div className="grid gap-3 pt-2 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 pt-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(320px,420px)_auto]">
               {role === "admin" ? (
                 <Input
                   placeholder="搜索用户"
@@ -277,16 +361,33 @@ export default function AdminLogsPage() {
               ) : (
                 <div className="hidden xl:block" />
               )}
+              <div className="flex items-center overflow-hidden rounded-xl border border-[rgba(159,232,216,0.16)] bg-slate-950/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                <DateFilter
+                  value={filterStartDate}
+                  placeholder="开始日期"
+                  onChange={setFilterStartDate}
+                  align="start"
+                />
+                <div className="h-5 w-px shrink-0 bg-white/10" />
+                <DateFilter
+                  value={filterEndDate}
+                  placeholder="结束日期"
+                  onChange={setFilterEndDate}
+                  align="end"
+                />
+              </div>
               <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
                 <Button variant="outline" disabled={loading} onClick={() => void load(1)}>搜索</Button>
                 <Button
                   variant="ghost"
                   disabled={loading}
                   onClick={() => {
-                    const emptyFilters = { user: "", model: "", channel: "" };
+                    const emptyFilters = { user: "", model: "", channel: "", startDate: "", endDate: "" };
                     setFilterUser(emptyFilters.user);
                     setFilterModel(emptyFilters.model);
                     setFilterChannel(emptyFilters.channel);
+                    setFilterStartDate(emptyFilters.startDate);
+                    setFilterEndDate(emptyFilters.endDate);
                     void load(1, emptyFilters);
                   }}
                 >

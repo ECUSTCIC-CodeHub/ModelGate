@@ -60,11 +60,13 @@ export async function testUpstreamModel(target: {
     });
 
     const bodyText = await response.text();
+    const summary = summarizeTestResponse(bodyText);
     return {
       ok: response.ok,
       status: response.status,
       latency_ms: Date.now() - startedAt,
       body_preview: bodyText.slice(0, 500),
+      summary,
     };
   } catch (error) {
     return {
@@ -72,9 +74,71 @@ export async function testUpstreamModel(target: {
       status: null,
       latency_ms: Date.now() - startedAt,
       body_preview: error instanceof Error ? error.message : "Unknown upstream error",
+      summary: null,
     };
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+function summarizeTestResponse(bodyText: string) {
+  try {
+    const parsed = JSON.parse(bodyText) as {
+      model?: string;
+      error?: { message?: string; type?: string; code?: string | number };
+      choices?: Array<{
+        finish_reason?: string | null;
+        message?: { content?: string | null; reasoning?: string | null };
+        text?: string | null;
+      }>;
+      usage?: {
+        prompt_tokens?: number | null;
+        completion_tokens?: number | null;
+        total_tokens?: number | null;
+      };
+    };
+
+    if (parsed.error?.message) {
+      const parts = [parsed.error.message];
+      if (parsed.error.type) parts.push(`type=${parsed.error.type}`);
+      if (parsed.error.code !== undefined && parsed.error.code !== null) parts.push(`code=${parsed.error.code}`);
+      return parts.join(" | ");
+    }
+
+    const parts: string[] = [];
+    if (parsed.model) parts.push(`model=${parsed.model}`);
+
+    const firstChoice = Array.isArray(parsed.choices) ? parsed.choices[0] : undefined;
+    if (firstChoice?.finish_reason) {
+      parts.push(`finish_reason=${firstChoice.finish_reason}`);
+    }
+
+    const usageParts: string[] = [];
+    if (parsed.usage?.prompt_tokens !== undefined && parsed.usage.prompt_tokens !== null) {
+      usageParts.push(`prompt=${parsed.usage.prompt_tokens}`);
+    }
+    if (parsed.usage?.completion_tokens !== undefined && parsed.usage.completion_tokens !== null) {
+      usageParts.push(`completion=${parsed.usage.completion_tokens}`);
+    }
+    if (parsed.usage?.total_tokens !== undefined && parsed.usage.total_tokens !== null) {
+      usageParts.push(`total=${parsed.usage.total_tokens}`);
+    }
+    if (usageParts.length > 0) {
+      parts.push(`tokens(${usageParts.join("/")})`);
+    }
+
+    const content =
+      firstChoice?.message?.content?.trim() ||
+      firstChoice?.message?.reasoning?.trim() ||
+      firstChoice?.text?.trim() ||
+      "";
+    if (content) {
+      parts.push(`content=${content.slice(0, 80)}`);
+    }
+
+    return parts.length > 0 ? parts.join(" | ") : null;
+  } catch {
+    return null;
   }
 }
 

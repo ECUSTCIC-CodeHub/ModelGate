@@ -267,12 +267,19 @@ export default function AdminChannelsPage() {
         | {
             status: number | null;
             latency_ms: number;
+            summary?: string | null;
             body_preview: string;
           }
         | undefined;
 
       const suffix = payload
-        ? `HTTP ${payload.status ?? "-"}，${payload.latency_ms}ms${payload.body_preview ? `，${payload.body_preview}` : ""}`
+        ? `HTTP ${payload.status ?? "-"}，${payload.latency_ms}ms${
+            payload.summary
+              ? `，${payload.summary}`
+              : payload.body_preview
+                ? `，${payload.body_preview}`
+                : ""
+          }`
         : "";
 
       if (response.ok) {

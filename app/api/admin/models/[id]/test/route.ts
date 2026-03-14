@@ -63,6 +63,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         ok: result.ok,
         status: result.status,
         latency_ms: result.latency_ms,
+        summary: result.summary,
         body_preview: result.body_preview,
       },
     },
