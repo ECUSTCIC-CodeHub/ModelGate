@@ -21,7 +21,7 @@ export function Calendar({
                 months: "flex flex-col gap-4",
                 month: "space-y-3",
                 month_caption: "relative flex items-center justify-center px-8 py-1",
-                month_caption_label: "text-sm font-medium text-zinc-100",
+                caption_label: "text-sm font-medium text-zinc-100",
                 nav: "absolute inset-x-0 top-0 flex items-center justify-between px-0.5",
                 button_previous: cn(
                     buttonVariants({ variant: "ghost", size: "icon" }),
