@@ -2,7 +2,7 @@
 "use client";
 
 import { type ColumnDef } from "@tanstack/react-table";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthProfile } from "@/components/providers/auth-provider";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
@@ -78,9 +78,21 @@ export default function AdminLogsPage() {
   const [filterUser, setFilterUser] = useState("");
   const [filterModel, setFilterModel] = useState("");
   const [filterChannel, setFilterChannel] = useState("");
+  const loadSeqRef = useRef(0);
 
-  async function load(nextPage = page) {
+  async function load(
+    nextPage = page,
+    filters?: {
+      user?: string;
+      model?: string;
+      channel?: string;
+    },
+  ) {
+    const requestSeq = ++loadSeqRef.current;
+    setLoading(true);
+
     const profile = await getOrFetchProfile();
+    if (requestSeq !== loadSeqRef.current) return;
     if (!profile) {
       clearSession();
       router.replace("/login");
@@ -89,26 +101,35 @@ export default function AdminLogsPage() {
     const nextRole = profile.role as "admin" | "user";
     setRole(nextRole);
 
+    const nextFilterUser = filters?.user ?? filterUser;
+    const nextFilterModel = filters?.model ?? filterModel;
+    const nextFilterChannel = filters?.channel ?? filterChannel;
     const offset = (nextPage - 1) * pageSize;
     const params = new URLSearchParams({
       limit: String(pageSize),
       offset: String(offset),
     });
-    if (nextRole === "admin" && filterUser.trim()) params.set("user", filterUser.trim());
-    if (filterModel.trim()) params.set("model", filterModel.trim());
-    if (nextRole === "admin" && filterChannel.trim()) params.set("channel", filterChannel.trim());
+    if (nextRole === "admin" && nextFilterUser.trim()) params.set("user", nextFilterUser.trim());
+    if (nextFilterModel.trim()) params.set("model", nextFilterModel.trim());
+    if (nextRole === "admin" && nextFilterChannel.trim()) params.set("channel", nextFilterChannel.trim());
 
     const response = await authedFetch(`/api/dashboard/logs?${params.toString()}`);
-    if (!response.ok) return;
+    if (requestSeq !== loadSeqRef.current) return;
+    if (!response.ok) {
+      setLoading(false);
+      return;
+    }
     const data = await response.json();
+    if (requestSeq !== loadSeqRef.current) return;
     setRows(data.data);
     setSummary(data.summary);
     setTotal(data.paging?.total ?? 0);
     setPage(nextPage);
+    setLoading(false);
   }
 
   useEffect(() => {
-    void load(1).finally(() => setLoading(false));
+    void load(1);
   }, []);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -257,14 +278,16 @@ export default function AdminLogsPage() {
                 <div className="hidden xl:block" />
               )}
               <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
-                <Button variant="outline" onClick={() => void load(1)}>搜索</Button>
+                <Button variant="outline" disabled={loading} onClick={() => void load(1)}>搜索</Button>
                 <Button
                   variant="ghost"
+                  disabled={loading}
                   onClick={() => {
-                    setFilterUser("");
-                    setFilterModel("");
-                    setFilterChannel("");
-                    void load(1);
+                    const emptyFilters = { user: "", model: "", channel: "" };
+                    setFilterUser(emptyFilters.user);
+                    setFilterModel(emptyFilters.model);
+                    setFilterChannel(emptyFilters.channel);
+                    void load(1, emptyFilters);
                   }}
                 >
                   重置
@@ -287,13 +310,13 @@ export default function AdminLogsPage() {
               <Pagination className="mx-0 w-auto">
                 <PaginationContent>
                   <PaginationItem>
-                    <PaginationPrevious disabled={page <= 1} onClick={() => (page > 1 ? void load(page - 1) : undefined)} />
+                    <PaginationPrevious disabled={loading || page <= 1} onClick={() => (page > 1 ? void load(page - 1) : undefined)} />
                   </PaginationItem>
 
                   {pageWindow[0] > 1 ? (
                     <>
                       <PaginationItem>
-                        <PaginationLink onClick={() => void load(1)}>1</PaginationLink>
+                        <PaginationLink disabled={loading} onClick={() => void load(1)}>1</PaginationLink>
                       </PaginationItem>
                       {pageWindow[0] > 2 ? (
                         <PaginationItem>
@@ -305,7 +328,7 @@ export default function AdminLogsPage() {
 
                   {pageWindow.map((pageNo) => (
                     <PaginationItem key={pageNo}>
-                      <PaginationLink isActive={pageNo === page} onClick={() => void load(pageNo)}>
+                      <PaginationLink disabled={loading} isActive={pageNo === page} onClick={() => void load(pageNo)}>
                         {pageNo}
                       </PaginationLink>
                     </PaginationItem>
@@ -319,14 +342,14 @@ export default function AdminLogsPage() {
                         </PaginationItem>
                       ) : null}
                       <PaginationItem>
-                        <PaginationLink onClick={() => void load(totalPages)}>{totalPages}</PaginationLink>
+                        <PaginationLink disabled={loading} onClick={() => void load(totalPages)}>{totalPages}</PaginationLink>
                       </PaginationItem>
                     </>
                   ) : null}
 
                   <PaginationItem>
                     <PaginationNext
-                      disabled={page >= totalPages}
+                      disabled={loading || page >= totalPages}
                       onClick={() => (page < totalPages ? void load(page + 1) : undefined)}
                     />
                   </PaginationItem>
