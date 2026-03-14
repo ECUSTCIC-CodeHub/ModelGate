@@ -224,22 +224,23 @@ export default function AdminUsersPage() {
       title="用户管理"
       subtitle="管理员可增删改查用户与限制参数"
     >
-      <div className="flex h-full min-h-0 flex-col gap-4">
+      <div className="flex min-h-0 flex-col gap-4 md:h-full">
         <Card className="flex min-h-0 flex-1 flex-col">
           <CardHeader className="shrink-0">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-col gap-3">
               <div>
                 <CardTitle>用户列表</CardTitle>
               </div>
-              <div className="flex w-full max-w-md items-center gap-2">
+              <div className="grid w-full gap-2 sm:grid-cols-2 xl:max-w-3xl xl:grid-cols-[minmax(0,1fr)_auto_auto_auto] xl:items-center">
                 <Input
                   placeholder="搜索用户名"
                   value={keyword}
                   onChange={(e) => setKeyword(e.target.value)}
                 />
-                <Button variant="outline" onClick={() => void load(1)}>搜索</Button>
+                <Button variant="outline" className="w-full xl:w-auto" onClick={() => void load(1)}>搜索</Button>
                 <Button
                   variant="ghost"
+                  className="w-full xl:w-auto"
                   onClick={() => {
                     setKeyword("");
                     void load(1, "");
@@ -247,14 +248,14 @@ export default function AdminUsersPage() {
                 >
                   重置
                 </Button>
-                <Button onClick={onCreateClick}>新增用户</Button>
+                <Button className="w-full xl:w-auto" onClick={onCreateClick}>新增用户</Button>
               </div>
             </div>
           </CardHeader>
           <CardContent className="flex min-h-0 flex-1 flex-col px-0 pb-2 pt-0">
-            <div className="min-h-0 flex-1 overflow-x-auto px-6">
+            <div className="min-h-0 flex-1 overflow-x-auto px-4 sm:px-6">
               <div className="h-full w-full overflow-auto rounded-md border border-zinc-800">
-                <Table>
+                <Table className="min-w-[1120px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>序号</TableHead>
@@ -295,7 +296,7 @@ export default function AdminUsersPage() {
                 </Table>
               </div>
             </div>
-            <div className="mt-4 px-6">
+            <div className="mt-4 px-4 sm:px-6">
               <Pagination>
                 <PaginationContent>
                   <PaginationItem>

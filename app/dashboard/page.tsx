@@ -147,8 +147,8 @@ export default function DashboardHomePage() {
   ];
 
   return (
-    <DashboardShell role={role} title="欢迎" subtitle="控制台总览与快捷入口">
-      <div className="h-full min-h-0 space-y-4 overflow-y-auto pb-4 pr-1">
+    <DashboardShell role={role} title="欢迎">
+      <div className="min-h-0 space-y-4 overflow-y-auto pb-4 md:h-full md:pr-1">
         <section className="glass-panel overflow-hidden rounded-[30px] p-6 sm:p-7">
           <div>
             <h2 className="surface-title text-3xl font-semibold tracking-[-0.04em] text-white sm:text-4xl">运行概览</h2>
@@ -178,22 +178,27 @@ export default function DashboardHomePage() {
               <CardTitle>最近 24 小时 Token 消耗</CardTitle>
               <CardDescription>按小时聚合</CardDescription>
             </CardHeader>
-            <CardContent className="h-80">
+            <CardContent className="h-64 sm:h-80 xl:h-80">
               {chartReady ? (
-                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={280}>
-                  <BarChart data={summary?.hourly_tokens ?? []}>
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                  <BarChart
+                    data={summary?.hourly_tokens ?? []}
+                    margin={{ top: 8, right: 8, left: -24, bottom: 0 }}
+                  >
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
                     <XAxis
                       dataKey="hour"
                       tickLine={false}
                       axisLine={false}
-                      tick={{ fill: "#94a3b8", fontSize: 12 }}
+                      minTickGap={20}
+                      tick={{ fill: "#94a3b8", fontSize: 11 }}
                       tickFormatter={(value: string) => value.slice(11, 16)}
                     />
                     <YAxis
                       tickLine={false}
                       axisLine={false}
-                      tick={{ fill: "#94a3b8", fontSize: 12 }}
+                      width={40}
+                      tick={{ fill: "#94a3b8", fontSize: 11 }}
                       tickFormatter={(value: number) => formatTokenCount(value)}
                     />
                     <Tooltip
@@ -215,11 +220,9 @@ export default function DashboardHomePage() {
               )}
             </CardContent>
           </Card>
-
-          <Card>
+          <Card className="hidden xl:block">
             <CardHeader>
               <CardTitle>快捷操作</CardTitle>
-              <CardDescription>围绕最常用的日常操作重新整理</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-2">
               <Button onClick={() => router.push("/dashboard/keys")}><KeyRound className="h-4 w-4" />新建/管理 Key</Button>
@@ -232,15 +235,15 @@ export default function DashboardHomePage() {
           </Card>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="hidden gap-4 xl:grid xl:grid-cols-2">
           <Card>
             <CardHeader>
               <CardTitle>Top 模型</CardTitle>
               <CardDescription>按 Token 消耗排序</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/10">
-                <DataTable columns={topModelColumns} data={summary?.top_models ?? []} emptyText="暂无模型数据" />
+              <div className="overflow-x-auto rounded-2xl border border-white/10 bg-black/10">
+                <DataTable columns={topModelColumns} data={summary?.top_models ?? []} emptyText="暂无模型数据" tableClassName="min-w-[420px]" />
               </div>
             </CardContent>
           </Card>
@@ -251,14 +254,14 @@ export default function DashboardHomePage() {
               <CardDescription>按 Token 消耗排序</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/10">
-                <DataTable columns={topChannelColumns} data={summary?.top_channels ?? []} emptyText="暂无渠道数据" />
+              <div className="overflow-x-auto rounded-2xl border border-white/10 bg-black/10">
+                <DataTable columns={topChannelColumns} data={summary?.top_channels ?? []} emptyText="暂无渠道数据" tableClassName="min-w-[420px]" />
               </div>
             </CardContent>
           </Card>
         </div>
 
-        <Card>
+        <Card className="hidden xl:block">
           <CardHeader>
             <CardTitle>最近请求</CardTitle>
             <CardDescription>最新 8 条请求记录</CardDescription>

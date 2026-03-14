@@ -371,21 +371,21 @@ export default function AdminChannelsPage() {
       title="渠道管理"
       subtitle="一个页面管理多个渠道；展开渠道后管理该渠道的多个模型"
     >
-      <div className="flex h-full min-h-0 flex-col gap-4">
+      <div className="flex min-h-0 flex-col gap-4 md:h-full">
         <Card className="flex min-h-0 flex-1 flex-col">
           <CardHeader className="shrink-0">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <CardTitle>渠道列表</CardTitle>
               </div>
-              <Button onClick={openCreateChannel}>新增渠道</Button>
+              <Button className="w-full sm:w-auto" onClick={openCreateChannel}>新增渠道</Button>
             </div>
           </CardHeader>
           <CardContent className="flex min-h-0 flex-1 flex-col px-0 pb-2 pt-0">
             {error ? <p className="px-6 pb-2 text-sm text-red-400">{error}</p> : null}
-            <div className="min-h-0 flex-1 overflow-x-auto px-6">
+            <div className="min-h-0 flex-1 overflow-x-auto px-4 sm:px-6">
               <div className="h-full w-full overflow-auto rounded-md border border-zinc-800">
-                <Table>
+                <Table className="min-w-[920px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>序号</TableHead>
@@ -436,7 +436,7 @@ export default function AdminChannelsPage() {
                                   </div>
 
                                   <div className="rounded-lg border border-zinc-800">
-                                    <Table>
+                                    <Table className="min-w-[720px]">
                                       <TableHeader>
                                         <TableRow>
                                           <TableHead>序号</TableHead>
@@ -494,7 +494,6 @@ export default function AdminChannelsPage() {
         open={channelDrawerOpen}
         onClose={() => setChannelDrawerOpen(false)}
         title={channelEditingId === null ? "新增渠道" : `编辑渠道 #${channelEditingId}`}
-        description={channelEditingId === null ? "可一次添加多个模型" : "编辑渠道信息"}
       >
         <form onSubmit={submitChannel} className="grid gap-3 md:grid-cols-2">
           <div className="space-y-2">
@@ -519,18 +518,18 @@ export default function AdminChannelsPage() {
           </div>
 
           {channelEditingId === null ? (
-            <div className="md:col-span-2 space-y-3 rounded-lg border border-zinc-800 p-3">
-              <div className="flex items-center justify-between">
+            <div className="space-y-3 rounded-lg border border-zinc-800 p-3 md:col-span-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm font-medium">初始模型列表（可选）</p>
-                <Button type="button" variant="outline" size="sm" onClick={addChannelModelDraft}>添加模型</Button>
+                <Button type="button" variant="outline" size="sm" className="w-full sm:w-auto" onClick={addChannelModelDraft}>添加模型</Button>
               </div>
               <p className="text-xs text-zinc-500">别名就是客户端请求时传入的 `model`（或 model_id）。支持 `*` 作为兜底模型，未命中其他别名时会自动回退到它。</p>
               {channelModels.map((item, index) => (
-                <div key={index} className="grid gap-2 md:grid-cols-4 rounded-md border border-zinc-800 p-2">
+                <div key={index} className="grid gap-2 rounded-md border border-zinc-800 p-2 md:grid-cols-4">
                   <Input placeholder="别名" value={item.alias} onChange={(e) => updateChannelModelDraft(index, { alias: e.target.value })} />
                   <Input placeholder="真实模型" value={item.real_model} onChange={(e) => updateChannelModelDraft(index, { real_model: e.target.value })} />
                   <Input type="number" min={1} placeholder="权重" value={item.weight} onChange={(e) => updateChannelModelDraft(index, { weight: Number(e.target.value) || 1 })} />
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <select
                       className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
                       value={item.enabled ? "1" : "0"}
@@ -539,14 +538,14 @@ export default function AdminChannelsPage() {
                       <option value="1">启用</option>
                       <option value="0">禁用</option>
                     </select>
-                    <Button type="button" variant="secondary" size="sm" onClick={() => removeChannelModelDraft(index)}>Delete</Button>
+                    <Button type="button" variant="secondary" size="sm" onClick={() => removeChannelModelDraft(index)}>删除</Button>
                   </div>
                 </div>
               ))}
             </div>
           ) : null}
 
-          <div className="md:col-span-2 flex justify-end gap-2 pt-2">
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end md:col-span-2">
             <Button type="button" variant="outline" onClick={() => setChannelDrawerOpen(false)}>取消</Button>
             <Button type="submit">{channelEditingId === null ? "创建" : "保存"}</Button>
           </div>
@@ -557,7 +556,6 @@ export default function AdminChannelsPage() {
         open={modelDrawerOpen}
         onClose={() => setModelDrawerOpen(false)}
         title={modelEditingId === null ? "新增模型" : `编辑模型 #${modelEditingId}`}
-        description="当前模型只归属于一个渠道"
       >
         <form onSubmit={submitModel} className="grid gap-3 md:grid-cols-2">
           <div className="md:col-span-2">
@@ -599,7 +597,7 @@ export default function AdminChannelsPage() {
             </select>
           </div>
 
-          <div className="md:col-span-2 flex justify-end gap-2 pt-2">
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end md:col-span-2">
             <Button type="button" variant="outline" onClick={() => setModelDrawerOpen(false)}>取消</Button>
             <Button type="submit">{modelEditingId === null ? "创建" : "保存"}</Button>
           </div>

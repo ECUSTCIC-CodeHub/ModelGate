@@ -220,11 +220,8 @@ export default function AdminLogsPage() {
       title="日志看板"
       subtitle="网关 Chat 请求、Token 和用时记录"
     >
-      <div className="flex h-full min-h-0 flex-col gap-4">
-        <div
-          className="grid gap-4"
-          style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}
-        >
+      <div className="flex min-h-0 flex-col gap-4 md:h-full">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-5">
           <Card><CardHeader><CardDescription>总请求数</CardDescription><CardTitle>{formatNumber(summary?.total_requests)}</CardTitle></CardHeader></Card>
           <Card><CardHeader><CardDescription>失败请求数</CardDescription><CardTitle>{formatNumber(summary?.failed_requests)}</CardTitle></CardHeader></Card>
           <Card><CardHeader><CardDescription>总 Token</CardDescription><CardTitle title={formatNumber(summary?.total_tokens)}>{formatTokenCount(summary?.total_tokens)}</CardTitle></CardHeader></Card>
@@ -235,7 +232,7 @@ export default function AdminLogsPage() {
         <Card className="flex min-h-0 flex-1 flex-col">
           <CardHeader className="shrink-0">
             <CardTitle>请求记录</CardTitle>
-            <div className="grid gap-3 pt-2 md:grid-cols-4">
+            <div className="grid gap-3 pt-2 sm:grid-cols-2 xl:grid-cols-4">
               {role === "admin" ? (
                 <Input
                   placeholder="搜索用户"
@@ -243,7 +240,7 @@ export default function AdminLogsPage() {
                   onChange={(e) => setFilterUser(e.target.value)}
                 />
               ) : (
-                <div className="hidden md:block" />
+                <div className="hidden xl:block" />
               )}
               <Input
                 placeholder="搜索模型"
@@ -257,9 +254,9 @@ export default function AdminLogsPage() {
                   onChange={(e) => setFilterChannel(e.target.value)}
                 />
               ) : (
-                <div className="hidden md:block" />
+                <div className="hidden xl:block" />
               )}
-              <div className="flex items-center justify-end gap-2">
+              <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
                 <Button variant="outline" onClick={() => void load(1)}>搜索</Button>
                 <Button
                   variant="ghost"
@@ -276,7 +273,7 @@ export default function AdminLogsPage() {
             </div>
           </CardHeader>
           <CardContent className="flex min-h-0 flex-1 flex-col px-0 pb-2 pt-0">
-            <div className="min-h-0 flex-1 overflow-x-auto px-6">
+            <div className="min-h-0 flex-1 overflow-x-auto px-4 sm:px-6">
               <div className="h-full w-full overflow-auto rounded-md border border-zinc-800">
                 <DataTable
                   columns={columns}
@@ -286,7 +283,7 @@ export default function AdminLogsPage() {
                 />
               </div>
             </div>
-            <div className="mt-2 flex items-center justify-end gap-3 border-t border-zinc-800 px-6 pt-2">
+            <div className="mt-2 flex items-center justify-end gap-3 border-t border-zinc-800 px-4 pt-2 sm:px-6">
               <Pagination className="mx-0 w-auto">
                 <PaginationContent>
                   <PaginationItem>

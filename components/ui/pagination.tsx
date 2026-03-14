@@ -15,7 +15,7 @@ export function Pagination({ className, ...props }: React.ComponentProps<"nav">)
 }
 
 export function PaginationContent({ className, ...props }: React.ComponentProps<"ul">) {
-  return <ul className={cn("flex flex-row items-center gap-1", className)} {...props} />;
+  return <ul className={cn("flex flex-row flex-wrap items-center justify-end gap-1", className)} {...props} />;
 }
 
 export function PaginationItem({ ...props }: React.ComponentProps<"li">) {
@@ -45,17 +45,17 @@ export function PaginationLink({ className, isActive, size = "icon", ...props }:
 
 export function PaginationPrevious({ className, ...props }: React.ComponentProps<typeof PaginationLink>) {
   return (
-    <PaginationLink aria-label="Go to previous page" size="default" className={cn("gap-1 px-2.5 sm:pl-2.5", className)} {...props}>
+    <PaginationLink aria-label="Go to previous page" size="default" className={cn("gap-1 px-2.5", className)} {...props}>
       <ChevronLeft className="h-4 w-4" />
-      <span>上一页</span>
+      <span className="hidden sm:inline">上一页</span>
     </PaginationLink>
   );
 }
 
 export function PaginationNext({ className, ...props }: React.ComponentProps<typeof PaginationLink>) {
   return (
-    <PaginationLink aria-label="Go to next page" size="default" className={cn("gap-1 px-2.5 sm:pr-2.5", className)} {...props}>
-      <span>下一页</span>
+    <PaginationLink aria-label="Go to next page" size="default" className={cn("gap-1 px-2.5", className)} {...props}>
+      <span className="hidden sm:inline">下一页</span>
       <ChevronRight className="h-4 w-4" />
     </PaginationLink>
   );

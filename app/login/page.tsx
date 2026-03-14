@@ -39,9 +39,30 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-4 py-10">
-      <div className="w-full max-w-md">
-        <Card className="rounded-[28px]">
+    <main className="safe-pad-bottom flex min-h-screen items-center justify-center px-4 py-8 sm:py-10">
+      <div className="w-full max-w-5xl">
+        <div className="grid gap-4 lg:grid-cols-[1.1fr_minmax(0,420px)]">
+          <section className="glass-panel hidden rounded-[32px] p-8 lg:flex lg:flex-col lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold tracking-[0.26em] text-[var(--accent)] uppercase">Control Center</p>
+              <h1 className="mt-4 text-4xl font-semibold tracking-[-0.05em] text-white">登录</h1>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+                <p className="text-xs tracking-[0.18em] text-zinc-500 uppercase">Logs</p>
+                <p className="mt-3 text-lg font-semibold text-white">请求记录</p>
+              </div>
+              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+                <p className="text-xs tracking-[0.18em] text-zinc-500 uppercase">Keys</p>
+                <p className="mt-3 text-lg font-semibold text-white">密钥管理</p>
+              </div>
+              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
+                <p className="text-xs tracking-[0.18em] text-zinc-500 uppercase">Models</p>
+                <p className="mt-3 text-lg font-semibold text-white">模型可见性</p>
+              </div>
+            </div>
+          </section>
+          <Card className="rounded-[28px]">
           <CardHeader className="pb-4">
             <CardTitle className="text-2xl">登录</CardTitle>
           </CardHeader>
@@ -74,7 +95,8 @@ export default function LoginPage() {
               还没有账号？ <Link href="/register" className="text-[var(--accent)] hover:text-white">注册</Link>
             </p>
           </CardContent>
-        </Card>
+          </Card>
+        </div>
       </div>
     </main>
   );

@@ -54,9 +54,8 @@ export default function AvailableModelsPage() {
     <DashboardShell
       role={role}
       title="可用模型"
-      subtitle="当前账号可调用的模型 ID 列表"
     >
-      <div className="flex h-full min-h-0 flex-col gap-4">
+      <div className="flex min-h-0 flex-col gap-4 md:h-full">
         <Card className="flex min-h-0 flex-1 flex-col">
           <CardHeader className="shrink-0">
             <div>
@@ -65,9 +64,9 @@ export default function AvailableModelsPage() {
           </CardHeader>
           <CardContent className="flex min-h-0 flex-1 flex-col px-0 pb-2 pt-0">
             {error ? <p className="px-6 pb-2 text-sm text-red-600">{error}</p> : null}
-            <div className="min-h-0 flex-1 overflow-x-auto px-6">
+            <div className="min-h-0 flex-1 overflow-x-auto px-4 sm:px-6">
               <div className="h-full w-full overflow-auto rounded-md border border-zinc-800">
-                <Table>
+                <Table className="min-w-[460px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>ID</TableHead>

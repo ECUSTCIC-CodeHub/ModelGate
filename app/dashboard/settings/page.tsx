@@ -81,7 +81,7 @@ export default function AdminSettingsPage() {
 
   return (
     <DashboardShell role="admin" title="系统设置" subtitle="全局开关与注册策略">
-      <div className="h-full min-h-0 overflow-y-auto pr-1">
+      <div className="min-h-0 overflow-y-auto md:h-full md:pr-1">
         <div className="grid gap-4 xl:grid-cols-3">
           <Card className="xl:col-span-2">
             <CardHeader>
@@ -89,14 +89,14 @@ export default function AdminSettingsPage() {
               <CardDescription>新用户注册策略与默认 QPS/RPM/TPM/配额配置</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              <div className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3">
+              <div className="flex flex-col gap-3 rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-medium text-zinc-100">开启公开注册</p>
                   <p className="text-xs text-zinc-500">关闭后只能由管理员创建用户。</p>
                 </div>
                 <Switch checked={registrationEnabled} onCheckedChange={setRegistrationEnabled} />
               </div>
-              <div className="grid gap-3 md:grid-cols-5">
+              <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-5">
                 <div className="space-y-2">
                   <p className="text-sm text-zinc-300">默认 QPS</p>
                   <input
@@ -162,7 +162,7 @@ export default function AdminSettingsPage() {
               <CardDescription>当上游异常时，自动切换其他渠道</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              <div className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3">
+              <div className="flex flex-col gap-3 rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-medium text-zinc-100">开启自动切换</p>
                   <p className="text-xs text-zinc-500">命中 401/429/5xx 时尝试其他渠道。</p>
