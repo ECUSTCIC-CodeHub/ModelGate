@@ -5,6 +5,7 @@ import { hashPassword } from "@/lib/auth";
 import { gatewayDb } from "@/lib/db";
 import { ensureAdmin } from "@/lib/guards";
 import { jsonError, jsonOk } from "@/lib/http";
+import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/model-access";
 import { softDeleteUser } from "@/lib/services/soft-delete-service";
 import { USERNAME_SCHEMA } from "@/lib/username";
 
@@ -17,6 +18,7 @@ const updateSchema = z.object({
   tpm: z.number().int().min(-1).optional(),
   quota_tokens: z.number().int().min(-1).nullable().optional(),
   quota_requests: z.number().int().min(-1).nullable().optional(),
+  allowed_model_aliases: z.array(z.string().min(1)).optional(),
   new_password: z.string().min(8).optional(),
 });
 
@@ -37,6 +39,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const existing = gatewayDb
     .prepare(
       `SELECT id, username, role, enabled, rpm, qps, tpm, quota_tokens, quota_requests
+       , allowed_model_aliases
        FROM users WHERE id = ? AND deleted_at IS NULL`,
     )
     .get(id) as
@@ -50,6 +53,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         tpm: number;
         quota_tokens: number | null;
         quota_requests: number | null;
+        allowed_model_aliases: string;
       }
     | undefined;
 
@@ -73,6 +77,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       parsed.data.quota_requests === undefined
         ? existing.quota_requests
         : normalizeQuota(parsed.data.quota_requests),
+    allowed_model_aliases:
+      parsed.data.allowed_model_aliases === undefined
+        ? existing.allowed_model_aliases
+        : stringifyAllowedModelAliases(parsed.data.allowed_model_aliases),
     enabled:
       parsed.data.enabled === undefined
         ? existing.enabled
@@ -89,7 +97,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     gatewayDb
       .prepare(
         `UPDATE users
-         SET username = ?, role = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?, quota_tokens = ?, quota_requests = ?, password_hash = ?
+         SET username = ?, role = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?, quota_tokens = ?, quota_requests = ?, allowed_model_aliases = ?, password_hash = ?
          WHERE id = ?`,
       )
       .run(
@@ -101,6 +109,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         merged.tpm,
         merged.quota_tokens,
         merged.quota_requests,
+        merged.allowed_model_aliases,
         nextPasswordHash,
         id,
       );
@@ -108,7 +117,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     gatewayDb
       .prepare(
         `UPDATE users
-         SET username = ?, role = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?, quota_tokens = ?, quota_requests = ?
+         SET username = ?, role = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?, quota_tokens = ?, quota_requests = ?, allowed_model_aliases = ?
          WHERE id = ?`,
       )
       .run(
@@ -120,18 +129,22 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         merged.tpm,
         merged.quota_tokens,
         merged.quota_requests,
+        merged.allowed_model_aliases,
         id,
       );
   }
 
   const row = gatewayDb
     .prepare(
-      `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, enabled, created_at
+      `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, allowed_model_aliases, enabled, created_at
        FROM users WHERE id = ? AND deleted_at IS NULL`,
     )
-    .get(id);
+    .get(id) as { allowed_model_aliases: string } & Record<string, unknown>;
 
-  return jsonOk({ message: "用户更新成功。", data: row });
+  return jsonOk({
+    message: "用户更新成功。",
+    data: { ...row, allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases) },
+  });
 }
 
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {

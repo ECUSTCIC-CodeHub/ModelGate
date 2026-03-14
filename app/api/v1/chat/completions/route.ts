@@ -5,6 +5,7 @@ import { tryAcquireChannel, type ChannelLease } from "@/lib/channel-runtime";
 import { insertChatLog } from "@/lib/chat-log";
 import { gatewayDb } from "@/lib/db";
 import { jsonError } from "@/lib/http";
+import { canUserAccessModelAlias } from "@/lib/model-access";
 import { fetchUpstreamChat } from "@/lib/proxy";
 import { checkUserRateLimit } from "@/lib/ratelimit";
 import { listModelRoutes, selectModelRoute, type RoutedModel } from "@/lib/router";
@@ -214,6 +215,11 @@ export async function POST(request: Request) {
   }
 
   const estimatedTokens = estimateRequestTokens(body);
+  if (!canUserAccessModelAlias(auth.user, alias)) {
+    logRejected(403, "当前用户无权访问该模型", alias, estimatedTokens);
+    return jsonError("当前用户无权访问该模型", 403);
+  }
+
   const quota = checkQuota(auth.user.id, estimatedTokens);
   if (!quota.ok) {
     logRejected(429, quota.reason, alias, estimatedTokens);

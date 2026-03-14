@@ -9,6 +9,7 @@ const createSchema = z.object({
   alias: z.string().min(1),
   real_model: z.string().min(1),
   channel_id: z.number().int().positive(),
+  is_public: z.boolean().optional(),
   enabled: z.boolean().optional(),
   weight: z.number().int().min(1).optional(),
 });
@@ -45,13 +46,14 @@ export async function POST(request: Request) {
 
   const result = gatewayDb
     .prepare(
-      `INSERT INTO models (alias, real_model, channel_id, enabled, weight)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO models (alias, real_model, channel_id, is_public, enabled, weight)
+       VALUES (?, ?, ?, ?, ?, ?)`,
     )
     .run(
       parsed.data.alias,
       parsed.data.real_model,
       parsed.data.channel_id,
+      parsed.data.is_public === false ? 0 : 1,
       parsed.data.enabled === false ? 0 : 1,
       parsed.data.weight ?? 1,
     );

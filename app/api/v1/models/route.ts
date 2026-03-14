@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { checkApiKeyAuth } from "@/lib/api-key-auth";
 import { jsonError, jsonOk } from "@/lib/http";
-import { listEnabledAliases } from "@/lib/router";
+import { listAccessibleModelAliases } from "@/lib/model-access";
 
 export async function GET(request: Request) {
   const auth = checkApiKeyAuth(request);
@@ -14,9 +14,9 @@ export async function GET(request: Request) {
     });
   }
 
-  const aliases = listEnabledAliases();
+  const aliases = listAccessibleModelAliases(auth.context.user);
   return jsonOk({
     object: "list",
-    data: aliases.map((a) => ({ id: a.alias, object: "model" })),
+    data: aliases.map((alias) => ({ id: alias, object: "model" })),
   });
 }

@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS models (
   alias TEXT NOT NULL,
   real_model TEXT NOT NULL,
   channel_id INTEGER NOT NULL,
+  is_public INTEGER DEFAULT 1,
   enabled INTEGER DEFAULT 1,
   weight INTEGER DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -59,6 +60,7 @@ CREATE TABLE IF NOT EXISTS users (
   quota_requests INTEGER,
   used_tokens INTEGER DEFAULT 0,
   used_requests INTEGER DEFAULT 0,
+  allowed_model_aliases TEXT DEFAULT '[]',
   enabled INTEGER DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   deleted_at DATETIME
@@ -184,10 +186,12 @@ CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
   };
 
   ensureColumn("users", "deleted_at", "deleted_at DATETIME");
+  ensureColumn("users", "allowed_model_aliases", "allowed_model_aliases TEXT DEFAULT '[]'");
   ensureColumn("keys", "deleted_at", "deleted_at DATETIME");
   const addedKeyUsedTokens = ensureColumn("keys", "used_tokens", "used_tokens INTEGER DEFAULT 0");
   const addedKeyUsedRequests = ensureColumn("keys", "used_requests", "used_requests INTEGER DEFAULT 0");
   ensureColumn("models", "deleted_at", "deleted_at DATETIME");
+  ensureColumn("models", "is_public", "is_public INTEGER DEFAULT 1");
   ensureColumn("logs", "first_token_latency_ms", "first_token_latency_ms INTEGER");
   ensureColumn("logs", "output_tps", "output_tps REAL");
   ensureColumn("logs", "route_attempts", "route_attempts INTEGER DEFAULT 1");
@@ -307,6 +311,7 @@ export type DbModel = {
   alias: string;
   real_model: string;
   channel_id: number;
+  is_public: number;
   enabled: number;
   weight: number;
   created_at: string;
@@ -325,6 +330,7 @@ export type DbUser = {
   quota_requests: number | null;
   used_tokens: number;
   used_requests: number;
+  allowed_model_aliases: string;
   enabled: number;
   created_at: string;
   deleted_at: string | null;

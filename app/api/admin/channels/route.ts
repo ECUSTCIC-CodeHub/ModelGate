@@ -17,6 +17,7 @@ const createSchema = z.object({
       z.object({
         alias: z.string().min(1),
         real_model: z.string().min(1),
+        is_public: z.boolean().optional(),
         enabled: z.boolean().optional(),
         weight: z.number().int().min(1).optional(),
       }),
@@ -30,12 +31,13 @@ export async function GET(request: Request) {
 
   const channels = gatewayDb.prepare("SELECT * FROM channels ORDER BY id DESC").all() as Array<Record<string, unknown> & { id: number }>;
   const models = gatewayDb
-    .prepare("SELECT id, alias, real_model, channel_id, enabled, weight, created_at FROM models WHERE deleted_at IS NULL ORDER BY id DESC")
+    .prepare("SELECT id, alias, real_model, channel_id, is_public, enabled, weight, created_at FROM models WHERE deleted_at IS NULL ORDER BY id DESC")
     .all() as Array<{
     id: number;
     alias: string;
     real_model: string;
     channel_id: number;
+    is_public: number;
     enabled: number;
     weight: number;
     created_at: string;
@@ -82,13 +84,14 @@ export async function POST(request: Request) {
     for (const model of parsed.data.models ?? []) {
       gatewayDb
         .prepare(
-          `INSERT INTO models (alias, real_model, channel_id, enabled, weight)
-           VALUES (?, ?, ?, ?, ?)`,
+          `INSERT INTO models (alias, real_model, channel_id, is_public, enabled, weight)
+           VALUES (?, ?, ?, ?, ?, ?)`,
         )
         .run(
           model.alias,
           model.real_model,
           channelId,
+          model.is_public === false ? 0 : 1,
           model.enabled === false ? 0 : 1,
           model.weight ?? 1,
         );

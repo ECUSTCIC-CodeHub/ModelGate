@@ -10,6 +10,7 @@ const updateSchema = z.object({
   alias: z.string().min(1).optional(),
   real_model: z.string().min(1).optional(),
   channel_id: z.number().int().positive().optional(),
+  is_public: z.boolean().optional(),
   enabled: z.boolean().optional(),
   weight: z.number().int().min(1).optional(),
 });
@@ -46,6 +47,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         alias: string;
         real_model: string;
         channel_id: number;
+        is_public: number;
         enabled: number;
         weight: number;
       }
@@ -73,10 +75,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   gatewayDb
     .prepare(
       `UPDATE models
-       SET alias = ?, real_model = ?, channel_id = ?, enabled = ?, weight = ?
+       SET alias = ?, real_model = ?, channel_id = ?, is_public = ?, enabled = ?, weight = ?
        WHERE id = ?`,
     )
-    .run(merged.alias, merged.real_model, merged.channel_id, merged.enabled, merged.weight, id);
+    .run(merged.alias, merged.real_model, merged.channel_id, merged.is_public, merged.enabled, merged.weight, id);
 
   const row = gatewayDb.prepare("SELECT * FROM models WHERE id = ? AND deleted_at IS NULL").get(id);
   return jsonOk({ data: row });

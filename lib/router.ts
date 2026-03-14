@@ -11,6 +11,7 @@ type CandidateRow = {
   alias: string;
   real_model: string;
   channel_id: number;
+  is_public: number;
   model_enabled: number;
   model_weight: number;
   model_created_at: string;
@@ -44,6 +45,7 @@ function mapRowToRoute(row: CandidateRow): RoutedModel {
       alias: row.alias,
       real_model: row.real_model,
       channel_id: row.channel_id,
+      is_public: row.is_public,
       enabled: row.model_enabled,
       weight: row.model_weight,
       created_at: row.model_created_at,
@@ -70,6 +72,7 @@ export function listModelRoutes(alias: string, options?: { excludeChannelIds?: n
         m.alias,
         m.real_model,
         m.channel_id,
+        m.is_public,
         m.enabled as model_enabled,
         m.weight as model_weight,
         m.created_at as model_created_at,

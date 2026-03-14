@@ -21,6 +21,7 @@ type ModelRow = {
   alias: string;
   real_model: string;
   channel_id: number;
+  is_public: number;
   enabled: number;
   weight: number;
 };
@@ -39,6 +40,7 @@ type Channel = {
 type ChannelModelDraft = {
   alias: string;
   real_model: string;
+  is_public: boolean;
   weight: number;
   enabled: boolean;
 };
@@ -55,6 +57,7 @@ type ModelForm = {
   alias: string;
   real_model: string;
   channel_id: number;
+  is_public: boolean;
   weight: number;
   enabled: boolean;
 };
@@ -70,6 +73,7 @@ const initialChannelForm: ChannelForm = {
 const initialModelDraft: ChannelModelDraft = {
   alias: "",
   real_model: "",
+  is_public: true,
   weight: 1,
   enabled: true,
 };
@@ -78,6 +82,7 @@ const initialModelForm: ModelForm = {
   alias: "",
   real_model: "",
   channel_id: 0,
+  is_public: true,
   weight: 1,
   enabled: true,
 };
@@ -175,6 +180,7 @@ export default function AdminChannelsPage() {
         .map((item) => ({
           alias: item.alias.trim(),
           real_model: item.real_model.trim(),
+          is_public: item.is_public,
           weight: item.weight,
           enabled: item.enabled,
         }))
@@ -301,6 +307,7 @@ export default function AdminChannelsPage() {
       alias: row.alias,
       real_model: row.real_model,
       channel_id: row.channel_id,
+      is_public: row.is_public === 1,
       weight: row.weight,
       enabled: row.enabled === 1,
     });
@@ -443,6 +450,7 @@ export default function AdminChannelsPage() {
                                           <TableHead>别名</TableHead>
                                           <TableHead>真实模型</TableHead>
                                           <TableHead>状态</TableHead>
+                                          <TableHead>可见性</TableHead>
                                           <TableHead>权重</TableHead>
                                           <TableHead className="text-right">操作</TableHead>
                                         </TableRow>
@@ -455,6 +463,9 @@ export default function AdminChannelsPage() {
                                             <TableCell>{model.real_model}</TableCell>
                                             <TableCell>
                                               <Badge variant={model.enabled ? "default" : "secondary"}>{model.enabled ? "启用" : "禁用"}</Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                              <Badge variant={model.is_public ? "default" : "secondary"}>{model.is_public ? "公开" : "白名单"}</Badge>
                                             </TableCell>
                                             <TableCell>{model.weight}</TableCell>
                                             <TableCell className="space-x-2 text-right">
@@ -529,7 +540,16 @@ export default function AdminChannelsPage() {
                   <Input placeholder="别名" value={item.alias} onChange={(e) => updateChannelModelDraft(index, { alias: e.target.value })} />
                   <Input placeholder="真实模型" value={item.real_model} onChange={(e) => updateChannelModelDraft(index, { real_model: e.target.value })} />
                   <Input type="number" min={1} placeholder="权重" value={item.weight} onChange={(e) => updateChannelModelDraft(index, { weight: Number(e.target.value) || 1 })} />
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="flex flex-col gap-2">
+                    <select
+                      className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
+                      value={item.is_public ? "1" : "0"}
+                      onChange={(e) => updateChannelModelDraft(index, { is_public: e.target.value === "1" })}
+                    >
+                      <option value="1">公开模型</option>
+                      <option value="0">白名单模型</option>
+                    </select>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <select
                       className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
                       value={item.enabled ? "1" : "0"}
@@ -539,6 +559,7 @@ export default function AdminChannelsPage() {
                       <option value="0">禁用</option>
                     </select>
                     <Button type="button" variant="secondary" size="sm" onClick={() => removeChannelModelDraft(index)}>删除</Button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -594,6 +615,17 @@ export default function AdminChannelsPage() {
             >
               <option value="1">启用</option>
               <option value="0">禁用</option>
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label>可见性</Label>
+            <select
+              className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
+              value={modelForm.is_public ? "1" : "0"}
+              onChange={(e) => setModelForm({ ...modelForm, is_public: e.target.value === "1" })}
+            >
+              <option value="1">公开模型</option>
+              <option value="0">白名单模型</option>
             </select>
           </div>
 

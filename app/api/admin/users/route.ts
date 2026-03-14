@@ -5,6 +5,7 @@ import { hashPassword } from "@/lib/auth";
 import { gatewayDb } from "@/lib/db";
 import { ensureAdmin } from "@/lib/guards";
 import { jsonError, jsonOk } from "@/lib/http";
+import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/model-access";
 import { getGatewaySettings } from "@/lib/settings";
 import { USERNAME_SCHEMA } from "@/lib/username";
 import { friendlyCredentialPayloadError } from "@/lib/validation";
@@ -19,6 +20,7 @@ const createSchema = z.object({
   tpm: z.number().int().min(-1).optional(),
   quota_tokens: z.number().int().min(-1).nullable().optional(),
   quota_requests: z.number().int().min(-1).nullable().optional(),
+  allowed_model_aliases: z.array(z.string().min(1)).optional(),
 });
 
 function normalizeQuota(value: number | null | undefined) {
@@ -40,13 +42,13 @@ export async function GET(request: Request) {
 
   const rows = gatewayDb
     .prepare(
-      `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, enabled, created_at
+      `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, allowed_model_aliases, enabled, created_at
        FROM users
        ${whereSql}
        ORDER BY id DESC
        LIMIT ? OFFSET ?`,
     )
-    .all(...whereArgs, limit, offset);
+    .all(...whereArgs, limit, offset) as Array<Record<string, unknown> & { allowed_model_aliases: string }>;
 
   const total = gatewayDb
     .prepare(
@@ -57,7 +59,10 @@ export async function GET(request: Request) {
     .get(...whereArgs) as { total: number };
 
   return jsonOk({
-    data: rows,
+    data: rows.map((row) => ({
+      ...row,
+      allowed_model_aliases: parseAllowedModelAliases((row as { allowed_model_aliases: string }).allowed_model_aliases),
+    })),
     paging: { limit, offset, total: total.total ?? 0 },
   });
 }
@@ -82,8 +87,8 @@ export async function POST(request: Request) {
     .prepare(
       `INSERT INTO users (
          username, password_hash, role, enabled,
-         rpm, qps, tpm, quota_tokens, quota_requests
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         rpm, qps, tpm, quota_tokens, quota_requests, allowed_model_aliases
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       parsed.data.username,
@@ -95,14 +100,18 @@ export async function POST(request: Request) {
       parsed.data.tpm ?? settings.default_tpm,
       normalizeQuota(parsed.data.quota_tokens),
       normalizeQuota(parsed.data.quota_requests),
+      stringifyAllowedModelAliases(parsed.data.allowed_model_aliases ?? []),
     );
 
   const row = gatewayDb
     .prepare(
-      `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, enabled, created_at
+      `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, allowed_model_aliases, enabled, created_at
        FROM users WHERE id = ? AND deleted_at IS NULL`,
     )
-    .get(result.lastInsertRowid);
+    .get(result.lastInsertRowid) as { allowed_model_aliases: string } & Record<string, unknown>;
 
-  return jsonOk({ message: "用户创建成功。", data: row }, 201);
+  return jsonOk({
+    message: "用户创建成功。",
+    data: { ...row, allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases) },
+  }, 201);
 }

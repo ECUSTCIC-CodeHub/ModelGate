@@ -36,6 +36,13 @@ type UserRow = {
   quota_requests: number | null;
   used_tokens: number;
   used_requests: number;
+  allowed_model_aliases: string[];
+};
+
+type AliasOption = {
+  id: number;
+  alias: string;
+  is_public: number;
 };
 
 type UserForm = {
@@ -49,6 +56,7 @@ type UserForm = {
   tpm: number;
   quota_tokens: string;
   quota_requests: string;
+  allowed_model_aliases: string[];
 };
 
 const initialForm: UserForm = {
@@ -62,6 +70,7 @@ const initialForm: UserForm = {
   tpm: -1,
   quota_tokens: "",
   quota_requests: "",
+  allowed_model_aliases: [],
 };
 
 function formatNumber(value: number | null | undefined) {
@@ -88,6 +97,7 @@ export default function AdminUsersPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [keyword, setKeyword] = useState("");
+  const [aliasOptions, setAliasOptions] = useState<AliasOption[]>([]);
   const pageSize = 20;
   const { toast } = useToast();
 
@@ -123,8 +133,23 @@ export default function AdminUsersPage() {
     }
   }
 
+  async function loadAliasOptions() {
+    const response = await authedFetch("/api/dashboard/models");
+    const data = await response.json().catch(() => null);
+    if (!response.ok) return;
+
+    const rows = Array.isArray(data?.data) ? (data.data as AliasOption[]) : [];
+    const unique = new Map<string, AliasOption>();
+    for (const row of rows) {
+      if (!unique.has(row.alias)) {
+        unique.set(row.alias, row);
+      }
+    }
+    setAliasOptions([...unique.values()].sort((a, b) => a.alias.localeCompare(b.alias)));
+  }
+
   useEffect(() => {
-    void load(1);
+    void Promise.all([load(1), loadAliasOptions()]);
   }, [router]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -154,8 +179,18 @@ export default function AdminUsersPage() {
       tpm: row.tpm,
       quota_tokens: row.quota_tokens === null ? "" : String(row.quota_tokens),
       quota_requests: row.quota_requests === null ? "" : String(row.quota_requests),
+      allowed_model_aliases: row.allowed_model_aliases ?? [],
     });
     setDrawerOpen(true);
+  }
+
+  function toggleAllowedAlias(alias: string) {
+    setForm((current) => ({
+      ...current,
+      allowed_model_aliases: current.allowed_model_aliases.includes(alias)
+        ? current.allowed_model_aliases.filter((item) => item !== alias)
+        : [...current.allowed_model_aliases, alias].sort(),
+    }));
   }
 
   async function onSubmit(event: FormEvent) {
@@ -170,6 +205,7 @@ export default function AdminUsersPage() {
       tpm: form.tpm,
       quota_tokens: form.quota_tokens.trim() === "" ? null : Number(form.quota_tokens),
       quota_requests: form.quota_requests.trim() === "" ? null : Number(form.quota_requests),
+      allowed_model_aliases: form.allowed_model_aliases,
       ...(form.new_password.trim() ? { new_password: form.new_password.trim() } : {}),
     };
 
@@ -440,6 +476,31 @@ export default function AdminUsersPage() {
                   onChange={(e) => setForm({ ...form, quota_tokens: e.target.value })}
                 />
               </div>
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+            <p className="text-sm font-medium text-zinc-100">额外可访问模型</p>
+            <p className="text-xs text-zinc-500">公开模型所有用户都能用；这里只配置非公开模型的额外白名单。</p>
+            <div className="grid gap-2 md:grid-cols-2">
+              {aliasOptions.map((item) => (
+                <label
+                  key={item.alias}
+                  className="flex items-center justify-between gap-3 rounded-md border border-zinc-800 px-3 py-2 text-sm"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-mono text-zinc-100">{item.alias}</p>
+                    <p className="text-xs text-zinc-500">{item.is_public === 1 ? "公开模型" : "非公开模型"}</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={form.allowed_model_aliases.includes(item.alias)}
+                    onChange={() => toggleAllowedAlias(item.alias)}
+                    className="h-4 w-4 accent-zinc-200"
+                  />
+                </label>
+              ))}
+              {aliasOptions.length === 0 ? <p className="text-sm text-zinc-500">暂无模型可选</p> : null}
             </div>
           </div>
 
