@@ -75,6 +75,8 @@ type AliasOption = {
   is_public: number;
 };
 
+type UserSortKey = "created_at" | "used_requests" | "used_tokens" | "username";
+
 type UserForm = {
   username: string;
   password: string;
@@ -129,6 +131,8 @@ export default function AdminUsersPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [keyword, setKeyword] = useState("");
+  const [sortBy, setSortBy] = useState<UserSortKey>("created_at");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [aliasOptions, setAliasOptions] = useState<AliasOption[]>([]);
   const pageSize = 20;
   const { toast } = useToast();
@@ -147,12 +151,19 @@ export default function AdminUsersPage() {
     return true;
   }
 
-  async function load(nextPage = page, nextKeyword = keyword) {
+  async function load(
+    nextPage = page,
+    nextKeyword = keyword,
+    nextSortBy = sortBy,
+    nextSortDir = sortDir,
+  ) {
     if (!(await ensureAdmin())) return;
     const offset = (nextPage - 1) * pageSize;
     const params = new URLSearchParams({
       limit: String(pageSize),
       offset: String(offset),
+      sort_by: nextSortBy,
+      sort_dir: nextSortDir,
     });
     if (nextKeyword.trim()) params.set("keyword", nextKeyword.trim());
 
@@ -162,6 +173,8 @@ export default function AdminUsersPage() {
       setRows(data.data ?? []);
       setTotal(data.paging?.total ?? 0);
       setPage(nextPage);
+      setSortBy((data.sorting?.sort_by as UserSortKey) ?? nextSortBy);
+      setSortDir((data.sorting?.sort_dir as "asc" | "desc") ?? nextSortDir);
     }
   }
 
@@ -302,14 +315,36 @@ export default function AdminUsersPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <PageToolbar>
-              <div className="grid flex-1 gap-3 md:max-w-xl md:grid-cols-[minmax(0,1fr)_auto_auto]">
+              <div className="grid flex-1 gap-3 md:grid-cols-[minmax(0,1fr)_180px_140px_auto_auto]">
                 <Input placeholder="搜索用户名" value={keyword} onChange={(e) => setKeyword(e.target.value)} />
-                <Button variant="outline" onClick={() => void load(1)}>搜索</Button>
+                <Select value={sortBy} onValueChange={(value) => setSortBy(value as UserSortKey)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="排序字段" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="created_at">按创建时间</SelectItem>
+                    <SelectItem value="used_requests">按累计请求</SelectItem>
+                    <SelectItem value="used_tokens">按累计 Token</SelectItem>
+                    <SelectItem value="username">按用户名</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={sortDir} onValueChange={(value) => setSortDir(value as "asc" | "desc")}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="排序方向" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="desc">降序</SelectItem>
+                    <SelectItem value="asc">升序</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" onClick={() => void load(1, keyword, sortBy, sortDir)}>搜索</Button>
                 <Button
                   variant="ghost"
                   onClick={() => {
                     setKeyword("");
-                    void load(1, "");
+                    setSortBy("created_at");
+                    setSortDir("desc");
+                    void load(1, "", "created_at", "desc");
                   }}
                 >
                   重置

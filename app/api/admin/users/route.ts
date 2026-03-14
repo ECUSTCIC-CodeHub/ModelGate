@@ -29,6 +29,13 @@ function normalizeQuota(value: number | null | undefined) {
   return value;
 }
 
+const USER_SORT_COLUMNS = {
+  created_at: "id",
+  used_requests: "used_requests",
+  used_tokens: "used_tokens",
+  username: "username",
+} as const;
+
 export async function GET(request: Request) {
   const guard = ensureAdmin(request);
   if ("error" in guard) return guard.error;
@@ -37,6 +44,9 @@ export async function GET(request: Request) {
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? 20)));
   const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0));
   const keyword = (url.searchParams.get("keyword") ?? "").trim();
+  const sortBy = (url.searchParams.get("sort_by") ?? "created_at").trim() as keyof typeof USER_SORT_COLUMNS;
+  const sortDir = (url.searchParams.get("sort_dir") ?? "desc").trim().toLowerCase() === "asc" ? "ASC" : "DESC";
+  const orderColumn = USER_SORT_COLUMNS[sortBy] ?? USER_SORT_COLUMNS.created_at;
 
   const whereSql = keyword ? "WHERE deleted_at IS NULL AND username LIKE ?" : "WHERE deleted_at IS NULL";
   const whereArgs = keyword ? [`%${keyword}%`] : [];
@@ -46,7 +56,7 @@ export async function GET(request: Request) {
       `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, allowed_model_aliases, note, enabled, created_at
        FROM users
        ${whereSql}
-       ORDER BY id DESC
+       ORDER BY ${orderColumn} ${sortDir}, id DESC
        LIMIT ? OFFSET ?`,
     )
     .all(...whereArgs, limit, offset) as Array<Record<string, unknown> & { allowed_model_aliases: string }>;
@@ -65,6 +75,10 @@ export async function GET(request: Request) {
       allowed_model_aliases: parseAllowedModelAliases((row as { allowed_model_aliases: string }).allowed_model_aliases),
     })),
     paging: { limit, offset, total: total.total ?? 0 },
+    sorting: {
+      sort_by: sortBy in USER_SORT_COLUMNS ? sortBy : "created_at",
+      sort_dir: sortDir.toLowerCase(),
+    },
   });
 }
 

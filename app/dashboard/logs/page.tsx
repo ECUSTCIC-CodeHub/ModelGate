@@ -340,7 +340,13 @@ export default function AdminLogsPage() {
             <SectionTitle title="筛选条件" />
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[repeat(3,minmax(0,1fr))_180px_180px]">
+            <div
+              className={
+                role === "admin"
+                  ? "grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_180px_180px_auto]"
+                  : "grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_180px_180px_auto]"
+              }
+            >
               {role === "admin" ? (
                 <Input placeholder="搜索用户" value={filterUser} onChange={(e) => setFilterUser(e.target.value)} />
               ) : null}
@@ -350,24 +356,24 @@ export default function AdminLogsPage() {
               ) : null}
               <DateFilter value={filterStartDate} placeholder="开始日期" onChange={setFilterStartDate} />
               <DateFilter value={filterEndDate} placeholder="结束日期" onChange={setFilterEndDate} />
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" disabled={loading} onClick={() => void load(1)}>查询</Button>
-              <Button
-                variant="ghost"
-                disabled={loading}
-                onClick={() => {
-                  const emptyFilters = { user: "", model: "", channel: "", startDate: "", endDate: "" };
-                  setFilterUser(emptyFilters.user);
-                  setFilterModel(emptyFilters.model);
-                  setFilterChannel(emptyFilters.channel);
-                  setFilterStartDate(emptyFilters.startDate);
-                  setFilterEndDate(emptyFilters.endDate);
-                  void load(1, emptyFilters);
-                }}
-              >
-                重置
-              </Button>
+              <div className="flex items-center gap-2 whitespace-nowrap xl:justify-end">
+                <Button variant="outline" disabled={loading} onClick={() => void load(1)}>查询</Button>
+                <Button
+                  variant="ghost"
+                  disabled={loading}
+                  onClick={() => {
+                    const emptyFilters = { user: "", model: "", channel: "", startDate: "", endDate: "" };
+                    setFilterUser(emptyFilters.user);
+                    setFilterModel(emptyFilters.model);
+                    setFilterChannel(emptyFilters.channel);
+                    setFilterStartDate(emptyFilters.startDate);
+                    setFilterEndDate(emptyFilters.endDate);
+                    void load(1, emptyFilters);
+                  }}
+                >
+                  重置
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
