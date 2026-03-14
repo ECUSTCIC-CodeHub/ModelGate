@@ -1,32 +1,23 @@
 "use client";
 
+import * as React from "react";
+import * as SwitchPrimitives from "@radix-ui/react-switch";
 import { cn } from "@/lib/utils";
 
-type SwitchProps = {
-  checked: boolean;
-  onCheckedChange: (checked: boolean) => void;
-  className?: string;
-};
-
-export function Switch({ checked, onCheckedChange, className }: SwitchProps) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onCheckedChange(!checked)}
+const Switch = ({ className, ...props }: React.ComponentProps<typeof SwitchPrimitives.Root>) => (
+  <SwitchPrimitives.Root
+    className={cn(
+      "peer inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border border-transparent bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(159,232,216,0.35)] disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-[linear-gradient(135deg,#a6f1de_0%,#7ee0d2_100%)]",
+      className,
+    )}
+    {...props}
+  >
+    <SwitchPrimitives.Thumb
       className={cn(
-        "inline-flex h-6 w-11 items-center rounded-full border border-zinc-300 transition-colors",
-        checked ? "bg-zinc-900" : "bg-zinc-200",
-        className,
+        "pointer-events-none block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0",
       )}
-    >
-      <span
-        className={cn(
-          "mx-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
-          checked ? "translate-x-5" : "translate-x-0",
-        )}
-      />
-    </button>
-  );
-}
+    />
+  </SwitchPrimitives.Root>
+);
+
+export { Switch };

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
@@ -15,56 +15,46 @@ export default function RegisterPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
+    setLoading(true);
 
-    const response = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ username, password }),
-    });
+    try {
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
 
-    const data = await response.json();
-    if (!response.ok) {
-      toast({ variant: "error", description: getApiMessage(data, "注册失败，请检查输入信息。") });
-      return;
+      const data = await response.json();
+      if (!response.ok) {
+        toast({ variant: "error", description: getApiMessage(data, "注册失败，请检查输入信息。") });
+        return;
+      }
+
+      setSession({ accessToken: data.access_token, refreshToken: data.refresh_token });
+      if (data.user) setCachedProfile(data.user);
+      toast({ variant: "success", description: getApiMessage(data, "注册成功。") });
+      router.push(data.user.role === "admin" ? "/dashboard" : "/dashboard/keys");
+    } finally {
+      setLoading(false);
     }
-
-    setSession({ accessToken: data.access_token, refreshToken: data.refresh_token });
-    if (data.user) setCachedProfile(data.user);
-    toast({ variant: "success", description: getApiMessage(data, "注册成功。") });
-    router.push(data.user.role === "admin" ? "/dashboard" : "/dashboard/keys");
   }
 
   return (
-    <main className="safe-pad-bottom flex min-h-screen items-center justify-center px-4 py-8 sm:py-10">
-      <div className="w-full max-w-5xl">
-        <div className="grid gap-4 lg:grid-cols-[1.1fr_minmax(0,420px)]">
-          <section className="glass-panel hidden rounded-[32px] p-8 lg:flex lg:flex-col lg:justify-between">
-            <div>
-              <p className="text-xs font-semibold tracking-[0.26em] text-[var(--accent)] uppercase">Workspace Access</p>
-              <h1 className="mt-4 text-4xl font-semibold tracking-[-0.05em] text-white">注册</h1>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                <p className="text-xs tracking-[0.18em] text-zinc-500 uppercase">Access</p>
-                <p className="mt-3 text-lg font-semibold text-white">快速开通</p>
-              </div>
-              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                <p className="text-xs tracking-[0.18em] text-zinc-500 uppercase">Limits</p>
-                <p className="mt-3 text-lg font-semibold text-white">限额清晰</p>
-              </div>
-              <div className="rounded-[24px] border border-white/8 bg-black/20 p-4">
-                <p className="text-xs tracking-[0.18em] text-zinc-500 uppercase">Mobile</p>
-                <p className="mt-3 text-lg font-semibold text-white">手机可用</p>
-              </div>
-            </div>
-          </section>
-          <Card className="rounded-[28px]">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-2xl">注册</CardTitle>
+    <main className="flex min-h-screen items-center justify-center px-4 py-8">
+      <div className="w-full max-w-sm space-y-6">
+        <div className="space-y-2 text-center">
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">ModelGate</h1>
+          <p className="text-sm text-zinc-400">创建账号以继续</p>
+        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>注册</CardTitle>
+            <CardDescription>填写账号信息创建新用户</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={onSubmit} className="space-y-4">
@@ -77,6 +67,7 @@ export default function RegisterPage() {
                   placeholder="创建用户名"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
+                  required
                 />
               </div>
               <div className="space-y-2">
@@ -87,16 +78,21 @@ export default function RegisterPage() {
                   placeholder="设置密码"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  required
                 />
               </div>
-              <Button type="submit" className="w-full">注册</Button>
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? "注册中..." : "注册"}
+              </Button>
             </form>
-            <p className="mt-5 text-center text-sm text-zinc-400">
-              已有账号？ <Link href="/login" className="text-[var(--accent)] hover:text-white">登录</Link>
+            <p className="mt-4 text-center text-sm text-zinc-400">
+              已有账号？{" "}
+              <Link href="/login" className="text-zinc-100 underline-offset-4 hover:underline">
+                登录
+              </Link>
             </p>
           </CardContent>
-          </Card>
-        </div>
+        </Card>
       </div>
     </main>
   );

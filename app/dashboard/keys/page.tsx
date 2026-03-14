@@ -3,11 +3,25 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { EmptyState } from "@/components/dashboard/empty-state";
+import { MetricCard } from "@/components/dashboard/metric-card";
+import { SectionTitle } from "@/components/dashboard/section-title";
 import { useAuthProfile } from "@/components/providers/auth-provider";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
@@ -116,65 +130,28 @@ export default function ConsoleKeysPage() {
     return (
         <DashboardShell
             role={role}
-            title="我的 API 密钥"
-            subtitle="管理用于网关调用的密钥，base_url 使用 HOST/api/v1 的 OpenAI 兼容格式"
+            title="密钥管理"
+            subtitle="管理用于网关调用的 API 密钥，保持 OpenAI 兼容调用方式。"
         >
-            <div className="flex min-h-0 flex-col gap-4 md:h-full">
-                <Card className="flex min-h-0 flex-1 flex-col">
-                    <CardHeader className="shrink-0">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                            <div>
-                                <CardTitle>密钥列表</CardTitle>
-                                <p className="mt-2 text-sm text-zinc-400">
-                                    OpenAI 兼容调用：`base_url` 填 <span className="font-mono text-zinc-200">{baseUrlExample}</span>，`api_key` 用下方创建的 Key，`model` 请到“可用模型”页面查看后填写。
-                                </p>
-                            </div>
-                            <Button className="w-full sm:w-auto" onClick={createKey}>创建密钥</Button>
-                        </div>
+            <div className="space-y-4 pb-6">
+                <div className="grid gap-4 md:grid-cols-3">
+                    <MetricCard label="密钥数量" value={formatNumber(keys.length)} hint="当前账号持有的 API 密钥数量" />
+                    <MetricCard label="累计请求" value={formatNumber(keys.reduce((sum, item) => sum + item.used_requests, 0))} hint="全部密钥累计请求数" />
+                    <MetricCard label="累计 Token" value={formatNumber(keys.reduce((sum, item) => sum + item.used_tokens, 0))} hint="全部密钥累计 Token 使用量" />
+                </div>
+
+                <Card>
+                    <CardHeader>
+                        <SectionTitle
+                            title="密钥列表"
+                            description={`OpenAI 兼容调用时，base_url 使用 ${baseUrlExample}，api_key 使用这里创建的密钥。`}
+                            action={<Button onClick={createKey}>创建密钥</Button>}
+                        />
                     </CardHeader>
-                    <CardContent className="flex min-h-0 flex-1 flex-col px-0 pb-2 pt-0">
-                        {error ? <p className="px-6 pb-2 text-sm text-red-600">{error}</p> : null}
-                        <div className="space-y-3 px-4 sm:hidden">
-                            {keys.map((row) => (
-                                <div key={row.id} className="rounded-2xl border border-zinc-800 bg-black/15 p-4">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div className="min-w-0">
-                                            <p className="text-[11px] tracking-[0.18em] text-zinc-500 uppercase">Key</p>
-                                            <p className="mt-2 break-all font-mono text-xs text-zinc-100">{row.key}</p>
-                                        </div>
-                                        <Badge variant={row.enabled ? "default" : "secondary"} className="shrink-0">
-                                            {row.enabled ? "启用" : "禁用"}
-                                        </Badge>
-                                    </div>
-                                    <div className="mt-4 grid grid-cols-2 gap-3">
-                                        <div className="rounded-xl border border-white/8 bg-white/[0.03] p-3">
-                                            <p className="text-[11px] tracking-[0.16em] text-zinc-500 uppercase">请求</p>
-                                            <p className="mt-2 text-base font-semibold text-zinc-100">{formatNumber(row.used_requests)}</p>
-                                        </div>
-                                        <div className="rounded-xl border border-white/8 bg-white/[0.03] p-3">
-                                            <p className="text-[11px] tracking-[0.16em] text-zinc-500 uppercase">Token</p>
-                                            <p className="mt-2 text-base font-semibold text-zinc-100">{formatNumber(row.used_tokens)}</p>
-                                        </div>
-                                    </div>
-                                    <div className="mt-4 grid grid-cols-3 gap-2">
-                                        <Button size="sm" variant="outline" onClick={() => void copyKey(row.key)}>
-                                            复制
-                                        </Button>
-                                        <Button size="sm" variant="outline" onClick={() => toggleKey(row.id, row.enabled !== 1)}>
-                                            {row.enabled ? "禁用" : "启用"}
-                                        </Button>
-                                        <Button size="sm" variant="secondary" onClick={() => deleteKey(row.id)}>删除</Button>
-                                    </div>
-                                </div>
-                            ))}
-                            {!keys.length ? (
-                                <div className="rounded-2xl border border-zinc-800 bg-black/15 px-4 py-8 text-center text-sm text-zinc-400">
-                                    暂无密钥
-                                </div>
-                            ) : null}
-                        </div>
-                        <div className="hidden min-h-0 flex-1 overflow-x-auto px-4 sm:block sm:px-6">
-                            <div className="h-full w-full overflow-auto rounded-md border border-zinc-800">
+                    <CardContent className="space-y-4">
+                        {error ? <p className="text-sm text-red-400">{error}</p> : null}
+                        {keys.length > 0 ? (
+                            <div className="overflow-x-auto rounded-xl border border-white/10">
                                 <Table className="min-w-[820px]">
                                     <TableHeader>
                                         <TableRow>
@@ -190,7 +167,7 @@ export default function ConsoleKeysPage() {
                                         {keys.map((row, index) => (
                                             <TableRow key={row.id}>
                                                 <TableCell>{index + 1}</TableCell>
-                                                <TableCell className="font-mono text-xs md:text-sm">{row.key}</TableCell>
+                                                <TableCell className="max-w-[320px] font-mono text-xs md:text-sm">{row.key}</TableCell>
                                                 <TableCell>{formatNumber(row.used_requests)}</TableCell>
                                                 <TableCell>{formatNumber(row.used_tokens)}</TableCell>
                                                 <TableCell>
@@ -203,14 +180,32 @@ export default function ConsoleKeysPage() {
                                                     <Button size="sm" variant="outline" onClick={() => toggleKey(row.id, row.enabled !== 1)}>
                                                         {row.enabled ? "禁用" : "启用"}
                                                     </Button>
-                                                    <Button size="sm" variant="secondary" onClick={() => deleteKey(row.id)}>删除</Button>
+                                                    <AlertDialog>
+                                                        <AlertDialogTrigger asChild>
+                                                            <Button size="sm" variant="destructive">删除</Button>
+                                                        </AlertDialogTrigger>
+                                                        <AlertDialogContent>
+                                                            <AlertDialogHeader>
+                                                                <AlertDialogTitle>删除这个密钥？</AlertDialogTitle>
+                                                                <AlertDialogDescription>
+                                                                    删除后将无法继续使用该 Key 调用网关，此操作不可撤销。
+                                                                </AlertDialogDescription>
+                                                            </AlertDialogHeader>
+                                                            <AlertDialogFooter>
+                                                                <AlertDialogCancel>取消</AlertDialogCancel>
+                                                                <AlertDialogAction onClick={() => deleteKey(row.id)}>确认删除</AlertDialogAction>
+                                                            </AlertDialogFooter>
+                                                        </AlertDialogContent>
+                                                    </AlertDialog>
                                                 </TableCell>
                                             </TableRow>
                                         ))}
                                     </TableBody>
                                 </Table>
                             </div>
-                        </div>
+                        ) : (
+                            <EmptyState title="暂无密钥" description="创建首个密钥后，即可按 OpenAI 兼容格式接入网关。" action={<Button onClick={createKey}>创建密钥</Button>} />
+                        )}
                     </CardContent>
                 </Card>
             </div>

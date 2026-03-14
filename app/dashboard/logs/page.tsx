@@ -4,15 +4,18 @@
 import { type ColumnDef } from "@tanstack/react-table";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
-import { CalendarIcon, X } from "lucide-react";
+import { CalendarIcon, Clock3, Search, Timer, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { EmptyState } from "@/components/dashboard/empty-state";
+import { MetricCard } from "@/components/dashboard/metric-card";
+import { SectionTitle } from "@/components/dashboard/section-title";
 import { useAuthProfile } from "@/components/providers/auth-provider";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
 import {
@@ -85,21 +88,19 @@ type DateFilterProps = {
   value: string;
   placeholder: string;
   onChange: (value: string) => void;
-  align?: "start" | "end";
 };
 
-function DateFilter({ value, placeholder, onChange, align = "start" }: DateFilterProps) {
+function DateFilter({ value, placeholder, onChange }: DateFilterProps) {
   const selected = parseDateValue(value);
 
   return (
-    <div className="min-w-0 flex-1">
+    <div className="min-w-0">
       <Popover>
         <PopoverTrigger asChild>
           <Button
-            variant="ghost"
+            variant="outline"
             className={cn(
-              "group h-11 w-full justify-start rounded-none bg-transparent px-4 text-left font-normal shadow-none hover:bg-transparent",
-              align === "start" ? "rounded-l-xl" : "rounded-r-xl",
+              "group h-10 w-full justify-start gap-2 rounded-md bg-transparent px-3 text-left font-normal shadow-none",
               !selected ? "text-zinc-500" : "text-zinc-100",
             )}
           >
@@ -121,14 +122,14 @@ function DateFilter({ value, placeholder, onChange, align = "start" }: DateFilte
                     onChange("");
                   }
                 }}
-                className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+                className="ml-auto inline-flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 transition hover:bg-white/6 hover:text-zinc-200"
               >
                 <X className="h-3.5 w-3.5" />
               </span>
             ) : null}
           </Button>
         </PopoverTrigger>
-        <PopoverContent align={align} className="w-auto p-0">
+        <PopoverContent align="start" className="w-auto p-3" sideOffset={4}>
           <Calendar
             mode="single"
             selected={selected}
@@ -322,83 +323,65 @@ export default function AdminLogsPage() {
   return (
     <DashboardShell
       role={role}
-      title="日志看板"
-      subtitle="网关 Chat 请求、Token 和用时记录"
+      title="请求日志"
+      subtitle="按时间、用户、模型与渠道追踪请求表现和故障信息。"
     >
-      <div className="flex min-h-0 flex-col gap-4 md:h-full">
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-5">
-          <Card><CardHeader><CardDescription>总请求数</CardDescription><CardTitle>{formatNumber(summary?.total_requests)}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>失败请求数</CardDescription><CardTitle>{formatNumber(summary?.failed_requests)}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>总 Token</CardDescription><CardTitle title={formatNumber(summary?.total_tokens)}>{formatTokenCount(summary?.total_tokens)}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>平均首 Token 用时</CardDescription><CardTitle>{formatDuration(summary?.avg_first_token_latency_ms)}</CardTitle></CardHeader></Card>
-          <Card><CardHeader><CardDescription>平均输出速度</CardDescription><CardTitle>{(summary?.avg_output_tps ?? 0).toFixed(2)} token/s</CardTitle></CardHeader></Card>
+      <div className="space-y-4 pb-6">
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+          <MetricCard label="总请求数" value={formatNumber(summary?.total_requests)} hint="当前筛选范围内的请求量" icon={Search} />
+          <MetricCard label="失败请求数" value={formatNumber(summary?.failed_requests)} hint="便于快速定位异常" icon={Search} />
+          <MetricCard label="总 Token" value={formatTokenCount(summary?.total_tokens)} hint={summary ? `完整值 ${formatNumber(summary.total_tokens)}` : "累计 Token 消耗"} icon={Search} />
+          <MetricCard label="平均首 Token" value={formatDuration(summary?.avg_first_token_latency_ms)} hint="首个 token 返回速度" icon={Timer} />
+          <MetricCard label="平均输出速度" value={`${(summary?.avg_output_tps ?? 0).toFixed(2)} t/s`} hint="用于判断上游模型质量" icon={Clock3} />
         </div>
 
-        <Card className="flex min-h-0 flex-1 flex-col">
-          <CardHeader className="shrink-0">
-            <CardTitle>请求记录</CardTitle>
-            <div className="grid gap-3 pt-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(320px,420px)_auto]">
-              {role === "admin" ? (
-                <Input
-                  placeholder="搜索用户"
-                  value={filterUser}
-                  onChange={(e) => setFilterUser(e.target.value)}
-                />
-              ) : (
-                <div className="hidden xl:block" />
-              )}
-              <Input
-                placeholder="搜索模型"
-                value={filterModel}
-                onChange={(e) => setFilterModel(e.target.value)}
-              />
-              {role === "admin" ? (
-                <Input
-                  placeholder="搜索渠道"
-                  value={filterChannel}
-                  onChange={(e) => setFilterChannel(e.target.value)}
-                />
-              ) : (
-                <div className="hidden xl:block" />
-              )}
-              <div className="flex items-center overflow-hidden rounded-xl border border-[rgba(159,232,216,0.16)] bg-slate-950/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                <DateFilter
-                  value={filterStartDate}
-                  placeholder="开始日期"
-                  onChange={setFilterStartDate}
-                  align="start"
-                />
-                <div className="h-5 w-px shrink-0 bg-white/10" />
-                <DateFilter
-                  value={filterEndDate}
-                  placeholder="结束日期"
-                  onChange={setFilterEndDate}
-                  align="end"
-                />
-              </div>
-              <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
-                <Button variant="outline" disabled={loading} onClick={() => void load(1)}>搜索</Button>
-                <Button
-                  variant="ghost"
-                  disabled={loading}
-                  onClick={() => {
-                    const emptyFilters = { user: "", model: "", channel: "", startDate: "", endDate: "" };
-                    setFilterUser(emptyFilters.user);
-                    setFilterModel(emptyFilters.model);
-                    setFilterChannel(emptyFilters.channel);
-                    setFilterStartDate(emptyFilters.startDate);
-                    setFilterEndDate(emptyFilters.endDate);
-                    void load(1, emptyFilters);
-                  }}
-                >
-                  重置
-                </Button>
-              </div>
-            </div>
+        <Card>
+          <CardHeader className="pb-3">
+            <SectionTitle title="筛选条件" />
           </CardHeader>
-          <CardContent className="flex min-h-0 flex-1 flex-col px-0 pb-2 pt-0">
-            <div className="min-h-0 flex-1 overflow-x-auto px-4 sm:px-6">
-              <div className="h-full w-full overflow-auto rounded-md border border-zinc-800">
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[repeat(3,minmax(0,1fr))_180px_180px]">
+              {role === "admin" ? (
+                <Input placeholder="搜索用户" value={filterUser} onChange={(e) => setFilterUser(e.target.value)} />
+              ) : null}
+              <Input placeholder="搜索模型" value={filterModel} onChange={(e) => setFilterModel(e.target.value)} />
+              {role === "admin" ? (
+                <Input placeholder="搜索渠道" value={filterChannel} onChange={(e) => setFilterChannel(e.target.value)} />
+              ) : null}
+              <DateFilter value={filterStartDate} placeholder="开始日期" onChange={setFilterStartDate} />
+              <DateFilter value={filterEndDate} placeholder="结束日期" onChange={setFilterEndDate} />
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" disabled={loading} onClick={() => void load(1)}>查询</Button>
+              <Button
+                variant="ghost"
+                disabled={loading}
+                onClick={() => {
+                  const emptyFilters = { user: "", model: "", channel: "", startDate: "", endDate: "" };
+                  setFilterUser(emptyFilters.user);
+                  setFilterModel(emptyFilters.model);
+                  setFilterChannel(emptyFilters.channel);
+                  setFilterStartDate(emptyFilters.startDate);
+                  setFilterEndDate(emptyFilters.endDate);
+                  void load(1, emptyFilters);
+                }}
+              >
+                重置
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <SectionTitle
+              title="请求记录"
+              description="查看状态码、Token、首 Token 延迟、总耗时和错误原因。"
+            />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {rows.length > 0 ? (
+              <div className="overflow-x-auto rounded-xl border border-white/10">
                 <DataTable
                   columns={columns}
                   data={rows}
@@ -406,21 +389,29 @@ export default function AdminLogsPage() {
                   tableClassName="min-w-[1280px]"
                 />
               </div>
-            </div>
-            <div className="mt-2 flex items-center justify-end gap-3 border-t border-zinc-800 px-4 pt-2 sm:px-6">
+            ) : (
+              <EmptyState
+                title={loading ? "正在加载日志" : "暂无日志数据"}
+                description={loading ? "正在读取当前筛选条件下的请求记录。" : "可以调整筛选条件或等待新请求进入系统。"}
+              />
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
+              <p className="text-sm text-zinc-400">
+                共 {formatNumber(total)} 条，第 {page} / {totalPages} 页
+              </p>
               <Pagination className="mx-0 w-auto">
-                <PaginationContent>
+                <PaginationContent className="flex-wrap gap-1">
                   <PaginationItem>
                     <PaginationPrevious disabled={loading || page <= 1} onClick={() => (page > 1 ? void load(page - 1) : undefined)} />
                   </PaginationItem>
 
                   {pageWindow[0] > 1 ? (
                     <>
-                      <PaginationItem>
+                      <PaginationItem className="hidden sm:list-item">
                         <PaginationLink disabled={loading} onClick={() => void load(1)}>1</PaginationLink>
                       </PaginationItem>
                       {pageWindow[0] > 2 ? (
-                        <PaginationItem>
+                        <PaginationItem className="hidden sm:list-item">
                           <PaginationEllipsis />
                         </PaginationItem>
                       ) : null}
@@ -428,7 +419,7 @@ export default function AdminLogsPage() {
                   ) : null}
 
                   {pageWindow.map((pageNo) => (
-                    <PaginationItem key={pageNo}>
+                    <PaginationItem key={pageNo} className="hidden sm:list-item">
                       <PaginationLink disabled={loading} isActive={pageNo === page} onClick={() => void load(pageNo)}>
                         {pageNo}
                       </PaginationLink>
@@ -438,11 +429,11 @@ export default function AdminLogsPage() {
                   {pageWindow[pageWindow.length - 1] < totalPages ? (
                     <>
                       {pageWindow[pageWindow.length - 1] < totalPages - 1 ? (
-                        <PaginationItem>
+                        <PaginationItem className="hidden sm:list-item">
                           <PaginationEllipsis />
                         </PaginationItem>
                       ) : null}
-                      <PaginationItem>
+                      <PaginationItem className="hidden sm:list-item">
                         <PaginationLink disabled={loading} onClick={() => void load(totalPages)}>{totalPages}</PaginationLink>
                       </PaginationItem>
                     </>

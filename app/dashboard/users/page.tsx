@@ -3,10 +3,25 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { EmptyState } from "@/components/dashboard/empty-state";
+import { PageToolbar } from "@/components/dashboard/page-toolbar";
+import { SectionTitle } from "@/components/dashboard/section-title";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -18,7 +33,21 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { SideDrawer } from "@/components/ui/side-drawer";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
@@ -258,25 +287,20 @@ export default function AdminUsersPage() {
     <DashboardShell
       role="admin"
       title="用户管理"
-      subtitle="管理员可增删改查用户与限制参数"
+      subtitle="管理账号角色、启用状态、速率限制和模型访问范围。"
     >
-      <div className="flex min-h-0 flex-col gap-4 md:h-full">
-        <Card className="flex min-h-0 flex-1 flex-col">
-          <CardHeader className="shrink-0">
-            <div className="flex flex-col gap-3">
-              <div>
-                <CardTitle>用户列表</CardTitle>
-              </div>
-              <div className="grid w-full gap-2 sm:grid-cols-2 xl:max-w-3xl xl:grid-cols-[minmax(0,1fr)_auto_auto_auto] xl:items-center">
-                <Input
-                  placeholder="搜索用户名"
-                  value={keyword}
-                  onChange={(e) => setKeyword(e.target.value)}
-                />
-                <Button variant="outline" className="w-full xl:w-auto" onClick={() => void load(1)}>搜索</Button>
+      <div className="space-y-4 pb-6">
+        <Card>
+          <CardHeader>
+            <SectionTitle title="用户列表" description="支持分页搜索、编辑角色与限额配置。" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <PageToolbar>
+              <div className="grid flex-1 gap-3 md:max-w-xl md:grid-cols-[minmax(0,1fr)_auto_auto]">
+                <Input placeholder="搜索用户名" value={keyword} onChange={(e) => setKeyword(e.target.value)} />
+                <Button variant="outline" onClick={() => void load(1)}>搜索</Button>
                 <Button
                   variant="ghost"
-                  className="w-full xl:w-auto"
                   onClick={() => {
                     setKeyword("");
                     void load(1, "");
@@ -284,28 +308,27 @@ export default function AdminUsersPage() {
                 >
                   重置
                 </Button>
-                <Button className="w-full xl:w-auto" onClick={onCreateClick}>新增用户</Button>
               </div>
-            </div>
-          </CardHeader>
-          <CardContent className="flex min-h-0 flex-1 flex-col px-0 pb-2 pt-0">
-            <div className="min-h-0 flex-1 overflow-x-auto px-4 sm:px-6">
-              <div className="h-full w-full overflow-auto rounded-md border border-zinc-800">
+              <Button onClick={onCreateClick}>新增用户</Button>
+            </PageToolbar>
+
+            {rows.length > 0 ? (
+              <div className="overflow-x-auto rounded-xl border border-white/10">
                 <Table className="min-w-[1120px]">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>序号</TableHead>
-                  <TableHead>用户名</TableHead>
-                  <TableHead>角色</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>限速</TableHead>
-                  <TableHead>累计请求</TableHead>
-                  <TableHead>累计 Token</TableHead>
-                  <TableHead>请求配额</TableHead>
-                  <TableHead>Token 配额</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>序号</TableHead>
+                      <TableHead>用户名</TableHead>
+                      <TableHead>角色</TableHead>
+                      <TableHead>状态</TableHead>
+                      <TableHead>限速</TableHead>
+                      <TableHead>累计请求</TableHead>
+                      <TableHead>累计 Token</TableHead>
+                      <TableHead>请求配额</TableHead>
+                      <TableHead>Token 配额</TableHead>
+                      <TableHead className="text-right">操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
                   <TableBody>
                     {rows.map((row, index) => (
                       <TableRow key={row.id}>
@@ -324,16 +347,34 @@ export default function AdminUsersPage() {
                         <TableCell>{row.quota_tokens === null ? "∞" : formatNumber(row.quota_tokens)}</TableCell>
                         <TableCell className="space-x-2 text-right">
                           <Button size="sm" variant="outline" onClick={() => onEditClick(row)}>编辑</Button>
-                          <Button size="sm" variant="secondary" onClick={() => remove(row.id)}>删除</Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="sm" variant="destructive">删除</Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>删除用户 {row.username}？</AlertDialogTitle>
+                                <AlertDialogDescription>删除后该用户的登录入口会立即失效，此操作不可撤销。</AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>取消</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => remove(row.id)}>确认删除</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               </div>
-            </div>
-            <div className="mt-4 px-4 sm:px-6">
-              <Pagination>
+            ) : (
+              <EmptyState title="暂无用户数据" description="当前没有匹配的用户记录，可以尝试调整搜索条件。" action={<Button onClick={onCreateClick}>新增用户</Button>} />
+            )}
+
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-zinc-400">共 {formatNumber(total)} 个用户，第 {page} / {totalPages} 页</p>
+              <Pagination className="mx-0 w-auto">
                 <PaginationContent>
                   <PaginationItem>
                     <PaginationPrevious onClick={() => page > 1 && void load(page - 1)} disabled={page <= 1} />
@@ -380,136 +421,125 @@ export default function AdminUsersPage() {
           </CardContent>
         </Card>
       </div>
-      <SideDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        title={editingId === null ? "新增用户" : `编辑用户 #${editingId}`}
-        description={editingId === null ? "创建新用户账号" : "修改角色、限速与配额"}
-      >
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
-            <p className="text-sm font-medium text-zinc-100">基础信息</p>
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>用户名</Label>
-                <Input
-                  pattern="[A-Za-z0-9]+"
-                  title="仅支持英文字母和数字"
-                  value={form.username}
-                  onChange={(e) => setForm({ ...form, username: e.target.value })}
-                />
-              </div>
-              {editingId === null ? (
+
+      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <SheetContent side="right" className="sm:max-w-2xl">
+          <SheetHeader>
+            <SheetTitle>{editingId === null ? "新增用户" : `编辑用户 #${editingId}`}</SheetTitle>
+            <SheetDescription>{editingId === null ? "创建新用户账号并设置初始配额。" : "修改角色、限速、配额与模型访问权限。"}</SheetDescription>
+          </SheetHeader>
+          <form onSubmit={onSubmit} className="mt-4 space-y-4 overflow-y-auto pr-1">
+            <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="text-sm font-medium text-zinc-100">基础信息</p>
+              <div className="grid gap-3 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>密码</Label>
-                  <Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label>重置密码（可选）</Label>
+                  <Label>用户名</Label>
                   <Input
-                    type="password"
-                    placeholder="留空表示不修改"
-                    value={form.new_password}
-                    onChange={(e) => setForm({ ...form, new_password: e.target.value })}
+                    pattern="[A-Za-z0-9]+"
+                    title="仅支持英文字母和数字"
+                    value={form.username}
+                    onChange={(e) => setForm({ ...form, username: e.target.value })}
                   />
                 </div>
-              )}
-              <div className="space-y-2">
-                <Label>角色</Label>
-                <select
-                  className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
-                  value={form.role}
-                  onChange={(e) => setForm({ ...form, role: e.target.value as "admin" | "user" })}
-                >
-                  <option value="user">普通用户</option>
-                  <option value="admin">管理员</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label>状态</Label>
-                <select
-                  className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
-                  value={form.enabled ? "1" : "0"}
-                  onChange={(e) => setForm({ ...form, enabled: e.target.value === "1" })}
-                >
-                  <option value="1">启用</option>
-                  <option value="0">禁用</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
-            <p className="text-sm font-medium text-zinc-100">配额配置</p>
-            <p className="text-xs text-zinc-500">`-1` 表示无限，`0` 表示禁止；总量配额留空也表示不限制。</p>
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="space-y-2">
-                <Label>RPM 配额</Label>
-                <Input type="number" min={-1} value={form.rpm} onChange={(e) => setForm({ ...form, rpm: Number(e.target.value) })} />
-              </div>
-              <div className="space-y-2">
-                <Label>QPS 配额</Label>
-                <Input type="number" min={-1} value={form.qps} onChange={(e) => setForm({ ...form, qps: Number(e.target.value) })} />
-              </div>
-              <div className="space-y-2">
-                <Label>TPM 配额</Label>
-                <Input type="number" min={-1} value={form.tpm} onChange={(e) => setForm({ ...form, tpm: Number(e.target.value) })} />
-              </div>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>总请求配额（可空）</Label>
-                <Input
-                  type="number"
-                  min={-1}
-                  value={form.quota_requests}
-                  onChange={(e) => setForm({ ...form, quota_requests: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>总 Token 配额（可空）</Label>
-                <Input
-                  type="number"
-                  min={-1}
-                  value={form.quota_tokens}
-                  onChange={(e) => setForm({ ...form, quota_tokens: e.target.value })}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
-            <p className="text-sm font-medium text-zinc-100">额外可访问模型</p>
-            <p className="text-xs text-zinc-500">公开模型所有用户都能用；这里只配置非公开模型的额外白名单。</p>
-            <div className="grid gap-2 md:grid-cols-2">
-              {aliasOptions.map((item) => (
-                <label
-                  key={item.alias}
-                  className="flex items-center justify-between gap-3 rounded-md border border-zinc-800 px-3 py-2 text-sm"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-mono text-zinc-100">{item.alias}</p>
-                    <p className="text-xs text-zinc-500">{item.is_public === 1 ? "公开模型" : "非公开模型"}</p>
+                {editingId === null ? (
+                  <div className="space-y-2">
+                    <Label>密码</Label>
+                    <Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={form.allowed_model_aliases.includes(item.alias)}
-                    onChange={() => toggleAllowedAlias(item.alias)}
-                    className="h-4 w-4 accent-zinc-200"
-                  />
-                </label>
-              ))}
-              {aliasOptions.length === 0 ? <p className="text-sm text-zinc-500">暂无模型可选</p> : null}
+                ) : (
+                  <div className="space-y-2">
+                    <Label>重置密码</Label>
+                    <Input
+                      type="password"
+                      placeholder="留空表示不修改"
+                      value={form.new_password}
+                      onChange={(e) => setForm({ ...form, new_password: e.target.value })}
+                    />
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label>角色</Label>
+                  <Select value={form.role} onValueChange={(value) => setForm({ ...form, role: value as "admin" | "user" })}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="user">普通用户</SelectItem>
+                      <SelectItem value="admin">管理员</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>状态</Label>
+                  <Select value={form.enabled ? "1" : "0"} onValueChange={(value) => setForm({ ...form, enabled: value === "1" })}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">启用</SelectItem>
+                      <SelectItem value="0">禁用</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
-          </div>
 
-          <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="outline" onClick={() => setDrawerOpen(false)}>取消</Button>
-            <Button type="submit">{editingId === null ? "创建" : "保存"}</Button>
-          </div>
-        </form>
-      </SideDrawer>
+            <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="text-sm font-medium text-zinc-100">配额配置</p>
+              <p className="text-xs text-zinc-500">`-1` 表示无限，`0` 表示禁止；总量配额留空表示不限制。</p>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label>RPM 配额</Label>
+                  <Input type="number" min={-1} value={form.rpm} onChange={(e) => setForm({ ...form, rpm: Number(e.target.value) })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>QPS 配额</Label>
+                  <Input type="number" min={-1} value={form.qps} onChange={(e) => setForm({ ...form, qps: Number(e.target.value) })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>TPM 配额</Label>
+                  <Input type="number" min={-1} value={form.tpm} onChange={(e) => setForm({ ...form, tpm: Number(e.target.value) })} />
+                </div>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>总请求配额</Label>
+                  <Input type="number" min={-1} value={form.quota_requests} onChange={(e) => setForm({ ...form, quota_requests: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>总 Token 配额</Label>
+                  <Input type="number" min={-1} value={form.quota_tokens} onChange={(e) => setForm({ ...form, quota_tokens: e.target.value })} />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="text-sm font-medium text-zinc-100">额外可访问模型</p>
+              <p className="text-xs text-zinc-500">公开模型默认可访问，这里配置白名单模型的额外授权。</p>
+              <div className="grid gap-2 md:grid-cols-2">
+                {aliasOptions.map((item) => (
+                  <label key={item.alias} className="flex items-center gap-3 rounded-lg border border-white/10 px-3 py-3 text-sm">
+                    <Checkbox
+                      checked={form.allowed_model_aliases.includes(item.alias)}
+                      onCheckedChange={() => toggleAllowedAlias(item.alias)}
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate font-mono text-zinc-100">{item.alias}</p>
+                      <p className="text-xs text-zinc-500">{item.is_public === 1 ? "公开模型" : "非公开模型"}</p>
+                    </div>
+                  </label>
+                ))}
+                {aliasOptions.length === 0 ? <p className="text-sm text-zinc-500">暂无模型可选</p> : null}
+              </div>
+            </div>
+
+            <SheetFooter>
+              <Button type="button" variant="outline" onClick={() => setDrawerOpen(false)}>取消</Button>
+              <Button type="submit">{editingId === null ? "创建" : "保存"}</Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
     </DashboardShell>
   );
 }

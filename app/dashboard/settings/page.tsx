@@ -3,9 +3,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { SectionTitle } from "@/components/dashboard/section-title";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
@@ -80,77 +83,49 @@ export default function AdminSettingsPage() {
   }
 
   return (
-    <DashboardShell role="admin" title="系统设置" subtitle="全局开关与注册策略">
-      <div className="min-h-0 overflow-y-auto md:h-full md:pr-1">
-        <div className="grid gap-4 xl:grid-cols-3">
-          <Card className="xl:col-span-2">
+    <DashboardShell role="admin" title="系统设置" subtitle="配置注册策略、默认配额和上游重试行为。">
+      <div className="space-y-4 pb-6">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+          <Card>
             <CardHeader>
-              <CardTitle>注册与默认限流</CardTitle>
-              <CardDescription>新用户注册策略与默认 QPS/RPM/TPM/配额配置</CardDescription>
+              <SectionTitle
+                title="注册与默认限流"
+                description="新用户默认继承这些限速和配额配置。"
+              />
             </CardHeader>
             <CardContent className="space-y-5">
-              <div className="flex flex-col gap-3 rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-medium text-zinc-100">开启公开注册</p>
-                  <p className="text-xs text-zinc-500">关闭后只能由管理员创建用户。</p>
+                  <p className="text-xs text-zinc-500">关闭后仅管理员可创建用户。</p>
                 </div>
                 <Switch checked={registrationEnabled} onCheckedChange={setRegistrationEnabled} />
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-5">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <div className="space-y-2">
-                  <p className="text-sm text-zinc-300">默认 QPS</p>
-                  <input
-                    type="number"
-                    min={-1}
-                    className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
-                    value={defaultQps}
-                    onChange={(e) => setDefaultQps(Number(e.target.value))}
-                  />
-                  <p className="text-xs text-zinc-500">-1 表示不限速，0 表示禁止请求</p>
+                  <Label>默认 QPS</Label>
+                  <Input type="number" min={-1} value={defaultQps} onChange={(e) => setDefaultQps(Number(e.target.value))} />
+                  <p className="text-xs text-zinc-500">-1 不限速，0 禁止请求</p>
                 </div>
                 <div className="space-y-2">
-                  <p className="text-sm text-zinc-300">默认 RPM</p>
-                  <input
-                    type="number"
-                    min={-1}
-                    className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
-                    value={defaultRpm}
-                    onChange={(e) => setDefaultRpm(Number(e.target.value))}
-                  />
-                  <p className="text-xs text-zinc-500">-1 表示不限速，0 表示禁止请求</p>
+                  <Label>默认 RPM</Label>
+                  <Input type="number" min={-1} value={defaultRpm} onChange={(e) => setDefaultRpm(Number(e.target.value))} />
+                  <p className="text-xs text-zinc-500">-1 不限速，0 禁止请求</p>
                 </div>
                 <div className="space-y-2">
-                  <p className="text-sm text-zinc-300">默认 TPM</p>
-                  <input
-                    type="number"
-                    min={-1}
-                    className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
-                    value={defaultTpm}
-                    onChange={(e) => setDefaultTpm(Number(e.target.value))}
-                  />
-                  <p className="text-xs text-zinc-500">-1 表示不限速，0 表示禁止请求</p>
+                  <Label>默认 TPM</Label>
+                  <Input type="number" min={-1} value={defaultTpm} onChange={(e) => setDefaultTpm(Number(e.target.value))} />
+                  <p className="text-xs text-zinc-500">-1 不限速，0 禁止请求</p>
                 </div>
                 <div className="space-y-2">
-                  <p className="text-sm text-zinc-300">默认请求配额</p>
-                  <input
-                    type="number"
-                    min={-1}
-                    className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
-                    value={defaultQuotaRequests}
-                    onChange={(e) => setDefaultQuotaRequests(Number(e.target.value))}
-                  />
-                  <p className="text-xs text-zinc-500">-1 表示不限额，0 表示无可用请求</p>
+                  <Label>默认请求配额</Label>
+                  <Input type="number" min={-1} value={defaultQuotaRequests} onChange={(e) => setDefaultQuotaRequests(Number(e.target.value))} />
+                  <p className="text-xs text-zinc-500">-1 不限额，0 表示没有可用请求</p>
                 </div>
                 <div className="space-y-2">
-                  <p className="text-sm text-zinc-300">默认 Token 配额</p>
-                  <input
-                    type="number"
-                    min={-1}
-                    className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
-                    value={defaultQuotaTokens}
-                    onChange={(e) => setDefaultQuotaTokens(Number(e.target.value))}
-                  />
-                  <p className="text-xs text-zinc-500">-1 表示不限额，0 表示无可用 Token</p>
+                  <Label>默认 Token 配额</Label>
+                  <Input type="number" min={-1} value={defaultQuotaTokens} onChange={(e) => setDefaultQuotaTokens(Number(e.target.value))} />
+                  <p className="text-xs text-zinc-500">-1 不限额，0 表示没有可用 Token</p>
                 </div>
               </div>
             </CardContent>
@@ -158,35 +133,36 @@ export default function AdminSettingsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>上游重试策略</CardTitle>
-              <CardDescription>当上游异常时，自动切换其他渠道</CardDescription>
+              <SectionTitle
+                title="上游重试策略"
+                description="控制渠道异常时的自动切换行为。"
+              />
             </CardHeader>
             <CardContent className="space-y-5">
-              <div className="flex flex-col gap-3 rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-medium text-zinc-100">开启自动切换</p>
-                  <p className="text-xs text-zinc-500">命中 401/429/5xx 时尝试其他渠道。</p>
+                  <p className="text-xs text-zinc-500">命中 401、429 或 5xx 时尝试其他渠道。</p>
                 </div>
                 <Switch checked={upstreamRetryEnabled} onCheckedChange={setUpstreamRetryEnabled} />
               </div>
               <div className="space-y-2">
-                <p className="text-sm text-zinc-300">最大路由尝试次数</p>
-                <input
+                <Label>最大路由尝试次数</Label>
+                <Input
                   type="number"
                   min={1}
                   max={10}
-                  className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
                   value={upstreamRetryMaxAttempts}
                   onChange={(e) => setUpstreamRetryMaxAttempts(Number(e.target.value))}
                 />
-                <p className="text-xs text-zinc-500">默认 3，最多尝试 3 个渠道后返回错误。</p>
+                <p className="text-xs text-zinc-500">默认 3，建议不要超过 5，避免上游回退过慢。</p>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        <Card className="mt-4">
-          <CardContent className="flex items-center justify-end p-4">
+        <Card>
+          <CardContent className="flex items-center justify-end p-5">
             <Button onClick={save}>保存设置</Button>
           </CardContent>
         </Card>

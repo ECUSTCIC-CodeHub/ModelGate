@@ -2,16 +2,45 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { Fragment } from "react";
 import { useRouter } from "next/navigation";
+import { EmptyState } from "@/components/dashboard/empty-state";
+import { PageToolbar } from "@/components/dashboard/page-toolbar";
+import { SectionTitle } from "@/components/dashboard/section-title";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { SideDrawer } from "@/components/ui/side-drawer";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
 import { authedFetch, clearSession, getOrFetchProfile } from "@/lib/client-auth";
@@ -91,7 +120,6 @@ export default function AdminChannelsPage() {
   const router = useRouter();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [error, setError] = useState("");
-  const [expandedChannelIds, setExpandedChannelIds] = useState<number[]>([]);
   const [testingModelId, setTestingModelId] = useState<number | null>(null);
 
   const [channelDrawerOpen, setChannelDrawerOpen] = useState(false);
@@ -135,10 +163,6 @@ export default function AdminChannelsPage() {
   useEffect(() => {
     void load();
   }, [router]);
-
-  function toggleChannelExpand(id: number) {
-    setExpandedChannelIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  }
 
   function openCreateChannel() {
     setChannelEditingId(null);
@@ -249,7 +273,6 @@ export default function AdminChannelsPage() {
     const data = await response.json().catch(() => null);
     if (response.ok) {
       toast({ variant: "success", description: getApiMessage(data, "删除渠道成功。") });
-      setExpandedChannelIds((prev) => prev.filter((x) => x !== id));
       await load();
       return;
     }
@@ -379,47 +402,55 @@ export default function AdminChannelsPage() {
     toast({ variant: "error", description: getApiMessage(data, "删除模型失败。") });
   }
 
+  const allModels = channels.flatMap((channel) =>
+    (channel.models ?? []).map((model) => ({
+      ...model,
+      channel_name: channel.name,
+    })),
+  );
+
   return (
     <DashboardShell
       role="admin"
-      title="渠道管理"
-      subtitle="一个页面管理多个渠道；展开渠道后管理该渠道的多个模型"
+      title="API 接口与模型管理"
+      subtitle="统一管理渠道接口、模型映射、状态、权重与测试动作。"
     >
-      <div className="flex min-h-0 flex-col gap-4 md:h-full">
-        <Card className="flex min-h-0 flex-1 flex-col">
-          <CardHeader className="shrink-0">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <CardTitle>渠道列表</CardTitle>
-              </div>
-              <Button className="w-full sm:w-auto" onClick={openCreateChannel}>新增渠道</Button>
-            </div>
+      <div className="space-y-4 pb-6">
+        {error ? <p className="text-sm text-red-400">{error}</p> : null}
+        <Card>
+          <CardHeader>
+            <SectionTitle title="接口与模型配置" description="按渠道管理 API 接口，在模型标签页管理 alias 与真实模型映射。" />
           </CardHeader>
-          <CardContent className="flex min-h-0 flex-1 flex-col px-0 pb-2 pt-0">
-            {error ? <p className="px-6 pb-2 text-sm text-red-400">{error}</p> : null}
-            <div className="min-h-0 flex-1 overflow-x-auto px-4 sm:px-6">
-              <div className="h-full w-full overflow-auto rounded-md border border-zinc-800">
-                <Table className="min-w-[920px]">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>序号</TableHead>
-                      <TableHead>名称</TableHead>
-                      <TableHead>Base URL</TableHead>
-                      <TableHead>状态</TableHead>
-                      <TableHead>权重</TableHead>
-                      <TableHead>超时</TableHead>
-                      <TableHead>模型数</TableHead>
-                      <TableHead className="text-right">操作</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {channels.map((row, channelIndex) => {
-                      const expanded = expandedChannelIds.includes(row.id);
-                      const channelModelsList = row.models ?? [];
+          <CardContent>
+            <Tabs defaultValue="channels" className="space-y-4">
+              <TabsList>
+                <TabsTrigger value="channels">接口渠道</TabsTrigger>
+                <TabsTrigger value="models">模型映射</TabsTrigger>
+              </TabsList>
 
-                      return (
-                        <Fragment key={row.id}>
-                          <TableRow>
+              <TabsContent value="channels" className="space-y-4">
+                <PageToolbar>
+                  <p className="text-sm text-zinc-400">渠道代表实际可访问的上游 API 接口，包括 Base URL、API Key、超时和权重。</p>
+                  <Button onClick={openCreateChannel}>新增接口渠道</Button>
+                </PageToolbar>
+                {channels.length > 0 ? (
+                  <div className="overflow-x-auto rounded-xl border border-white/10">
+                    <Table className="min-w-[960px]">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>序号</TableHead>
+                          <TableHead>名称</TableHead>
+                          <TableHead>Base URL</TableHead>
+                          <TableHead>状态</TableHead>
+                          <TableHead>权重</TableHead>
+                          <TableHead>超时</TableHead>
+                          <TableHead>模型数</TableHead>
+                          <TableHead className="text-right">操作</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {channels.map((row, channelIndex) => (
+                          <TableRow key={row.id}>
                             <TableCell>{channelIndex + 1}</TableCell>
                             <TableCell>{row.name}</TableCell>
                             <TableCell className="max-w-72 truncate">{row.base_url}</TableCell>
@@ -428,220 +459,245 @@ export default function AdminChannelsPage() {
                             </TableCell>
                             <TableCell>{row.weight}</TableCell>
                             <TableCell>{row.timeout}s</TableCell>
-                            <TableCell>{channelModelsList.length}</TableCell>
+                            <TableCell>{row.models?.length ?? 0}</TableCell>
                             <TableCell className="space-x-2 text-right">
-                              <Button size="sm" variant="outline" onClick={() => toggleChannelExpand(row.id)}>
-                                {expanded ? "收起模型" : "展开模型"}
-                              </Button>
                               <Button size="sm" variant="outline" onClick={() => openEditChannel(row)}>编辑</Button>
                               <Button size="sm" variant="outline" onClick={() => toggleChannel(row)}>
                                 {row.enabled ? "禁用" : "启用"}
                               </Button>
-                              <Button size="sm" variant="secondary" onClick={() => removeChannel(row.id)}>删除</Button>
+                              <Button size="sm" variant="outline" onClick={() => openCreateModel(row.id)}>新增模型</Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button size="sm" variant="destructive">删除</Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>删除渠道 {row.name}？</AlertDialogTitle>
+                                    <AlertDialogDescription>删除渠道后，其下模型映射也将失效，此操作不可撤销。</AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>取消</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => removeChannel(row.id)}>确认删除</AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
                             </TableCell>
                           </TableRow>
-                          {expanded ? (
-                            <TableRow key={`${row.id}-models`}>
-                              <TableCell colSpan={8} className="bg-zinc-950/40">
-                                <div className="space-y-3 py-2">
-                                  <div className="flex items-center justify-between">
-                                    <p className="text-sm text-zinc-300">渠道模型（{channelModelsList.length}）</p>
-                                    <Button size="sm" onClick={() => openCreateModel(row.id)}>新增模型</Button>
-                                  </div>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <EmptyState title="暂无接口渠道" description="先接入一个上游 API 渠道，再继续配置模型映射。" action={<Button onClick={openCreateChannel}>新增渠道</Button>} />
+                )}
+              </TabsContent>
 
-                                  <div className="rounded-lg border border-zinc-800">
-                                    <Table className="min-w-[720px]">
-                                      <TableHeader>
-                                        <TableRow>
-                                          <TableHead>序号</TableHead>
-                                          <TableHead>别名</TableHead>
-                                          <TableHead>真实模型</TableHead>
-                                          <TableHead>状态</TableHead>
-                                          <TableHead>可见性</TableHead>
-                                          <TableHead>权重</TableHead>
-                                          <TableHead className="text-right">操作</TableHead>
-                                        </TableRow>
-                                      </TableHeader>
-                                      <TableBody>
-                                        {channelModelsList.map((model, modelIndex) => (
-                                          <TableRow key={model.id}>
-                                            <TableCell>{modelIndex + 1}</TableCell>
-                                            <TableCell>{model.alias}</TableCell>
-                                            <TableCell>{model.real_model}</TableCell>
-                                            <TableCell>
-                                              <Badge variant={model.enabled ? "default" : "secondary"}>{model.enabled ? "启用" : "禁用"}</Badge>
-                                            </TableCell>
-                                            <TableCell>
-                                              <Badge variant={model.is_public ? "default" : "secondary"}>{model.is_public ? "公开" : "白名单"}</Badge>
-                                            </TableCell>
-                                            <TableCell>{model.weight}</TableCell>
-                                            <TableCell className="space-x-2 text-right">
-                                              <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() => testModel(model)}
-                                                disabled={testingModelId === model.id}
-                                              >
-                                                {testingModelId === model.id ? "测试中..." : "测试"}
-                                              </Button>
-                                              <Button size="sm" variant="outline" onClick={() => openEditModel(model)}>编辑</Button>
-                                              <Button size="sm" variant="outline" onClick={() => toggleModel(model)}>{model.enabled ? "禁用" : "启用"}</Button>
-                                              <Button size="sm" variant="secondary" onClick={() => removeModel(model.id)}>删除</Button>
-                                            </TableCell>
-                                          </TableRow>
-                                        ))}
-                                      </TableBody>
-                                    </Table>
-                                  </div>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ) : null}
-                        </Fragment>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
+              <TabsContent value="models" className="space-y-4">
+                <PageToolbar>
+                  <p className="text-sm text-zinc-400">模型映射决定外部调用时传入的 alias 如何路由到真实模型与渠道。</p>
+                  <Button disabled={channels.length === 0} onClick={() => openCreateModel(channels[0]?.id ?? 0)}>新增模型映射</Button>
+                </PageToolbar>
+                {allModels.length > 0 ? (
+                  <div className="overflow-x-auto rounded-xl border border-white/10">
+                    <Table className="min-w-[1020px]">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>序号</TableHead>
+                          <TableHead>别名</TableHead>
+                          <TableHead>真实模型</TableHead>
+                          <TableHead>所属渠道</TableHead>
+                          <TableHead>状态</TableHead>
+                          <TableHead>可见性</TableHead>
+                          <TableHead>权重</TableHead>
+                          <TableHead className="text-right">操作</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {allModels.map((model, modelIndex) => (
+                          <TableRow key={model.id}>
+                            <TableCell>{modelIndex + 1}</TableCell>
+                            <TableCell className="font-mono">{model.alias}</TableCell>
+                            <TableCell>{model.real_model}</TableCell>
+                            <TableCell>{model.channel_name}</TableCell>
+                            <TableCell>
+                              <Badge variant={model.enabled ? "default" : "secondary"}>{model.enabled ? "启用" : "禁用"}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={model.is_public ? "default" : "secondary"}>{model.is_public ? "公开" : "白名单"}</Badge>
+                            </TableCell>
+                            <TableCell>{model.weight}</TableCell>
+                            <TableCell className="space-x-2 text-right">
+                              <Button size="sm" variant="outline" onClick={() => testModel(model)} disabled={testingModelId === model.id}>
+                                {testingModelId === model.id ? "测试中..." : "测试"}
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => openEditModel(model)}>编辑</Button>
+                              <Button size="sm" variant="outline" onClick={() => toggleModel(model)}>{model.enabled ? "禁用" : "启用"}</Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button size="sm" variant="destructive">删除</Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>删除模型映射 {model.alias}？</AlertDialogTitle>
+                                    <AlertDialogDescription>删除后客户端将无法再通过该 alias 访问对应模型。</AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>取消</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => removeModel(model.id)}>确认删除</AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <EmptyState title="暂无模型映射" description="在渠道接入完成后，为客户端配置 alias 到真实模型的映射关系。" action={<Button disabled={channels.length === 0} onClick={() => openCreateModel(channels[0]?.id ?? 0)}>新增模型映射</Button>} />
+                )}
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
       </div>
 
-      <SideDrawer
-        open={channelDrawerOpen}
-        onClose={() => setChannelDrawerOpen(false)}
-        title={channelEditingId === null ? "新增渠道" : `编辑渠道 #${channelEditingId}`}
-      >
-        <form onSubmit={submitChannel} className="grid gap-3 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label>渠道名称</Label>
-            <Input value={channelForm.name} onChange={(e) => setChannelForm({ ...channelForm, name: e.target.value })} />
-          </div>
-          <div className="space-y-2">
-            <Label>权重</Label>
-            <Input type="number" min={1} value={channelForm.weight} onChange={(e) => setChannelForm({ ...channelForm, weight: Number(e.target.value) || 1 })} />
-          </div>
-          <div className="space-y-2 md:col-span-2">
-            <Label>Base URL</Label>
-            <Input value={channelForm.base_url} onChange={(e) => setChannelForm({ ...channelForm, base_url: e.target.value })} />
-          </div>
-          <div className="space-y-2">
-            <Label>超时(秒)</Label>
-            <Input type="number" min={1} value={channelForm.timeout} onChange={(e) => setChannelForm({ ...channelForm, timeout: Number(e.target.value) || 60 })} />
-          </div>
-          <div className="space-y-2 md:col-span-2">
-            <Label>API Key</Label>
-            <Input value={channelForm.api_key} onChange={(e) => setChannelForm({ ...channelForm, api_key: e.target.value })} />
-          </div>
-
-          {channelEditingId === null ? (
-            <div className="space-y-3 rounded-lg border border-zinc-800 p-3 md:col-span-2">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm font-medium">初始模型列表（可选）</p>
-                <Button type="button" variant="outline" size="sm" className="w-full sm:w-auto" onClick={addChannelModelDraft}>添加模型</Button>
+      <Sheet open={channelDrawerOpen} onOpenChange={setChannelDrawerOpen}>
+        <SheetContent side="right" className="sm:max-w-2xl">
+          <SheetHeader>
+            <SheetTitle>{channelEditingId === null ? "新增接口渠道" : `编辑渠道 #${channelEditingId}`}</SheetTitle>
+            <SheetDescription>配置渠道名称、Base URL、API Key、超时与默认模型草稿。</SheetDescription>
+          </SheetHeader>
+          <form onSubmit={submitChannel} className="mt-4 space-y-4 overflow-y-auto pr-1">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>渠道名称</Label>
+                <Input value={channelForm.name} onChange={(e) => setChannelForm({ ...channelForm, name: e.target.value })} />
               </div>
-              <p className="text-xs text-zinc-500">别名就是客户端请求时传入的 `model`（或 model_id）。支持 `*` 作为兜底模型，未命中其他别名时会自动回退到它。</p>
-              {channelModels.map((item, index) => (
-                <div key={index} className="grid gap-2 rounded-md border border-zinc-800 p-2 md:grid-cols-4">
-                  <Input placeholder="别名" value={item.alias} onChange={(e) => updateChannelModelDraft(index, { alias: e.target.value })} />
-                  <Input placeholder="真实模型" value={item.real_model} onChange={(e) => updateChannelModelDraft(index, { real_model: e.target.value })} />
-                  <Input type="number" min={1} placeholder="权重" value={item.weight} onChange={(e) => updateChannelModelDraft(index, { weight: Number(e.target.value) || 1 })} />
-                  <div className="flex flex-col gap-2">
-                    <select
-                      className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
-                      value={item.is_public ? "1" : "0"}
-                      onChange={(e) => updateChannelModelDraft(index, { is_public: e.target.value === "1" })}
-                    >
-                      <option value="1">公开模型</option>
-                      <option value="0">白名单模型</option>
-                    </select>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <select
-                      className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
-                      value={item.enabled ? "1" : "0"}
-                      onChange={(e) => updateChannelModelDraft(index, { enabled: e.target.value === "1" })}
-                    >
-                      <option value="1">启用</option>
-                      <option value="0">禁用</option>
-                    </select>
-                    <Button type="button" variant="secondary" size="sm" onClick={() => removeChannelModelDraft(index)}>删除</Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
+              <div className="space-y-2">
+                <Label>权重</Label>
+                <Input type="number" min={1} value={channelForm.weight} onChange={(e) => setChannelForm({ ...channelForm, weight: Number(e.target.value) || 1 })} />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>Base URL</Label>
+                <Input value={channelForm.base_url} onChange={(e) => setChannelForm({ ...channelForm, base_url: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>超时(秒)</Label>
+                <Input type="number" min={1} value={channelForm.timeout} onChange={(e) => setChannelForm({ ...channelForm, timeout: Number(e.target.value) || 60 })} />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>API Key</Label>
+                <Input value={channelForm.api_key} onChange={(e) => setChannelForm({ ...channelForm, api_key: e.target.value })} />
+              </div>
             </div>
-          ) : null}
 
-          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end md:col-span-2">
-            <Button type="button" variant="outline" onClick={() => setChannelDrawerOpen(false)}>取消</Button>
-            <Button type="submit">{channelEditingId === null ? "创建" : "保存"}</Button>
-          </div>
-        </form>
-      </SideDrawer>
+            {channelEditingId === null ? (
+              <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-zinc-100">初始模型列表</p>
+                    <p className="text-xs text-zinc-500">别名就是客户端调用时传入的 model，支持 * 作为兜底模型。</p>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={addChannelModelDraft}>添加模型</Button>
+                </div>
+                <div className="space-y-3">
+                  {channelModels.map((item, index) => (
+                    <div key={index} className="grid gap-3 rounded-lg border border-white/10 p-3 md:grid-cols-2">
+                      <Input placeholder="别名" value={item.alias} onChange={(e) => updateChannelModelDraft(index, { alias: e.target.value })} />
+                      <Input placeholder="真实模型" value={item.real_model} onChange={(e) => updateChannelModelDraft(index, { real_model: e.target.value })} />
+                      <Input type="number" min={1} placeholder="权重" value={item.weight} onChange={(e) => updateChannelModelDraft(index, { weight: Number(e.target.value) || 1 })} />
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <Select value={item.is_public ? "1" : "0"} onValueChange={(value) => updateChannelModelDraft(index, { is_public: value === "1" })}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">公开模型</SelectItem>
+                            <SelectItem value="0">白名单模型</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Select value={item.enabled ? "1" : "0"} onValueChange={(value) => updateChannelModelDraft(index, { enabled: value === "1" })}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">启用</SelectItem>
+                            <SelectItem value="0">禁用</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="md:col-span-2">
+                        <Button type="button" variant="destructive" size="sm" onClick={() => removeChannelModelDraft(index)}>删除该草稿</Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
-      <SideDrawer
-        open={modelDrawerOpen}
-        onClose={() => setModelDrawerOpen(false)}
-        title={modelEditingId === null ? "新增模型" : `编辑模型 #${modelEditingId}`}
-      >
-        <form onSubmit={submitModel} className="grid gap-3 md:grid-cols-2">
-          <div className="md:col-span-2">
-            <p className="text-xs text-zinc-500">别名就是客户端请求时传入的 `model`（或 model_id）。支持 `*` 作为兜底模型。</p>
-          </div>
-          <div className="space-y-2">
-            <Label>别名</Label>
-            <Input value={modelForm.alias} onChange={(e) => setModelForm({ ...modelForm, alias: e.target.value })} />
-          </div>
-          <div className="space-y-2">
-            <Label>真实模型</Label>
-            <Input value={modelForm.real_model} onChange={(e) => setModelForm({ ...modelForm, real_model: e.target.value })} />
-          </div>
-          <div className="space-y-2">
-            <Label>所属渠道</Label>
-            <select
-              className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
-              value={modelForm.channel_id}
-              onChange={(e) => setModelForm({ ...modelForm, channel_id: Number(e.target.value) })}
-            >
-              {channels.map((item) => (
-                <option key={item.id} value={item.id}>{item.name}</option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-2">
-            <Label>权重</Label>
-            <Input type="number" min={1} value={modelForm.weight} onChange={(e) => setModelForm({ ...modelForm, weight: Number(e.target.value) || 1 })} />
-          </div>
-          <div className="space-y-2">
-            <Label>状态</Label>
-            <select
-              className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
-              value={modelForm.enabled ? "1" : "0"}
-              onChange={(e) => setModelForm({ ...modelForm, enabled: e.target.value === "1" })}
-            >
-              <option value="1">启用</option>
-              <option value="0">禁用</option>
-            </select>
-          </div>
-          <div className="space-y-2">
-            <Label>可见性</Label>
-            <select
-              className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
-              value={modelForm.is_public ? "1" : "0"}
-              onChange={(e) => setModelForm({ ...modelForm, is_public: e.target.value === "1" })}
-            >
-              <option value="1">公开模型</option>
-              <option value="0">白名单模型</option>
-            </select>
-          </div>
+            <SheetFooter>
+              <Button type="button" variant="outline" onClick={() => setChannelDrawerOpen(false)}>取消</Button>
+              <Button type="submit">{channelEditingId === null ? "创建" : "保存"}</Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
 
-          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end md:col-span-2">
-            <Button type="button" variant="outline" onClick={() => setModelDrawerOpen(false)}>取消</Button>
-            <Button type="submit">{modelEditingId === null ? "创建" : "保存"}</Button>
-          </div>
-        </form>
-      </SideDrawer>
+      <Sheet open={modelDrawerOpen} onOpenChange={setModelDrawerOpen}>
+        <SheetContent side="right" className="sm:max-w-xl">
+          <SheetHeader>
+            <SheetTitle>{modelEditingId === null ? "新增模型映射" : `编辑模型 #${modelEditingId}`}</SheetTitle>
+            <SheetDescription>配置 alias、真实模型、所属渠道、公开性与启用状态。</SheetDescription>
+          </SheetHeader>
+          <form onSubmit={submitModel} className="mt-4 space-y-4 overflow-y-auto pr-1">
+            <p className="text-xs text-zinc-500">别名就是客户端请求时传入的 model，也支持 * 作为兜底模型。</p>
+            <div className="space-y-2">
+              <Label>别名</Label>
+              <Input value={modelForm.alias} onChange={(e) => setModelForm({ ...modelForm, alias: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label>真实模型</Label>
+              <Input value={modelForm.real_model} onChange={(e) => setModelForm({ ...modelForm, real_model: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label>所属渠道</Label>
+              <Select value={String(modelForm.channel_id)} onValueChange={(value) => setModelForm({ ...modelForm, channel_id: Number(value) })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {channels.map((item) => (
+                    <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>权重</Label>
+              <Input type="number" min={1} value={modelForm.weight} onChange={(e) => setModelForm({ ...modelForm, weight: Number(e.target.value) || 1 })} />
+            </div>
+            <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-4">
+              <div>
+                <p className="text-sm font-medium text-zinc-100">公开模型</p>
+                <p className="text-xs text-zinc-500">关闭后仅被授权用户可以访问该 alias。</p>
+              </div>
+              <Checkbox checked={modelForm.is_public} onCheckedChange={(checked) => setModelForm({ ...modelForm, is_public: checked === true })} />
+            </div>
+            <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-4">
+              <div>
+                <p className="text-sm font-medium text-zinc-100">启用状态</p>
+                <p className="text-xs text-zinc-500">关闭后该模型映射不会被路由命中。</p>
+              </div>
+              <Checkbox checked={modelForm.enabled} onCheckedChange={(checked) => setModelForm({ ...modelForm, enabled: checked === true })} />
+            </div>
+            <SheetFooter>
+              <Button type="button" variant="outline" onClick={() => setModelDrawerOpen(false)}>取消</Button>
+              <Button type="submit">{modelEditingId === null ? "创建" : "保存"}</Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
     </DashboardShell>
   );
 }

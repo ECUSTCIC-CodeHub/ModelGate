@@ -14,11 +14,11 @@ export function TableBody({ className, ...props }: React.ComponentProps<"tbody">
 }
 
 export function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
-  return <tr className={cn("border-b border-white/8 transition-colors hover:bg-white/4", className)} {...props} />;
+  return <tr className={cn("border-b border-white/10 transition-colors hover:bg-white/5", className)} {...props} />;
 }
 
 export function TableHead({ className, ...props }: React.ComponentProps<"th">) {
-  return <th className={cn("h-11 px-4 text-left align-middle text-xs font-semibold tracking-[0.14em] text-zinc-400 uppercase", className)} {...props} />;
+  return <th className={cn("h-11 px-4 text-left align-middle text-xs font-medium text-zinc-400", className)} {...props} />;
 }
 
 export function TableCell({ className, ...props }: React.ComponentProps<"td">) {

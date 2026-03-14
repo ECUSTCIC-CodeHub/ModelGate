@@ -3,13 +3,26 @@
 import { type ColumnDef } from "@tanstack/react-table";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Activity, BadgeCheck, KeyRound, Rocket, ShieldCheck, Sparkles, Waypoints } from "lucide-react";
+import {
+  Activity,
+  BadgeCheck,
+  Clock3,
+  KeyRound,
+  Rocket,
+  ShieldCheck,
+  Sparkles,
+  Users,
+  Waypoints,
+} from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { EmptyState } from "@/components/dashboard/empty-state";
+import { MetricCard } from "@/components/dashboard/metric-card";
+import { SectionTitle } from "@/components/dashboard/section-title";
 import { useAuthProfile } from "@/components/providers/auth-provider";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
 import { authedFetch, clearSession, getCachedProfile, getOrFetchProfile } from "@/lib/client-auth";
 import { formatNumber, formatTokenCount } from "@/lib/utils";
@@ -136,55 +149,96 @@ export default function DashboardHomePage() {
 
   const isAdmin = role === "admin";
   const statCards = [
-    { label: "总请求数", value: loading ? "-" : formatNumber(summary?.total_requests), icon: Activity },
-    { label: "失败请求数", value: loading ? "-" : formatNumber(summary?.failed_requests), icon: Activity },
-    { label: "总 Token", value: loading ? "-" : formatTokenCount(summary?.total_tokens), icon: Sparkles, title: formatNumber(summary?.total_tokens) },
-    { label: "密钥数", value: loading ? "-" : formatNumber(summary?.total_keys), icon: KeyRound },
-    { label: isAdmin ? "活跃用户" : "我的角色", value: loading ? "-" : (isAdmin ? formatNumber(summary?.active_users) : "普通用户"), icon: ShieldCheck },
-    { label: "成功率", value: loading ? "-" : `${(summary?.success_rate ?? 0).toFixed(2)}%`, icon: BadgeCheck },
-    { label: "平均用时", value: loading ? "-" : formatDuration(summary?.avg_latency_ms), icon: Rocket },
-    { label: "平均输出速度", value: loading ? "-" : `${(summary?.avg_output_tps ?? 0).toFixed(2)} token/s`, icon: Sparkles },
+    {
+      label: "总请求数",
+      value: loading ? "-" : formatNumber(summary?.total_requests),
+      hint: "累计请求总量",
+      icon: Activity,
+    },
+    {
+      label: "总 Token",
+      value: loading ? "-" : formatTokenCount(summary?.total_tokens),
+      hint: summary ? `完整值 ${formatNumber(summary.total_tokens)}` : "累计 Token 消耗",
+      icon: Sparkles,
+    },
+    {
+      label: isAdmin ? "活跃用户" : "当前角色",
+      value: loading ? "-" : isAdmin ? formatNumber(summary?.active_users) : "普通用户",
+      hint: isAdmin ? "最近有请求的用户数" : "当前登录权限",
+      icon: isAdmin ? Users : ShieldCheck,
+    },
+    {
+      label: "成功率",
+      value: loading ? "-" : `${(summary?.success_rate ?? 0).toFixed(2)}%`,
+      hint: summary ? `失败 ${formatNumber(summary.failed_requests)} 次` : "请求成功占比",
+      icon: BadgeCheck,
+    },
+    {
+      label: "平均响应时间",
+      value: loading ? "-" : formatDuration(summary?.avg_latency_ms),
+      hint: "所有请求平均耗时",
+      icon: Clock3,
+    },
+    {
+      label: "平均输出速度",
+      value: loading ? "-" : `${(summary?.avg_output_tps ?? 0).toFixed(2)} token/s`,
+      hint: "流式输出平均速度",
+      icon: Rocket,
+    },
+    {
+      label: "密钥数量",
+      value: loading ? "-" : formatNumber(summary?.total_keys),
+      hint: "当前可管理 API Key 数量",
+      icon: KeyRound,
+    },
+    {
+      label: "失败请求",
+      value: loading ? "-" : formatNumber(summary?.failed_requests),
+      hint: "便于快速定位异常时段",
+      icon: Activity,
+    },
   ];
 
   return (
-    <DashboardShell role={role} title="欢迎">
-      <div className="min-h-0 space-y-4 overflow-y-auto pb-4 md:h-full md:pr-1">
-        <section className="glass-panel overflow-hidden rounded-[30px] p-6 sm:p-7">
-          <div>
-            <h2 className="surface-title text-3xl font-semibold tracking-[-0.04em] text-white sm:text-4xl">运行概览</h2>
-            <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              {statCards.map((item) => (
-                <div key={item.label} className="rounded-[22px] border border-white/8 bg-black/25 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm text-zinc-300">{item.label}</p>
-                      <p className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-white" title={item.title}>
-                        {item.value}
-                      </p>
-                    </div>
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(159,232,216,0.08)] text-[var(--accent)]">
-                      <item.icon className="h-5 w-5" />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
+    <DashboardShell
+      role={role}
+      title="首页概览"
+      subtitle="查看实时请求量、成功率、Token 消耗与最近请求表现。"
+      right={(
+        <>
+          <Button variant="outline" onClick={() => router.push("/dashboard/logs")}>查看日志</Button>
+          <Button onClick={() => router.push("/dashboard/keys")}>
+            <KeyRound className="h-4 w-4" />
+            管理密钥
+          </Button>
+        </>
+      )}
+    >
+      <div className="space-y-4 pb-6">
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          {statCards.map((item) => (
+            <MetricCard
+              key={item.label}
+              label={item.label}
+              value={item.value}
+              hint={item.hint}
+              icon={item.icon}
+            />
+          ))}
+        </div>
 
-        <div className="grid gap-4 xl:grid-cols-3">
-          <Card className="xl:col-span-2">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+          <Card>
             <CardHeader>
-              <CardTitle>最近 24 小时 Token 消耗</CardTitle>
-              <CardDescription>按小时聚合</CardDescription>
+              <SectionTitle
+                title="最近 24 小时 Token 趋势"
+                description="按小时聚合，适合观察请求高峰和成本变化。"
+              />
             </CardHeader>
-            <CardContent className="h-64 sm:h-80 xl:h-80">
+            <CardContent className="h-56 lg:h-72">
               {chartReady ? (
                 <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                  <BarChart
-                    data={summary?.hourly_tokens ?? []}
-                    margin={{ top: 8, right: 8, left: -24, bottom: 0 }}
-                  >
+                  <BarChart data={summary?.hourly_tokens ?? []} margin={{ top: 8, right: 8, left: -24, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
                     <XAxis
                       dataKey="hour"
@@ -202,79 +256,95 @@ export default function DashboardHomePage() {
                       tickFormatter={(value: number) => formatTokenCount(value)}
                     />
                     <Tooltip
-                      contentStyle={{ background: "rgba(8, 15, 29, 0.94)", border: "1px solid rgba(159, 232, 216, 0.16)", borderRadius: 16 }}
+                      contentStyle={{ background: "rgba(8, 15, 29, 0.94)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }}
                       labelFormatter={(label) => String(label).replace("T", " ")}
-                      formatter={(value: number | string | undefined) => [formatTokenCount(typeof value === "number" ? value : Number(value)), "Token"]}
+                      formatter={(value: number | string | undefined) => [
+                        formatTokenCount(typeof value === "number" ? value : Number(value)),
+                        "Token",
+                      ]}
                     />
-                    <Bar dataKey="tokens" fill="url(#tokensGradient)" radius={[8, 8, 0, 0]} />
-                    <defs>
-                      <linearGradient id="tokensGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#9fe8d8" />
-                        <stop offset="100%" stopColor="#5b8dff" />
-                      </linearGradient>
-                    </defs>
+                    <Bar dataKey="tokens" fill="#e2e8f0" radius={[8, 8, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="h-full rounded-2xl border border-white/8 bg-black/10" />
+                <div className="h-full rounded-xl border border-white/10 bg-white/5" />
               )}
             </CardContent>
           </Card>
-          <Card className="hidden xl:block">
+
+          <Card>
             <CardHeader>
-              <CardTitle>快捷操作</CardTitle>
+              <SectionTitle title="快捷入口" description="常用操作集中在这里处理。" />
             </CardHeader>
-            <CardContent className="flex flex-col gap-2">
-              <Button onClick={() => router.push("/dashboard/keys")}><KeyRound className="h-4 w-4" />新建/管理 Key</Button>
-              <Button variant="outline" onClick={() => router.push("/dashboard/logs")}><Sparkles className="h-4 w-4" />查看日志</Button>
-              <Button variant="outline" onClick={() => router.push("/dashboard/models")}><ShieldCheck className="h-4 w-4" />查看可用模型</Button>
-              {isAdmin ? <Button variant="outline" onClick={() => router.push("/dashboard/channels")}><Waypoints className="h-4 w-4" />渠道管理</Button> : null}
+            <CardContent className="grid gap-2">
+              <Button onClick={() => router.push("/dashboard/keys")}>
+                <KeyRound className="h-4 w-4" />
+                创建或管理 Key
+              </Button>
+              <Button variant="outline" onClick={() => router.push("/dashboard/logs")}>
+                <Sparkles className="h-4 w-4" />
+                查看请求日志
+              </Button>
+              <Button variant="outline" onClick={() => router.push("/dashboard/models")}>
+                <ShieldCheck className="h-4 w-4" />
+                查看可用模型
+              </Button>
+              {isAdmin ? (
+                <Button variant="outline" onClick={() => router.push("/dashboard/channels")}>
+                  <Waypoints className="h-4 w-4" />
+                  管理接口与模型
+                </Button>
+              ) : null}
               {isAdmin ? <Button variant="outline" onClick={() => router.push("/dashboard/users")}>用户管理</Button> : null}
               {isAdmin ? <Button variant="outline" onClick={() => router.push("/dashboard/settings")}>系统设置</Button> : null}
             </CardContent>
           </Card>
         </div>
 
-        <div className="hidden gap-4 xl:grid xl:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Top 模型</CardTitle>
-              <CardDescription>按 Token 消耗排序</CardDescription>
+              <SectionTitle title="Top 模型" description="按 Token 消耗排序。" />
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto rounded-2xl border border-white/10 bg-black/10">
-                <DataTable columns={topModelColumns} data={summary?.top_models ?? []} emptyText="暂无模型数据" tableClassName="min-w-[420px]" />
-              </div>
+              {(summary?.top_models?.length ?? 0) > 0 ? (
+                <div className="overflow-x-auto rounded-xl border border-white/10">
+                  <DataTable columns={topModelColumns} data={summary?.top_models ?? []} tableClassName="min-w-[420px]" />
+                </div>
+              ) : (
+                <EmptyState title="暂无模型数据" description="开始有请求后，这里会展示最热门模型。" />
+              )}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Top 渠道</CardTitle>
-              <CardDescription>按 Token 消耗排序</CardDescription>
+              <SectionTitle title="Top 接口渠道" description="按 Token 消耗排序。" />
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto rounded-2xl border border-white/10 bg-black/10">
-                <DataTable columns={topChannelColumns} data={summary?.top_channels ?? []} emptyText="暂无渠道数据" tableClassName="min-w-[420px]" />
-              </div>
+              {(summary?.top_channels?.length ?? 0) > 0 ? (
+                <div className="overflow-x-auto rounded-xl border border-white/10">
+                  <DataTable columns={topChannelColumns} data={summary?.top_channels ?? []} tableClassName="min-w-[420px]" />
+                </div>
+              ) : (
+                <EmptyState title="暂无渠道数据" description="接口接入并产生请求后，这里会显示渠道排行。" />
+              )}
             </CardContent>
           </Card>
         </div>
 
-        <Card className="hidden xl:block">
+        <Card>
           <CardHeader>
-            <CardTitle>最近请求</CardTitle>
-            <CardDescription>最新 8 条请求记录</CardDescription>
+            <SectionTitle title="最近请求" description="最新 8 条请求记录，用于快速查看异常状态和耗时。" />
           </CardHeader>
           <CardContent>
-            <div className="w-full overflow-x-auto rounded-2xl border border-white/10 bg-black/10">
-              <DataTable
-                columns={recentLogColumns}
-                data={summary?.recent_logs ?? []}
-                emptyText="暂无请求数据"
-                tableClassName="min-w-[820px]"
-              />
-            </div>
+            {(summary?.recent_logs?.length ?? 0) > 0 ? (
+              <div className="overflow-x-auto rounded-xl border border-white/10">
+                <DataTable columns={recentLogColumns} data={summary?.recent_logs ?? []} tableClassName="min-w-[820px]" />
+              </div>
+            ) : (
+              <EmptyState title="暂无请求数据" description="当前还没有最近请求记录。" />
+            )}
           </CardContent>
         </Card>
       </div>

@@ -3,9 +3,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { EmptyState } from "@/components/dashboard/empty-state";
+import { MetricCard } from "@/components/dashboard/metric-card";
+import { SectionTitle } from "@/components/dashboard/section-title";
 import { useAuthProfile } from "@/components/providers/auth-provider";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
@@ -54,18 +57,24 @@ export default function AvailableModelsPage() {
     <DashboardShell
       role={role}
       title="可用模型"
+      subtitle="这里展示当前账号实际可调用的模型标识。"
     >
-      <div className="flex min-h-0 flex-col gap-4 md:h-full">
-        <Card className="flex min-h-0 flex-1 flex-col">
-          <CardHeader className="shrink-0">
-            <div>
-              <CardTitle>模型列表</CardTitle>
-            </div>
+      <div className="space-y-4 pb-6">
+        <div className="grid gap-4 md:grid-cols-2">
+          <MetricCard label="模型数量" value={String(rows.length)} hint="当前账号可直接调用的模型数量" />
+          <MetricCard label="访问方式" value="OpenAI 兼容" hint="将模型 ID 填入 model 字段即可调用" />
+        </div>
+        <Card>
+          <CardHeader>
+            <SectionTitle
+              title="模型列表"
+              description="模型 ID 会直接用于 OpenAI 兼容请求的 model 字段。"
+            />
           </CardHeader>
-          <CardContent className="flex min-h-0 flex-1 flex-col px-0 pb-2 pt-0">
-            {error ? <p className="px-6 pb-2 text-sm text-red-600">{error}</p> : null}
-            <div className="min-h-0 flex-1 overflow-x-auto px-4 sm:px-6">
-              <div className="h-full w-full overflow-auto rounded-md border border-zinc-800">
+          <CardContent className="space-y-4">
+            {error ? <p className="text-sm text-red-400">{error}</p> : null}
+            {rows.length > 0 ? (
+              <div className="overflow-x-auto rounded-xl border border-white/10">
                 <Table className="min-w-[460px]">
                   <TableHeader>
                     <TableRow>
@@ -78,15 +87,15 @@ export default function AvailableModelsPage() {
                         <TableCell className="font-mono text-sm">{row.id}</TableCell>
                       </TableRow>
                     ))}
-                    {!loading && rows.length === 0 ? (
-                      <TableRow>
-                        <TableCell className="text-zinc-400">暂无可用模型</TableCell>
-                      </TableRow>
-                    ) : null}
                   </TableBody>
                 </Table>
               </div>
-            </div>
+            ) : (
+              <EmptyState
+                title={loading ? "正在加载模型列表" : "暂无可用模型"}
+                description={loading ? "正在读取当前账号可访问的模型。" : "请检查渠道与模型配置，或确认当前账号是否被授予模型访问权限。"}
+              />
+            )}
           </CardContent>
         </Card>
       </div>
