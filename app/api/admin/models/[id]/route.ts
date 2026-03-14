@@ -64,6 +64,12 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const merged = {
     ...existing,
     ...parsed.data,
+    is_public:
+      parsed.data.is_public === undefined
+        ? existing.is_public
+        : parsed.data.is_public
+          ? 1
+          : 0,
     enabled:
       parsed.data.enabled === undefined
         ? existing.enabled
