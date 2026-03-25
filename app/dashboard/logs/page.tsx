@@ -240,7 +240,7 @@ export default function AdminLogsPage() {
       {
         id: "model",
         header: "模型",
-        cell: ({ row }) => row.original.model_alias ?? row.original.real_model ?? "-",
+        cell: ({ row }) => row.original.real_model ?? row.original.model_alias ?? "-",
       },
       ...(role === "admin"
         ? [{
