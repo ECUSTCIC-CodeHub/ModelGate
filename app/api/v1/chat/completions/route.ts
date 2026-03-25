@@ -5,7 +5,7 @@ import { tryAcquireChannel, type ChannelLease } from "@/lib/channel-runtime";
 import { insertChatLog } from "@/lib/chat-log";
 import { gatewayDb } from "@/lib/db";
 import { jsonError } from "@/lib/http";
-import { canUserAccessModelAlias, hasEnabledModelAlias } from "@/lib/model-access";
+import { resolveAccessibleModelAlias } from "@/lib/model-access";
 import { fetchUpstreamChat } from "@/lib/proxy";
 import { checkUserRateLimit } from "@/lib/ratelimit";
 import { listModelRoutes, selectModelRoute, type RoutedModel } from "@/lib/router";
@@ -215,21 +215,16 @@ export async function POST(request: Request) {
   }
 
   const estimatedTokens = estimateRequestTokens(body);
-  const requestedAliasExists = hasEnabledModelAlias(alias);
-  if (!requestedAliasExists) {
+  const resolved = resolveAccessibleModelAlias(auth.user, alias);
+  if (!resolved.ok) {
+    if (resolved.reason === "forbidden") {
+      logRejected(403, "当前用户无权访问该模型", alias, estimatedTokens);
+      return jsonError("当前用户无权访问该模型", 403);
+    }
     logRejected(404, "模型别名不存在或已禁用", alias);
     return jsonError("模型别名不存在或已禁用", 404);
   }
-
-  let resolvedAlias = alias;
-  if (!canUserAccessModelAlias(auth.user, alias)) {
-    if (hasEnabledModelAlias("*") && canUserAccessModelAlias(auth.user, "*")) {
-      resolvedAlias = "*";
-    } else {
-    logRejected(403, "当前用户无权访问该模型", alias, estimatedTokens);
-    return jsonError("当前用户无权访问该模型", 403);
-    }
-  }
+  const resolvedAlias = resolved.alias;
 
   const quota = checkQuota(auth.user.id, estimatedTokens);
   if (!quota.ok) {

@@ -54,6 +54,23 @@ export function hasEnabledModelAlias(alias: string) {
   return Boolean(row);
 }
 
+export function resolveAccessibleModelAlias(
+  user: Pick<DbUser, "role" | "allowed_model_aliases">,
+  requestedAlias: string,
+): { ok: true; alias: string } | { ok: false; reason: "not_found" | "forbidden" } {
+  const requestedAliasExists = hasEnabledModelAlias(requestedAlias);
+  if (requestedAliasExists && canUserAccessModelAlias(user, requestedAlias)) {
+    return { ok: true, alias: requestedAlias };
+  }
+
+  const wildcardAliasExists = hasEnabledModelAlias("*");
+  if (wildcardAliasExists && canUserAccessModelAlias(user, "*")) {
+    return { ok: true, alias: "*" };
+  }
+
+  return requestedAliasExists ? { ok: false, reason: "forbidden" } : { ok: false, reason: "not_found" };
+}
+
 export function listAccessibleModelAliases(user: Pick<DbUser, "role" | "allowed_model_aliases">) {
   const rows = gatewayDb
     .prepare(
