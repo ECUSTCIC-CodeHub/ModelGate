@@ -216,7 +216,7 @@ export default function DashboardHomePage() {
       )}
     >
       <div className="space-y-4 pb-6">
-        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {statCards.map((item) => (
             <MetricCard
               key={item.label}
