@@ -313,14 +313,14 @@ export default function DashboardHomePage() {
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <Card>
+          <Card className="min-w-0">
             <CardHeader>
               <SectionTitle title="Top 模型" description="按 Token 消耗排序。" />
             </CardHeader>
-            <CardContent>
+            <CardContent className="min-w-0">
               {(summary?.top_models?.length ?? 0) > 0 ? (
-                <div className="overflow-x-auto rounded-xl border border-white/10">
-                  <DataTable columns={topModelColumns} data={summary?.top_models ?? []} tableClassName="min-w-[420px]" />
+                <div className="max-w-full overflow-x-auto rounded-xl border border-white/10">
+                  <DataTable columns={topModelColumns} data={summary?.top_models ?? []} tableClassName="w-full sm:min-w-[420px]" />
                 </div>
               ) : (
                 <EmptyState title="暂无模型数据" description="开始有请求后，这里会展示最热门模型。" />
@@ -328,14 +328,14 @@ export default function DashboardHomePage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="min-w-0">
             <CardHeader>
               <SectionTitle title="Top 接口渠道" description="按 Token 消耗排序。" />
             </CardHeader>
-            <CardContent>
+            <CardContent className="min-w-0">
               {(summary?.top_channels?.length ?? 0) > 0 ? (
-                <div className="overflow-x-auto rounded-xl border border-white/10">
-                  <DataTable columns={topChannelColumns} data={summary?.top_channels ?? []} tableClassName="min-w-[420px]" />
+                <div className="max-w-full overflow-x-auto rounded-xl border border-white/10">
+                  <DataTable columns={topChannelColumns} data={summary?.top_channels ?? []} tableClassName="w-full sm:min-w-[420px]" />
                 </div>
               ) : (
                 <EmptyState title="暂无渠道数据" description="接口接入并产生请求后，这里会显示渠道排行。" />
