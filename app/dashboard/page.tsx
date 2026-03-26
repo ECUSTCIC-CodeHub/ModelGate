@@ -259,10 +259,11 @@ export default function DashboardHomePage() {
                     <Tooltip
                       contentStyle={{ background: "rgba(8, 15, 29, 0.94)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }}
                       labelFormatter={(label) => String(label).replace("T", " ")}
-                      formatter={(value: number | string | undefined) => [
-                        formatTokenCount(typeof value === "number" ? value : Number(value)),
-                        "Token",
-                      ]}
+                      formatter={(value) => {
+                        const normalizedValue = Array.isArray(value) ? value[0] : value;
+                        const tokenValue = typeof normalizedValue === "number" ? normalizedValue : Number(normalizedValue);
+                        return [formatTokenCount(Number.isFinite(tokenValue) ? tokenValue : 0), "Token"] as const;
+                      }}
                     />
                     <Bar dataKey="tokens" fill="#e2e8f0" radius={[8, 8, 0, 0]} />
                   </BarChart>
