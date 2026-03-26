@@ -12,6 +12,7 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
+RUN npm config set registry https://mirrors.cloud.tencent.com/npm/
 RUN npm ci
 
 COPY . .
