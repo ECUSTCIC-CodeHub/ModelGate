@@ -5,11 +5,31 @@ import type { GatewayProtocol } from "@/lib/protocols";
 
 function normalizeProviderBaseUrl(baseUrl: string) {
   const normalized = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
-  return normalized.replace(/\/chat\/completions$/, "").replace(/\/responses$/, "").replace(/\/models$/, "");
+  return normalized
+    .replace(/\/chat\/completions$/, "")
+    .replace(/\/messages$/, "")
+    .replace(/\/responses$/, "")
+    .replace(/\/models$/, "");
 }
 
 function buildUpstreamUrl(baseUrl: string, protocol: GatewayProtocol) {
-  return `${normalizeProviderBaseUrl(baseUrl)}/${protocol === "responses" ? "responses" : "chat/completions"}`;
+  return `${normalizeProviderBaseUrl(baseUrl)}/${protocol === "responses" ? "responses" : protocol === "anthropic_messages" ? "messages" : "chat/completions"}`;
+}
+
+function buildUpstreamHeaders(route: RoutedModel, protocol: GatewayProtocol): Record<string, string> {
+  if (protocol === "anthropic_messages") {
+    return {
+      "content-type": "application/json",
+      "x-api-key": route.channel.api_key,
+      authorization: `Bearer ${route.channel.api_key}`,
+      "anthropic-version": "2023-06-01",
+    };
+  }
+
+  return {
+    "content-type": "application/json",
+    authorization: `Bearer ${route.channel.api_key}`,
+  };
 }
 
 function createTimeoutController(timeoutSeconds: number) {
@@ -29,10 +49,7 @@ export async function fetchUpstreamRequest(
   try {
     return await fetch(buildUpstreamUrl(route.channel.base_url, protocol), {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${route.channel.api_key}`,
-      },
+      headers: buildUpstreamHeaders(route, protocol),
       body: JSON.stringify(requestBody),
       signal: controller.signal,
     });
@@ -49,20 +66,36 @@ export async function testUpstreamModel(target: {
   const startedAt = Date.now();
 
   try {
-    const response = await fetch(buildUpstreamUrl(target.channel.base_url, target.model.upstream_protocol as GatewayProtocol), {
+    const protocol = target.model.upstream_protocol as GatewayProtocol;
+    const response = await fetch(buildUpstreamUrl(target.channel.base_url, protocol), {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${target.channel.api_key}`,
-      },
+      headers:
+        protocol === "anthropic_messages"
+          ? {
+              "content-type": "application/json",
+              "x-api-key": target.channel.api_key,
+              authorization: `Bearer ${target.channel.api_key}`,
+              "anthropic-version": "2023-06-01",
+            }
+          : {
+              "content-type": "application/json",
+              authorization: `Bearer ${target.channel.api_key}`,
+            },
       body: JSON.stringify(
-        target.model.upstream_protocol === "responses"
+        protocol === "responses"
           ? {
               model: target.model.real_model,
               input: "ping",
               max_output_tokens: 1,
               stream: false,
             }
+          : protocol === "anthropic_messages"
+            ? {
+                model: target.model.real_model,
+                max_tokens: 1,
+                messages: [{ role: "user", content: "ping" }],
+                stream: false,
+              }
           : {
               model: target.model.real_model,
               messages: [{ role: "user", content: "ping" }],
@@ -102,6 +135,7 @@ function summarizeTestResponse(bodyText: string) {
       error?: { message?: string; type?: string; code?: string | number };
       status?: string;
       output_text?: string | null;
+      content?: Array<{ type?: string; text?: string | null }>;
       output?: Array<{
         type?: string;
         role?: string;
@@ -173,6 +207,11 @@ function summarizeTestResponse(bodyText: string) {
 
     const content =
       parsed.output_text?.trim() ||
+      (Array.isArray(parsed.content)
+        ? parsed.content
+            .map((part) => (typeof part?.text === "string" ? part.text.trim() : ""))
+            .find(Boolean)
+        : "") ||
       (Array.isArray(parsed.output)
         ? parsed.output
             .flatMap((item) => (item?.type === "message" ? (item.content ?? []) : []))

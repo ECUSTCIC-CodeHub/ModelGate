@@ -11,7 +11,7 @@ export type ApiKeyAuthResult =
   | { ok: false; reason: "missing" | "invalid" };
 
 export function checkApiKeyAuth(request: Request): ApiKeyAuthResult {
-  const raw = parseBearerToken(request.headers.get("authorization"));
+  const raw = request.headers.get("x-api-key") ?? parseBearerToken(request.headers.get("authorization"));
   if (!raw) return { ok: false, reason: "missing" };
 
   const key = gatewayDb

@@ -1,4 +1,4 @@
-export const GATEWAY_PROTOCOLS = ["chat_completions", "responses"] as const;
+export const GATEWAY_PROTOCOLS = ["chat_completions", "responses", "anthropic_messages"] as const;
 
 export type GatewayProtocol = (typeof GATEWAY_PROTOCOLS)[number];
 

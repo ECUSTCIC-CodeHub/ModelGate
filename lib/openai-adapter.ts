@@ -5,6 +5,7 @@ type JsonRecord = Record<string, unknown>;
 
 type NormalizedContentPart =
   | { type: "text"; text: string }
+  | { type: "thinking"; thinking: string; signature?: string | null; redacted?: boolean }
   | { type: "image"; image_url: string; detail?: string | null }
   | { type: "file"; value: JsonRecord }
   | { type: "unknown"; value: unknown };
@@ -54,6 +55,34 @@ function normalizeContentParts(value: unknown): NormalizedContentPart[] {
       continue;
     }
 
+    if (type === "thinking") {
+      const thinking = typeof record.thinking === "string" ? record.thinking : typeof record.text === "string" ? record.text : "";
+      if (thinking) {
+        parts.push({
+          type: "thinking",
+          thinking,
+          signature: typeof record.signature === "string" ? record.signature : null,
+        });
+      }
+      continue;
+    }
+
+    if (type === "redacted_thinking") {
+      parts.push({
+        type: "thinking",
+        thinking: typeof record.data === "string" ? record.data : "[redacted thinking]",
+        signature: typeof record.signature === "string" ? record.signature : null,
+        redacted: true,
+      });
+      continue;
+    }
+
+    if (type === "reasoning_text") {
+      const thinking = typeof record.text === "string" ? record.text : "";
+      if (thinking) parts.push({ type: "thinking", thinking });
+      continue;
+    }
+
     if (type === "image_url" || type === "input_image") {
       const imageUrl = typeof record.image_url === "string"
         ? record.image_url
@@ -86,6 +115,9 @@ function normalizedPartsToChatContent(parts: NormalizedContentPart[]) {
     if (part.type === "text") {
       return [{ type: "text", text: part.text }];
     }
+    if (part.type === "thinking") {
+      return [];
+    }
     if (part.type === "image") {
       return [{ type: "image_url", image_url: { url: part.image_url, detail: part.detail ?? undefined } }];
     }
@@ -107,6 +139,14 @@ function normalizedPartsToResponseContent(parts: NormalizedContentPart[]) {
     if (part.type === "text") {
       return [{ type: "input_text", text: part.text }];
     }
+    if (part.type === "thinking") {
+      return [{
+        type: "reasoning",
+        id: `rs_${crypto.randomUUID().replace(/-/g, "")}`,
+        summary: [],
+        content: [{ type: "reasoning_text", text: part.thinking }],
+      }];
+    }
     if (part.type === "image") {
       return [{ type: "input_image", image_url: part.image_url, detail: part.detail ?? undefined }];
     }
@@ -117,6 +157,34 @@ function normalizedPartsToResponseContent(parts: NormalizedContentPart[]) {
   });
 
   return normalized.length > 0 ? normalized : [{ type: "input_text", text: "" }];
+}
+
+function normalizedPartsToAnthropicContent(parts: NormalizedContentPart[]) {
+  const normalized = parts.flatMap((part) => {
+    if (part.type === "text") {
+      return [{ type: "text", text: part.text }];
+    }
+    if (part.type === "thinking") {
+      return part.redacted
+        ? [{ type: "redacted_thinking", data: part.thinking, signature: part.signature ?? undefined }]
+        : [{ type: "thinking", thinking: part.thinking, signature: part.signature ?? undefined }];
+    }
+    if (part.type === "image") {
+      return [{
+        type: "image",
+        source: {
+          type: "url",
+          url: part.image_url,
+        },
+      }];
+    }
+    if (part.type === "file") {
+      return [part.value];
+    }
+    return [];
+  });
+
+  return normalized.length > 0 ? normalized : [{ type: "text", text: "" }];
 }
 
 function normalizeChatMessages(messages: unknown): NormalizedMessage[] {
@@ -138,9 +206,19 @@ function normalizeChatMessages(messages: unknown): NormalizedMessage[] {
         return acc;
       }, []);
 
+    const content = normalizeContentParts(record.content);
+    const reasoning = typeof record.reasoning === "string"
+      ? record.reasoning
+      : typeof record.reasoning_content === "string"
+        ? record.reasoning_content
+        : "";
+    if (reasoning) {
+      content.unshift({ type: "thinking", thinking: reasoning });
+    }
+
     normalized.push({
       role,
-      content: normalizeContentParts(record.content),
+      content,
       tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
       tool_call_id: typeof record.tool_call_id === "string" ? record.tool_call_id : undefined,
     });
@@ -208,6 +286,14 @@ function normalizeResponsesInput(input: unknown, instructions?: string): Normali
       continue;
     }
 
+    if (type === "reasoning") {
+      normalized.push({
+        role: "assistant",
+        content: normalizeContentParts(record.content),
+      });
+      continue;
+    }
+
     if (typeof record.role === "string" || Array.isArray(record.content)) {
       normalized.push({
         role: typeof record.role === "string" ? record.role : "user",
@@ -217,6 +303,101 @@ function normalizeResponsesInput(input: unknown, instructions?: string): Normali
   }
 
   return normalized;
+}
+
+function normalizeAnthropicMessages(messages: unknown, system?: unknown): NormalizedMessage[] {
+  const normalized: NormalizedMessage[] = [];
+
+  const systemParts = normalizeContentParts(system);
+  if (systemParts.length > 0) {
+    normalized.push({
+      role: "system",
+      content: systemParts,
+    });
+  }
+
+  for (const item of asArray(messages)) {
+    const record = asRecord(item);
+    if (!record) continue;
+    const role = typeof record.role === "string" ? record.role : "user";
+
+    if (typeof record.content === "string") {
+      normalized.push({
+        role,
+        content: normalizeContentParts(record.content),
+      });
+      continue;
+    }
+
+    const contentBlocks = asArray(record.content);
+    const textParts: NormalizedContentPart[] = [];
+    const toolCalls: Array<{ id?: string; name?: string; arguments?: string }> = [];
+    const toolResults: Array<{ tool_call_id?: string; output: string }> = [];
+
+    for (const block of contentBlocks) {
+      const content = asRecord(block);
+      if (!content) continue;
+      const type = typeof content.type === "string" ? content.type : "";
+
+      if (type === "tool_use") {
+        toolCalls.push({
+          id: typeof content.id === "string" ? content.id : undefined,
+          name: typeof content.name === "string" ? content.name : undefined,
+          arguments: JSON.stringify(asRecord(content.input) ?? content.input ?? {}),
+        });
+        continue;
+      }
+
+      if (type === "tool_result") {
+        const output = typeof content.content === "string"
+          ? content.content
+          : normalizeContentParts(content.content)
+              .filter((part) => part.type === "text")
+              .map((part) => part.text)
+              .join("\n");
+        toolResults.push({
+          tool_call_id: typeof content.tool_use_id === "string" ? content.tool_use_id : undefined,
+          output,
+        });
+        continue;
+      }
+
+      if (type === "image") {
+        const source = asRecord(content.source);
+        if (typeof source?.data === "string") {
+          textParts.push({ type: "unknown", value: content });
+        }
+      }
+
+      textParts.push(...normalizeContentParts([content]));
+    }
+
+    if (toolResults.length > 0) {
+      for (const result of toolResults) {
+        normalized.push({
+          role: "tool",
+          tool_call_id: result.tool_call_id,
+          content: result.output ? [{ type: "text", text: result.output }] : [],
+        });
+      }
+      continue;
+    }
+
+    normalized.push({
+      role,
+      content: textParts,
+      tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+    });
+  }
+
+  return normalized;
+}
+
+function extractThinkingText(parts: NormalizedContentPart[]) {
+  return parts
+    .filter((part): part is Extract<NormalizedContentPart, { type: "thinking" }> => part.type === "thinking")
+    .map((part) => part.thinking)
+    .join("");
 }
 
 function chatToolsToResponsesTools(tools: unknown) {
@@ -257,6 +438,89 @@ function responsesToolsToChatTools(tools: unknown) {
   }).filter((item): item is NonNullable<typeof item> => Boolean(item));
 
   return converted.length > 0 ? converted : undefined;
+}
+
+function toolsToAnthropicTools(tools: unknown) {
+  return asArray(tools)
+    .map((tool) => {
+      const record = asRecord(tool);
+      if (!record) return null;
+
+      if (record.type === "function") {
+        const fn = asRecord(record.function) ?? record;
+        return {
+          name: typeof fn.name === "string" ? fn.name : "",
+          description: typeof fn.description === "string" ? fn.description : undefined,
+          input_schema: asRecord(fn.parameters) ?? fn.parameters ?? { type: "object", properties: {} },
+        };
+      }
+
+      if (record.type === "custom") {
+        throw new Error("当前暂不支持将 custom tools 转换为 Claude Messages");
+      }
+
+      if (typeof record.name === "string") {
+        return {
+          name: record.name,
+          description: typeof record.description === "string" ? record.description : undefined,
+          input_schema: asRecord(record.parameters) ?? record.parameters ?? { type: "object", properties: {} },
+        };
+      }
+
+      return null;
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
+}
+
+function anthropicToolsToChatTools(tools: unknown) {
+  const converted = asArray(tools)
+    .map((tool) => {
+      const record = asRecord(tool);
+      if (!record || typeof record.name !== "string") return null;
+      return {
+        type: "function",
+        function: {
+          name: record.name,
+          description: typeof record.description === "string" ? record.description : undefined,
+          parameters: asRecord(record.input_schema) ?? record.input_schema ?? { type: "object", properties: {} },
+        },
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
+
+  return converted.length > 0 ? converted : undefined;
+}
+
+function anthropicToolChoiceToChat(toolChoice: unknown) {
+  const record = asRecord(toolChoice);
+  if (!record || typeof record.type !== "string") return undefined;
+  if (record.type === "auto") return "auto";
+  if (record.type === "any") return "required";
+  if (record.type === "tool" && typeof record.name === "string") {
+    return {
+      type: "function",
+      function: {
+        name: record.name,
+      },
+    };
+  }
+  return undefined;
+}
+
+function toolChoiceToAnthropic(toolChoice: unknown) {
+  if (toolChoice === "auto") return { type: "auto" };
+  if (toolChoice === "required") return { type: "any" };
+  if (toolChoice === "none") return undefined;
+
+  const record = asRecord(toolChoice);
+  const fn = asRecord(record?.function);
+  if (record?.type === "function" && typeof fn?.name === "string") {
+    return { type: "tool", name: fn.name };
+  }
+  if (record?.type === "function" && typeof record.name === "string") {
+    return { type: "tool", name: record.name };
+  }
+  return undefined;
 }
 
 function chatToolChoiceToResponses(toolChoice: unknown) {
@@ -340,6 +604,8 @@ export function estimateRequestTokensForProtocol(body: JsonRecord, protocol: Gat
   const maxTokens = Number(
     protocol === "responses"
       ? body.max_output_tokens ?? 256
+      : protocol === "anthropic_messages"
+        ? body.max_tokens ?? 256
       : body.max_tokens ?? 256,
   );
   const outputReserve = Number.isFinite(maxTokens) ? Math.max(0, maxTokens) : 256;
@@ -349,6 +615,8 @@ export function estimateRequestTokensForProtocol(body: JsonRecord, protocol: Gat
 export function countInputText(body: JsonRecord, protocol: GatewayProtocol) {
   const messages = protocol === "responses"
     ? normalizeResponsesInput(body.input, typeof body.instructions === "string" ? body.instructions : undefined)
+    : protocol === "anthropic_messages"
+      ? normalizeAnthropicMessages(body.messages, body.system)
     : normalizeChatMessages(body.messages);
 
   return messages
@@ -379,11 +647,92 @@ export function adaptRequestBody(
     };
   }
 
+  if (outboundProtocol === "anthropic_messages") {
+    const normalized = inboundProtocol === "chat_completions"
+      ? normalizeChatMessages(body.messages)
+      : inboundProtocol === "responses"
+        ? normalizeResponsesInput(body.input, typeof body.instructions === "string" ? body.instructions : undefined)
+        : normalizeAnthropicMessages(body.messages, body.system);
+
+    const systemBlocks = normalized
+      .filter((message) => message.role === "system")
+      .flatMap((message) => normalizedPartsToAnthropicContent(message.content));
+
+    const messages = normalized
+      .filter((message) => message.role !== "system")
+      .flatMap((message) => {
+        if (message.role === "tool") {
+          return [{
+            role: "user",
+            content: [{
+              type: "tool_result",
+              tool_use_id: message.tool_call_id,
+              content: message.content.filter((part) => part.type === "text").map((part) => part.text).join("\n"),
+            }],
+          }];
+        }
+
+        const content = normalizedPartsToAnthropicContent(message.content);
+        for (const toolCall of message.tool_calls ?? []) {
+          let parsedInput: unknown = {};
+          try {
+            parsedInput = toolCall.arguments ? JSON.parse(toolCall.arguments) : {};
+          } catch {
+            parsedInput = { raw: toolCall.arguments ?? "" };
+          }
+          content.push({
+            type: "tool_use",
+            id: toolCall.id ?? `toolu_${crypto.randomUUID().replace(/-/g, "")}`,
+            name: toolCall.name ?? "",
+            input: parsedInput,
+          });
+        }
+
+        return [{
+          role: message.role === "assistant" ? "assistant" : "user",
+          content,
+        }];
+      });
+
+    const next: JsonRecord = {
+      model: realModel,
+      messages,
+      stream: body.stream === true,
+    };
+
+    if (systemBlocks.length > 0) {
+      next.system = systemBlocks.length === 1 && systemBlocks[0]?.type === "text" ? systemBlocks[0].text : systemBlocks;
+    }
+    if (body.max_tokens !== undefined) next.max_tokens = body.max_tokens;
+    if (body.max_output_tokens !== undefined) next.max_tokens = body.max_output_tokens;
+    if (body.temperature !== undefined) next.temperature = body.temperature;
+    if (body.top_p !== undefined) next.top_p = body.top_p;
+    if (body.stop !== undefined) next.stop_sequences = Array.isArray(body.stop) ? body.stop : [body.stop];
+    if (body.stop_sequences !== undefined) next.stop_sequences = body.stop_sequences;
+
+    const tools = inboundProtocol === "anthropic_messages" ? body.tools : toolsToAnthropicTools(body.tools);
+    if (tools && asArray(tools).length > 0) next.tools = tools;
+
+    const toolChoice = toolChoiceToAnthropic(body.tool_choice);
+    if (toolChoice) next.tool_choice = toolChoice;
+
+    return next;
+  }
+
   if (inboundProtocol === "chat_completions" && outboundProtocol === "responses") {
     const next: JsonRecord = {
       model: realModel,
       input: normalizeChatMessages(body.messages).flatMap((message) => {
         const items: JsonRecord[] = [];
+        const reasoningText = extractThinkingText(message.content);
+        if (reasoningText) {
+          items.push({
+            type: "reasoning",
+            id: `rs_${crypto.randomUUID().replace(/-/g, "")}`,
+            summary: [],
+            content: [{ type: "reasoning_text", text: reasoningText }],
+          });
+        }
         if (message.content.length > 0 || message.role !== "assistant") {
           items.push({
             type: "message",
@@ -431,11 +780,16 @@ export function adaptRequestBody(
 
   const next: JsonRecord = {
     model: realModel,
-    messages: normalizeResponsesInput(body.input, typeof body.instructions === "string" ? body.instructions : undefined).map((message) => {
+    messages: (inboundProtocol === "anthropic_messages"
+      ? normalizeAnthropicMessages(body.messages, body.system)
+      : normalizeResponsesInput(body.input, typeof body.instructions === "string" ? body.instructions : undefined)
+    ).map((message) => {
+      const reasoningText = extractThinkingText(message.content);
       if (message.role === "assistant" && message.tool_calls && message.tool_calls.length > 0) {
         return {
           role: "assistant",
           content: normalizedPartsToChatContent(message.content),
+          reasoning: reasoningText || undefined,
           tool_calls: message.tool_calls.map((toolCall) => ({
             id: toolCall.id,
             type: "function",
@@ -458,6 +812,7 @@ export function adaptRequestBody(
       return {
         role: message.role,
         content: normalizedPartsToChatContent(message.content),
+        reasoning: message.role === "assistant" && reasoningText ? reasoningText : undefined,
       };
     }),
     stream: body.stream === true,
@@ -471,6 +826,12 @@ export function adaptRequestBody(
   if (body.parallel_tool_calls !== undefined) next.parallel_tool_calls = body.parallel_tool_calls;
   if (body.user !== undefined) next.user = body.user;
   if (body.metadata !== undefined) next.metadata = body.metadata;
+  if (inboundProtocol === "anthropic_messages" && body.tools !== undefined) {
+    next.tools = anthropicToolsToChatTools(body.tools);
+  }
+  if (inboundProtocol === "anthropic_messages" && body.tool_choice !== undefined) {
+    next.tool_choice = anthropicToolChoiceToChat(body.tool_choice);
+  }
 
   const responseFormat = responsesTextFormatToChat(body.text);
   if (responseFormat) next.response_format = responseFormat;
@@ -508,8 +869,21 @@ function buildResponsesOutputFromChat(parsed: JsonRecord) {
   const message = asRecord(firstChoice?.message);
   const text = extractChatMessageText(message);
   const toolCalls = extractChatToolCalls(message);
+  const reasoningText = typeof message?.reasoning === "string"
+    ? message.reasoning
+    : typeof message?.reasoning_content === "string"
+      ? message.reasoning_content
+      : "";
 
   const output: JsonRecord[] = [];
+  if (reasoningText) {
+    output.push({
+      id: `rs_${crypto.randomUUID().replace(/-/g, "")}`,
+      type: "reasoning",
+      summary: [],
+      content: [{ type: "reasoning_text", text: reasoningText }],
+    });
+  }
   if (text || toolCalls.length === 0) {
     output.push({
       id: `msg_${crypto.randomUUID().replace(/-/g, "")}`,
@@ -559,6 +933,7 @@ function extractResponsesMessage(output: unknown) {
   const items = asArray(output).map((item) => asRecord(item)).filter((item): item is JsonRecord => Boolean(item));
   const messageItems = items.filter((item) => item.type === "message" && item.role === "assistant");
   const functionCalls = items.filter((item) => item.type === "function_call");
+  const reasoningItems = items.filter((item) => item.type === "reasoning");
 
   const text = messageItems
     .flatMap((item) => normalizeContentParts(item.content))
@@ -575,7 +950,13 @@ function extractResponsesMessage(output: unknown) {
     },
   }));
 
-  return { text, toolCalls };
+  const reasoning = reasoningItems
+    .flatMap((item) => normalizeContentParts(item.content))
+    .filter((part) => part.type === "thinking")
+    .map((part) => part.thinking)
+    .join("");
+
+  return { text, toolCalls, reasoning };
 }
 
 export function extractCompletionTextFromBody(text: string, protocol: GatewayProtocol) {
@@ -587,7 +968,20 @@ export function extractCompletionTextFromBody(text: string, protocol: GatewayPro
       return extractChatMessageText(asRecord(firstChoice?.message));
     }
 
-    return extractResponsesMessage(parsed.output).text;
+    if (protocol === "anthropic_messages") {
+      return asArray(parsed.content)
+        .flatMap((item) => {
+          const record = asRecord(item);
+          if (!record) return [];
+          if (record.type === "text" && typeof record.text === "string") return [record.text];
+          if (record.type === "thinking" && typeof record.thinking === "string") return [record.thinking];
+          return [];
+        })
+        .join("\n");
+    }
+
+    const extracted = extractResponsesMessage(parsed.output);
+    return [extracted.reasoning, extracted.text].filter(Boolean).join("\n");
   } catch {
     return "";
   }
@@ -604,6 +998,13 @@ export function getUsageFromBody(text: string, protocol: GatewayProtocol) {
       return { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: totalTokens };
     }
 
+    if (protocol === "anthropic_messages") {
+      const inputTokens = Number(usage?.input_tokens ?? 0);
+      const outputTokens = Number(usage?.output_tokens ?? 0);
+      const totalTokens = Number(usage?.total_tokens ?? inputTokens + outputTokens);
+      return { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: totalTokens };
+    }
+
     const inputTokens = Number(usage?.input_tokens ?? 0);
     const outputTokens = Number(usage?.output_tokens ?? 0);
     const totalTokens = Number(usage?.total_tokens ?? inputTokens + outputTokens);
@@ -618,7 +1019,202 @@ export function adaptResponseBody(text: string, outboundProtocol: GatewayProtoco
 
   const parsed = JSON.parse(text) as JsonRecord;
   if (outboundProtocol === "chat_completions") {
-    return JSON.stringify(buildResponsesOutputFromChat(parsed));
+    if (inboundProtocol === "responses") {
+      return JSON.stringify(buildResponsesOutputFromChat(parsed));
+    }
+
+    const choices = asArray(parsed.choices);
+    const firstChoice = asRecord(choices[0]);
+    const message = asRecord(firstChoice?.message);
+    const toolCalls = extractChatToolCalls(message);
+    const content = [];
+    const reasoningText = typeof message?.reasoning === "string"
+      ? message.reasoning
+      : typeof message?.reasoning_content === "string"
+        ? message.reasoning_content
+        : "";
+
+    if (reasoningText) {
+      content.push({ type: "thinking", thinking: reasoningText });
+    }
+
+    const textContent = extractChatMessageText(message);
+    if (textContent) {
+      content.push({ type: "text", text: textContent });
+    }
+    for (const toolCall of toolCalls) {
+      let input: unknown = {};
+      try {
+        input = JSON.parse(toolCall.function.arguments || "{}");
+      } catch {
+        input = { raw: toolCall.function.arguments };
+      }
+      content.push({
+        type: "tool_use",
+        id: toolCall.id ?? `toolu_${crypto.randomUUID().replace(/-/g, "")}`,
+        name: toolCall.function.name,
+        input,
+      });
+    }
+    const usage = asRecord(parsed.usage);
+    return JSON.stringify({
+      id: typeof parsed.id === "string" ? parsed.id : `msg_${crypto.randomUUID().replace(/-/g, "")}`,
+      type: "message",
+      role: "assistant",
+      model: typeof parsed.model === "string" ? parsed.model : null,
+      content,
+      stop_reason: toolCalls.length > 0 ? "tool_use" : "end_turn",
+      stop_sequence: null,
+      usage: {
+        input_tokens: Number(usage?.prompt_tokens ?? 0),
+        output_tokens: Number(usage?.completion_tokens ?? 0),
+      },
+    });
+  }
+
+  if (outboundProtocol === "anthropic_messages") {
+    if (inboundProtocol === "chat_completions") {
+      const choices = asArray(parsed.choices);
+      const firstChoice = asRecord(choices[0]);
+      const message = asRecord(firstChoice?.message);
+      const toolCalls = extractChatToolCalls(message);
+      const content = [];
+      const reasoningText = typeof message?.reasoning === "string"
+        ? message.reasoning
+        : typeof message?.reasoning_content === "string"
+          ? message.reasoning_content
+          : "";
+
+      if (reasoningText) {
+        content.push({ type: "thinking", thinking: reasoningText });
+      }
+      const textContent = extractChatMessageText(message);
+      if (textContent) {
+        content.push({ type: "text", text: textContent });
+      }
+      for (const toolCall of toolCalls) {
+        let input: unknown = {};
+        try {
+          input = JSON.parse(toolCall.function.arguments || "{}");
+        } catch {
+          input = { raw: toolCall.function.arguments };
+        }
+        content.push({
+          type: "tool_use",
+          id: toolCall.id ?? `toolu_${crypto.randomUUID().replace(/-/g, "")}`,
+          name: toolCall.function.name,
+          input,
+        });
+      }
+      const usage = asRecord(parsed.usage);
+      return JSON.stringify({
+        id: typeof parsed.id === "string" ? parsed.id : `msg_${crypto.randomUUID().replace(/-/g, "")}`,
+        type: "message",
+        role: "assistant",
+        model: typeof parsed.model === "string" ? parsed.model : null,
+        content,
+        stop_reason: toolCalls.length > 0 ? "tool_use" : "end_turn",
+        stop_sequence: null,
+        usage: {
+          input_tokens: Number(usage?.prompt_tokens ?? 0),
+          output_tokens: Number(usage?.completion_tokens ?? 0),
+        },
+      });
+    }
+
+    const usage = asRecord(parsed.usage);
+    const anthropicContent = asArray(parsed.content).map((item) => asRecord(item)).filter((item): item is JsonRecord => Boolean(item));
+    const reasoningText = anthropicContent
+      .filter((item) => item.type === "thinking")
+      .map((item) => (typeof item.thinking === "string" ? item.thinking : ""))
+      .join("");
+    const textContent = anthropicContent
+      .filter((item) => item.type === "text")
+      .map((item) => (typeof item.text === "string" ? item.text : ""))
+      .join("");
+    const toolCalls = anthropicContent
+      .filter((item) => item.type === "tool_use")
+      .map((item) => ({
+        id: typeof item.id === "string" ? item.id : undefined,
+        type: "function",
+        function: {
+          name: typeof item.name === "string" ? item.name : "",
+          arguments: JSON.stringify(asRecord(item.input) ?? item.input ?? {}),
+        },
+      }));
+    return JSON.stringify({
+      id: typeof parsed.id === "string" ? parsed.id : `resp_${crypto.randomUUID().replace(/-/g, "")}`,
+      object: "response",
+      created_at: Math.floor(Date.now() / 1000),
+      status: "completed",
+      error: null,
+      incomplete_details: null,
+      model: typeof parsed.model === "string" ? parsed.model : null,
+      output: [
+        ...(reasoningText ? [{
+          id: `rs_${crypto.randomUUID().replace(/-/g, "")}`,
+          type: "reasoning",
+          summary: [],
+          content: [{ type: "reasoning_text", text: reasoningText }],
+        }] : []),
+        ...(textContent || toolCalls.length === 0 ? [{
+          id: `msg_${crypto.randomUUID().replace(/-/g, "")}`,
+          type: "message",
+          role: "assistant",
+          status: "completed",
+          content: textContent ? [{ type: "output_text", text: textContent, annotations: [] }] : [],
+        }] : []),
+        ...toolCalls.map((toolCall) => ({
+          type: "function_call",
+          id: toolCall.id ?? `fc_${crypto.randomUUID().replace(/-/g, "")}`,
+          call_id: toolCall.id ?? `call_${crypto.randomUUID().replace(/-/g, "")}`,
+          name: toolCall.function.name,
+          arguments: toolCall.function.arguments,
+          status: "completed",
+        })),
+      ],
+      output_text: textContent,
+      usage: {
+        input_tokens: Number(usage?.input_tokens ?? 0),
+        output_tokens: Number(usage?.output_tokens ?? 0),
+        total_tokens: Number(usage?.total_tokens ?? Number(usage?.input_tokens ?? 0) + Number(usage?.output_tokens ?? 0)),
+      },
+    });
+  }
+
+  if (inboundProtocol === "anthropic_messages") {
+    const usage = asRecord(parsed.usage);
+    const message = extractResponsesMessage(parsed.output);
+    const content = [];
+    if (message.reasoning) content.push({ type: "thinking", thinking: message.reasoning });
+    if (message.text) content.push({ type: "text", text: message.text });
+    for (const toolCall of message.toolCalls) {
+      let input: unknown = {};
+      try {
+        input = JSON.parse(toolCall.function.arguments || "{}");
+      } catch {
+        input = { raw: toolCall.function.arguments };
+      }
+      content.push({
+        type: "tool_use",
+        id: toolCall.id ?? `toolu_${crypto.randomUUID().replace(/-/g, "")}`,
+        name: toolCall.function.name,
+        input,
+      });
+    }
+    return JSON.stringify({
+      id: typeof parsed.id === "string" ? parsed.id : `msg_${crypto.randomUUID().replace(/-/g, "")}`,
+      type: "message",
+      role: "assistant",
+      model: typeof parsed.model === "string" ? parsed.model : null,
+      content,
+      stop_reason: message.toolCalls.length > 0 ? "tool_use" : "end_turn",
+      stop_sequence: null,
+      usage: {
+        input_tokens: Number(usage?.input_tokens ?? 0),
+        output_tokens: Number(usage?.output_tokens ?? 0),
+      },
+    });
   }
 
   const usage = asRecord(parsed.usage);
@@ -639,6 +1235,7 @@ export function adaptResponseBody(text: string, outboundProtocol: GatewayProtoco
         message: {
           role: "assistant",
           content: message.text,
+          reasoning: message.reasoning || undefined,
           tool_calls: message.toolCalls.length > 0 ? message.toolCalls : undefined,
         },
         finish_reason: message.toolCalls.length > 0 ? "tool_calls" : "stop",
@@ -709,6 +1306,19 @@ function parseResponsesSseEvent(event: string, data: string): ResponsesSseEvent 
   }
 }
 
+type AnthropicSseEvent = {
+  event: string;
+  data: JsonRecord | string;
+};
+
+function parseAnthropicSseEvent(event: string, data: string): AnthropicSseEvent {
+  try {
+    return { event, data: JSON.parse(data) as JsonRecord };
+  } catch {
+    return { event, data };
+  }
+}
+
 function toSseBlock(event: string | null, data: unknown) {
   const lines: string[] = [];
   if (event) lines.push(`event: ${event}`);
@@ -734,8 +1344,16 @@ export function createTransformedStream(
   }
 
   return outboundProtocol === "chat_completions"
-    ? createChatToResponsesStream(upstream)
-    : createResponsesToChatStream(upstream);
+    ? inboundProtocol === "responses"
+      ? createChatToResponsesStream(upstream)
+      : createChatToAnthropicStream(upstream)
+    : outboundProtocol === "responses"
+      ? inboundProtocol === "chat_completions"
+        ? createResponsesToChatStream(upstream)
+        : createResponsesToAnthropicStream(upstream)
+      : inboundProtocol === "chat_completions"
+        ? createAnthropicToChatStream(upstream)
+        : createAnthropicToResponsesStream(upstream);
 }
 
 function createPassthroughStream(upstream: ReadableStream<Uint8Array>, protocol: GatewayProtocol): StreamTransformResult {
@@ -762,10 +1380,12 @@ function createPassthroughStream(upstream: ReadableStream<Uint8Array>, protocol:
             if (idx === -1) break;
             const rawEvent = buffer.slice(0, idx);
             buffer = buffer.slice(idx + 2);
-            const dataLines = rawEvent
-              .split("\n")
-              .filter((line) => line.startsWith("data:"))
-              .map((line) => line.slice(5).trimStart());
+            let eventName = "";
+            const dataLines: string[] = [];
+            for (const line of rawEvent.split("\n")) {
+              if (line.startsWith("event:")) eventName = line.slice(6).trim();
+              if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+            }
             if (dataLines.length === 0) continue;
             const data = dataLines.join("\n");
             if (data === "[DONE]") continue;
@@ -774,9 +1394,20 @@ function createPassthroughStream(upstream: ReadableStream<Uint8Array>, protocol:
               if (protocol === "chat_completions") {
                 const event = parseChatChunkEvent(data);
                 completionText += event.content;
+              } else if (protocol === "anthropic_messages") {
+                const parsed = parseAnthropicSseEvent(eventName, data);
+                const payload = asRecord(parsed.data);
+                if (parsed.event === "content_block_delta") {
+                  const delta = asRecord(payload?.delta);
+                  if (delta?.type === "text_delta" && typeof delta.text === "string") {
+                    completionText += delta.text;
+                  }
+                }
               } else {
-                const parsed = parseResponsesSseEvent("", data);
+                const parsed = parseResponsesSseEvent(eventName, data);
                 if (parsed.event === "response.output_text.delta" && typeof (parsed.data as JsonRecord).delta === "string") {
+                  completionText += (parsed.data as JsonRecord).delta as string;
+                } else if (parsed.event === "response.reasoning_text.delta" && typeof (parsed.data as JsonRecord).delta === "string") {
                   completionText += (parsed.data as JsonRecord).delta as string;
                 }
               }
@@ -798,6 +1429,325 @@ function createPassthroughStream(upstream: ReadableStream<Uint8Array>, protocol:
   };
 }
 
+function createAnthropicToChatStream(upstream: ReadableStream<Uint8Array>): StreamTransformResult {
+  const reader = upstream.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffer = "";
+  let completionText = "";
+  let reasoningText = "";
+  let id = `chatcmpl_${crypto.randomUUID().replace(/-/g, "")}`;
+  let model: string | null = null;
+  let created = Math.floor(Date.now() / 1000);
+  let roleEmitted = false;
+  let finished = false;
+  let finishReason: string | null = null;
+  let promptTokens = 0;
+  let completionTokens = 0;
+  const toolUseByIndex = new Map<number, { id: string; name: string }>();
+  const thinkingByIndex = new Map<number, { signature?: string }>();
+
+  const emit = (controller: ReadableStreamDefaultController<Uint8Array>, delta: JsonRecord, reason: string | null = null) => {
+    controller.enqueue(encoder.encode(toSseBlock(null, {
+      id,
+      object: "chat.completion.chunk",
+      created,
+      model,
+      choices: [{
+        index: 0,
+        delta,
+        finish_reason: reason,
+      }],
+      usage: {
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
+        total_tokens: promptTokens + completionTokens,
+      },
+    })));
+  };
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (!value) continue;
+          buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+
+          while (true) {
+            const idx = buffer.indexOf("\n\n");
+            if (idx === -1) break;
+            const rawEvent = buffer.slice(0, idx);
+            buffer = buffer.slice(idx + 2);
+            const lines = rawEvent.split("\n");
+            let eventName = "";
+            const dataLines: string[] = [];
+            for (const line of lines) {
+              if (line.startsWith("event:")) eventName = line.slice(6).trim();
+              if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+            }
+            if (dataLines.length === 0) continue;
+            const event = parseAnthropicSseEvent(eventName, dataLines.join("\n"));
+            const payload = asRecord(event.data);
+
+            if (event.event === "message_start") {
+              const message = asRecord(payload?.message);
+              if (typeof message?.id === "string") id = message.id;
+              if (typeof message?.model === "string") model = message.model;
+              const usage = asRecord(message?.usage);
+              promptTokens = Number(usage?.input_tokens ?? 0);
+              if (!roleEmitted) {
+                emit(controller, { role: "assistant" });
+                roleEmitted = true;
+              }
+              continue;
+            }
+
+            if (event.event === "content_block_start") {
+              const block = asRecord(payload?.content_block);
+              const indexNum = Number(payload?.index ?? 0);
+              if (block?.type === "thinking" || block?.type === "redacted_thinking") {
+                thinkingByIndex.set(indexNum, {});
+              }
+              if (block?.type === "tool_use") {
+                const toolId = typeof block.id === "string" ? block.id : `toolu_${crypto.randomUUID().replace(/-/g, "")}`;
+                const toolName = typeof block.name === "string" ? block.name : "";
+                toolUseByIndex.set(indexNum, { id: toolId, name: toolName });
+                emit(controller, {
+                  tool_calls: [{
+                    index: indexNum,
+                    id: toolId,
+                    type: "function",
+                    function: {
+                      name: toolName,
+                      arguments: "",
+                    },
+                  }],
+                });
+              }
+              continue;
+            }
+
+            if (event.event === "content_block_delta") {
+              const delta = asRecord(payload?.delta);
+              const indexNum = Number(payload?.index ?? 0);
+              if (delta?.type === "text_delta" && typeof delta.text === "string") {
+                completionText += delta.text;
+                emit(controller, { content: delta.text });
+              } else if (delta?.type === "thinking_delta" && typeof delta.thinking === "string") {
+                reasoningText += delta.thinking;
+                emit(controller, { reasoning: delta.thinking });
+              } else if (delta?.type === "signature_delta" && typeof delta.signature === "string") {
+                const thinking = thinkingByIndex.get(indexNum) ?? {};
+                thinking.signature = delta.signature;
+                thinkingByIndex.set(indexNum, thinking);
+              } else if (delta?.type === "input_json_delta" && typeof delta.partial_json === "string") {
+                const tool = toolUseByIndex.get(indexNum);
+                if (tool) {
+                  emit(controller, {
+                    tool_calls: [{
+                      index: indexNum,
+                      id: tool.id,
+                      type: "function",
+                      function: {
+                        name: tool.name,
+                        arguments: delta.partial_json,
+                      },
+                    }],
+                  });
+                }
+              }
+              continue;
+            }
+
+            if (event.event === "message_delta") {
+              const delta = asRecord(payload?.delta);
+              finishReason = typeof delta?.stop_reason === "string"
+                ? (delta.stop_reason === "tool_use" ? "tool_calls" : "stop")
+                : finishReason;
+              const usage = asRecord(payload?.usage);
+              completionTokens = Number(usage?.output_tokens ?? completionTokens);
+              continue;
+            }
+
+            if (event.event === "message_stop" && !finished) {
+              finished = true;
+              emit(controller, {}, finishReason ?? "stop");
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            }
+          }
+        }
+        if (!finished) {
+          emit(controller, {}, finishReason ?? "stop");
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        }
+        controller.close();
+      } catch (error) {
+        controller.error(error);
+      }
+    },
+  });
+
+  return { stream, completionText: () => `${reasoningText}${completionText}` };
+}
+
+function createAnthropicToResponsesStream(upstream: ReadableStream<Uint8Array>): StreamTransformResult {
+  const chat = createAnthropicToChatStream(upstream);
+  return createChatToResponsesStream(chat.stream);
+}
+
+function createChatToAnthropicStream(upstream: ReadableStream<Uint8Array>): StreamTransformResult {
+  const reader = upstream.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffer = "";
+  let completionText = "";
+  let reasoningText = "";
+  let started = false;
+  let messageId = `msg_${crypto.randomUUID().replace(/-/g, "")}`;
+  let thinkingStarted = false;
+  let model: string | null = null;
+  let promptTokens = 0;
+  let completionTokens = 0;
+
+  const emit = (controller: ReadableStreamDefaultController<Uint8Array>, event: string, payload: unknown) => {
+    controller.enqueue(encoder.encode(toSseBlock(event, payload)));
+  };
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (!value) continue;
+          buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+          while (true) {
+            const idx = buffer.indexOf("\n\n");
+            if (idx === -1) break;
+            const rawEvent = buffer.slice(0, idx);
+            buffer = buffer.slice(idx + 2);
+            const dataLines = rawEvent.split("\n").filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart());
+            if (dataLines.length === 0) continue;
+            const data = dataLines.join("\n");
+            if (data === "[DONE]") continue;
+            const parsed = parseChatChunkEvent(data);
+            model = parsed.model;
+            if (parsed.usage) {
+              promptTokens = parsed.usage.prompt_tokens;
+              completionTokens = parsed.usage.completion_tokens;
+            }
+            if (!started) {
+              started = true;
+              emit(controller, "message_start", {
+                type: "message_start",
+                message: {
+                  id: messageId,
+                  type: "message",
+                  role: "assistant",
+                  model,
+                  content: [],
+                  stop_reason: null,
+                  stop_sequence: null,
+                  usage: {
+                    input_tokens: promptTokens,
+                    output_tokens: 0,
+                  },
+                },
+              });
+            }
+
+            if (parsed.reasoning) {
+              reasoningText += parsed.reasoning;
+              if (!thinkingStarted) {
+                thinkingStarted = true;
+                emit(controller, "content_block_start", {
+                  type: "content_block_start",
+                  index: 0,
+                  content_block: { type: "thinking", thinking: "" },
+                });
+              }
+              emit(controller, "content_block_delta", {
+                type: "content_block_delta",
+                index: 0,
+                delta: { type: "thinking_delta", thinking: parsed.reasoning },
+              });
+            }
+
+            if (parsed.content) {
+              if (completionText.length === 0) {
+                emit(controller, "content_block_start", {
+                  type: "content_block_start",
+                  index: thinkingStarted ? 1 : 0,
+                  content_block: { type: "text", text: "" },
+                });
+              }
+              completionText += parsed.content;
+              emit(controller, "content_block_delta", {
+                type: "content_block_delta",
+                index: thinkingStarted ? 1 : 0,
+                delta: { type: "text_delta", text: parsed.content },
+              });
+            }
+
+            for (const toolCall of parsed.toolCalls) {
+              emit(controller, "content_block_start", {
+                type: "content_block_start",
+                index: toolCall.index + (thinkingStarted ? 2 : 1),
+                content_block: {
+                  type: "tool_use",
+                  id: toolCall.id || `toolu_${crypto.randomUUID().replace(/-/g, "")}`,
+                  name: toolCall.name,
+                  input: {},
+                },
+              });
+              emit(controller, "content_block_delta", {
+                type: "content_block_delta",
+                index: toolCall.index + (thinkingStarted ? 2 : 1),
+                delta: {
+                  type: "input_json_delta",
+                  partial_json: toolCall.arguments,
+                },
+              });
+            }
+
+            if (parsed.finishReason) {
+              if (thinkingStarted) {
+                emit(controller, "content_block_stop", { type: "content_block_stop", index: 0 });
+              }
+              if (completionText.length > 0) {
+                emit(controller, "content_block_stop", { type: "content_block_stop", index: thinkingStarted ? 1 : 0 });
+              }
+              emit(controller, "message_delta", {
+                type: "message_delta",
+                delta: {
+                  stop_reason: parsed.finishReason === "tool_calls" ? "tool_use" : "end_turn",
+                  stop_sequence: null,
+                },
+                usage: {
+                  output_tokens: completionTokens,
+                },
+              });
+              emit(controller, "message_stop", { type: "message_stop" });
+            }
+          }
+        }
+        controller.close();
+      } catch (error) {
+        controller.error(error);
+      }
+    },
+  });
+
+  return { stream, completionText: () => `${reasoningText}${completionText}` };
+}
+
+function createResponsesToAnthropicStream(upstream: ReadableStream<Uint8Array>): StreamTransformResult {
+  const chat = createResponsesToChatStream(upstream);
+  return createChatToAnthropicStream(chat.stream);
+}
+
 function createChatToResponsesStream(upstream: ReadableStream<Uint8Array>): StreamTransformResult {
   const reader = upstream.getReader();
   const decoder = new TextDecoder();
@@ -806,9 +1756,12 @@ function createChatToResponsesStream(upstream: ReadableStream<Uint8Array>): Stre
   let completionText = "";
   const responseId = `resp_${crypto.randomUUID().replace(/-/g, "")}`;
   const outputMessageId = `msg_${crypto.randomUUID().replace(/-/g, "")}`;
+  const reasoningItemId = `rs_${crypto.randomUUID().replace(/-/g, "")}`;
   const toolCalls = new Map<number, ToolCallState>();
   let started = false;
   let emittedDone = false;
+  let reasoningStarted = false;
+  let reasoningText = "";
   let promptTokens = 0;
   let completionTokens = 0;
   let totalTokens = 0;
@@ -894,10 +1847,42 @@ function createChatToResponsesStream(upstream: ReadableStream<Uint8Array>): Stre
             emitStart(controller, parsed.model, parsed.created);
 
             if ((parsed.content || parsed.reasoning) && completionText.length === 0) {
-              emitMessageStart(controller);
+              if (parsed.reasoning && !reasoningStarted) {
+                reasoningStarted = true;
+                controller.enqueue(encoder.encode(toSseBlock("response.output_item.added", {
+                  type: "response.output_item.added",
+                  response_id: responseId,
+                  output_index: 0,
+                  item: {
+                    id: reasoningItemId,
+                    type: "reasoning",
+                    summary: [],
+                    content: [],
+                    status: "in_progress",
+                  },
+                })));
+              }
+              if (parsed.content) {
+                emitMessageStart(controller);
+              }
+            }
+
+            if (parsed.reasoning) {
+              reasoningText += parsed.reasoning;
+              controller.enqueue(encoder.encode(toSseBlock("response.reasoning_text.delta", {
+                type: "response.reasoning_text.delta",
+                response_id: responseId,
+                item_id: reasoningItemId,
+                output_index: 0,
+                content_index: 0,
+                delta: parsed.reasoning,
+              })));
             }
 
             if (parsed.content) {
+              if (completionText.length === 0) {
+                emitMessageStart(controller);
+              }
               completionText += parsed.content;
               controller.enqueue(encoder.encode(toSseBlock("response.output_text.delta", {
                 type: "response.output_text.delta",
@@ -954,6 +1939,28 @@ function createChatToResponsesStream(upstream: ReadableStream<Uint8Array>): Stre
 
             if (parsed.finishReason && !emittedDone) {
               emittedDone = true;
+              if (reasoningStarted) {
+                controller.enqueue(encoder.encode(toSseBlock("response.reasoning_text.done", {
+                  type: "response.reasoning_text.done",
+                  response_id: responseId,
+                  item_id: reasoningItemId,
+                  output_index: 0,
+                  content_index: 0,
+                  text: reasoningText,
+                })));
+                controller.enqueue(encoder.encode(toSseBlock("response.output_item.done", {
+                  type: "response.output_item.done",
+                  response_id: responseId,
+                  output_index: 0,
+                  item: {
+                    id: reasoningItemId,
+                    type: "reasoning",
+                    summary: [],
+                    content: [{ type: "reasoning_text", text: reasoningText }],
+                    status: "completed",
+                  },
+                })));
+              }
               controller.enqueue(encoder.encode(toSseBlock("response.output_text.done", {
                 type: "response.output_text.done",
                 response_id: responseId,
@@ -968,14 +1975,23 @@ function createChatToResponsesStream(upstream: ReadableStream<Uint8Array>): Stre
                   id: responseId,
                   object: "response",
                   status: "completed",
-                  output: completionText
-                    ? [{
+                  output: (reasoningStarted || completionText)
+                    ? [
+                        ...(reasoningStarted ? [{
+                          id: reasoningItemId,
+                          type: "reasoning",
+                          summary: [],
+                          content: [{ type: "reasoning_text", text: reasoningText }],
+                          status: "completed",
+                        }] : []),
+                        ...(completionText ? [{
                         id: outputMessageId,
                         type: "message",
                         role: "assistant",
                         status: "completed",
                         content: [{ type: "output_text", text: completionText, annotations: [] }],
-                      }]
+                      }] : []),
+                      ]
                     : [],
                   output_text: completionText,
                   usage: {
@@ -996,14 +2012,23 @@ function createChatToResponsesStream(upstream: ReadableStream<Uint8Array>): Stre
               id: responseId,
               object: "response",
               status: "completed",
-              output: completionText
-                ? [{
+              output: (reasoningStarted || completionText)
+                ? [
+                    ...(reasoningStarted ? [{
+                      id: reasoningItemId,
+                      type: "reasoning",
+                      summary: [],
+                      content: [{ type: "reasoning_text", text: reasoningText }],
+                      status: "completed",
+                    }] : []),
+                    ...(completionText ? [{
                     id: outputMessageId,
                     type: "message",
                     role: "assistant",
                     status: "completed",
                     content: [{ type: "output_text", text: completionText, annotations: [] }],
-                  }]
+                  }] : []),
+                  ]
                 : [],
               output_text: completionText,
               usage: {
@@ -1024,7 +2049,7 @@ function createChatToResponsesStream(upstream: ReadableStream<Uint8Array>): Stre
 
   return {
     stream,
-    completionText: () => completionText,
+    completionText: () => `${reasoningText}${completionText}`,
   };
 }
 
@@ -1034,6 +2059,7 @@ function createResponsesToChatStream(upstream: ReadableStream<Uint8Array>): Stre
   const encoder = new TextEncoder();
   let buffer = "";
   let completionText = "";
+  let reasoningText = "";
   let responseId = `chatcmpl_${crypto.randomUUID().replace(/-/g, "")}`;
   let model: string | null = null;
   let created = Math.floor(Date.now() / 1000);
@@ -1105,6 +2131,12 @@ function createResponsesToChatStream(upstream: ReadableStream<Uint8Array>): Stre
             if (event.event === "response.output_text.delta" && typeof payload?.delta === "string") {
               completionText += payload.delta;
               emitChatChunk(controller, { content: payload.delta });
+              continue;
+            }
+
+            if (event.event === "response.reasoning_text.delta" && typeof payload?.delta === "string") {
+              reasoningText += payload.delta;
+              emitChatChunk(controller, { reasoning: payload.delta });
               continue;
             }
 
@@ -1191,6 +2223,6 @@ function createResponsesToChatStream(upstream: ReadableStream<Uint8Array>): Stre
 
   return {
     stream,
-    completionText: () => completionText,
+    completionText: () => `${reasoningText}${completionText}`,
   };
 }
