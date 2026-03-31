@@ -195,7 +195,9 @@ export async function POST(request: Request) {
       stream: false,
       status_code: statusCode,
       estimated_tokens: estimatedTokens ?? null,
-      total_tokens: estimatedTokens ?? 0,
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0,
       latency_ms: Date.now() - startedAt,
       error_message: message,
     });
