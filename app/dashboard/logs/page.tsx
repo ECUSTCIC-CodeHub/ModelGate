@@ -42,6 +42,8 @@ type LogRow = {
   stream: number;
   status_code: number;
   error_message: string | null;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
   total_tokens: number | null;
   latency_ms: number | null;
   first_token_latency_ms: number | null;
@@ -280,7 +282,29 @@ export default function AdminLogsPage() {
       {
         accessorKey: "total_tokens",
         header: "Token",
-        cell: ({ row }) => <span title={formatNumber(row.original.total_tokens ?? 0)}>{formatTokenCount(row.original.total_tokens ?? 0)}</span>,
+        cell: ({ row }) => {
+          const promptTokens = row.original.prompt_tokens;
+          const completionTokens = row.original.completion_tokens;
+          const totalTokens = row.original.total_tokens ?? 0;
+
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex items-center text-left text-inherit"
+                  title={formatNumber(totalTokens)}
+                >
+                  <span>{formatTokenCount(totalTokens)}</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent align="start">
+                <p>Prompt: {formatTokenCount(promptTokens ?? 0)}</p>
+                <p>Completion: {formatTokenCount(completionTokens ?? 0)}</p>
+              </TooltipContent>
+            </Tooltip>
+          );
+        },
       },
       {
         accessorKey: "first_token_latency_ms",
