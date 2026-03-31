@@ -1,14 +1,15 @@
 import { jsonError } from "@/lib/http";
 import type { DbChannel, DbModel } from "@/lib/db";
 import type { RoutedModel } from "@/lib/router";
+import type { GatewayProtocol } from "@/lib/protocols";
 
 function normalizeProviderBaseUrl(baseUrl: string) {
   const normalized = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
-  return normalized.replace(/\/chat\/completions$/, "").replace(/\/models$/, "");
+  return normalized.replace(/\/chat\/completions$/, "").replace(/\/responses$/, "").replace(/\/models$/, "");
 }
 
-function buildChatUrl(baseUrl: string) {
-  return `${normalizeProviderBaseUrl(baseUrl)}/chat/completions`;
+function buildUpstreamUrl(baseUrl: string, protocol: GatewayProtocol) {
+  return `${normalizeProviderBaseUrl(baseUrl)}/${protocol === "responses" ? "responses" : "chat/completions"}`;
 }
 
 function createTimeoutController(timeoutSeconds: number) {
@@ -18,11 +19,15 @@ function createTimeoutController(timeoutSeconds: number) {
   return { controller, timeout };
 }
 
-export async function fetchUpstreamChat(route: RoutedModel, requestBody: Record<string, unknown>) {
+export async function fetchUpstreamRequest(
+  route: RoutedModel,
+  requestBody: Record<string, unknown>,
+  protocol: GatewayProtocol,
+) {
   const { controller, timeout } = createTimeoutController(route.channel.timeout);
 
   try {
-    return await fetch(buildChatUrl(route.channel.base_url), {
+    return await fetch(buildUpstreamUrl(route.channel.base_url, protocol), {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -38,24 +43,33 @@ export async function fetchUpstreamChat(route: RoutedModel, requestBody: Record<
 
 export async function testUpstreamModel(target: {
   channel: Pick<DbChannel, "base_url" | "api_key" | "timeout">;
-  model: Pick<DbModel, "real_model">;
+  model: Pick<DbModel, "real_model" | "upstream_protocol">;
 }) {
   const { controller, timeout } = createTimeoutController(target.channel.timeout);
   const startedAt = Date.now();
 
   try {
-    const response = await fetch(buildChatUrl(target.channel.base_url), {
+    const response = await fetch(buildUpstreamUrl(target.channel.base_url, target.model.upstream_protocol as GatewayProtocol), {
       method: "POST",
       headers: {
         "content-type": "application/json",
         authorization: `Bearer ${target.channel.api_key}`,
       },
-      body: JSON.stringify({
-        model: target.model.real_model,
-        messages: [{ role: "user", content: "ping" }],
-        max_tokens: 1,
-        stream: false,
-      }),
+      body: JSON.stringify(
+        target.model.upstream_protocol === "responses"
+          ? {
+              model: target.model.real_model,
+              input: "ping",
+              max_output_tokens: 1,
+              stream: false,
+            }
+          : {
+              model: target.model.real_model,
+              messages: [{ role: "user", content: "ping" }],
+              max_tokens: 1,
+              stream: false,
+            },
+      ),
       signal: controller.signal,
     });
 
@@ -86,6 +100,14 @@ function summarizeTestResponse(bodyText: string) {
     const parsed = JSON.parse(bodyText) as {
       model?: string;
       error?: { message?: string; type?: string; code?: string | number };
+      status?: string;
+      output_text?: string | null;
+      output?: Array<{
+        type?: string;
+        role?: string;
+        content?: Array<{ type?: string; text?: string | null }>;
+        name?: string;
+      }>;
       choices?: Array<{
         finish_reason?: string | null;
         message?: { content?: string | null; reasoning?: string | null };
@@ -107,6 +129,7 @@ function summarizeTestResponse(bodyText: string) {
 
     const parts: string[] = [];
     if (parsed.model) parts.push(`model=${parsed.model}`);
+    if (parsed.status) parts.push(`status=${parsed.status}`);
 
     const firstChoice = Array.isArray(parsed.choices) ? parsed.choices[0] : undefined;
     if (firstChoice?.finish_reason) {
@@ -127,7 +150,35 @@ function summarizeTestResponse(bodyText: string) {
       parts.push(`tokens(${usageParts.join("/")})`);
     }
 
+    if (parsed.usage && parsed.usage.prompt_tokens === undefined) {
+      const responsesUsage = parsed.usage as {
+        input_tokens?: number | null;
+        output_tokens?: number | null;
+        total_tokens?: number | null;
+      };
+      const nextUsageParts: string[] = [];
+      if (responsesUsage.input_tokens !== undefined && responsesUsage.input_tokens !== null) {
+        nextUsageParts.push(`prompt=${responsesUsage.input_tokens}`);
+      }
+      if (responsesUsage.output_tokens !== undefined && responsesUsage.output_tokens !== null) {
+        nextUsageParts.push(`completion=${responsesUsage.output_tokens}`);
+      }
+      if (responsesUsage.total_tokens !== undefined && responsesUsage.total_tokens !== null) {
+        nextUsageParts.push(`total=${responsesUsage.total_tokens}`);
+      }
+      if (nextUsageParts.length > 0) {
+        parts.push(`tokens(${nextUsageParts.join("/")})`);
+      }
+    }
+
     const content =
+      parsed.output_text?.trim() ||
+      (Array.isArray(parsed.output)
+        ? parsed.output
+            .flatMap((item) => (item?.type === "message" ? (item.content ?? []) : []))
+            .map((part) => part?.text?.trim() ?? "")
+            .find(Boolean)
+        : "") ||
       firstChoice?.message?.content?.trim() ||
       firstChoice?.message?.reasoning?.trim() ||
       firstChoice?.text?.trim() ||
@@ -153,7 +204,7 @@ export async function proxyChatCompletion(
   };
 
   try {
-    const upstream = await fetchUpstreamChat(route, outgoingBody);
+    const upstream = await fetchUpstreamRequest(route, outgoingBody, "chat_completions");
 
     if (stream) {
       return new Response(upstream.body, {

@@ -24,6 +24,8 @@ Multi-tenant LLM Gateway + Web Console based on Next.js + SQLite.
 - OpenAI-compatible endpoints:
   - `GET /api/v1/models`
   - `POST /api/v1/chat/completions`
+  - `POST /api/v1/responses`
+  - Supports `chat/completions` and `responses`, with protocol conversion based on model-channel config
 
 ## Install & Run
 
@@ -101,8 +103,21 @@ curl -sS http://localhost:3000/api/v1/chat/completions \
   }'
 ```
 
+```bash
+curl -sS http://localhost:3000/api/v1/responses \
+  -H 'Authorization: Bearer sk-gw-xxxx' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "deepseek-v3.2",
+    "input": "hello"
+  }'
+```
+
 ## Notes
 
+- Channels can declare supported upstream protocols, and each model mapping can choose `chat_completions` or `responses` as its actual upstream protocol.
+- Clients can call either `/api/v1/chat/completions` or `/api/v1/responses`; the gateway will convert protocols automatically when needed.
+- `responses` compatibility is still being improved. If you hit a bug, please open an issue here: [ModelGate Issue Tracker](https://cnb.cool/Bring/Tools/ModelGate/-/issues/new)
 - TPM for non-stream response prefers upstream `usage.total_tokens` when available.
 - For stream response (`stream=true`), usage is estimated before forwarding.
 - Rate limit is in-memory and single-instance only.

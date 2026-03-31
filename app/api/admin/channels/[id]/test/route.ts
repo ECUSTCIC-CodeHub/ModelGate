@@ -4,6 +4,7 @@ import { gatewayDb } from "@/lib/db";
 import { ensureAdmin } from "@/lib/guards";
 import { jsonError, jsonOk } from "@/lib/http";
 import { testUpstreamModel } from "@/lib/proxy";
+import type { GatewayProtocol } from "@/lib/protocols";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const guard = ensureAdmin(request);
@@ -26,7 +27,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
   const model = gatewayDb
     .prepare(
-      `SELECT id, alias, real_model
+      `SELECT id, alias, real_model, upstream_protocol
        FROM models
        WHERE channel_id = ? AND enabled = 1 AND deleted_at IS NULL
        ORDER BY id ASC
@@ -37,6 +38,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         id: number;
         alias: string;
         real_model: string;
+        upstream_protocol: GatewayProtocol;
       }
     | undefined;
 
@@ -46,6 +48,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     channel,
     model: {
       real_model: model.real_model,
+      upstream_protocol: model.upstream_protocol,
     },
   });
   const status = result.ok ? 200 : 502;

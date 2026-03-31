@@ -1,5 +1,6 @@
 import { gatewayDb, type DbChannel, type DbModel } from "@/lib/db";
 import { scoreChannel } from "@/lib/channel-runtime";
+import type { GatewayProtocol } from "@/lib/protocols";
 
 export type RoutedModel = {
   model: DbModel;
@@ -11,6 +12,7 @@ type CandidateRow = {
   alias: string;
   real_model: string;
   channel_id: number;
+  upstream_protocol: GatewayProtocol;
   is_public: number;
   model_enabled: number;
   model_weight: number;
@@ -20,6 +22,7 @@ type CandidateRow = {
   name: string;
   base_url: string;
   api_key: string;
+  supported_protocols: string;
   channel_enabled: number;
   channel_weight: number;
   timeout: number;
@@ -45,6 +48,7 @@ function mapRowToRoute(row: CandidateRow): RoutedModel {
       alias: row.alias,
       real_model: row.real_model,
       channel_id: row.channel_id,
+      upstream_protocol: row.upstream_protocol,
       is_public: row.is_public,
       enabled: row.model_enabled,
       weight: row.model_weight,
@@ -56,6 +60,7 @@ function mapRowToRoute(row: CandidateRow): RoutedModel {
       name: row.name,
       base_url: row.base_url,
       api_key: row.api_key,
+      supported_protocols: row.supported_protocols,
       enabled: row.channel_enabled,
       weight: row.channel_weight,
       timeout: row.timeout,
@@ -72,6 +77,7 @@ export function listModelRoutes(alias: string, options?: { excludeChannelIds?: n
         m.alias,
         m.real_model,
         m.channel_id,
+        m.upstream_protocol,
         m.is_public,
         m.enabled as model_enabled,
         m.weight as model_weight,
@@ -81,6 +87,7 @@ export function listModelRoutes(alias: string, options?: { excludeChannelIds?: n
         c.name,
         c.base_url,
         c.api_key,
+        c.supported_protocols,
         c.enabled as channel_enabled,
         c.weight as channel_weight,
         c.timeout,

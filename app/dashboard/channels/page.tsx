@@ -45,11 +45,32 @@ import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
 import { authedFetch, clearSession, getOrFetchProfile } from "@/lib/client-auth";
 
+type Protocol = "chat_completions" | "responses";
+
+const protocolOptions: Array<{ value: Protocol; label: string }> = [
+  { value: "chat_completions", label: "Chat Completions" },
+  { value: "responses", label: "Responses" },
+];
+
+function parseSupportedProtocols(raw: string | null | undefined): Protocol[] {
+  if (!raw) return ["chat_completions"];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    const normalized = Array.isArray(parsed)
+      ? parsed.filter((item): item is Protocol => item === "chat_completions" || item === "responses")
+      : [];
+    return normalized.length > 0 ? normalized : ["chat_completions"];
+  } catch {
+    return ["chat_completions"];
+  }
+}
+
 type ModelRow = {
   id: number;
   alias: string;
   real_model: string;
   channel_id: number;
+  upstream_protocol: Protocol;
   is_public: number;
   enabled: number;
   weight: number;
@@ -60,6 +81,7 @@ type Channel = {
   name: string;
   base_url: string;
   api_key: string;
+  supported_protocols: string;
   enabled: number;
   weight: number;
   timeout: number;
@@ -69,6 +91,7 @@ type Channel = {
 type ChannelModelDraft = {
   alias: string;
   real_model: string;
+  upstream_protocol: Protocol;
   is_public: boolean;
   weight: number;
   enabled: boolean;
@@ -78,6 +101,7 @@ type ChannelForm = {
   name: string;
   base_url: string;
   api_key: string;
+  supported_protocols: Protocol[];
   weight: number;
   timeout: number;
 };
@@ -86,6 +110,7 @@ type ModelForm = {
   alias: string;
   real_model: string;
   channel_id: number;
+  upstream_protocol: Protocol;
   is_public: boolean;
   weight: number;
   enabled: boolean;
@@ -95,6 +120,7 @@ const initialChannelForm: ChannelForm = {
   name: "",
   base_url: "",
   api_key: "",
+  supported_protocols: ["chat_completions"],
   weight: 1,
   timeout: 60,
 };
@@ -102,6 +128,7 @@ const initialChannelForm: ChannelForm = {
 const initialModelDraft: ChannelModelDraft = {
   alias: "",
   real_model: "",
+  upstream_protocol: "chat_completions",
   is_public: true,
   weight: 1,
   enabled: true,
@@ -111,6 +138,7 @@ const initialModelForm: ModelForm = {
   alias: "",
   real_model: "",
   channel_id: 0,
+  upstream_protocol: "chat_completions",
   is_public: true,
   weight: 1,
   enabled: true,
@@ -167,25 +195,27 @@ export default function AdminChannelsPage() {
   function openCreateChannel() {
     setChannelEditingId(null);
     setChannelForm(initialChannelForm);
-    setChannelModels([{ ...initialModelDraft }]);
+    setChannelModels([{ ...initialModelDraft, upstream_protocol: initialChannelForm.supported_protocols[0] }]);
     setChannelDrawerOpen(true);
   }
 
   function openEditChannel(row: Channel) {
+    const supportedProtocols = parseSupportedProtocols(row.supported_protocols);
     setChannelEditingId(row.id);
     setChannelForm({
       name: row.name,
       base_url: row.base_url,
       api_key: row.api_key,
+      supported_protocols: supportedProtocols,
       weight: row.weight,
       timeout: row.timeout,
     });
-    setChannelModels([{ ...initialModelDraft }]);
+    setChannelModels([{ ...initialModelDraft, upstream_protocol: supportedProtocols[0] }]);
     setChannelDrawerOpen(true);
   }
 
   function addChannelModelDraft() {
-    setChannelModels((prev) => [...prev, { ...initialModelDraft }]);
+    setChannelModels((prev) => [...prev, { ...initialModelDraft, upstream_protocol: channelForm.supported_protocols[0] ?? "chat_completions" }]);
   }
 
   function removeChannelModelDraft(index: number) {
@@ -204,6 +234,7 @@ export default function AdminChannelsPage() {
         .map((item) => ({
           alias: item.alias.trim(),
           real_model: item.real_model.trim(),
+          upstream_protocol: item.upstream_protocol,
           is_public: item.is_public,
           weight: item.weight,
           enabled: item.enabled,
@@ -216,6 +247,7 @@ export default function AdminChannelsPage() {
           name: channelForm.name,
           base_url: channelForm.base_url,
           api_key: channelForm.api_key,
+          supported_protocols: channelForm.supported_protocols,
           weight: channelForm.weight,
           timeout: channelForm.timeout,
           models: draftModels,
@@ -239,6 +271,7 @@ export default function AdminChannelsPage() {
         name: channelForm.name,
         base_url: channelForm.base_url,
         api_key: channelForm.api_key,
+        supported_protocols: channelForm.supported_protocols,
         weight: channelForm.weight,
         timeout: channelForm.timeout,
       }),
@@ -323,10 +356,13 @@ export default function AdminChannelsPage() {
   }
 
   function openCreateModel(channelId: number) {
+    const channel = channels.find((item) => item.id === channelId);
+    const supportedProtocols = parseSupportedProtocols(channel?.supported_protocols);
     setModelEditingId(null);
     setModelForm({
       ...initialModelForm,
       channel_id: channelId,
+      upstream_protocol: supportedProtocols[0] ?? "chat_completions",
     });
     setModelDrawerOpen(true);
   }
@@ -337,6 +373,7 @@ export default function AdminChannelsPage() {
       alias: row.alias,
       real_model: row.real_model,
       channel_id: row.channel_id,
+      upstream_protocol: row.upstream_protocol,
       is_public: row.is_public === 1,
       weight: row.weight,
       enabled: row.enabled === 1,
@@ -408,6 +445,7 @@ export default function AdminChannelsPage() {
       channel_name: channel.name,
     })),
   );
+  const selectedChannelProtocols = parseSupportedProtocols(channels.find((item) => item.id === modelForm.channel_id)?.supported_protocols);
 
   return (
     <DashboardShell
@@ -442,6 +480,7 @@ export default function AdminChannelsPage() {
                           <TableHead>名称</TableHead>
                           <TableHead>Base URL</TableHead>
                           <TableHead>状态</TableHead>
+                          <TableHead>协议</TableHead>
                           <TableHead>权重</TableHead>
                           <TableHead>超时</TableHead>
                           <TableHead>模型数</TableHead>
@@ -456,6 +495,13 @@ export default function AdminChannelsPage() {
                             <TableCell className="max-w-72 truncate">{row.base_url}</TableCell>
                             <TableCell>
                               <Badge variant={row.enabled ? "default" : "secondary"}>{row.enabled ? "启用" : "禁用"}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap gap-1">
+                                {parseSupportedProtocols(row.supported_protocols).map((protocol: Protocol) => (
+                                  <Badge key={protocol} variant="outline">{protocol === "responses" ? "Responses" : "Chat"}</Badge>
+                                ))}
+                              </div>
                             </TableCell>
                             <TableCell>{row.weight}</TableCell>
                             <TableCell>{row.timeout}s</TableCell>
@@ -507,6 +553,7 @@ export default function AdminChannelsPage() {
                           <TableHead>真实模型</TableHead>
                           <TableHead>所属渠道</TableHead>
                           <TableHead>状态</TableHead>
+                          <TableHead>上游协议</TableHead>
                           <TableHead>可见性</TableHead>
                           <TableHead>权重</TableHead>
                           <TableHead className="text-right">操作</TableHead>
@@ -521,6 +568,9 @@ export default function AdminChannelsPage() {
                             <TableCell>{model.channel_name}</TableCell>
                             <TableCell>
                               <Badge variant={model.enabled ? "default" : "secondary"}>{model.enabled ? "启用" : "禁用"}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{model.upstream_protocol === "responses" ? "Responses" : "Chat"}</Badge>
                             </TableCell>
                             <TableCell>
                               <Badge variant={model.is_public ? "default" : "secondary"}>{model.is_public ? "公开" : "白名单"}</Badge>
@@ -587,6 +637,39 @@ export default function AdminChannelsPage() {
                 <Input type="number" min={1} value={channelForm.timeout} onChange={(e) => setChannelForm({ ...channelForm, timeout: Number(e.target.value) || 60 })} />
               </div>
               <div className="space-y-2 md:col-span-2">
+                <Label>支持协议</Label>
+                <div className="grid gap-2 rounded-xl border border-white/10 bg-white/5 p-4 md:grid-cols-2">
+                  {protocolOptions.map((option) => {
+                    const checked = channelForm.supported_protocols.includes(option.value);
+                    return (
+                      <label key={option.value} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 px-3 py-2">
+                        <span className="text-sm text-zinc-100">{option.label}</span>
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(next) => {
+                            const enabled = next === true;
+                            const current = channelForm.supported_protocols;
+                            const protocols = enabled
+                              ? [...new Set([...current, option.value])]
+                              : current.filter((item) => item !== option.value);
+                            setChannelForm({
+                              ...channelForm,
+                              supported_protocols: protocols.length > 0 ? protocols : [option.value],
+                            });
+                            setChannelModels((prev) => prev.map((item) => ({
+                              ...item,
+                              upstream_protocol: (protocols.length > 0 ? protocols : [option.value]).includes(item.upstream_protocol)
+                                ? item.upstream_protocol
+                                : (protocols.length > 0 ? protocols : [option.value])[0],
+                            })));
+                          }}
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="space-y-2 md:col-span-2">
                 <Label>API Key</Label>
                 <Input value={channelForm.api_key} onChange={(e) => setChannelForm({ ...channelForm, api_key: e.target.value })} />
               </div>
@@ -607,6 +690,16 @@ export default function AdminChannelsPage() {
                       <Input placeholder="别名" value={item.alias} onChange={(e) => updateChannelModelDraft(index, { alias: e.target.value })} />
                       <Input placeholder="真实模型" value={item.real_model} onChange={(e) => updateChannelModelDraft(index, { real_model: e.target.value })} />
                       <Input type="number" min={1} placeholder="权重" value={item.weight} onChange={(e) => updateChannelModelDraft(index, { weight: Number(e.target.value) || 1 })} />
+                      <Select value={item.upstream_protocol} onValueChange={(value: Protocol) => updateChannelModelDraft(index, { upstream_protocol: value })}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {channelForm.supported_protocols.map((protocol) => (
+                            <SelectItem key={protocol} value={protocol}>{protocol === "responses" ? "Responses" : "Chat Completions"}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <div className="grid gap-3 md:grid-cols-2">
                         <Select value={item.is_public ? "1" : "0"} onValueChange={(value) => updateChannelModelDraft(index, { is_public: value === "1" })}>
                           <SelectTrigger>
@@ -662,13 +755,38 @@ export default function AdminChannelsPage() {
             </div>
             <div className="space-y-2">
               <Label>所属渠道</Label>
-              <Select value={String(modelForm.channel_id)} onValueChange={(value) => setModelForm({ ...modelForm, channel_id: Number(value) })}>
+              <Select
+                value={String(modelForm.channel_id)}
+                onValueChange={(value) => {
+                  const channelId = Number(value);
+                  const channel = channels.find((item) => item.id === channelId);
+                  const protocols = parseSupportedProtocols(channel?.supported_protocols);
+                  setModelForm({
+                    ...modelForm,
+                    channel_id: channelId,
+                    upstream_protocol: protocols.includes(modelForm.upstream_protocol) ? modelForm.upstream_protocol : protocols[0],
+                  });
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {channels.map((item) => (
                     <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>上游协议</Label>
+              <Select value={modelForm.upstream_protocol} onValueChange={(value: Protocol) => setModelForm({ ...modelForm, upstream_protocol: value })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {selectedChannelProtocols.map((protocol) => (
+                    <SelectItem key={protocol} value={protocol}>{protocol === "responses" ? "Responses" : "Chat Completions"}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

@@ -4,11 +4,13 @@ import { z } from "zod";
 import { gatewayDb } from "@/lib/db";
 import { ensureAdmin } from "@/lib/guards";
 import { jsonError, jsonOk } from "@/lib/http";
+import { GATEWAY_PROTOCOLS, normalizeSupportedProtocols, stringifySupportedProtocols } from "@/lib/protocols";
 
 const createSchema = z.object({
   name: z.string().min(1),
   base_url: z.string().url(),
   api_key: z.string().min(1),
+  supported_protocols: z.array(z.enum(GATEWAY_PROTOCOLS)).min(1).optional(),
   enabled: z.boolean().optional(),
   weight: z.number().int().min(1).optional(),
   timeout: z.number().int().min(1).optional(),
@@ -17,6 +19,7 @@ const createSchema = z.object({
       z.object({
         alias: z.string().min(1),
         real_model: z.string().min(1),
+        upstream_protocol: z.enum(GATEWAY_PROTOCOLS).optional(),
         is_public: z.boolean().optional(),
         enabled: z.boolean().optional(),
         weight: z.number().int().min(1).optional(),
@@ -31,12 +34,13 @@ export async function GET(request: Request) {
 
   const channels = gatewayDb.prepare("SELECT * FROM channels ORDER BY id DESC").all() as Array<Record<string, unknown> & { id: number }>;
   const models = gatewayDb
-    .prepare("SELECT id, alias, real_model, channel_id, is_public, enabled, weight, created_at FROM models WHERE deleted_at IS NULL ORDER BY id DESC")
+    .prepare("SELECT id, alias, real_model, channel_id, upstream_protocol, is_public, enabled, weight, created_at FROM models WHERE deleted_at IS NULL ORDER BY id DESC")
     .all() as Array<{
     id: number;
     alias: string;
     real_model: string;
     channel_id: number;
+    upstream_protocol: string;
     is_public: number;
     enabled: number;
     weight: number;
@@ -65,16 +69,25 @@ export async function POST(request: Request) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
+  const supportedProtocols = normalizeSupportedProtocols(parsed.data.supported_protocols);
+  for (const model of parsed.data.models ?? []) {
+    const upstreamProtocol = model.upstream_protocol ?? supportedProtocols[0] ?? "chat_completions";
+    if (!supportedProtocols.includes(upstreamProtocol)) {
+      return jsonError("模型草稿包含渠道不支持的上游协议", 400);
+    }
+  }
+
   const tx = gatewayDb.transaction(() => {
     const result = gatewayDb
       .prepare(
-        `INSERT INTO channels (name, base_url, api_key, enabled, weight, timeout)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO channels (name, base_url, api_key, supported_protocols, enabled, weight, timeout)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         parsed.data.name,
         parsed.data.base_url,
         parsed.data.api_key,
+        stringifySupportedProtocols(supportedProtocols),
         parsed.data.enabled === false ? 0 : 1,
         parsed.data.weight ?? 1,
         parsed.data.timeout ?? 60,
@@ -82,15 +95,17 @@ export async function POST(request: Request) {
 
     const channelId = Number(result.lastInsertRowid);
     for (const model of parsed.data.models ?? []) {
+      const upstreamProtocol = model.upstream_protocol ?? supportedProtocols[0] ?? "chat_completions";
       gatewayDb
         .prepare(
-          `INSERT INTO models (alias, real_model, channel_id, is_public, enabled, weight)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, is_public, enabled, weight)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           model.alias,
           model.real_model,
           channelId,
+          upstreamProtocol,
           model.is_public === false ? 0 : 1,
           model.enabled === false ? 0 : 1,
           model.weight ?? 1,

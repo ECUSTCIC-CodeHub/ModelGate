@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import type BetterSqlite3 from "better-sqlite3";
+import type { GatewayProtocol } from "@/lib/protocols";
 
 const dataDir = path.join(process.cwd(), "data");
 const dbPath = path.join(dataDir, "gateway.db");
@@ -29,6 +30,7 @@ CREATE TABLE IF NOT EXISTS channels (
   name TEXT NOT NULL,
   base_url TEXT NOT NULL,
   api_key TEXT NOT NULL,
+  supported_protocols TEXT DEFAULT '["chat_completions"]',
   enabled INTEGER DEFAULT 1,
   weight INTEGER DEFAULT 1,
   timeout INTEGER DEFAULT 60,
@@ -40,6 +42,7 @@ CREATE TABLE IF NOT EXISTS models (
   alias TEXT NOT NULL,
   real_model TEXT NOT NULL,
   channel_id INTEGER NOT NULL,
+  upstream_protocol TEXT DEFAULT 'chat_completions',
   is_public INTEGER DEFAULT 1,
   enabled INTEGER DEFAULT 1,
   weight INTEGER DEFAULT 1,
@@ -192,8 +195,10 @@ CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
   ensureColumn("keys", "deleted_at", "deleted_at DATETIME");
   const addedKeyUsedTokens = ensureColumn("keys", "used_tokens", "used_tokens INTEGER DEFAULT 0");
   const addedKeyUsedRequests = ensureColumn("keys", "used_requests", "used_requests INTEGER DEFAULT 0");
+  ensureColumn("channels", "supported_protocols", `supported_protocols TEXT DEFAULT '["chat_completions"]'`);
   ensureColumn("models", "deleted_at", "deleted_at DATETIME");
   ensureColumn("models", "is_public", "is_public INTEGER DEFAULT 1");
+  ensureColumn("models", "upstream_protocol", `upstream_protocol TEXT DEFAULT 'chat_completions'`);
   ensureColumn("logs", "first_token_latency_ms", "first_token_latency_ms INTEGER");
   ensureColumn("logs", "output_tps", "output_tps REAL");
   ensureColumn("logs", "route_attempts", "route_attempts INTEGER DEFAULT 1");
@@ -302,6 +307,7 @@ export type DbChannel = {
   name: string;
   base_url: string;
   api_key: string;
+  supported_protocols: string;
   enabled: number;
   weight: number;
   timeout: number;
@@ -313,6 +319,7 @@ export type DbModel = {
   alias: string;
   real_model: string;
   channel_id: number;
+  upstream_protocol: GatewayProtocol;
   is_public: number;
   enabled: number;
   weight: number;

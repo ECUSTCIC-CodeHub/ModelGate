@@ -4,6 +4,7 @@ import { gatewayDb } from "@/lib/db";
 import { ensureAdmin } from "@/lib/guards";
 import { jsonError, jsonOk } from "@/lib/http";
 import { testUpstreamModel } from "@/lib/proxy";
+import type { GatewayProtocol } from "@/lib/protocols";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const guard = ensureAdmin(request);
@@ -16,6 +17,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
          m.id AS model_id,
          m.alias,
          m.real_model,
+         m.upstream_protocol,
          c.id AS channel_id,
          c.name AS channel_name,
          c.base_url,
@@ -30,6 +32,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         model_id: number;
         alias: string;
         real_model: string;
+        upstream_protocol: GatewayProtocol;
         channel_id: number;
         channel_name: string;
         base_url: string;
@@ -48,6 +51,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     },
     model: {
       real_model: row.real_model,
+      upstream_protocol: row.upstream_protocol,
     },
   });
 
