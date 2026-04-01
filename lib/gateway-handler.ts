@@ -75,6 +75,50 @@ function shouldRetryUpstreamStatus(status: number) {
   return RETRYABLE_UPSTREAM_STATUS.has(status);
 }
 
+function parseUpstreamError(text: string, status: number) {
+  try {
+    const parsed = JSON.parse(text) as Record<string, unknown>;
+    const error = parsed.error && typeof parsed.error === "object" ? parsed.error as Record<string, unknown> : null;
+    const message =
+      (typeof error?.message === "string" ? error.message : null)
+      ?? (typeof parsed.message === "string" ? parsed.message : null)
+      ?? text.trim()
+      ?? `上游请求失败 (${status})`;
+    const type =
+      (typeof error?.type === "string" ? error.type : null)
+      ?? (typeof parsed.type === "string" ? parsed.type : null)
+      ?? "upstream_error";
+    const code =
+      (typeof error?.code === "string" || typeof error?.code === "number" ? error.code : null)
+      ?? status;
+    return { message, type, code };
+  } catch {
+    const message = text.trim() || `上游请求失败 (${status})`;
+    return { message, type: "upstream_error", code: status };
+  }
+}
+
+function buildErrorResponseBody(message: string, status: number, inboundProtocol: GatewayProtocol, type?: string, code?: string | number) {
+  if (inboundProtocol === "anthropic_messages") {
+    return JSON.stringify({
+      type: "error",
+      error: {
+        type: type ?? "api_error",
+        message,
+      },
+    });
+  }
+
+  return JSON.stringify({
+    error: {
+      message,
+      type: type ?? (status === 429 ? "rate_limit_error" : status >= 500 ? "server_error" : "invalid_request_error"),
+      param: "None",
+      code: String(code ?? status),
+    },
+  });
+}
+
 export async function handleGatewayProtocolRequest(request: Request, inboundProtocol: GatewayProtocol) {
   const startedAt = Date.now();
   const authResult = checkApiKeyAuth(request);
@@ -258,6 +302,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
   if (stream) {
     if (upstream.status >= 400) {
       const text = await upstream.text().catch(() => "");
+      const upstreamError = parseUpstreamError(text, upstream.status);
       lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
       addUsage(auth.user.id, auth.key.id, Math.max(1, localPromptTokens), 1);
       insertChatLog({
@@ -277,18 +322,54 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
         output_tps: null,
         route_attempts: Math.max(1, attemptedChannels.length),
         attempted_channels: attemptedChannelNames.join(" -> "),
-        error_message: `上游流式请求失败: ${upstream.status}`,
+        error_message: upstreamError.message,
       });
-      return new Response(text, {
+      const errorBody = route.model.upstream_protocol === inboundProtocol
+        ? text
+        : buildErrorResponseBody(upstreamError.message, upstream.status, inboundProtocol, upstreamError.type, upstreamError.code);
+      return new Response(errorBody, {
         status: upstream.status,
         headers: {
-          "content-type": upstream.headers.get("content-type") ?? "application/json",
+          "content-type": "application/json",
         },
       });
     }
 
     if (!upstream.body) {
       const rawText = await upstream.text().catch(() => "");
+      if (upstream.status >= 400) {
+        const upstreamError = parseUpstreamError(rawText, upstream.status);
+        lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+        addUsage(auth.user.id, auth.key.id, Math.max(1, localPromptTokens), 1);
+        insertChatLog({
+          user_id: auth.user.id,
+          key_id: auth.key.id,
+          channel_id: route.channel.id,
+          model_alias: alias,
+          real_model: route.model.real_model,
+          stream: true,
+          status_code: upstream.status,
+          estimated_tokens: estimatedTokens,
+          prompt_tokens: localPromptTokens,
+          completion_tokens: 0,
+          total_tokens: localPromptTokens,
+          latency_ms: Date.now() - startedAt,
+          first_token_latency_ms: null,
+          output_tps: null,
+          route_attempts: Math.max(1, attemptedChannels.length),
+          attempted_channels: attemptedChannelNames.join(" -> "),
+          error_message: upstreamError.message,
+        });
+        const errorBody = route.model.upstream_protocol === inboundProtocol
+          ? rawText
+          : buildErrorResponseBody(upstreamError.message, upstream.status, inboundProtocol, upstreamError.type, upstreamError.code);
+        return new Response(errorBody, {
+          status: upstream.status,
+          headers: {
+            "content-type": "application/json",
+          },
+        });
+      }
       const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol);
       const usage = getUsageFromBody(rawText, route.model.upstream_protocol);
       const completionText = extractCompletionTextFromBody(rawText, route.model.upstream_protocol);
@@ -399,21 +480,50 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
   }
 
   const rawText = await upstream.text();
+  if (upstream.status >= 400) {
+    const upstreamError = parseUpstreamError(rawText, upstream.status);
+    lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+    addUsage(auth.user.id, auth.key.id, Math.max(1, localPromptTokens), 1);
+    insertChatLog({
+      user_id: auth.user.id,
+      key_id: auth.key.id,
+      channel_id: route.channel.id,
+      model_alias: alias,
+      real_model: route.model.real_model,
+      stream: false,
+      status_code: upstream.status,
+      estimated_tokens: estimatedTokens,
+      prompt_tokens: localPromptTokens,
+      completion_tokens: 0,
+      total_tokens: localPromptTokens,
+      latency_ms: Date.now() - startedAt,
+      output_tps: null,
+      route_attempts: Math.max(1, attemptedChannels.length),
+      attempted_channels: attemptedChannelNames.join(" -> "),
+      error_message: upstreamError.message,
+    });
+    const errorBody = route.model.upstream_protocol === inboundProtocol
+      ? rawText
+      : buildErrorResponseBody(upstreamError.message, upstream.status, inboundProtocol, upstreamError.type, upstreamError.code);
+    return new Response(errorBody, {
+      status: upstream.status,
+      headers: {
+        "content-type": "application/json",
+      },
+    });
+  }
   const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol);
   const usage = getUsageFromBody(rawText, route.model.upstream_protocol);
   const completionText = extractCompletionTextFromBody(rawText, route.model.upstream_protocol);
-  const localCompletionTokens =
-    upstream.status < 400
-      ? usage?.completion_tokens ?? Math.max(0, countTextTokens(completionText, route.model.real_model))
-      : 0;
+  const localCompletionTokens = usage?.completion_tokens ?? Math.max(0, countTextTokens(completionText, route.model.real_model));
   const localTotalTokens = usage?.total_tokens ?? (localPromptTokens + localCompletionTokens);
 
   const outputTps =
-    upstream.status < 400 && localCompletionTokens > 0
+    localCompletionTokens > 0
       ? Number(((localCompletionTokens * 1000) / Math.max(1, Date.now() - startedAt)).toFixed(2))
       : null;
 
-  lease.complete({ ok: upstream.status < 400, latencyMs: Date.now() - startedAt });
+  lease.complete({ ok: true, latencyMs: Date.now() - startedAt });
   addUsage(auth.user.id, auth.key.id, Math.max(1, localTotalTokens), 1);
   insertChatLog({
     user_id: auth.user.id,
@@ -431,7 +541,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
     output_tps: outputTps,
     route_attempts: Math.max(1, attemptedChannels.length),
     attempted_channels: attemptedChannelNames.join(" -> "),
-    error_message: upstream.status >= 400 ? `上游请求失败: ${upstream.status}` : null,
+    error_message: null,
   });
 
   return new Response(adaptedText, {
