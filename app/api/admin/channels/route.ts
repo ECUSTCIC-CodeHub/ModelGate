@@ -13,6 +13,7 @@ const createSchema = z.object({
   supported_protocols: z.array(z.enum(GATEWAY_PROTOCOLS)).min(1).optional(),
   enabled: z.boolean().optional(),
   weight: z.number().int().min(1).optional(),
+  max_concurrency: z.number().int().min(1).optional(),
   timeout: z.number().int().min(1).optional(),
   models: z
     .array(
@@ -32,7 +33,7 @@ export async function GET(request: Request) {
   const guard = ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
-  const channels = gatewayDb.prepare("SELECT * FROM channels ORDER BY id DESC").all() as Array<Record<string, unknown> & { id: number }>;
+  const channels = gatewayDb.prepare("SELECT * FROM channels WHERE deleted_at IS NULL ORDER BY id DESC").all() as Array<Record<string, unknown> & { id: number }>;
   const models = gatewayDb
     .prepare("SELECT id, alias, real_model, channel_id, upstream_protocol, is_public, enabled, weight, created_at FROM models WHERE deleted_at IS NULL ORDER BY id DESC")
     .all() as Array<{
@@ -80,8 +81,8 @@ export async function POST(request: Request) {
   const tx = gatewayDb.transaction(() => {
     const result = gatewayDb
       .prepare(
-        `INSERT INTO channels (name, base_url, api_key, supported_protocols, enabled, weight, timeout)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO channels (name, base_url, api_key, supported_protocols, enabled, weight, max_concurrency, timeout)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         parsed.data.name,
@@ -90,6 +91,7 @@ export async function POST(request: Request) {
         stringifySupportedProtocols(supportedProtocols),
         parsed.data.enabled === false ? 0 : 1,
         parsed.data.weight ?? 1,
+        parsed.data.max_concurrency ?? 64,
         parsed.data.timeout ?? 60,
       );
 
@@ -116,6 +118,6 @@ export async function POST(request: Request) {
   });
 
   const channelId = tx();
-  const row = gatewayDb.prepare("SELECT * FROM channels WHERE id = ?").get(channelId);
+  const row = gatewayDb.prepare("SELECT * FROM channels WHERE id = ? AND deleted_at IS NULL").get(channelId);
   return jsonOk({ message: "渠道创建成功。", data: row }, 201);
 }

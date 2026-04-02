@@ -13,6 +13,7 @@ const updateSchema = z.object({
   supported_protocols: z.array(z.enum(GATEWAY_PROTOCOLS)).min(1).optional(),
   enabled: z.boolean().optional(),
   weight: z.number().int().min(1).optional(),
+  max_concurrency: z.number().int().min(1).optional(),
   timeout: z.number().int().min(1).optional(),
 });
 
@@ -25,7 +26,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
-  const existing = gatewayDb.prepare("SELECT * FROM channels WHERE id = ?").get(id);
+  const existing = gatewayDb.prepare("SELECT * FROM channels WHERE id = ? AND deleted_at IS NULL").get(id);
   if (!existing) return jsonError("渠道不存在", 404);
   const nextProtocols = parsed.data.supported_protocols === undefined
     ? (existing as { supported_protocols: string }).supported_protocols
@@ -66,7 +67,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   gatewayDb
     .prepare(
       `UPDATE channels
-       SET name = ?, base_url = ?, api_key = ?, supported_protocols = ?, enabled = ?, weight = ?, timeout = ?
+       SET name = ?, base_url = ?, api_key = ?, supported_protocols = ?, enabled = ?, weight = ?, max_concurrency = ?, timeout = ?
        WHERE id = ?`,
     )
     .run(
@@ -76,11 +77,12 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       (merged as { supported_protocols: string }).supported_protocols,
       (merged as { enabled: number }).enabled,
       (merged as { weight: number }).weight,
+      (merged as { max_concurrency: number }).max_concurrency,
       (merged as { timeout: number }).timeout,
       id,
     );
 
-  const row = gatewayDb.prepare("SELECT * FROM channels WHERE id = ?").get(id);
+  const row = gatewayDb.prepare("SELECT * FROM channels WHERE id = ? AND deleted_at IS NULL").get(id);
   return jsonOk({ message: "渠道更新成功。", data: row });
 }
 
@@ -91,7 +93,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
   const { id } = await context.params;
   const tx = gatewayDb.transaction(() => {
     gatewayDb.prepare("UPDATE models SET enabled = 0, deleted_at = CURRENT_TIMESTAMP WHERE channel_id = ? AND deleted_at IS NULL").run(id);
-    gatewayDb.prepare("UPDATE channels SET enabled = 0 WHERE id = ?").run(id);
+    gatewayDb.prepare("UPDATE channels SET enabled = 0, deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL").run(id);
   });
   tx();
   return jsonOk({ ok: true, message: "渠道删除成功。" });

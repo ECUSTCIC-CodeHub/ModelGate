@@ -49,8 +49,10 @@ CREATE TABLE IF NOT EXISTS channels (
   supported_protocols TEXT DEFAULT '["chat_completions"]',
   enabled INTEGER DEFAULT 1,
   weight INTEGER DEFAULT 1,
+  max_concurrency INTEGER DEFAULT 64,
   timeout INTEGER DEFAULT 60,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  deleted_at DATETIME
 );
 
 CREATE TABLE IF NOT EXISTS models (
@@ -212,6 +214,8 @@ CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
   const addedKeyUsedTokens = ensureColumn("keys", "used_tokens", "used_tokens INTEGER DEFAULT 0");
   const addedKeyUsedRequests = ensureColumn("keys", "used_requests", "used_requests INTEGER DEFAULT 0");
   ensureColumn("channels", "supported_protocols", `supported_protocols TEXT DEFAULT '["chat_completions"]'`);
+  ensureColumn("channels", "max_concurrency", "max_concurrency INTEGER DEFAULT 64");
+  ensureColumn("channels", "deleted_at", "deleted_at DATETIME");
   ensureColumn("models", "deleted_at", "deleted_at DATETIME");
   ensureColumn("models", "is_public", "is_public INTEGER DEFAULT 1");
   ensureColumn("models", "upstream_protocol", `upstream_protocol TEXT DEFAULT 'chat_completions'`);
@@ -326,8 +330,10 @@ export type DbChannel = {
   supported_protocols: string;
   enabled: number;
   weight: number;
+  max_concurrency: number;
   timeout: number;
   created_at: string;
+  deleted_at: string | null;
 };
 
 export type DbModel = {

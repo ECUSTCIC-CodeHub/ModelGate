@@ -1,5 +1,5 @@
 import { checkApiKeyAuth } from "@/lib/api-key-auth";
-import { tryAcquireChannel, type ChannelLease } from "@/lib/channel-runtime";
+import { acquireChannel, type ChannelLease } from "@/lib/channel-runtime";
 import { insertChatLog } from "@/lib/chat-log";
 import { gatewayDb } from "@/lib/db";
 import { jsonError } from "@/lib/http";
@@ -119,6 +119,24 @@ function buildErrorResponseBody(message: string, status: number, inboundProtocol
   });
 }
 
+const QUEUE_KEEPALIVE_INTERVAL_MS = 1_000;
+const encoder = new TextEncoder();
+
+function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
+  return typeof value === "object" && value !== null && "then" in value;
+}
+
+function createQueueKeepAliveTimer(controller: ReadableStreamDefaultController<Uint8Array>, stream: boolean) {
+  return setInterval(() => {
+    controller.enqueue(encoder.encode(stream ? ": keep-alive\n\n" : "\n"));
+  }, QUEUE_KEEPALIVE_INTERVAL_MS);
+}
+
+function toSseDataBlock(payload: string) {
+  const compact = payload.replace(/\r?\n/g, "");
+  return encoder.encode(`data: ${compact}\n\n`);
+}
+
 export async function handleGatewayProtocolRequest(request: Request, inboundProtocol: GatewayProtocol) {
   const startedAt = Date.now();
   const authResult = checkApiKeyAuth(request);
@@ -207,6 +225,14 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
         attemptedChannelNames: string[];
       }
     | {
+        ok: true;
+        queued: true;
+        route: RoutedModel;
+        acquirePromise: Promise<{ ok: true; lease: ChannelLease; queued: boolean }>;
+        attemptedChannels: number[];
+        attemptedChannelNames: string[];
+      }
+    | {
         ok: false;
         route: RoutedModel | null;
         attemptedChannels: number[];
@@ -232,7 +258,18 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
       attemptedChannels.add(route.channel.id);
       attemptedChannelNames.push(route.channel.name);
 
-      const leaseResult = tryAcquireChannel(route.channel.id);
+      const leaseResult = acquireChannel(route.channel.id, route.channel.max_concurrency, request.signal);
+      if (isPromiseLike(leaseResult)) {
+        return {
+          ok: true,
+          queued: true,
+          route,
+          acquirePromise: leaseResult as Promise<{ ok: true; lease: ChannelLease; queued: boolean }>,
+          attemptedChannels: [...attemptedChannels],
+          attemptedChannelNames: [...attemptedChannelNames],
+        };
+      }
+
       if (!leaseResult.ok) {
         continue;
       }
@@ -289,6 +326,315 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
       attempted_channels: picked.attemptedChannelNames.join(" -> "),
       error_message: "上游请求失败",
     });
+    return jsonError("上游请求失败", 502, {
+      type: "upstream_error",
+      param: "None",
+      code: "502",
+    });
+  }
+
+  if ("queued" in picked && picked.queued) {
+    const { route, acquirePromise, attemptedChannels, attemptedChannelNames } = picked;
+    const localPromptTokens = countPromptTokensForProtocol(body, inboundProtocol, route.model.real_model);
+    const upstreamBody = adaptRequestBody(body, inboundProtocol, route.model.upstream_protocol, route.model.real_model);
+
+    if (stream) {
+      const queuedStream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const keepAliveTimer = createQueueKeepAliveTimer(controller, true);
+
+          try {
+            const acquireResult = await acquirePromise;
+            clearInterval(keepAliveTimer);
+            const lease = acquireResult.lease;
+
+            try {
+              const upstream = await fetchUpstreamRequest(route, upstreamBody, route.model.upstream_protocol);
+
+              if (upstream.status >= 400) {
+                const text = await upstream.text().catch(() => "");
+                const upstreamError = parseUpstreamError(text, upstream.status);
+                lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+                addUsage(auth.user.id, auth.key.id, Math.max(1, localPromptTokens), 1);
+                insertChatLog({
+                  user_id: auth.user.id,
+                  key_id: auth.key.id,
+                  channel_id: route.channel.id,
+                  model_alias: alias,
+                  real_model: route.model.real_model,
+                  stream: true,
+                  status_code: upstream.status,
+                  estimated_tokens: estimatedTokens,
+                  prompt_tokens: localPromptTokens,
+                  completion_tokens: 0,
+                  total_tokens: localPromptTokens,
+                  latency_ms: Date.now() - startedAt,
+                  first_token_latency_ms: null,
+                  output_tps: null,
+                  route_attempts: Math.max(1, attemptedChannels.length),
+                  attempted_channels: attemptedChannelNames.join(" -> "),
+                  error_message: upstreamError.message,
+                });
+
+                const errorBody = route.model.upstream_protocol === inboundProtocol
+                  ? text
+                  : buildErrorResponseBody(upstreamError.message, upstream.status, inboundProtocol, upstreamError.type, upstreamError.code);
+                controller.enqueue(toSseDataBlock(errorBody));
+                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                controller.close();
+                return;
+              }
+
+              if (!upstream.body) {
+                const rawText = await upstream.text().catch(() => "");
+                const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol);
+                const usage = getUsageFromBody(rawText, route.model.upstream_protocol);
+                const completionText = extractCompletionTextFromBody(rawText, route.model.upstream_protocol);
+                const completionTokens = usage?.completion_tokens ?? Math.max(0, countTextTokens(completionText, route.model.real_model));
+                const totalTokens = usage?.total_tokens ?? localPromptTokens + completionTokens;
+                const outputTps =
+                  completionTokens > 0
+                    ? Number(((completionTokens * 1000) / Math.max(1, Date.now() - startedAt)).toFixed(2))
+                    : null;
+
+                lease.complete({ ok: true, latencyMs: Date.now() - startedAt });
+                addUsage(auth.user.id, auth.key.id, Math.max(1, totalTokens), 1);
+                insertChatLog({
+                  user_id: auth.user.id,
+                  key_id: auth.key.id,
+                  channel_id: route.channel.id,
+                  model_alias: alias,
+                  real_model: route.model.real_model,
+                  stream: true,
+                  status_code: upstream.status,
+                  estimated_tokens: estimatedTokens,
+                  prompt_tokens: usage?.prompt_tokens ?? localPromptTokens,
+                  completion_tokens: completionTokens,
+                  total_tokens: totalTokens,
+                  latency_ms: Date.now() - startedAt,
+                  first_token_latency_ms: null,
+                  output_tps: outputTps,
+                  route_attempts: Math.max(1, attemptedChannels.length),
+                  attempted_channels: attemptedChannelNames.join(" -> "),
+                  error_message: null,
+                });
+
+                controller.enqueue(toSseDataBlock(adaptedText));
+                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                controller.close();
+                return;
+              }
+
+              const transformed = createTransformedStream(upstream.body, route.model.upstream_protocol, inboundProtocol);
+              let finalized = false;
+              const finalize = () => {
+                if (finalized) return;
+                finalized = true;
+                const totalLatencyMs = Date.now() - startedAt;
+                lease.complete({ ok: upstream.status < 400, latencyMs: totalLatencyMs });
+                const actualCompletionTokens = Math.max(0, countTextTokens(transformed.completionText(), route.model.real_model));
+                const actualTotalTokens = localPromptTokens + actualCompletionTokens;
+                const outputTps =
+                  actualCompletionTokens > 0
+                    ? Number(((actualCompletionTokens * 1000) / Math.max(1, totalLatencyMs)).toFixed(2))
+                    : null;
+
+                addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1);
+                insertChatLog({
+                  user_id: auth.user.id,
+                  key_id: auth.key.id,
+                  channel_id: route.channel.id,
+                  model_alias: alias,
+                  real_model: route.model.real_model,
+                  stream: true,
+                  status_code: upstream.status,
+                  estimated_tokens: estimatedTokens,
+                  prompt_tokens: localPromptTokens,
+                  completion_tokens: actualCompletionTokens,
+                  total_tokens: actualTotalTokens,
+                  latency_ms: totalLatencyMs,
+                  first_token_latency_ms: null,
+                  output_tps: outputTps,
+                  route_attempts: Math.max(1, attemptedChannels.length),
+                  attempted_channels: attemptedChannelNames.join(" -> "),
+                  error_message: upstream.status >= 400 ? `上游流式请求失败: ${upstream.status}` : null,
+                });
+              };
+
+              const reader = transformed.stream.getReader();
+              try {
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  if (value) controller.enqueue(value);
+                }
+                controller.close();
+              } catch (error) {
+                controller.error(error);
+              } finally {
+                finalize();
+              }
+            } catch {
+              lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+              addUsage(auth.user.id, auth.key.id, Math.max(1, localPromptTokens), 1);
+              insertChatLog({
+                user_id: auth.user.id,
+                key_id: auth.key.id,
+                channel_id: route.channel.id,
+                model_alias: alias,
+                real_model: route.model.real_model,
+                stream: true,
+                status_code: 502,
+                estimated_tokens: estimatedTokens,
+                prompt_tokens: localPromptTokens,
+                completion_tokens: 0,
+                total_tokens: localPromptTokens,
+                latency_ms: Date.now() - startedAt,
+                first_token_latency_ms: null,
+                output_tps: null,
+                route_attempts: Math.max(1, attemptedChannels.length),
+                attempted_channels: attemptedChannelNames.join(" -> "),
+                error_message: "上游请求失败",
+              });
+              controller.enqueue(toSseDataBlock(buildErrorResponseBody("上游请求失败", 502, inboundProtocol, "upstream_error", "502")));
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              controller.close();
+            }
+          } catch {
+            clearInterval(keepAliveTimer);
+            controller.error(new Error("Request aborted while waiting for channel queue."));
+          }
+        },
+      });
+
+      return new Response(queuedStream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream",
+          "cache-control": "no-cache",
+          connection: "keep-alive",
+        },
+      });
+    }
+
+    const queuedBody = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const keepAliveTimer = createQueueKeepAliveTimer(controller, false);
+
+        try {
+          const acquireResult = await acquirePromise;
+          clearInterval(keepAliveTimer);
+          const lease = acquireResult.lease;
+
+          try {
+            const upstream = await fetchUpstreamRequest(route, upstreamBody, route.model.upstream_protocol);
+            const rawText = await upstream.text().catch(() => "");
+
+            if (upstream.status >= 400) {
+              const upstreamError = parseUpstreamError(rawText, upstream.status);
+              lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+              addUsage(auth.user.id, auth.key.id, Math.max(1, localPromptTokens), 1);
+              insertChatLog({
+                user_id: auth.user.id,
+                key_id: auth.key.id,
+                channel_id: route.channel.id,
+                model_alias: alias,
+                real_model: route.model.real_model,
+                stream: false,
+                status_code: upstream.status,
+                estimated_tokens: estimatedTokens,
+                prompt_tokens: localPromptTokens,
+                completion_tokens: 0,
+                total_tokens: localPromptTokens,
+                latency_ms: Date.now() - startedAt,
+                output_tps: null,
+                route_attempts: Math.max(1, attemptedChannels.length),
+                attempted_channels: attemptedChannelNames.join(" -> "),
+                error_message: upstreamError.message,
+              });
+              const errorBody = route.model.upstream_protocol === inboundProtocol
+                ? rawText
+                : buildErrorResponseBody(upstreamError.message, upstream.status, inboundProtocol, upstreamError.type, upstreamError.code);
+              controller.enqueue(encoder.encode(errorBody));
+              controller.close();
+              return;
+            }
+
+            const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol);
+            const usage = getUsageFromBody(rawText, route.model.upstream_protocol);
+            const completionText = extractCompletionTextFromBody(rawText, route.model.upstream_protocol);
+            const localCompletionTokens = usage?.completion_tokens ?? Math.max(0, countTextTokens(completionText, route.model.real_model));
+            const localTotalTokens = usage?.total_tokens ?? (localPromptTokens + localCompletionTokens);
+            const outputTps =
+              localCompletionTokens > 0
+                ? Number(((localCompletionTokens * 1000) / Math.max(1, Date.now() - startedAt)).toFixed(2))
+                : null;
+
+            lease.complete({ ok: true, latencyMs: Date.now() - startedAt });
+            addUsage(auth.user.id, auth.key.id, Math.max(1, localTotalTokens), 1);
+            insertChatLog({
+              user_id: auth.user.id,
+              key_id: auth.key.id,
+              channel_id: route.channel.id,
+              model_alias: alias,
+              real_model: route.model.real_model,
+              stream: false,
+              status_code: upstream.status,
+              estimated_tokens: estimatedTokens,
+              prompt_tokens: usage?.prompt_tokens ?? localPromptTokens,
+              completion_tokens: localCompletionTokens,
+              total_tokens: localTotalTokens,
+              latency_ms: Date.now() - startedAt,
+              output_tps: outputTps,
+              route_attempts: Math.max(1, attemptedChannels.length),
+              attempted_channels: attemptedChannelNames.join(" -> "),
+              error_message: null,
+            });
+
+            controller.enqueue(encoder.encode(adaptedText));
+            controller.close();
+          } catch {
+            lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+            addUsage(auth.user.id, auth.key.id, Math.max(1, localPromptTokens), 1);
+            insertChatLog({
+              user_id: auth.user.id,
+              key_id: auth.key.id,
+              channel_id: route.channel.id,
+              model_alias: alias,
+              real_model: route.model.real_model,
+              stream: false,
+              status_code: 502,
+              estimated_tokens: estimatedTokens,
+              prompt_tokens: localPromptTokens,
+              completion_tokens: 0,
+              total_tokens: localPromptTokens,
+              latency_ms: Date.now() - startedAt,
+              output_tps: null,
+              route_attempts: Math.max(1, attemptedChannels.length),
+              attempted_channels: attemptedChannelNames.join(" -> "),
+              error_message: "上游请求失败",
+            });
+            controller.enqueue(encoder.encode(buildErrorResponseBody("上游请求失败", 502, inboundProtocol, "upstream_error", "502")));
+            controller.close();
+          }
+        } catch {
+          clearInterval(keepAliveTimer);
+          controller.error(new Error("Request aborted while waiting for channel queue."));
+        }
+      },
+    });
+
+    return new Response(queuedBody, {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "cache-control": "no-cache",
+        connection: "keep-alive",
+      },
+    });
+  }
+
+  if (!("upstream" in picked)) {
     return jsonError("上游请求失败", 502, {
       type: "upstream_error",
       param: "None",

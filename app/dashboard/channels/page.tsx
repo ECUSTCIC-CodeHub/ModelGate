@@ -85,6 +85,7 @@ type Channel = {
   supported_protocols: string;
   enabled: number;
   weight: number;
+  max_concurrency: number;
   timeout: number;
   models?: ModelRow[];
 };
@@ -104,6 +105,7 @@ type ChannelForm = {
   api_key: string;
   supported_protocols: Protocol[];
   weight: number;
+  max_concurrency: number;
   timeout: number;
 };
 
@@ -123,6 +125,7 @@ const initialChannelForm: ChannelForm = {
   api_key: "",
   supported_protocols: ["chat_completions"],
   weight: 1,
+  max_concurrency: 64,
   timeout: 60,
 };
 
@@ -209,6 +212,7 @@ export default function AdminChannelsPage() {
       api_key: row.api_key,
       supported_protocols: supportedProtocols,
       weight: row.weight,
+      max_concurrency: row.max_concurrency,
       timeout: row.timeout,
     });
     setChannelModels([{ ...initialModelDraft, upstream_protocol: supportedProtocols[0] }]);
@@ -250,6 +254,7 @@ export default function AdminChannelsPage() {
           api_key: channelForm.api_key,
           supported_protocols: channelForm.supported_protocols,
           weight: channelForm.weight,
+          max_concurrency: channelForm.max_concurrency,
           timeout: channelForm.timeout,
           models: draftModels,
         }),
@@ -274,6 +279,7 @@ export default function AdminChannelsPage() {
         api_key: channelForm.api_key,
         supported_protocols: channelForm.supported_protocols,
         weight: channelForm.weight,
+        max_concurrency: channelForm.max_concurrency,
         timeout: channelForm.timeout,
       }),
     });
@@ -483,6 +489,7 @@ export default function AdminChannelsPage() {
                           <TableHead>状态</TableHead>
                           <TableHead>协议</TableHead>
                           <TableHead>权重</TableHead>
+                          <TableHead>最大并发</TableHead>
                           <TableHead>超时</TableHead>
                           <TableHead>模型数</TableHead>
                           <TableHead className="text-right">操作</TableHead>
@@ -505,6 +512,7 @@ export default function AdminChannelsPage() {
                               </div>
                             </TableCell>
                             <TableCell>{row.weight}</TableCell>
+                            <TableCell>{row.max_concurrency}</TableCell>
                             <TableCell>{row.timeout}s</TableCell>
                             <TableCell>{row.models?.length ?? 0}</TableCell>
                             <TableCell className="space-x-2 text-right">
@@ -636,6 +644,10 @@ export default function AdminChannelsPage() {
               <div className="space-y-2">
                 <Label>超时(秒)</Label>
                 <Input type="number" min={1} value={channelForm.timeout} onChange={(e) => setChannelForm({ ...channelForm, timeout: Number(e.target.value) || 60 })} />
+              </div>
+              <div className="space-y-2">
+                <Label>最大并发</Label>
+                <Input type="number" min={1} value={channelForm.max_concurrency} onChange={(e) => setChannelForm({ ...channelForm, max_concurrency: Number(e.target.value) || 1 })} />
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label>支持协议</Label>

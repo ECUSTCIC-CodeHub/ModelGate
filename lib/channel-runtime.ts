@@ -3,13 +3,26 @@ type ChannelRuntimeState = {
   consecutiveFailures: number;
   circuitOpenUntil: number;
   latencyEwmaMs: number | null;
+  maxConcurrency: number;
+  queue: QueueWaiter[];
 };
 
 type ChannelRuntimeStore = Map<number, ChannelRuntimeState>;
 
+type QueueWaiter = {
+  resolve: (lease: ChannelLease) => void;
+  reject: (error: Error) => void;
+  signal?: AbortSignal;
+  onAbort?: () => void;
+};
+
 type LeaseResult =
-  | { ok: true; lease: ChannelLease }
-  | { ok: false; reason: "circuit_open" | "channel_busy" };
+  | { ok: true; lease: ChannelLease; queued: boolean }
+  | { ok: false; reason: "circuit_open" };
+
+type AcquireResult =
+  | { ok: true; lease: ChannelLease; queued: boolean }
+  | { ok: false; reason: "circuit_open" };
 
 const HARD_CONCURRENCY_LIMIT = 64;
 const HALF_OPEN_MAX_PROBES = 1;
@@ -38,9 +51,19 @@ function getState(channelId: number): ChannelRuntimeState {
     consecutiveFailures: 0,
     circuitOpenUntil: 0,
     latencyEwmaMs: null,
+    maxConcurrency: HARD_CONCURRENCY_LIMIT,
+    queue: [],
   };
   store.set(channelId, created);
   return created;
+}
+
+function normalizeMaxConcurrency(value: number) {
+  return Math.max(1, Math.floor(value || 1));
+}
+
+function syncStateConfig(state: ChannelRuntimeState, maxConcurrency: number) {
+  state.maxConcurrency = normalizeMaxConcurrency(maxConcurrency);
 }
 
 function updateLatencyEwma(state: ChannelRuntimeState, latencyMs: number) {
@@ -49,6 +72,29 @@ function updateLatencyEwma(state: ChannelRuntimeState, latencyMs: number) {
     state.latencyEwmaMs === null
       ? normalized
       : state.latencyEwmaMs * (1 - LATENCY_EWMA_ALPHA) + normalized * LATENCY_EWMA_ALPHA;
+}
+
+function getEffectiveLimit(state: ChannelRuntimeState) {
+  const now = Date.now();
+  const halfOpen = state.circuitOpenUntil !== 0 && state.circuitOpenUntil <= now;
+  return halfOpen ? Math.min(state.maxConcurrency, HALF_OPEN_MAX_PROBES) : state.maxConcurrency;
+}
+
+function grantLease(channelId: number, state: ChannelRuntimeState, queued: boolean) {
+  state.inFlight += 1;
+  return { ok: true as const, lease: new ChannelLease(channelId, state), queued };
+}
+
+function drainQueue(channelId: number, state: ChannelRuntimeState) {
+  while (state.queue.length > 0 && state.inFlight < getEffectiveLimit(state)) {
+    const waiter = state.queue.shift();
+    if (!waiter) break;
+    if (waiter.signal?.aborted) continue;
+    if (waiter.signal && waiter.onAbort) {
+      waiter.signal.removeEventListener("abort", waiter.onAbort);
+    }
+    waiter.resolve(grantLease(channelId, state, true).lease);
+  }
 }
 
 function releaseLease(state: ChannelRuntimeState) {
@@ -80,43 +126,80 @@ export class ChannelLease {
 
     this.released = true;
     releaseLease(this.state);
+    drainQueue(this.channelId, this.state);
   }
 
   abandon() {
     if (this.released) return;
     this.released = true;
     releaseLease(this.state);
+    drainQueue(this.channelId, this.state);
   }
 }
 
-export function tryAcquireChannel(channelId: number): LeaseResult {
+export function tryAcquireChannel(channelId: number, maxConcurrency: number): LeaseResult {
   const state = getState(channelId);
+  syncStateConfig(state, maxConcurrency);
   const now = Date.now();
 
   if (state.circuitOpenUntil > now) {
     return { ok: false, reason: "circuit_open" };
   }
 
-  const halfOpen = state.circuitOpenUntil !== 0 && state.circuitOpenUntil <= now;
-  const limit = halfOpen ? HALF_OPEN_MAX_PROBES : HARD_CONCURRENCY_LIMIT;
-
-  if (state.inFlight >= limit) {
-    return { ok: false, reason: "channel_busy" };
+  if (state.inFlight >= getEffectiveLimit(state)) {
+    return { ok: false, reason: "circuit_open" };
   }
 
-  state.inFlight += 1;
-  return { ok: true, lease: new ChannelLease(channelId, state) };
+  return grantLease(channelId, state, false);
 }
 
-export function scoreChannel(channelId: number, staticWeight: number) {
+export function acquireChannel(channelId: number, maxConcurrency: number, signal?: AbortSignal): AcquireResult | Promise<AcquireResult> {
   const state = getState(channelId);
+  syncStateConfig(state, maxConcurrency);
+  const now = Date.now();
+
+  if (state.circuitOpenUntil > now) {
+    return { ok: false, reason: "circuit_open" };
+  }
+
+  if (state.inFlight < getEffectiveLimit(state)) {
+    return grantLease(channelId, state, false);
+  }
+
+  return new Promise<AcquireResult>((resolve, reject) => {
+    const waiter: QueueWaiter = {
+      resolve: (lease) => resolve({ ok: true, lease, queued: true }),
+      reject,
+      signal,
+    };
+
+    if (signal) {
+      if (signal.aborted) {
+        resolve({ ok: false, reason: "circuit_open" });
+        return;
+      }
+
+      waiter.onAbort = () => {
+        state.queue = state.queue.filter((item) => item !== waiter);
+        reject(new Error("Request aborted while waiting for channel queue."));
+      };
+      signal.addEventListener("abort", waiter.onAbort, { once: true });
+    }
+
+    state.queue.push(waiter);
+  });
+}
+
+export function scoreChannel(channelId: number, staticWeight: number, maxConcurrency: number) {
+  const state = getState(channelId);
+  syncStateConfig(state, maxConcurrency);
   const now = Date.now();
 
   if (state.circuitOpenUntil > now) {
     return 0;
   }
 
-  const loadPenalty = Math.max(0.15, 1 - state.inFlight / HARD_CONCURRENCY_LIMIT);
+  const loadPenalty = Math.max(0.15, 1 - state.inFlight / Math.max(1, state.maxConcurrency));
   const failurePenalty = 1 / (1 + state.consecutiveFailures * 0.6);
   const latencyPenalty =
     state.latencyEwmaMs === null ? 1 : Math.max(0.35, Math.min(1.15, 1500 / state.latencyEwmaMs));

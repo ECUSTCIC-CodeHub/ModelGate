@@ -25,8 +25,10 @@ type CandidateRow = {
   supported_protocols: string;
   channel_enabled: number;
   channel_weight: number;
+  max_concurrency: number;
   timeout: number;
   channel_created_at: string;
+  channel_deleted_at: string | null;
 };
 
 export function listEnabledAliases() {
@@ -63,8 +65,10 @@ function mapRowToRoute(row: CandidateRow): RoutedModel {
       supported_protocols: row.supported_protocols,
       enabled: row.channel_enabled,
       weight: row.channel_weight,
+      max_concurrency: row.max_concurrency,
       timeout: row.timeout,
       created_at: row.channel_created_at,
+      deleted_at: row.channel_deleted_at,
     },
   };
 }
@@ -90,11 +94,13 @@ export function listModelRoutes(alias: string, options?: { excludeChannelIds?: n
         c.supported_protocols,
         c.enabled as channel_enabled,
         c.weight as channel_weight,
+        c.max_concurrency,
         c.timeout,
-        c.created_at as channel_created_at
+        c.created_at as channel_created_at,
+        c.deleted_at as channel_deleted_at
      FROM models m
      JOIN channels c ON c.id = m.channel_id
-     WHERE m.alias = ? AND m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL`,
+     WHERE m.alias = ? AND m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL AND c.deleted_at IS NULL`,
   );
 
   const findRows = (targetAlias: string) => query.all(targetAlias) as CandidateRow[];
@@ -107,7 +113,11 @@ export function listModelRoutes(alias: string, options?: { excludeChannelIds?: n
   return candidateRows
     .map((row) => ({
       route: mapRowToRoute(row),
-      score: scoreChannel(row.channel_id_2, Math.max(1, row.model_weight) * Math.max(1, row.channel_weight)),
+      score: scoreChannel(
+        row.channel_id_2,
+        Math.max(1, row.model_weight) * Math.max(1, row.channel_weight),
+        row.max_concurrency,
+      ),
       jitter: Math.random() * 0.001,
     }))
     .filter((item) => item.score > 0)

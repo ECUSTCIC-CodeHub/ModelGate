@@ -12,7 +12,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 
   const { id } = await context.params;
   const channel = gatewayDb
-    .prepare("SELECT * FROM channels WHERE id = ?")
+    .prepare("SELECT * FROM channels WHERE id = ? AND deleted_at IS NULL")
     .get(id) as Record<string, unknown> | undefined;
   if (!channel) return jsonError("渠道不存在", 404);
 
