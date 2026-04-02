@@ -769,6 +769,7 @@ export function adaptRequestBody(
     if (body.tools !== undefined) next.tools = chatToolsToResponsesTools(body.tools);
     if (body.tool_choice !== undefined) next.tool_choice = chatToolChoiceToResponses(body.tool_choice);
     if (body.parallel_tool_calls !== undefined) next.parallel_tool_calls = body.parallel_tool_calls;
+    if (body.stream_options !== undefined) next.stream_options = body.stream_options;
     if (body.user !== undefined) next.user = body.user;
     if (body.metadata !== undefined) next.metadata = body.metadata;
 
@@ -1359,7 +1360,6 @@ export function createTransformedStream(
 function createPassthroughStream(upstream: ReadableStream<Uint8Array>, protocol: GatewayProtocol): StreamTransformResult {
   const reader = upstream.getReader();
   const decoder = new TextDecoder();
-  const encoder = new TextEncoder();
   let completionText = "";
   let buffer = "";
 
@@ -1438,7 +1438,7 @@ function createAnthropicToChatStream(upstream: ReadableStream<Uint8Array>): Stre
   let reasoningText = "";
   let id = `chatcmpl_${crypto.randomUUID().replace(/-/g, "")}`;
   let model: string | null = null;
-  let created = Math.floor(Date.now() / 1000);
+  const created = Math.floor(Date.now() / 1000);
   let roleEmitted = false;
   let finished = false;
   let finishReason: string | null = null;
@@ -1605,7 +1605,7 @@ function createChatToAnthropicStream(upstream: ReadableStream<Uint8Array>): Stre
   let completionText = "";
   let reasoningText = "";
   let started = false;
-  let messageId = `msg_${crypto.randomUUID().replace(/-/g, "")}`;
+  const messageId = `msg_${crypto.randomUUID().replace(/-/g, "")}`;
   let thinkingStarted = false;
   let model: string | null = null;
   let promptTokens = 0;
