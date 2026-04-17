@@ -1333,6 +1333,7 @@ function toSseBlock(event: string | null, data: unknown) {
 type StreamTransformResult = {
   stream: ReadableStream<Uint8Array>;
   completionText: () => string;
+  firstTokenAt: () => number | null;
 };
 
 export function createTransformedStream(
@@ -1362,6 +1363,10 @@ function createPassthroughStream(upstream: ReadableStream<Uint8Array>, protocol:
   const decoder = new TextDecoder();
   let completionText = "";
   let buffer = "";
+  let firstTokenAt: number | null = null;
+  const markFirstToken = () => {
+    if (firstTokenAt === null) firstTokenAt = Date.now();
+  };
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -1393,21 +1398,31 @@ function createPassthroughStream(upstream: ReadableStream<Uint8Array>, protocol:
             try {
               if (protocol === "chat_completions") {
                 const event = parseChatChunkEvent(data);
-                completionText += event.content;
+                if (event.content) {
+                  markFirstToken();
+                  completionText += event.content;
+                } else if (event.reasoning) {
+                  markFirstToken();
+                }
               } else if (protocol === "anthropic_messages") {
                 const parsed = parseAnthropicSseEvent(eventName, data);
                 const payload = asRecord(parsed.data);
                 if (parsed.event === "content_block_delta") {
                   const delta = asRecord(payload?.delta);
                   if (delta?.type === "text_delta" && typeof delta.text === "string") {
+                    markFirstToken();
                     completionText += delta.text;
+                  } else if (delta?.type === "thinking_delta" && typeof delta.thinking === "string") {
+                    markFirstToken();
                   }
                 }
               } else {
                 const parsed = parseResponsesSseEvent(eventName, data);
                 if (parsed.event === "response.output_text.delta" && typeof (parsed.data as JsonRecord).delta === "string") {
+                  markFirstToken();
                   completionText += (parsed.data as JsonRecord).delta as string;
                 } else if (parsed.event === "response.reasoning_text.delta" && typeof (parsed.data as JsonRecord).delta === "string") {
+                  markFirstToken();
                   completionText += (parsed.data as JsonRecord).delta as string;
                 }
               }
@@ -1426,6 +1441,7 @@ function createPassthroughStream(upstream: ReadableStream<Uint8Array>, protocol:
   return {
     stream,
     completionText: () => completionText,
+    firstTokenAt: () => firstTokenAt,
   };
 }
 
@@ -1436,6 +1452,10 @@ function createAnthropicToChatStream(upstream: ReadableStream<Uint8Array>): Stre
   let buffer = "";
   let completionText = "";
   let reasoningText = "";
+  let firstTokenAt: number | null = null;
+  const markFirstToken = () => {
+    if (firstTokenAt === null) firstTokenAt = Date.now();
+  };
   let id = `chatcmpl_${crypto.randomUUID().replace(/-/g, "")}`;
   let model: string | null = null;
   const created = Math.floor(Date.now() / 1000);
@@ -1533,9 +1553,11 @@ function createAnthropicToChatStream(upstream: ReadableStream<Uint8Array>): Stre
               const delta = asRecord(payload?.delta);
               const indexNum = Number(payload?.index ?? 0);
               if (delta?.type === "text_delta" && typeof delta.text === "string") {
+                markFirstToken();
                 completionText += delta.text;
                 emit(controller, { content: delta.text });
               } else if (delta?.type === "thinking_delta" && typeof delta.thinking === "string") {
+                markFirstToken();
                 reasoningText += delta.thinking;
                 emit(controller, { reasoning: delta.thinking });
               } else if (delta?.type === "signature_delta" && typeof delta.signature === "string") {
@@ -1589,7 +1611,7 @@ function createAnthropicToChatStream(upstream: ReadableStream<Uint8Array>): Stre
     },
   });
 
-  return { stream, completionText: () => `${reasoningText}${completionText}` };
+  return { stream, completionText: () => `${reasoningText}${completionText}`, firstTokenAt: () => firstTokenAt };
 }
 
 function createAnthropicToResponsesStream(upstream: ReadableStream<Uint8Array>): StreamTransformResult {
@@ -1604,6 +1626,10 @@ function createChatToAnthropicStream(upstream: ReadableStream<Uint8Array>): Stre
   let buffer = "";
   let completionText = "";
   let reasoningText = "";
+  let firstTokenAt: number | null = null;
+  const markFirstToken = () => {
+    if (firstTokenAt === null) firstTokenAt = Date.now();
+  };
   let started = false;
   const messageId = `msg_${crypto.randomUUID().replace(/-/g, "")}`;
   let thinkingStarted = false;
@@ -1659,6 +1685,7 @@ function createChatToAnthropicStream(upstream: ReadableStream<Uint8Array>): Stre
             }
 
             if (parsed.reasoning) {
+              markFirstToken();
               reasoningText += parsed.reasoning;
               if (!thinkingStarted) {
                 thinkingStarted = true;
@@ -1676,6 +1703,7 @@ function createChatToAnthropicStream(upstream: ReadableStream<Uint8Array>): Stre
             }
 
             if (parsed.content) {
+              markFirstToken();
               if (completionText.length === 0) {
                 emit(controller, "content_block_start", {
                   type: "content_block_start",
@@ -1740,7 +1768,7 @@ function createChatToAnthropicStream(upstream: ReadableStream<Uint8Array>): Stre
     },
   });
 
-  return { stream, completionText: () => `${reasoningText}${completionText}` };
+  return { stream, completionText: () => `${reasoningText}${completionText}`, firstTokenAt: () => firstTokenAt };
 }
 
 function createResponsesToAnthropicStream(upstream: ReadableStream<Uint8Array>): StreamTransformResult {
@@ -1754,6 +1782,10 @@ function createChatToResponsesStream(upstream: ReadableStream<Uint8Array>): Stre
   const encoder = new TextEncoder();
   let buffer = "";
   let completionText = "";
+  let firstTokenAt: number | null = null;
+  const markFirstToken = () => {
+    if (firstTokenAt === null) firstTokenAt = Date.now();
+  };
   const responseId = `resp_${crypto.randomUUID().replace(/-/g, "")}`;
   const outputMessageId = `msg_${crypto.randomUUID().replace(/-/g, "")}`;
   const reasoningItemId = `rs_${crypto.randomUUID().replace(/-/g, "")}`;
@@ -1868,6 +1900,7 @@ function createChatToResponsesStream(upstream: ReadableStream<Uint8Array>): Stre
             }
 
             if (parsed.reasoning) {
+              markFirstToken();
               reasoningText += parsed.reasoning;
               controller.enqueue(encoder.encode(toSseBlock("response.reasoning_text.delta", {
                 type: "response.reasoning_text.delta",
@@ -1880,6 +1913,7 @@ function createChatToResponsesStream(upstream: ReadableStream<Uint8Array>): Stre
             }
 
             if (parsed.content) {
+              markFirstToken();
               if (completionText.length === 0) {
                 emitMessageStart(controller);
               }
@@ -2050,6 +2084,7 @@ function createChatToResponsesStream(upstream: ReadableStream<Uint8Array>): Stre
   return {
     stream,
     completionText: () => `${reasoningText}${completionText}`,
+    firstTokenAt: () => firstTokenAt,
   };
 }
 
@@ -2060,6 +2095,10 @@ function createResponsesToChatStream(upstream: ReadableStream<Uint8Array>): Stre
   let buffer = "";
   let completionText = "";
   let reasoningText = "";
+  let firstTokenAt: number | null = null;
+  const markFirstToken = () => {
+    if (firstTokenAt === null) firstTokenAt = Date.now();
+  };
   let responseId = `chatcmpl_${crypto.randomUUID().replace(/-/g, "")}`;
   let model: string | null = null;
   let created = Math.floor(Date.now() / 1000);
@@ -2129,12 +2168,14 @@ function createResponsesToChatStream(upstream: ReadableStream<Uint8Array>): Stre
             }
 
             if (event.event === "response.output_text.delta" && typeof payload?.delta === "string") {
+              markFirstToken();
               completionText += payload.delta;
               emitChatChunk(controller, { content: payload.delta });
               continue;
             }
 
             if (event.event === "response.reasoning_text.delta" && typeof payload?.delta === "string") {
+              markFirstToken();
               reasoningText += payload.delta;
               emitChatChunk(controller, { reasoning: payload.delta });
               continue;
@@ -2224,5 +2265,6 @@ function createResponsesToChatStream(upstream: ReadableStream<Uint8Array>): Stre
   return {
     stream,
     completionText: () => `${reasoningText}${completionText}`,
+    firstTokenAt: () => firstTokenAt,
   };
 }

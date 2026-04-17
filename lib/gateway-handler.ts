@@ -438,6 +438,8 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
                   actualCompletionTokens > 0
                     ? Number(((actualCompletionTokens * 1000) / Math.max(1, totalLatencyMs)).toFixed(2))
                     : null;
+                const firstTokenAt = transformed.firstTokenAt();
+                const firstTokenLatencyMs = firstTokenAt !== null ? Math.max(0, firstTokenAt - startedAt) : null;
 
                 addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1);
                 insertChatLog({
@@ -453,7 +455,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
                   completion_tokens: actualCompletionTokens,
                   total_tokens: actualTotalTokens,
                   latency_ms: totalLatencyMs,
-                  first_token_latency_ms: null,
+                  first_token_latency_ms: firstTokenLatencyMs,
                   output_tps: outputTps,
                   route_attempts: Math.max(1, attemptedChannels.length),
                   attempted_channels: attemptedChannelNames.join(" -> "),
@@ -770,6 +772,8 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
         success && actualCompletionTokens > 0
           ? Number(((actualCompletionTokens * 1000) / Math.max(1, totalLatencyMs)).toFixed(2))
           : null;
+      const firstTokenAt = transformed.firstTokenAt();
+      const firstTokenLatencyMs = firstTokenAt !== null ? Math.max(0, firstTokenAt - startedAt) : null;
 
       addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1);
       insertChatLog({
@@ -785,7 +789,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
         completion_tokens: actualCompletionTokens,
         total_tokens: actualTotalTokens,
         latency_ms: totalLatencyMs,
-        first_token_latency_ms: null,
+        first_token_latency_ms: firstTokenLatencyMs,
         output_tps: outputTps,
         route_attempts: Math.max(1, attemptedChannels.length),
         attempted_channels: attemptedChannelNames.join(" -> "),
