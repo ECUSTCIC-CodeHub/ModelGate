@@ -37,15 +37,20 @@ export async function POST(request: Request) {
   const role: "admin" | "user" = adminCount.count === 0 ? "admin" : "user";
   const passwordHash = await hashPassword(parsed.data.password);
 
+  const defaultGroup = gatewayDb
+    .prepare("SELECT id FROM groups WHERE is_default = 1 AND deleted_at IS NULL")
+    .get() as { id: number } | undefined;
+
   const result = gatewayDb
     .prepare(
-      `INSERT INTO users (username, password_hash, role, rpm, qps, tpm, quota_tokens, quota_requests, enabled)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      `INSERT INTO users (username, password_hash, role, group_id, rpm, qps, tpm, quota_tokens, quota_requests, enabled)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
     )
     .run(
       parsed.data.username,
       passwordHash,
       role,
+      defaultGroup?.id ?? null,
       settings.default_rpm,
       settings.default_qps,
       settings.default_tpm,

@@ -14,6 +14,7 @@ const createSchema = z.object({
   username: USERNAME_SCHEMA,
   password: z.string().min(8),
   role: z.enum(["admin", "user"]).optional(),
+  group_id: z.number().int().positive().nullable().optional(),
   enabled: z.boolean().optional(),
   rpm: z.number().int().min(-1).optional(),
   qps: z.number().int().min(-1).optional(),
@@ -30,10 +31,10 @@ function normalizeQuota(value: number | null | undefined) {
 }
 
 const USER_SORT_COLUMNS = {
-  created_at: "id",
-  used_requests: "used_requests",
-  used_tokens: "used_tokens",
-  username: "username",
+  created_at: "u.id",
+  used_requests: "u.used_requests",
+  used_tokens: "u.used_tokens",
+  username: "u.username",
 } as const;
 
 export async function GET(request: Request) {
@@ -48,24 +49,28 @@ export async function GET(request: Request) {
   const sortDir = (url.searchParams.get("sort_dir") ?? "desc").trim().toLowerCase() === "asc" ? "ASC" : "DESC";
   const orderColumn = USER_SORT_COLUMNS[sortBy] ?? USER_SORT_COLUMNS.created_at;
 
-  const whereSql = keyword ? "WHERE deleted_at IS NULL AND username LIKE ?" : "WHERE deleted_at IS NULL";
+  const whereSql = keyword ? "WHERE u.deleted_at IS NULL AND u.username LIKE ?" : "WHERE u.deleted_at IS NULL";
   const whereArgs = keyword ? [`%${keyword}%`] : [];
 
   const rows = gatewayDb
     .prepare(
-      `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, allowed_model_aliases, note, enabled, created_at
-       FROM users
+      `SELECT u.id, u.username, u.role, u.group_id, g.name AS group_name,
+              u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
+              u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.enabled, u.created_at
+       FROM users u
+       LEFT JOIN groups g ON g.id = u.group_id AND g.deleted_at IS NULL
        ${whereSql}
-       ORDER BY ${orderColumn} ${sortDir}, id DESC
+       ORDER BY ${orderColumn} ${sortDir}, u.id DESC
        LIMIT ? OFFSET ?`,
     )
     .all(...whereArgs, limit, offset) as Array<Record<string, unknown> & { allowed_model_aliases: string }>;
 
+  const totalWhereSql = keyword ? "WHERE deleted_at IS NULL AND username LIKE ?" : "WHERE deleted_at IS NULL";
   const total = gatewayDb
     .prepare(
       `SELECT COUNT(*) AS total
        FROM users
-       ${whereSql}`,
+       ${totalWhereSql}`,
     )
     .get(...whereArgs) as { total: number };
 
@@ -97,18 +102,32 @@ export async function POST(request: Request) {
 
   const settings = getGatewaySettings();
 
+  let groupId = parsed.data.group_id ?? null;
+  if (groupId === null) {
+    const defaultGroup = gatewayDb
+      .prepare("SELECT id FROM groups WHERE is_default = 1 AND deleted_at IS NULL")
+      .get() as { id: number } | undefined;
+    groupId = defaultGroup?.id ?? null;
+  } else {
+    const group = gatewayDb
+      .prepare("SELECT id FROM groups WHERE id = ? AND deleted_at IS NULL")
+      .get(groupId) as { id: number } | undefined;
+    if (!group) return jsonError("用户组不存在", 400);
+  }
+
   const passwordHash = await hashPassword(parsed.data.password);
   const result = gatewayDb
     .prepare(
       `INSERT INTO users (
-         username, password_hash, role, enabled,
+         username, password_hash, role, group_id, enabled,
          rpm, qps, tpm, quota_tokens, quota_requests, allowed_model_aliases, note
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       parsed.data.username,
       passwordHash,
       parsed.data.role ?? "user",
+      groupId,
       parsed.data.enabled === false ? 0 : 1,
       parsed.data.rpm ?? settings.default_rpm,
       parsed.data.qps ?? settings.default_qps,
@@ -121,8 +140,12 @@ export async function POST(request: Request) {
 
   const row = gatewayDb
     .prepare(
-      `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, allowed_model_aliases, note, enabled, created_at
-       FROM users WHERE id = ? AND deleted_at IS NULL`,
+      `SELECT u.id, u.username, u.role, u.group_id, g.name AS group_name,
+              u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
+              u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.enabled, u.created_at
+       FROM users u
+       LEFT JOIN groups g ON g.id = u.group_id AND g.deleted_at IS NULL
+       WHERE u.id = ? AND u.deleted_at IS NULL`,
     )
     .get(result.lastInsertRowid) as { allowed_model_aliases: string } & Record<string, unknown>;
 

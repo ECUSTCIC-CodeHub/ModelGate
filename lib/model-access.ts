@@ -1,4 +1,5 @@
 import { gatewayDb, type DbUser } from "@/lib/db";
+import { getUserGroup } from "@/lib/effective-limits";
 
 export function parseAllowedModelAliases(raw: string | null | undefined) {
   if (!raw) return [];
@@ -19,7 +20,15 @@ export function stringifyAllowedModelAliases(aliases: string[]) {
   return JSON.stringify(normalized);
 }
 
-export function canUserAccessModelAlias(user: Pick<DbUser, "role" | "allowed_model_aliases">, alias: string) {
+export function getEffectiveAllowedAliases(user: Pick<DbUser, "group_id" | "allowed_model_aliases">): string[] {
+  const userAliases = parseAllowedModelAliases(user.allowed_model_aliases);
+  const group = getUserGroup(user.group_id ?? null);
+  if (!group) return userAliases;
+  const groupAliases = parseAllowedModelAliases(group.allowed_model_aliases);
+  return [...new Set([...userAliases, ...groupAliases])];
+}
+
+export function canUserAccessModelAlias(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">, alias: string) {
   if (user.role === "admin") return true;
 
   const model = gatewayDb
@@ -34,7 +43,7 @@ export function canUserAccessModelAlias(user: Pick<DbUser, "role" | "allowed_mod
   if (!model) return false;
   if (model.is_public === 1) return true;
 
-  return parseAllowedModelAliases(user.allowed_model_aliases).includes(alias);
+  return getEffectiveAllowedAliases(user).includes(alias);
 }
 
 export function hasEnabledModelAlias(alias: string) {
@@ -55,7 +64,7 @@ export function hasEnabledModelAlias(alias: string) {
 }
 
 export function resolveAccessibleModelAlias(
-  user: Pick<DbUser, "role" | "allowed_model_aliases">,
+  user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">,
   requestedAlias: string,
 ): { ok: true; alias: string } | { ok: false; reason: "not_found" | "forbidden" } {
   const requestedAliasExists = hasEnabledModelAlias(requestedAlias);
@@ -71,7 +80,7 @@ export function resolveAccessibleModelAlias(
   return requestedAliasExists ? { ok: false, reason: "forbidden" } : { ok: false, reason: "not_found" };
 }
 
-export function listAccessibleModelAliases(user: Pick<DbUser, "role" | "allowed_model_aliases">) {
+export function listAccessibleModelAliases(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">) {
   const rows = gatewayDb
     .prepare(
       `SELECT DISTINCT m.alias, m.is_public
@@ -89,6 +98,6 @@ export function listAccessibleModelAliases(user: Pick<DbUser, "role" | "allowed_
     return rows.map((row) => row.alias);
   }
 
-  const allowed = new Set(parseAllowedModelAliases(user.allowed_model_aliases));
+  const allowed = new Set(getEffectiveAllowedAliases(user));
   return rows.filter((row) => row.is_public === 1 || allowed.has(row.alias)).map((row) => row.alias);
 }

@@ -2,6 +2,7 @@ import { checkApiKeyAuth } from "@/lib/api-key-auth";
 import { acquireChannel, type ChannelLease } from "@/lib/channel-runtime";
 import { insertChatLog } from "@/lib/chat-log";
 import { gatewayDb } from "@/lib/db";
+import { getEffectiveLimits } from "@/lib/effective-limits";
 import { jsonError } from "@/lib/http";
 import { resolveAccessibleModelAlias } from "@/lib/model-access";
 import {
@@ -23,13 +24,18 @@ import type { GatewayProtocol } from "@/lib/protocols";
 
 function checkQuota(userId: number, estimatedTokens: number) {
   const user = gatewayDb
-    .prepare("SELECT quota_tokens, quota_requests, used_tokens, used_requests FROM users WHERE id = ? AND deleted_at IS NULL")
+    .prepare("SELECT id, group_id, quota_tokens, quota_requests, used_tokens, used_requests, rpm, qps, tpm FROM users WHERE id = ? AND deleted_at IS NULL")
     .get(userId) as
     | {
+        id: number;
+        group_id: number | null;
         quota_tokens: number | null;
         quota_requests: number | null;
         used_tokens: number;
         used_requests: number;
+        rpm: number;
+        qps: number;
+        tpm: number;
       }
     | undefined;
 
@@ -37,11 +43,13 @@ function checkQuota(userId: number, estimatedTokens: number) {
     return { ok: false, reason: "用户不存在" };
   }
 
-  if (user.quota_requests !== null && user.used_requests >= user.quota_requests) {
+  const limits = getEffectiveLimits(user as any);
+
+  if (limits.quota_requests !== null && user.used_requests >= limits.quota_requests) {
     return { ok: false, reason: "请求配额已用尽" };
   }
 
-  if (user.quota_tokens !== null && user.used_tokens + estimatedTokens > user.quota_tokens) {
+  if (limits.quota_tokens !== null && user.used_tokens + estimatedTokens > limits.quota_tokens) {
     return { ok: false, reason: "Token 配额已用尽" };
   }
 

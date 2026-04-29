@@ -58,6 +58,8 @@ type UserRow = {
   username: string;
   note: string | null;
   role: "admin" | "user";
+  group_id: number | null;
+  group_name: string | null;
   enabled: number;
   rpm: number;
   qps: number;
@@ -75,6 +77,12 @@ type AliasOption = {
   is_public: number;
 };
 
+type GroupOption = {
+  id: number;
+  name: string;
+  is_default: number;
+};
+
 type UserSortKey = "created_at" | "used_requests" | "used_tokens" | "username";
 
 type UserForm = {
@@ -82,6 +90,7 @@ type UserForm = {
   password: string;
   new_password: string;
   role: "admin" | "user";
+  group_id: string;
   enabled: boolean;
   rpm: number;
   qps: number;
@@ -97,6 +106,7 @@ const initialForm: UserForm = {
   password: "",
   new_password: "",
   role: "user",
+  group_id: "",
   enabled: true,
   rpm: -1,
   qps: -1,
@@ -134,6 +144,7 @@ export default function AdminUsersPage() {
   const [sortBy, setSortBy] = useState<UserSortKey>("created_at");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [aliasOptions, setAliasOptions] = useState<AliasOption[]>([]);
+  const [groupOptions, setGroupOptions] = useState<GroupOption[]>([]);
   const pageSize = 20;
   const { toast } = useToast();
 
@@ -194,8 +205,15 @@ export default function AdminUsersPage() {
     setAliasOptions([...unique.values()].sort((a, b) => a.alias.localeCompare(b.alias)));
   }
 
+  async function loadGroupOptions() {
+    const response = await authedFetch("/api/dashboard/groups");
+    const data = await response.json().catch(() => null);
+    if (!response.ok) return;
+    setGroupOptions(Array.isArray(data?.data) ? data.data : []);
+  }
+
   useEffect(() => {
-    void Promise.all([load(1), loadAliasOptions()]);
+    void Promise.all([load(1), loadAliasOptions(), loadGroupOptions()]);
   }, [router]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -220,6 +238,7 @@ export default function AdminUsersPage() {
       new_password: "",
       note: row.note ?? "",
       role: row.role,
+      group_id: row.group_id !== null ? String(row.group_id) : "",
       enabled: row.enabled === 1,
       rpm: row.rpm,
       qps: row.qps,
@@ -246,6 +265,7 @@ export default function AdminUsersPage() {
     const payload = {
       username: form.username,
       role: form.role,
+      group_id: form.group_id ? Number(form.group_id) : null,
       enabled: form.enabled,
       rpm: form.rpm,
       qps: form.qps,
@@ -361,6 +381,7 @@ export default function AdminUsersPage() {
                       <TableHead>序号</TableHead>
                       <TableHead>用户名</TableHead>
                       <TableHead>角色</TableHead>
+                      <TableHead>用户组</TableHead>
                       <TableHead>备注</TableHead>
                       <TableHead>状态</TableHead>
                       <TableHead>限速</TableHead>
@@ -378,6 +399,9 @@ export default function AdminUsersPage() {
                         <TableCell>{row.username}</TableCell>
                         <TableCell>
                           <Badge variant={row.role === "admin" ? "default" : "secondary"}>{row.role === "admin" ? "管理员" : "普通用户"}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm text-zinc-300">{row.group_name ?? "-"}</span>
                         </TableCell>
                         <TableCell className="max-w-56">
                           <span className="block truncate text-zinc-300" title={row.note ?? ""}>
@@ -525,6 +549,21 @@ export default function AdminUsersPage() {
                     <SelectContent>
                       <SelectItem value="1">启用</SelectItem>
                       <SelectItem value="0">禁用</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>用户组</Label>
+                  <Select value={form.group_id} onValueChange={(value) => setForm({ ...form, group_id: value })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="选择用户组" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {groupOptions.map((g) => (
+                        <SelectItem key={g.id} value={String(g.id)}>
+                          {g.name}{g.is_default ? "（默认）" : ""}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

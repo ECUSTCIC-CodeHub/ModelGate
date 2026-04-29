@@ -12,6 +12,7 @@ import { USERNAME_SCHEMA } from "@/lib/username";
 const updateSchema = z.object({
   username: USERNAME_SCHEMA.optional(),
   role: z.enum(["admin", "user"]).optional(),
+  group_id: z.number().int().positive().nullable().optional(),
   enabled: z.boolean().optional(),
   rpm: z.number().int().min(-1).optional(),
   qps: z.number().int().min(-1).optional(),
@@ -39,7 +40,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
   const existing = gatewayDb
     .prepare(
-      `SELECT id, username, role, enabled, rpm, qps, tpm, quota_tokens, quota_requests
+      `SELECT id, username, role, group_id, enabled, rpm, qps, tpm, quota_tokens, quota_requests
        , allowed_model_aliases, note
        FROM users WHERE id = ? AND deleted_at IS NULL`,
     )
@@ -48,6 +49,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         id: number;
         username: string;
         role: "admin" | "user";
+        group_id: number | null;
         enabled: number;
         rpm: number;
         qps: number;
@@ -68,9 +70,20 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     if (duplicated) return jsonError("用户名已存在", 409);
   }
 
+  if (parsed.data.group_id !== undefined && parsed.data.group_id !== null) {
+    const group = gatewayDb
+      .prepare("SELECT id FROM groups WHERE id = ? AND deleted_at IS NULL")
+      .get(parsed.data.group_id) as { id: number } | undefined;
+    if (!group) return jsonError("用户组不存在", 400);
+  }
+
   const merged = {
     ...existing,
     ...parsed.data,
+    group_id:
+      parsed.data.group_id === undefined
+        ? existing.group_id
+        : parsed.data.group_id,
     quota_tokens:
       parsed.data.quota_tokens === undefined
         ? existing.quota_tokens
@@ -105,12 +118,13 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     gatewayDb
       .prepare(
         `UPDATE users
-         SET username = ?, role = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?, quota_tokens = ?, quota_requests = ?, allowed_model_aliases = ?, note = ?, password_hash = ?
+         SET username = ?, role = ?, group_id = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?, quota_tokens = ?, quota_requests = ?, allowed_model_aliases = ?, note = ?, password_hash = ?
          WHERE id = ?`,
       )
       .run(
         merged.username,
         merged.role,
+        merged.group_id,
         merged.enabled,
         merged.rpm,
         merged.qps,
@@ -126,12 +140,13 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     gatewayDb
       .prepare(
         `UPDATE users
-         SET username = ?, role = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?, quota_tokens = ?, quota_requests = ?, allowed_model_aliases = ?, note = ?
+         SET username = ?, role = ?, group_id = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?, quota_tokens = ?, quota_requests = ?, allowed_model_aliases = ?, note = ?
          WHERE id = ?`,
       )
       .run(
         merged.username,
         merged.role,
+        merged.group_id,
         merged.enabled,
         merged.rpm,
         merged.qps,
@@ -146,8 +161,12 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
   const row = gatewayDb
     .prepare(
-      `SELECT id, username, role, rpm, qps, tpm, quota_tokens, quota_requests, used_tokens, used_requests, allowed_model_aliases, note, enabled, created_at
-       FROM users WHERE id = ? AND deleted_at IS NULL`,
+      `SELECT u.id, u.username, u.role, u.group_id, g.name AS group_name,
+              u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
+              u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.enabled, u.created_at
+       FROM users u
+       LEFT JOIN groups g ON g.id = u.group_id AND g.deleted_at IS NULL
+       WHERE u.id = ? AND u.deleted_at IS NULL`,
     )
     .get(id) as { allowed_model_aliases: string } & Record<string, unknown>;
 

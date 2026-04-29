@@ -69,11 +69,28 @@ CREATE TABLE IF NOT EXISTS models (
   FOREIGN KEY (channel_id) REFERENCES channels(id)
 );
 
+CREATE TABLE IF NOT EXISTS groups (
+  id INTEGER PRIMARY KEY,
+  name TEXT UNIQUE NOT NULL,
+  description TEXT,
+  qps INTEGER DEFAULT -1,
+  rpm INTEGER DEFAULT -1,
+  tpm INTEGER DEFAULT -1,
+  quota_requests INTEGER,
+  quota_tokens INTEGER,
+  allowed_model_aliases TEXT DEFAULT '[]',
+  is_default INTEGER DEFAULT 0,
+  enabled INTEGER DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  deleted_at DATETIME
+);
+
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY,
   username TEXT UNIQUE NOT NULL CHECK(length(username) >= 3 AND username NOT GLOB '*[^A-Za-z0-9]*'),
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL CHECK(role IN ('admin', 'user')),
+  group_id INTEGER,
   rpm INTEGER DEFAULT -1,
   qps INTEGER DEFAULT -1,
   tpm INTEGER DEFAULT -1,
@@ -85,7 +102,8 @@ CREATE TABLE IF NOT EXISTS users (
   note TEXT,
   enabled INTEGER DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  deleted_at DATETIME
+  deleted_at DATETIME,
+  FOREIGN KEY (group_id) REFERENCES groups(id)
 );
 
 CREATE TABLE IF NOT EXISTS keys (
@@ -210,6 +228,7 @@ CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
   ensureColumn("users", "deleted_at", "deleted_at DATETIME");
   ensureColumn("users", "allowed_model_aliases", "allowed_model_aliases TEXT DEFAULT '[]'");
   ensureColumn("users", "note", "note TEXT");
+  ensureColumn("users", "group_id", "group_id INTEGER REFERENCES groups(id)");
   ensureColumn("keys", "deleted_at", "deleted_at DATETIME");
   const addedKeyUsedTokens = ensureColumn("keys", "used_tokens", "used_tokens INTEGER DEFAULT 0");
   const addedKeyUsedRequests = ensureColumn("keys", "used_requests", "used_requests INTEGER DEFAULT 0");
@@ -319,6 +338,19 @@ CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
     initSetting.run("limit_unlimited_value_migrated", "1");
   }
 
+  const defaultGroup = db
+    .prepare("SELECT id FROM groups WHERE is_default = 1 AND deleted_at IS NULL")
+    .get() as { id: number } | undefined;
+
+  if (!defaultGroup) {
+    db.exec(`
+  INSERT OR IGNORE INTO groups (name, description, is_default, qps, rpm, tpm)
+  VALUES ('default', '默认用户组', 1, -1, -1, -1);
+  `);
+    const newDefault = db.prepare("SELECT id FROM groups WHERE is_default = 1 AND deleted_at IS NULL").get() as { id: number };
+    db.prepare("UPDATE users SET group_id = ? WHERE group_id IS NULL").run(newDefault.id);
+  }
+
   return db;
 };
 
@@ -349,11 +381,28 @@ export type DbModel = {
   deleted_at: string | null;
 };
 
+export type DbGroup = {
+  id: number;
+  name: string;
+  description: string | null;
+  qps: number;
+  rpm: number;
+  tpm: number;
+  quota_requests: number | null;
+  quota_tokens: number | null;
+  allowed_model_aliases: string;
+  is_default: number;
+  enabled: number;
+  created_at: string;
+  deleted_at: string | null;
+};
+
 export type DbUser = {
   id: number;
   username: string;
   password_hash: string;
   role: "admin" | "user";
+  group_id: number | null;
   rpm: number;
   qps: number;
   tpm: number;
