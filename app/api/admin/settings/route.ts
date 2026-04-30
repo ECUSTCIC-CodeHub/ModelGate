@@ -49,6 +49,15 @@ export async function PUT(request: Request) {
   if (input.oidc_client_secret === "••••••••") {
     delete input.oidc_client_secret;
   }
+
+  const oidcWillBeEnabled = input.oidc_enabled !== undefined
+    ? input.oidc_enabled && !!input.oidc_issuer_url && !!input.oidc_client_id
+    : getGatewaySettings().oidc_enabled === 1;
+
+  if (!input.password_login_enabled && !oidcWillBeEnabled) {
+    return jsonError("账号密码登录和 OIDC 登录不能同时关闭，至少保留一种登录方式。", 400);
+  }
+
   setGatewaySettings(input);
 
   const updated = getGatewaySettings();
