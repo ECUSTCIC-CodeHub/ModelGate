@@ -1,126 +1,165 @@
-# VLM Control
+# ModelGate
 
-Multi-tenant LLM Gateway + Web Console based on Next.js + SQLite.
+> 根据[《生成式人工智能服务管理暂行办法》](http://www.cac.gov.cn/2023-07/13/c_1690898327029107.htm)的要求，请勿对中国地区公众提供一切未经备案的生成式人工智能服务。
 
-## Stack
+基于 Next.js + SQLite 的多租户 LLM 网关 + 管理控制台。
+
+## 技术栈
 
 - Next.js (App Router + Route Handlers)
 - SQLite (`better-sqlite3`)
-- JWT auth (access + refresh)
-- In-memory token bucket rate limit
-- OpenAI-compatible APIs
+- JWT 认证 (access + refresh token)
+- 内存令牌桶限流
 
-## Features
+## 功能特性
 
-- Multi-channel provider config (`channels`)
-- Model alias routing (`models`) + weighted random load balancing
-- Tenant users (`users`) with admin/user role split
-- API Keys (`keys`) for gateway auth
-- Chat request logs (`chat_logs`) with model/channel/status/token/latency
-- Registration switch (`settings.registration_enabled`)
-- Web auth via Bearer JWT (access/refresh)
-- User self-service (manage own keys, change own password)
-- Admin console (channels/models/users/settings)
-- OpenAI-compatible endpoints:
-  - `GET /api/v1/models`
-  - `POST /api/v1/chat/completions`
-  - `POST /api/v1/responses`
-  - Supports `chat/completions` and `responses`, with protocol conversion based on model-channel config
+- **多渠道管理** — 支持配置多个上游提供商，加权负载均衡 + 熔断器
+- **模型别名路由** — 自动协议转换，客户端无感知
+- **多协议支持：**
+  - `POST /api/v1/chat/completions` — OpenAI Chat Completions
+  - `POST /api/v1/responses` — OpenAI Responses
+  - `POST /api/v1/messages` — Anthropic Claude Messages
+  - `GET /api/v1/models` — 获取可用模型列表
+- **用户与角色** — 管理员 / 普通用户，API Key 自助管理
+- **用户组** — 组级限流 (QPS/RPM/TPM)、配额、模型白名单，支持继承机制 (`用户 > 组 > 全局默认`)
+- **OIDC 单点登录** — 通用 OIDC 提供商接入，支持自动注册、通过 claim 映射用户组
+- **免认证模式** — 适用于局域网单用户部署，无需登录
+- **请求日志** — 记录模型、渠道、状态码、Token 用量、延迟等信息
+- **用户自助** — 管理密钥、修改密码、绑定/解绑 OIDC
+- **管理后台** — 渠道、模型、用户、用户组、系统设置、日志
 
-## Install & Run
+## 安装与运行
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+打开 [http://localhost:3000](http://localhost:3000)，首个注册用户自动成为管理员。
 
-## Env Vars
+## 环境变量
 
-Optional, with defaults:
+全部可选，均有默认值：
 
-- `JWT_ACCESS_SECRET` (default: `dev-access-secret-change-me`)
-- `JWT_REFRESH_SECRET` (default: `dev-refresh-secret-change-me`)
-- `JWT_ACCESS_EXPIRES_SECONDS` (default: `900`)
-- `JWT_REFRESH_EXPIRES_SECONDS` (default: `604800`)
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `JWT_ACCESS_SECRET` | `dev-access-secret-change-me` | Access Token 签名密钥 |
+| `JWT_REFRESH_SECRET` | `dev-refresh-secret-change-me` | Refresh Token 签名密钥 |
+| `JWT_ACCESS_EXPIRES_SECONDS` | `900` | Access Token 有效期（15 分钟） |
+| `JWT_REFRESH_EXPIRES_SECONDS` | `604800` | Refresh Token 有效期（7 天） |
+| `AUTH_DISABLED` | — | 设为 `1` 关闭所有认证（单用户模式） |
 
-## Data File
+## 免认证模式
 
-SQLite DB path:
-
-- `data/gateway.db`
-
-Tables are auto-initialized on first run:
-
-- `channels`
-- `models`
-- `users`
-- `keys`
-- `settings`
-- `chat_logs`
-
-## Auth Model
-
-- `POST /api/auth/register`
-  - controlled by `settings.registration_enabled`
-  - first ever registered user is auto-promoted to `admin`
-- `POST /api/auth/login`
-- `POST /api/auth/refresh`
-- `GET /api/auth/me`
-- `POST /api/auth/change-password`
-- `POST /api/auth/logout`
-
-Web pages use JWT Bearer from browser localStorage.
-Login/register uses `username + password` (no email/name field).
-Username only allows English letters and numbers (`[A-Za-z0-9]`).
-
-## Authorization Rules
-
-- Admin APIs (`/api/admin/*`): admin only
-- User APIs (`/api/user/*`): authenticated user, scoped to own resources
-- Gateway APIs (`/api/v1/*`): API key auth (`Authorization: Bearer sk-gw-...`)
-
-## OpenAI-Compatible Usage
-
-1. Create a channel in `/admin/channels` (provider base URL + provider API key)
-2. Create model alias mapping in `/admin/models`
-3. Create user + user API key (or let user create own key)
-4. Call gateway:
+适用于局域网内单人使用，无需注册登录：
 
 ```bash
-curl -sS http://localhost:3000/api/v1/models \
+AUTH_DISABLED=1 pnpm dev
+```
+
+- 网关端点跳过 API Key 验证
+- 控制台跳过 JWT 认证，直接以管理员身份访问
+- 登录 / 注册页面自动跳转到控制台
+- 自动创建内置 `noauth` 管理员用户和 API Key
+- 限流、日志、配额照常生效（挂在该内置用户下）
+- **不设置此变量则完全不影响现有部署**
+
+## 数据存储
+
+SQLite 数据库：`data/gateway.db`（首次运行自动创建）
+
+数据表：`channels`、`models`、`users`、`groups`、`keys`、`settings`、`logs`
+
+## 认证方式
+
+### 账号密码
+
+- `POST /api/auth/register` — 受 `允许账号密码注册` 设置控制
+- `POST /api/auth/login` — 受 `允许账号密码登录` 设置控制
+- `POST /api/auth/refresh` — 刷新令牌
+- `GET /api/auth/me` — 获取当前用户信息
+- `POST /api/auth/change-password` — 修改密码
+- `POST /api/auth/logout` — 退出登录
+
+用户名仅允许英文字母和数字（`[A-Za-z0-9]`），最少 3 位。
+
+### OIDC 单点登录
+
+在管理后台「系统设置」页面配置：
+
+- **Issuer URL** — OIDC 提供商地址（需支持 `.well-known/openid-configuration`）
+- **Client ID / Secret** — 从 OIDC 提供商获取
+- **回调地址** — 设置页面中展示，复制到 OIDC 提供商配置即可
+- **自动注册** — 首次 OIDC 登录时自动创建用户
+- **用户组 Claim** — 通过 OIDC token 中的 claim 值自动分配用户组（如 claim `role` 值 `vip` → VIP 组）
+
+接口：
+
+| 端点 | 说明 |
+|------|------|
+| `GET /api/auth/oidc/status` | 公开接口，返回各登录方式的可用状态 |
+| `GET /api/auth/oidc/authorize` | 发起 OIDC 授权流程 |
+| `GET /api/auth/oidc/callback` | 处理 OIDC 提供商回调 |
+| `GET /api/auth/oidc/bind` | 已登录用户绑定 OIDC 账号 |
+| `POST /api/auth/oidc/unbind` | 已登录用户解绑 OIDC 账号 |
+
+管理员可独立开关账号密码登录和 OIDC 登录，但至少需保留一种登录方式。
+
+## 用户组
+
+用户组定义用户继承的基线配置：
+
+- **限流**：QPS、RPM、TPM
+- **配额**：请求总量配额、Token 总量配额
+- **模型白名单**：组级白名单与用户级白名单取并集
+
+**继承优先级**：`用户设置 > 组设置 > 全局默认`。用户的限流值为 `-1` 表示继承组设置。
+
+**OIDC 组映射**：在系统设置中配置「用户组 Claim」（如 `role`），在各用户组中配置「OIDC Claim 匹配值」（如 `premium`）。用户通过 OIDC 登录时自动分配到匹配的组，每次登录自动同步。
+
+## 权限控制
+
+| 接口范围 | 权限要求 |
+|----------|----------|
+| `/api/admin/*` | 管理员角色 |
+| `/api/user/*` | 已认证用户，仅限本人资源 |
+| `/api/dashboard/*` | 已认证用户 (Web 认证) |
+| `/api/v1/*` | API Key 认证 (`Authorization: Bearer sk-gw-...`) |
+
+## 使用示例
+
+1. 在管理后台 → API 接口管理中添加渠道（上游地址 + API Key）
+2. 在管理后台 → 模型管理中创建模型别名映射
+3. 创建用户和 API Key（或让用户自行注册并创建密钥）
+4. 调用网关：
+
+```bash
+# 获取模型列表
+curl http://localhost:3000/api/v1/models \
   -H 'Authorization: Bearer sk-gw-xxxx'
-```
 
-```bash
-curl -sS http://localhost:3000/api/v1/chat/completions \
+# OpenAI Chat Completions
+curl http://localhost:3000/api/v1/chat/completions \
   -H 'Authorization: Bearer sk-gw-xxxx' \
   -H 'Content-Type: application/json' \
-  -d '{
-    "model": "deepseek-v3.2",
-    "messages": [{"role": "user", "content": "hello"}]
-  }'
-```
+  -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "你好"}]}'
 
-```bash
-curl -sS http://localhost:3000/api/v1/responses \
+# OpenAI Responses
+curl http://localhost:3000/api/v1/responses \
   -H 'Authorization: Bearer sk-gw-xxxx' \
   -H 'Content-Type: application/json' \
-  -d '{
-    "model": "deepseek-v3.2",
-    "input": "hello"
-  }'
+  -d '{"model": "gpt-4o", "input": "你好"}'
+
+# Anthropic Claude Messages
+curl http://localhost:3000/api/v1/messages \
+  -H 'Authorization: Bearer sk-gw-xxxx' \
+  -H 'Content-Type: application/json' \
+  -d '{"model": "claude-sonnet-4-6", "max_tokens": 1024, "messages": [{"role": "user", "content": "你好"}]}'
 ```
 
-## Notes
+## 备注
 
-- Channels can declare supported upstream protocols, and each model mapping can choose `chat_completions` or `responses` as its actual upstream protocol.
-- Clients can call either `/api/v1/chat/completions` or `/api/v1/responses`; the gateway will convert protocols automatically when needed.
-- `responses` compatibility is still being improved. If you hit a bug, please open an issue here: [ModelGate Issue Tracker](https://cnb.cool/Bring/Tools/ModelGate/-/issues/new)
-- TPM for non-stream response prefers upstream `usage.total_tokens` when available.
-- For stream response (`stream=true`), usage is estimated before forwarding.
-- Rate limit is in-memory and single-instance only.
-Admin log endpoint:
-
-- `GET /api/admin/logs/chat` (summary + recent chat records)
+- 渠道声明支持的上游协议，每个模型映射指定使用哪种上游协议。
+- 客户端可调用三种端点中的任意一种，网关会在入站协议与上游协议不一致时自动转换。
+- 限流为单实例内存实现，不支持多实例部署。
+- 全部采用软删除，记录通过 `deleted_at` 标记而非物理删除。
