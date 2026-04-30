@@ -2,9 +2,14 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import { getAuthStatus } from "@/lib/auth-status";
+import { AUTH_DISABLED } from "@/lib/no-auth";
 import { RegisterForm } from "./register-form";
 
 export default function RegisterPage() {
+  if (AUTH_DISABLED) {
+    redirect("/dashboard");
+  }
+
   const status = getAuthStatus();
 
   if (!status.registration_enabled && !status.oidc_enabled) {

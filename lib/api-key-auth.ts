@@ -1,5 +1,6 @@
 import { gatewayDb, type DbKey, type DbUser } from "@/lib/db";
 import { parseBearerToken } from "@/lib/http";
+import { AUTH_DISABLED, getNoAuthContext } from "@/lib/no-auth";
 
 export type ApiKeyContext = {
   key: DbKey;
@@ -11,6 +12,10 @@ export type ApiKeyAuthResult =
   | { ok: false; reason: "missing" | "invalid" };
 
 export function checkApiKeyAuth(request: Request): ApiKeyAuthResult {
+  if (AUTH_DISABLED) {
+    return { ok: true, context: getNoAuthContext() };
+  }
+
   const raw = request.headers.get("x-api-key") ?? parseBearerToken(request.headers.get("authorization"));
   if (!raw) return { ok: false, reason: "missing" };
 

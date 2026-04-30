@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { NextResponse } from "next/server";
 import { gatewayDb, type DbUser } from "@/lib/db";
 import { parseBearerToken } from "@/lib/http";
+import { AUTH_DISABLED, getNoAuthContext } from "@/lib/no-auth";
 
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET ?? "dev-access-secret-change-me";
 const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET ?? "dev-refresh-secret-change-me";
@@ -107,7 +108,14 @@ export function getAuthContextFromAccessToken(token: string): AuthContext | null
   return { user: sanitizeUser(user), token };
 }
 
+function noAuthContext(): AuthContext {
+  const { user } = getNoAuthContext();
+  return { user: sanitizeUser(user), token: "noauth" };
+}
+
 export function requireWebAuth(request: Request): AuthContext | null {
+  if (AUTH_DISABLED) return noAuthContext();
+
   try {
     const token = getAccessTokenFromRequest(request);
     if (!token) return null;
@@ -118,6 +126,8 @@ export function requireWebAuth(request: Request): AuthContext | null {
 }
 
 export function requireWebAuthWithRefresh(request: Request): AuthContext | null {
+  if (AUTH_DISABLED) return noAuthContext();
+
   const auth = requireWebAuth(request);
   if (auth) return auth;
 
@@ -174,6 +184,8 @@ export function clearAuthCookies(response: NextResponse) {
 }
 
 export function getServerProfileFromCookieStore(cookieStore: { get: (name: string) => { value: string } | undefined }) {
+  if (AUTH_DISABLED) return noAuthContext().user;
+
   const accessToken = cookieStore.get(ACCESS_COOKIE_NAME)?.value;
   const refreshToken = cookieStore.get(REFRESH_COOKIE_NAME)?.value;
 
