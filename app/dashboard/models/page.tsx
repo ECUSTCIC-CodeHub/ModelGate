@@ -3,11 +3,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Copy } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { useAuthProfile } from "@/components/providers/auth-provider";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
@@ -18,6 +20,12 @@ type ModelItem = {
   id: string;
   object: "model";
 };
+
+const ENDPOINTS = [
+  { label: "Chat Completions (OpenAI)", path: "/api/v1/chat/completions", method: "POST" },
+  { label: "Responses (OpenAI)", path: "/api/v1/responses", method: "POST" },
+  { label: "Messages (Anthropic Claude)", path: "/api/v1/messages", method: "POST" },
+] as const;
 
 export default function AvailableModelsPage() {
   const router = useRouter();
@@ -53,22 +61,90 @@ export default function AvailableModelsPage() {
     void load().finally(() => setLoading(false));
   }, [router]);
 
+  function copyText(text: string) {
+    void navigator.clipboard.writeText(text).then(() => {
+      toast({ variant: "success", description: "已复制到剪贴板" });
+    });
+  }
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+
   return (
     <DashboardShell
       role={role}
       title="可用模型"
-      subtitle="这里展示当前账号实际可调用的模型标识。"
+      subtitle="这里展示当前账号实际可调用的模型标识，以及支持的协议端点。"
     >
       <div className="space-y-4 pb-6">
         <div className="grid gap-4 md:grid-cols-2">
           <MetricCard label="模型数量" value={String(rows.length)} hint="当前账号可直接调用的模型数量" />
-          <MetricCard label="访问方式" value="OpenAI 兼容" hint="将模型 ID 填入 model 字段即可调用" />
+          <MetricCard label="支持协议" value="3 种" hint="Chat Completions / Responses / Messages" />
         </div>
+
+        <Card>
+          <CardHeader>
+            <SectionTitle
+              title="接入配置"
+              description="将 Base URL 填入客户端配置，使用 API Key 和模型 ID 即可调用。"
+            />
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="space-y-2 rounded-xl border border-white/10 bg-slate-950/50 px-4 py-3">
+              <p className="text-xs font-medium text-zinc-400">Base URL</p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 truncate rounded bg-white/5 px-3 py-2 text-sm text-zinc-100">{origin}/api/v1</code>
+                <Button type="button" variant="outline" size="sm" onClick={() => copyText(`${origin}/api/v1`)}>
+                  <Copy className="mr-1.5 h-3.5 w-3.5" />
+                  复制
+                </Button>
+              </div>
+              <p className="text-xs text-zinc-500">适用于 OpenAI SDK 等客户端的 base_url / api_base 配置项。</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <SectionTitle
+              title="协议端点"
+              description="网关兼容以下三种协议，均使用相同的 API Key 和模型 ID 调用。"
+            />
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto rounded-xl border border-white/10">
+              <Table className="min-w-[600px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>协议</TableHead>
+                    <TableHead>端点地址</TableHead>
+                    <TableHead className="w-16" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ENDPOINTS.map((ep) => (
+                    <TableRow key={ep.path}>
+                      <TableCell className="text-sm font-medium text-zinc-100">{ep.label}</TableCell>
+                      <TableCell>
+                        <code className="rounded bg-white/5 px-2 py-1 text-xs text-zinc-300">{origin}{ep.path}</code>
+                      </TableCell>
+                      <TableCell>
+                        <Button size="sm" variant="ghost" onClick={() => copyText(`${origin}${ep.path}`)}>
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <SectionTitle
               title="模型列表"
-              description="模型 ID 会直接用于 OpenAI 兼容请求的 model 字段。"
+              description="模型 ID 用于请求中的 model 字段，三种协议均通用。"
             />
           </CardHeader>
           <CardContent className="space-y-4">
@@ -78,13 +154,19 @@ export default function AvailableModelsPage() {
                 <Table className="min-w-[460px]">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>ID</TableHead>
+                      <TableHead>模型 ID</TableHead>
+                      <TableHead className="w-16" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {rows.map((row) => (
                       <TableRow key={row.id}>
                         <TableCell className="font-mono text-sm">{row.id}</TableCell>
+                        <TableCell>
+                          <Button size="sm" variant="ghost" onClick={() => copyText(row.id)}>
+                            <Copy className="h-3.5 w-3.5" />
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
