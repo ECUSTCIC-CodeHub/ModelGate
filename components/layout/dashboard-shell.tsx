@@ -16,7 +16,7 @@ import {
   Users,
   Waypoints,
 } from "lucide-react";
-import { useAuthProfile } from "@/components/providers/auth-provider";
+import { useAuthProfile, useOidcEnabled } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -38,7 +38,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
-import { authedFetch, clearSession, getCachedProfile, getOrFetchProfile } from "@/lib/client-auth";
+import { authedFetch, clearCachedProfile, clearSession, getCachedProfile, getOrFetchProfile } from "@/lib/client-auth";
 import { getApiMessage } from "@/lib/api-message";
 import { cn } from "@/lib/utils";
 
@@ -57,6 +57,8 @@ type ProfileBrief = {
   rpm: number;
   qps: number;
   tpm: number;
+  oidc_issuer?: string | null;
+  oidc_subject?: string | null;
 };
 
 const adminMenus = [
@@ -88,13 +90,14 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
   const [passwordDrawerOpen, setPasswordDrawerOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const oidcAvailable = useOidcEnabled();
 
   useEffect(() => {
-    if (profileBrief) return;
+    clearCachedProfile();
     void getOrFetchProfile().then((next) => {
       if (next) setProfileBrief(next);
     });
-  }, [profileBrief]);
+  }, []);
 
   function onLogout() {
     void fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" }).finally(() => {
@@ -111,6 +114,22 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
     if (value === null || value === undefined) return "-";
     if (value < 0) return "∞";
     return String(value);
+  }
+
+  function onOidcBind() {
+    window.location.href = "/api/auth/oidc/bind";
+  }
+
+  async function onOidcUnbind() {
+    const response = await authedFetch("/api/auth/oidc/unbind", { method: "POST" });
+    const data = await response.json().catch(() => null);
+    if (response.ok) {
+      toast({ variant: "success", description: getApiMessage(data, "OIDC 绑定已解除。") });
+      clearCachedProfile();
+      void getOrFetchProfile().then((next) => { if (next) setProfileBrief(next); });
+    } else {
+      toast({ variant: "error", description: getApiMessage(data, "解除绑定失败。") });
+    }
   }
 
   async function onChangePassword() {
@@ -185,8 +204,23 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                     <p className="mt-1 truncate text-sm font-medium tabular-nums text-zinc-100">{formatLimit(profileBrief.tpm)}</p>
                   </div>
                 </div>
+                {oidcAvailable ? (
+                  <div className="rounded-lg border border-white/10 bg-slate-950/50 p-2">
+                    <p className="text-[11px] text-zinc-500">OIDC</p>
+                    <p className="mt-1 truncate text-sm text-zinc-100">
+                      {profileBrief.oidc_subject ? "已绑定" : "未绑定"}
+                    </p>
+                  </div>
+                ) : null}
                 <div className="grid gap-2">
                   <Button variant="outline" onClick={() => setPasswordDrawerOpen(true)}>修改密码</Button>
+                  {oidcAvailable ? (
+                    profileBrief.oidc_subject ? (
+                      <Button variant="outline" onClick={onOidcUnbind}>解绑 OIDC</Button>
+                    ) : (
+                      <Button variant="outline" onClick={onOidcBind}>绑定 OIDC</Button>
+                    )
+                  ) : null}
                   <Button variant="secondary" onClick={onLogout}>
                     <LogOut className="h-4 w-4" />
                     退出登录
@@ -269,6 +303,17 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
               >
                 修改密码
               </Button>
+              {oidcAvailable ? (
+                profileBrief?.oidc_subject ? (
+                  <Button variant="outline" className="w-full" onClick={() => { setMobileNavOpen(false); onOidcUnbind(); }}>
+                    解绑 OIDC
+                  </Button>
+                ) : (
+                  <Button variant="outline" className="w-full" onClick={() => { setMobileNavOpen(false); onOidcBind(); }}>
+                    绑定 OIDC
+                  </Button>
+                )
+              ) : null}
               <Button
                 variant="secondary"
                 className="w-full"

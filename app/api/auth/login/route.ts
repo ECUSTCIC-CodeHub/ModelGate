@@ -4,6 +4,7 @@ import { z } from "zod";
 import { applyAuthCookies, comparePassword, issueAuthTokens, sanitizeUser } from "@/lib/auth";
 import { gatewayDb, type DbUser } from "@/lib/db";
 import { jsonError, jsonOk } from "@/lib/http";
+import { getGatewaySettings } from "@/lib/settings";
 
 const schema = z.object({
   username: z.string().min(1),
@@ -11,6 +12,11 @@ const schema = z.object({
 });
 
 export async function POST(request: Request) {
+  const settings = getGatewaySettings();
+  if (settings.password_login_enabled !== 1) {
+    return jsonError("账号密码登录已关闭", 403);
+  }
+
   const body = await request.json().catch(() => null);
   const parsed = schema.safeParse(body);
   if (!parsed.success) return jsonError("用户名或密码错误", 401);

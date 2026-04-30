@@ -117,6 +117,23 @@ export function requireWebAuth(request: Request): AuthContext | null {
   }
 }
 
+export function requireWebAuthWithRefresh(request: Request): AuthContext | null {
+  const auth = requireWebAuth(request);
+  if (auth) return auth;
+
+  try {
+    const refreshToken = getRefreshTokenFromRequest(request);
+    if (!refreshToken) return null;
+    const payload = verifyRefreshToken(refreshToken);
+    if (payload.type !== "refresh") return null;
+    const user = findEnabledUserById(Number(payload.sub));
+    if (!user) return null;
+    return { user: sanitizeUser(user), token: refreshToken };
+  } catch {
+    return null;
+  }
+}
+
 export function requireRole(auth: AuthContext, role: "admin" | "user") {
   if (role === "user") return true;
   return auth.user.role === "admin";

@@ -69,6 +69,18 @@ type UserRow = {
   used_tokens: number;
   used_requests: number;
   allowed_model_aliases: string[];
+  oidc_issuer: string | null;
+  oidc_subject: string | null;
+  group_rpm: number | null;
+  group_qps: number | null;
+  group_tpm: number | null;
+  group_quota_requests: number | null;
+  group_quota_tokens: number | null;
+  effective_rpm: number;
+  effective_qps: number;
+  effective_tpm: number;
+  effective_quota_requests: number | null;
+  effective_quota_tokens: number | null;
 };
 
 type AliasOption = {
@@ -138,6 +150,11 @@ export default function AdminUsersPage() {
   const [form, setForm] = useState<UserForm>(initialForm);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingOidc, setEditingOidc] = useState<{ issuer: string; subject: string } | null>(null);
+  const [editingGroupLimits, setEditingGroupLimits] = useState<{
+    rpm: number | null; qps: number | null; tpm: number | null;
+    quota_requests: number | null; quota_tokens: number | null;
+  } | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [keyword, setKeyword] = useState("");
@@ -226,12 +243,19 @@ export default function AdminUsersPage() {
 
   function onCreateClick() {
     setEditingId(null);
+    setEditingOidc(null);
+    setEditingGroupLimits(null);
     setForm(initialForm);
     setDrawerOpen(true);
   }
 
   function onEditClick(row: UserRow) {
     setEditingId(row.id);
+    setEditingOidc(row.oidc_subject ? { issuer: row.oidc_issuer ?? "", subject: row.oidc_subject } : null);
+    setEditingGroupLimits(row.group_id ? {
+      rpm: row.group_rpm, qps: row.group_qps, tpm: row.group_tpm,
+      quota_requests: row.group_quota_requests, quota_tokens: row.group_quota_tokens,
+    } : null);
     setForm({
       username: row.username,
       password: "",
@@ -383,12 +407,13 @@ export default function AdminUsersPage() {
                       <TableHead>角色</TableHead>
                       <TableHead>用户组</TableHead>
                       <TableHead>备注</TableHead>
+                      <TableHead>OIDC</TableHead>
                       <TableHead>状态</TableHead>
-                      <TableHead>限速</TableHead>
+                      <TableHead>有效限速</TableHead>
                       <TableHead>累计请求</TableHead>
                       <TableHead>累计 Token</TableHead>
-                      <TableHead>请求配额</TableHead>
-                      <TableHead>Token 配额</TableHead>
+                      <TableHead>有效请求配额</TableHead>
+                      <TableHead>有效 Token 配额</TableHead>
                       <TableHead className="text-right">操作</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -409,13 +434,24 @@ export default function AdminUsersPage() {
                           </span>
                         </TableCell>
                         <TableCell>
+                          {row.oidc_subject ? (
+                            <Badge variant="default" title={`${row.oidc_issuer}\n${row.oidc_subject}`}>已绑定</Badge>
+                          ) : (
+                            <span className="text-sm text-zinc-500">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
                           <Badge variant={row.enabled ? "default" : "secondary"}>{row.enabled ? "启用" : "禁用"}</Badge>
                         </TableCell>
-                        <TableCell>{formatLimit(row.rpm)}/{formatLimit(row.qps)}/{formatLimit(row.tpm)}</TableCell>
+                        <TableCell>
+                          <span title={`用户: ${formatLimit(row.rpm)}/${formatLimit(row.qps)}/${formatLimit(row.tpm)}`}>
+                            {formatLimit(row.effective_rpm)}/{formatLimit(row.effective_qps)}/{formatLimit(row.effective_tpm)}
+                          </span>
+                        </TableCell>
                         <TableCell>{formatNumber(row.used_requests)}</TableCell>
                         <TableCell>{formatNumber(row.used_tokens)}</TableCell>
-                        <TableCell>{row.quota_requests === null ? "∞" : formatNumber(row.quota_requests)}</TableCell>
-                        <TableCell>{row.quota_tokens === null ? "∞" : formatNumber(row.quota_tokens)}</TableCell>
+                        <TableCell>{row.effective_quota_requests === null ? "∞" : formatNumber(row.effective_quota_requests)}</TableCell>
+                        <TableCell>{row.effective_quota_tokens === null ? "∞" : formatNumber(row.effective_quota_tokens)}</TableCell>
                         <TableCell className="space-x-2 text-right">
                           <Button size="sm" variant="outline" onClick={() => onEditClick(row)}>编辑</Button>
                           <AlertDialog>
@@ -580,31 +616,62 @@ export default function AdminUsersPage() {
               </div>
             </div>
 
+            {editingId !== null && editingOidc ? (
+              <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
+                <p className="text-sm font-medium text-zinc-100">OIDC 绑定</p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <p className="text-xs text-zinc-500">Issuer</p>
+                    <p className="truncate text-sm text-zinc-300" title={editingOidc.issuer}>{editingOidc.issuer}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-zinc-500">Subject</p>
+                    <p className="truncate text-sm text-zinc-300" title={editingOidc.subject}>{editingOidc.subject}</p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
               <p className="text-sm font-medium text-zinc-100">配额配置</p>
-              <p className="text-xs text-zinc-500">`-1` 表示无限，`0` 表示禁止；总量配额留空表示不限制。</p>
+              <p className="text-xs text-zinc-500">`-1` 表示继承组设置（无组则不限制），`0` 表示禁止；总量配额留空表示继承组设置。</p>
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="space-y-2">
-                  <Label>RPM 配额</Label>
+                  <Label>RPM</Label>
                   <Input type="number" min={-1} value={form.rpm} onChange={(e) => setForm({ ...form, rpm: Number(e.target.value) })} />
+                  {form.rpm < 0 && editingGroupLimits ? (
+                    <p className="text-xs text-zinc-500">← 继承组: {formatLimit(editingGroupLimits.rpm)}</p>
+                  ) : null}
                 </div>
                 <div className="space-y-2">
-                  <Label>QPS 配额</Label>
+                  <Label>QPS</Label>
                   <Input type="number" min={-1} value={form.qps} onChange={(e) => setForm({ ...form, qps: Number(e.target.value) })} />
+                  {form.qps < 0 && editingGroupLimits ? (
+                    <p className="text-xs text-zinc-500">← 继承组: {formatLimit(editingGroupLimits.qps)}</p>
+                  ) : null}
                 </div>
                 <div className="space-y-2">
-                  <Label>TPM 配额</Label>
+                  <Label>TPM</Label>
                   <Input type="number" min={-1} value={form.tpm} onChange={(e) => setForm({ ...form, tpm: Number(e.target.value) })} />
+                  {form.tpm < 0 && editingGroupLimits ? (
+                    <p className="text-xs text-zinc-500">← 继承组: {formatLimit(editingGroupLimits.tpm)}</p>
+                  ) : null}
                 </div>
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label>总请求配额</Label>
                   <Input type="number" min={-1} value={form.quota_requests} onChange={(e) => setForm({ ...form, quota_requests: e.target.value })} />
+                  {form.quota_requests.trim() === "" && editingGroupLimits ? (
+                    <p className="text-xs text-zinc-500">← 继承组: {editingGroupLimits.quota_requests === null ? "∞" : formatLimit(editingGroupLimits.quota_requests)}</p>
+                  ) : null}
                 </div>
                 <div className="space-y-2">
                   <Label>总 Token 配额</Label>
                   <Input type="number" min={-1} value={form.quota_tokens} onChange={(e) => setForm({ ...form, quota_tokens: e.target.value })} />
+                  {form.quota_tokens.trim() === "" && editingGroupLimits ? (
+                    <p className="text-xs text-zinc-500">← 继承组: {editingGroupLimits.quota_tokens === null ? "∞" : formatLimit(editingGroupLimits.quota_tokens)}</p>
+                  ) : null}
                 </div>
               </div>
             </div>

@@ -15,6 +15,7 @@ const updateSchema = z.object({
   quota_requests: z.number().int().min(-1).nullable().optional(),
   quota_tokens: z.number().int().min(-1).nullable().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
+  oidc_claim_value: z.string().max(128).nullable().optional(),
   is_default: z.boolean().optional(),
   enabled: z.boolean().optional(),
 });
@@ -66,6 +67,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         quota_requests: number | null;
         quota_tokens: number | null;
         allowed_model_aliases: string;
+        oidc_claim_value: string | null;
         is_default: number;
         enabled: number;
       }
@@ -103,6 +105,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       parsed.data.allowed_model_aliases === undefined
         ? existing.allowed_model_aliases
         : stringifyAllowedModelAliases(parsed.data.allowed_model_aliases),
+    oidc_claim_value:
+      parsed.data.oidc_claim_value === undefined
+        ? existing.oidc_claim_value
+        : parsed.data.oidc_claim_value?.trim() || null,
     is_default: setDefault ? 1 : (parsed.data.is_default === false ? 0 : existing.is_default),
     enabled:
       parsed.data.enabled === undefined
@@ -120,7 +126,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         `UPDATE groups
          SET name = ?, description = ?, qps = ?, rpm = ?, tpm = ?,
              quota_requests = ?, quota_tokens = ?, allowed_model_aliases = ?,
-             is_default = ?, enabled = ?
+             oidc_claim_value = ?, is_default = ?, enabled = ?
          WHERE id = ?`,
       )
       .run(
@@ -132,6 +138,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         merged.quota_requests,
         merged.quota_tokens,
         merged.allowed_model_aliases,
+        merged.oidc_claim_value,
         merged.is_default,
         merged.enabled,
         id,

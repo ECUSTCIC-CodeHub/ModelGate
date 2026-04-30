@@ -163,7 +163,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     .prepare(
       `SELECT u.id, u.username, u.role, u.group_id, g.name AS group_name,
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
-              u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.enabled, u.created_at
+              u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.enabled, u.created_at
        FROM users u
        LEFT JOIN groups g ON g.id = u.group_id AND g.deleted_at IS NULL
        WHERE u.id = ? AND u.deleted_at IS NULL`,

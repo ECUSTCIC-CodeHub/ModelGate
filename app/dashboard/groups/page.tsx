@@ -54,6 +54,7 @@ type GroupRow = {
   quota_requests: number | null;
   quota_tokens: number | null;
   allowed_model_aliases: string[];
+  oidc_claim_value: string | null;
   is_default: number;
   enabled: number;
   user_count: number;
@@ -74,6 +75,7 @@ type GroupForm = {
   quota_requests: string;
   quota_tokens: string;
   allowed_model_aliases: string[];
+  oidc_claim_value: string;
   is_default: boolean;
   enabled: boolean;
 };
@@ -87,6 +89,7 @@ const initialForm: GroupForm = {
   quota_requests: "",
   quota_tokens: "",
   allowed_model_aliases: [],
+  oidc_claim_value: "",
   is_default: false,
   enabled: true,
 };
@@ -166,6 +169,7 @@ export default function AdminGroupsPage() {
       quota_requests: row.quota_requests === null ? "" : String(row.quota_requests),
       quota_tokens: row.quota_tokens === null ? "" : String(row.quota_tokens),
       allowed_model_aliases: row.allowed_model_aliases ?? [],
+      oidc_claim_value: row.oidc_claim_value ?? "",
       is_default: row.is_default === 1,
       enabled: row.enabled === 1,
     });
@@ -193,6 +197,7 @@ export default function AdminGroupsPage() {
       quota_requests: form.quota_requests.trim() === "" ? null : Number(form.quota_requests),
       quota_tokens: form.quota_tokens.trim() === "" ? null : Number(form.quota_tokens),
       allowed_model_aliases: form.allowed_model_aliases,
+      oidc_claim_value: form.oidc_claim_value.trim() || null,
       is_default: form.is_default,
       enabled: form.enabled,
     };
@@ -373,6 +378,16 @@ export default function AdminGroupsPage() {
                     placeholder="组描述（可选）"
                     maxLength={200}
                   />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>OIDC Claim 匹配值</Label>
+                  <Input
+                    value={form.oidc_claim_value}
+                    onChange={(e) => setForm({ ...form, oidc_claim_value: e.target.value })}
+                    placeholder="如 vip、premium（留空则不参与 OIDC 组映射）"
+                    maxLength={128}
+                  />
+                  <p className="text-xs text-zinc-500">OIDC 登录时，若 token 中指定 claim 的值匹配此项，用户将自动分配到该组。</p>
                 </div>
                 <div className="flex items-center gap-3 md:col-span-2">
                   <Checkbox

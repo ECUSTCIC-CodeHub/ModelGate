@@ -229,6 +229,9 @@ CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
   ensureColumn("users", "allowed_model_aliases", "allowed_model_aliases TEXT DEFAULT '[]'");
   ensureColumn("users", "note", "note TEXT");
   ensureColumn("users", "group_id", "group_id INTEGER REFERENCES groups(id)");
+  ensureColumn("users", "oidc_issuer", "oidc_issuer TEXT");
+  ensureColumn("users", "oidc_subject", "oidc_subject TEXT");
+  ensureColumn("groups", "oidc_claim_value", "oidc_claim_value TEXT");
   ensureColumn("keys", "deleted_at", "deleted_at DATETIME");
   const addedKeyUsedTokens = ensureColumn("keys", "used_tokens", "used_tokens INTEGER DEFAULT 0");
   const addedKeyUsedRequests = ensureColumn("keys", "used_requests", "used_requests INTEGER DEFAULT 0");
@@ -316,11 +319,20 @@ CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
      ON CONFLICT(key) DO NOTHING`,
   );
   initSetting.run("registration_enabled", "1");
+  initSetting.run("password_login_enabled", "1");
   initSetting.run("default_qps", "-1");
   initSetting.run("default_rpm", "-1");
   initSetting.run("default_tpm", "-1");
   initSetting.run("upstream_retry_enabled", "1");
   initSetting.run("upstream_retry_max_attempts", "3");
+  initSetting.run("oidc_enabled", "0");
+  initSetting.run("oidc_issuer_url", "");
+  initSetting.run("oidc_client_id", "");
+  initSetting.run("oidc_client_secret", "");
+  initSetting.run("oidc_scopes", "openid profile email");
+  initSetting.run("oidc_auto_register", "1");
+  initSetting.run("oidc_button_text", "OIDC 登录");
+  initSetting.run("oidc_group_claim", "");
 
 // Historical compatibility (one-time):
 // previous versions used 0 as "unlimited"; now -1 is unlimited.
@@ -391,6 +403,7 @@ export type DbGroup = {
   quota_requests: number | null;
   quota_tokens: number | null;
   allowed_model_aliases: string;
+  oidc_claim_value: string | null;
   is_default: number;
   enabled: number;
   created_at: string;
@@ -403,6 +416,8 @@ export type DbUser = {
   password_hash: string;
   role: "admin" | "user";
   group_id: number | null;
+  oidc_issuer: string | null;
+  oidc_subject: string | null;
   rpm: number;
   qps: number;
   tpm: number;

@@ -5,6 +5,7 @@ import { hashPassword } from "@/lib/auth";
 import { gatewayDb } from "@/lib/db";
 import { ensureAdmin } from "@/lib/guards";
 import { jsonError, jsonOk } from "@/lib/http";
+import { getEffectiveLimits, getUserGroup } from "@/lib/effective-limits";
 import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/model-access";
 import { getGatewaySettings } from "@/lib/settings";
 import { USERNAME_SCHEMA } from "@/lib/username";
@@ -56,7 +57,7 @@ export async function GET(request: Request) {
     .prepare(
       `SELECT u.id, u.username, u.role, u.group_id, g.name AS group_name,
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
-              u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.enabled, u.created_at
+              u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.enabled, u.created_at
        FROM users u
        LEFT JOIN groups g ON g.id = u.group_id AND g.deleted_at IS NULL
        ${whereSql}
@@ -74,11 +75,28 @@ export async function GET(request: Request) {
     )
     .get(...whereArgs) as { total: number };
 
+  const settings = getGatewaySettings();
+
   return jsonOk({
-    data: rows.map((row) => ({
-      ...row,
-      allowed_model_aliases: parseAllowedModelAliases((row as { allowed_model_aliases: string }).allowed_model_aliases),
-    })),
+    data: rows.map((row) => {
+      const r = row as Record<string, unknown>;
+      const group = getUserGroup((r.group_id as number | null) ?? null);
+      const effective = getEffectiveLimits(r as any);
+      return {
+        ...r,
+        allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases),
+        group_rpm: group?.rpm ?? null,
+        group_qps: group?.qps ?? null,
+        group_tpm: group?.tpm ?? null,
+        group_quota_requests: group?.quota_requests ?? null,
+        group_quota_tokens: group?.quota_tokens ?? null,
+        effective_rpm: effective.rpm,
+        effective_qps: effective.qps,
+        effective_tpm: effective.tpm,
+        effective_quota_requests: effective.quota_requests,
+        effective_quota_tokens: effective.quota_tokens,
+      };
+    }),
     paging: { limit, offset, total: total.total ?? 0 },
     sorting: {
       sort_by: sortBy in USER_SORT_COLUMNS ? sortBy : "created_at",
@@ -142,7 +160,7 @@ export async function POST(request: Request) {
     .prepare(
       `SELECT u.id, u.username, u.role, u.group_id, g.name AS group_name,
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
-              u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.enabled, u.created_at
+              u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.enabled, u.created_at
        FROM users u
        LEFT JOIN groups g ON g.id = u.group_id AND g.deleted_at IS NULL
        WHERE u.id = ? AND u.deleted_at IS NULL`,

@@ -12,6 +12,8 @@ export type CachedProfile = {
   rpm: number;
   qps: number;
   tpm: number;
+  oidc_issuer?: string | null;
+  oidc_subject?: string | null;
 };
 
 const KEY = "vlm-session";
@@ -45,6 +47,10 @@ export function getCachedProfile(): CachedProfile | null {
 
 export function setCachedProfile(profile: CachedProfile) {
   localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+}
+
+export function clearCachedProfile() {
+  localStorage.removeItem(PROFILE_KEY);
 }
 
 export function clearSession() {
