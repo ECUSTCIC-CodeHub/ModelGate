@@ -9,6 +9,7 @@ import {
   LayoutGrid,
   LogOut,
   Menu,
+  MoreHorizontal,
   Settings2,
   Shield,
   Sparkles,
@@ -16,6 +17,14 @@ import {
   Users,
   Waypoints,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useAuthProfile, useOidcEnabled } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import {
@@ -69,14 +78,14 @@ const adminMenus = [
   { href: "/dashboard/groups", label: "用户组管理", icon: Users },
   { href: "/dashboard/settings", label: "系统设置", icon: Settings2 },
   { href: "/dashboard/keys", label: "密钥管理", icon: KeyRound },
-  { href: "/dashboard/models", label: "可用模型", icon: Shield },
+  { href: "/dashboard/models", label: "接入指南", icon: Shield },
 ];
 
 const userMenus = [
   { href: "/dashboard", label: "首页概览", icon: LayoutGrid },
   { href: "/dashboard/logs", label: "请求日志", icon: Sparkles },
   { href: "/dashboard/keys", label: "密钥管理", icon: KeyRound },
-  { href: "/dashboard/models", label: "可用模型", icon: Shield },
+  { href: "/dashboard/models", label: "接入指南", icon: Shield },
 ];
 
 export function DashboardShell({ role, title, subtitle, right, children }: DashboardShellProps) {
@@ -113,6 +122,10 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
   function formatLimit(value: number | null | undefined) {
     if (value === null || value === undefined) return "-";
     if (value < 0) return "∞";
+    const abs = Math.abs(value);
+    if (abs >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`;
+    if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+    if (abs >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
     return String(value);
   }
 
@@ -185,47 +198,53 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
               </nav>
             </ScrollArea>
             {profileBrief ? (
-              <div className="mt-4 space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
-                <div>
+              <div
+                className="mt-4 flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3"
+                title={`RPM ${formatLimit(profileBrief.rpm)} · QPS ${formatLimit(profileBrief.qps)} · TPM ${formatLimit(profileBrief.tpm)}${oidcAvailable ? ` · OIDC ${profileBrief.oidc_subject ? "已绑定" : "未绑定"}` : ""}`}
+              >
+                <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-zinc-100">{profileBrief.username}</p>
-                  <p className="mt-1 text-xs text-zinc-400">{role === "admin" ? "管理员" : "普通用户"}</p>
+                  <p className="mt-0.5 truncate text-xs text-zinc-400">{role === "admin" ? "管理员" : "普通用户"}</p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <div className="min-w-[68px] flex-1 rounded-lg border border-white/10 bg-slate-950/50 p-2">
-                    <p className="text-[11px] text-zinc-500">RPM</p>
-                    <p className="mt-1 truncate text-sm font-medium tabular-nums text-zinc-100">{formatLimit(profileBrief.rpm)}</p>
-                  </div>
-                  <div className="min-w-[68px] flex-1 rounded-lg border border-white/10 bg-slate-950/50 p-2">
-                    <p className="text-[11px] text-zinc-500">QPS</p>
-                    <p className="mt-1 truncate text-sm font-medium tabular-nums text-zinc-100">{formatLimit(profileBrief.qps)}</p>
-                  </div>
-                  <div className="min-w-[68px] flex-1 rounded-lg border border-white/10 bg-slate-950/50 p-2">
-                    <p className="text-[11px] text-zinc-500">TPM</p>
-                    <p className="mt-1 truncate text-sm font-medium tabular-nums text-zinc-100">{formatLimit(profileBrief.tpm)}</p>
-                  </div>
-                </div>
-                {oidcAvailable ? (
-                  <div className="rounded-lg border border-white/10 bg-slate-950/50 p-2">
-                    <p className="text-[11px] text-zinc-500">OIDC</p>
-                    <p className="mt-1 truncate text-sm text-zinc-100">
-                      {profileBrief.oidc_subject ? "已绑定" : "未绑定"}
-                    </p>
-                  </div>
-                ) : null}
-                <div className="grid gap-2">
-                  <Button variant="outline" onClick={() => setPasswordDrawerOpen(true)}>修改密码</Button>
-                  {oidcAvailable ? (
-                    profileBrief.oidc_subject ? (
-                      <Button variant="outline" onClick={onOidcUnbind}>解绑 OIDC</Button>
-                    ) : (
-                      <Button variant="outline" onClick={onOidcBind}>绑定 OIDC</Button>
-                    )
-                  ) : null}
-                  <Button variant="secondary" onClick={onLogout}>
-                    <LogOut className="h-4 w-4" />
-                    退出登录
-                  </Button>
-                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" aria-label="账户操作" className="shrink-0">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" side="top" className="w-52">
+                    <DropdownMenuLabel className="font-normal">
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-zinc-500">RPM</p>
+                          <p className="mt-0.5 truncate font-mono text-sm text-zinc-100">{formatLimit(profileBrief.rpm)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-zinc-500">QPS</p>
+                          <p className="mt-0.5 truncate font-mono text-sm text-zinc-100">{formatLimit(profileBrief.qps)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-zinc-500">TPM</p>
+                          <p className="mt-0.5 truncate font-mono text-sm text-zinc-100">{formatLimit(profileBrief.tpm)}</p>
+                        </div>
+                      </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onSelect={() => setPasswordDrawerOpen(true)}>修改密码</DropdownMenuItem>
+                    {oidcAvailable ? (
+                      profileBrief.oidc_subject ? (
+                        <DropdownMenuItem onSelect={onOidcUnbind}>解绑 OIDC</DropdownMenuItem>
+                      ) : (
+                        <DropdownMenuItem onSelect={onOidcBind}>绑定 OIDC</DropdownMenuItem>
+                      )
+                    ) : null}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onSelect={onLogout} className="text-rose-300 focus:text-rose-200">
+                      <LogOut className="h-4 w-4" />
+                      退出登录
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             ) : null}
           </div>

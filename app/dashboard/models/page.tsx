@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Copy } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/empty-state";
-import { MetricCard } from "@/components/dashboard/metric-card";
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { useAuthProfile } from "@/components/providers/auth-provider";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
@@ -72,20 +71,15 @@ export default function AvailableModelsPage() {
   return (
     <DashboardShell
       role={role}
-      title="可用模型"
-      subtitle="这里展示当前账号实际可调用的模型标识，以及支持的协议端点。"
+      title="接入指南"
+      subtitle="一站式查看接入配置、协议端点与当前账号可调用的模型列表。"
     >
       <div className="space-y-4 pb-6">
-        <div className="grid gap-4 md:grid-cols-2">
-          <MetricCard label="模型数量" value={String(rows.length)} hint="当前账号可直接调用的模型数量" />
-          <MetricCard label="支持协议" value="3 种" hint="Chat Completions / Responses / Messages" />
-        </div>
-
         <Card>
           <CardHeader>
             <SectionTitle
               title="接入配置"
-              description="将 Base URL 填入客户端配置，使用 API Key 和模型 ID 即可调用。"
+              description="将 Base URL 填入客户端配置，使用 API Key 和模型 ID 即可调用；网关同时兼容下方三种协议端点。"
             />
           </CardHeader>
           <CardContent className="space-y-5">
@@ -100,42 +94,36 @@ export default function AvailableModelsPage() {
               </div>
               <p className="text-xs text-zinc-500">适用于 OpenAI SDK 等客户端的 base_url / api_base 配置项。</p>
             </div>
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardHeader>
-            <SectionTitle
-              title="协议端点"
-              description="网关兼容以下三种协议，均使用相同的 API Key 和模型 ID 调用。"
-            />
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto rounded-xl border border-white/10">
-              <Table className="min-w-[600px]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>协议</TableHead>
-                    <TableHead>端点地址</TableHead>
-                    <TableHead className="w-16" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {ENDPOINTS.map((ep) => (
-                    <TableRow key={ep.path}>
-                      <TableCell className="text-sm font-medium text-zinc-100">{ep.label}</TableCell>
-                      <TableCell>
-                        <code className="rounded bg-white/5 px-2 py-1 text-xs text-zinc-300">{origin}{ep.path}</code>
-                      </TableCell>
-                      <TableCell>
-                        <Button size="sm" variant="ghost" onClick={() => copyText(`${origin}${ep.path}`)}>
-                          <Copy className="h-3.5 w-3.5" />
-                        </Button>
-                      </TableCell>
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-zinc-400">协议端点</p>
+              <div className="overflow-x-auto rounded-xl border border-white/10">
+                <Table className="min-w-[600px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>协议</TableHead>
+                      <TableHead>端点地址</TableHead>
+                      <TableHead className="w-16" />
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {ENDPOINTS.map((ep) => (
+                      <TableRow key={ep.path}>
+                        <TableCell className="text-sm font-medium text-zinc-100">{ep.label}</TableCell>
+                        <TableCell>
+                          <code className="rounded bg-white/5 px-2 py-1 text-xs text-zinc-300">{origin}{ep.path}</code>
+                        </TableCell>
+                        <TableCell>
+                          <Button size="sm" variant="ghost" onClick={() => copyText(`${origin}${ep.path}`)}>
+                            <Copy className="h-3.5 w-3.5" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <p className="text-xs text-zinc-500">三种协议共用同一 API Key 与模型 ID。</p>
             </div>
           </CardContent>
         </Card>

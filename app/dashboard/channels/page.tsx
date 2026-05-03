@@ -158,6 +158,7 @@ export default function AdminChannelsPage() {
   const [channelEditingId, setChannelEditingId] = useState<number | null>(null);
   const [channelForm, setChannelForm] = useState<ChannelForm>(initialChannelForm);
   const [channelModels, setChannelModels] = useState<ChannelModelDraft[]>([{ ...initialModelDraft }]);
+  const [probingModels, setProbingModels] = useState(false);
 
   const [modelDrawerOpen, setModelDrawerOpen] = useState(false);
   const [modelEditingId, setModelEditingId] = useState<number | null>(null);
@@ -229,6 +230,51 @@ export default function AdminChannelsPage() {
 
   function updateChannelModelDraft(index: number, patch: Partial<ChannelModelDraft>) {
     setChannelModels((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  }
+
+  async function probeUpstreamModels() {
+    if (!channelForm.base_url.trim() || !channelForm.api_key.trim()) {
+      toast({ variant: "error", description: "请先填写 Base URL 与 API Key。" });
+      return;
+    }
+    setProbingModels(true);
+    try {
+      const response = await authedFetch("/api/dashboard/channels/probe-models", {
+        method: "POST",
+        body: JSON.stringify({
+          base_url: channelForm.base_url.trim(),
+          api_key: channelForm.api_key.trim(),
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        toast({ variant: "error", description: getApiMessage(data, "拉取上游模型列表失败。") });
+        return;
+      }
+      const ids = (data?.data ?? []) as string[];
+      if (ids.length === 0) {
+        toast({ variant: "error", description: "上游未返回任何模型。" });
+        return;
+      }
+      const protocol = channelForm.supported_protocols[0] ?? "chat_completions";
+      setChannelModels((prev) => {
+        const existingAliases = new Set(prev.map((m) => m.alias.trim()).filter(Boolean));
+        const filledFromPrev = prev.filter((m) => m.alias.trim() || m.real_model.trim());
+        const additions = ids
+          .filter((id) => !existingAliases.has(id))
+          .map<ChannelModelDraft>((id) => ({
+            ...initialModelDraft,
+            alias: id,
+            real_model: id,
+            upstream_protocol: protocol,
+          }));
+        const merged = [...filledFromPrev, ...additions];
+        return merged.length > 0 ? merged : [{ ...initialModelDraft, upstream_protocol: protocol }];
+      });
+      toast({ variant: "success", description: `已拉取 ${ids.length} 个模型，可继续编辑别名。` });
+    } finally {
+      setProbingModels(false);
+    }
   }
 
   async function submitChannel(event: FormEvent) {
@@ -695,7 +741,18 @@ export default function AdminChannelsPage() {
                     <p className="text-sm font-medium text-zinc-100">初始模型列表</p>
                     <p className="text-xs text-zinc-500">别名就是客户端调用时传入的 model，支持 * 作为兜底模型。</p>
                   </div>
-                  <Button type="button" variant="outline" size="sm" onClick={addChannelModelDraft}>添加模型</Button>
+                  <div className="flex shrink-0 gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={probingModels}
+                      onClick={() => void probeUpstreamModels()}
+                    >
+                      {probingModels ? "拉取中…" : "从上游拉取"}
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={addChannelModelDraft}>添加模型</Button>
+                  </div>
                 </div>
                 <div className="space-y-3">
                   {channelModels.map((item, index) => (

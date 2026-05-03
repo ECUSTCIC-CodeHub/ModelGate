@@ -54,6 +54,13 @@ export async function fetchDiscovery(issuerUrl: string): Promise<OidcDiscovery> 
   if (!data.authorization_endpoint || !data.token_endpoint) {
     throw new Error("OIDC discovery response missing required endpoints");
   }
+  console.log("[OIDC] discovery:", {
+    issuer: data.issuer,
+    authorization_endpoint: data.authorization_endpoint,
+    token_endpoint: data.token_endpoint,
+    userinfo_endpoint: data.userinfo_endpoint,
+    jwks_uri: data.jwks_uri,
+  });
   discoveryCache.set(issuerUrl, { data, expiresAt: now + DISCOVERY_TTL_MS });
   return data;
 }
@@ -110,10 +117,20 @@ export async function exchangeCode(
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
+    console.error("[OIDC] token exchange failed:", response.status, text);
     throw new Error(`OIDC token exchange failed: ${response.status} ${text}`);
   }
 
-  return (await response.json()) as OidcTokenResponse;
+  const tokenData = (await response.json()) as OidcTokenResponse & { scope?: string };
+  console.log("[OIDC] token response:", {
+    token_type: tokenData.token_type,
+    expires_in: tokenData.expires_in,
+    granted_scope: tokenData.scope,
+    has_access_token: Boolean(tokenData.access_token),
+    has_id_token: Boolean(tokenData.id_token),
+    has_refresh_token: Boolean(tokenData.refresh_token),
+  });
+  return tokenData;
 }
 
 function decodeJwtPayload(token: string): Record<string, unknown> {
@@ -130,6 +147,10 @@ export function extractIdTokenClaims(
   expectedNonce?: string,
 ): OidcUserInfo & { _claims: Record<string, unknown> } {
   const claims = decodeJwtPayload(idToken);
+  console.log("[OIDC] id_token claims:", {
+    available_claim_keys: Object.keys(claims),
+    claims,
+  });
 
   const iss = claims.iss as string | undefined;
   const expectedIssNormalized = expectedIssuer.replace(/\/+$/, "");
@@ -168,14 +189,22 @@ export function extractIdTokenClaims(
 export async function fetchUserInfo(
   discovery: OidcDiscovery,
   accessToken: string,
-): Promise<OidcUserInfo> {
+): Promise<OidcUserInfo & { _claims: Record<string, unknown> }> {
   if (!discovery.userinfo_endpoint) throw new Error("No userinfo endpoint");
   const response = await fetch(discovery.userinfo_endpoint, {
     headers: { authorization: `Bearer ${accessToken}` },
     signal: AbortSignal.timeout(10_000),
   });
-  if (!response.ok) throw new Error(`Userinfo fetch failed: ${response.status}`);
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    console.error("[OIDC] userinfo fetch failed:", response.status, text);
+    throw new Error(`Userinfo fetch failed: ${response.status}`);
+  }
   const data = (await response.json()) as Record<string, unknown>;
+  console.log("[OIDC] userinfo response:", {
+    available_claim_keys: Object.keys(data),
+    claims: data,
+  });
   const sub = data.sub as string | undefined;
   if (!sub) throw new Error("Userinfo missing sub");
   return {
@@ -183,6 +212,7 @@ export async function fetchUserInfo(
     name: (data.name as string) ?? undefined,
     preferred_username: (data.preferred_username as string) ?? undefined,
     email: (data.email as string) ?? undefined,
+    _claims: data,
   };
 }
 
@@ -209,7 +239,10 @@ export function resolveGroupFromClaims(
   if (!groupClaim) return null;
 
   const value = claims[groupClaim];
-  if (value === undefined || value === null) return null;
+  if (value === undefined || value === null) {
+    console.log("[OIDC] group claim resolution: claim missing", { groupClaim });
+    return null;
+  }
 
   const claimValues = Array.isArray(value) ? value.map(String) : [String(value)];
 
@@ -221,9 +254,20 @@ export function resolveGroupFromClaims(
 
   for (const group of groups) {
     if (claimValues.includes(group.oidc_claim_value)) {
+      console.log("[OIDC] group claim matched:", {
+        groupClaim,
+        claimValues,
+        matchedGroupId: group.id,
+        matchedValue: group.oidc_claim_value,
+      });
       return group.id;
     }
   }
 
+  console.log("[OIDC] group claim no match:", {
+    groupClaim,
+    claimValues,
+    candidateGroups: groups,
+  });
   return null;
 }

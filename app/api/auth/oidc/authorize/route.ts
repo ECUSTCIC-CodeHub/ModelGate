@@ -32,6 +32,12 @@ export async function GET(request: Request) {
 
   const statePayload = JSON.stringify({ state, nonce, bind });
 
+  console.log("[OIDC] authorize request:", {
+    configuredScopes: config.scopes,
+    redirectUri,
+    bind,
+  });
+
   const authUrl = buildAuthorizationUrl(
     discovery,
     config.clientId,
@@ -40,6 +46,7 @@ export async function GET(request: Request) {
     state,
     nonce,
   );
+  console.log("[OIDC] authorization URL:", authUrl);
 
   const response = NextResponse.redirect(authUrl, 302);
   response.cookies.set("oidc-state", statePayload, {

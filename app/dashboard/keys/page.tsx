@@ -51,7 +51,6 @@ export default function ConsoleKeysPage() {
     const [keys, setKeys] = useState<KeyRow[]>([]);
     const [error, setError] = useState("");
     const [role, setRole] = useState<"admin" | "user">(() => initialProfile?.role ?? getCachedProfile()?.role ?? "user");
-    const [baseUrlExample, setBaseUrlExample] = useState("HOST/api/v1");
     const { toast } = useToast();
 
     async function load() {
@@ -75,7 +74,6 @@ export default function ConsoleKeysPage() {
     }
 
     useEffect(() => {
-        setBaseUrlExample(`${window.location.origin}/api/v1`);
         void load();
     }, [router]);
 
@@ -131,7 +129,7 @@ export default function ConsoleKeysPage() {
         <DashboardShell
             role={role}
             title="密钥管理"
-            subtitle="管理用于网关调用的 API 密钥，保持 OpenAI 兼容调用方式。"
+            subtitle="创建并管理用于调用网关的 API 密钥。"
         >
             <div className="space-y-4 pb-6">
                 <div className="grid gap-4 md:grid-cols-3">
@@ -144,7 +142,7 @@ export default function ConsoleKeysPage() {
                     <CardHeader>
                         <SectionTitle
                             title="密钥列表"
-                            description={`OpenAI 兼容调用时，base_url 使用 ${baseUrlExample}，api_key 使用这里创建的密钥。`}
+                            description="请妥善保管密钥；Base URL、协议端点等接入参数请查看「接入指南」。"
                             action={<Button onClick={createKey}>创建密钥</Button>}
                         />
                     </CardHeader>

@@ -399,60 +399,63 @@ export default function AdminUsersPage() {
 
             {rows.length > 0 ? (
               <div className="overflow-x-auto rounded-xl border border-white/10">
-                <Table className="min-w-[1120px]">
+                <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>序号</TableHead>
-                      <TableHead>用户名</TableHead>
-                      <TableHead>角色</TableHead>
-                      <TableHead>用户组</TableHead>
+                      <TableHead className="w-40">用户名</TableHead>
+                      <TableHead className="w-px whitespace-nowrap">标签</TableHead>
+                      <TableHead className="w-px whitespace-nowrap">用户组</TableHead>
                       <TableHead>备注</TableHead>
-                      <TableHead>OIDC</TableHead>
-                      <TableHead>状态</TableHead>
-                      <TableHead>有效限速</TableHead>
-                      <TableHead>累计请求</TableHead>
-                      <TableHead>累计 Token</TableHead>
-                      <TableHead>有效请求配额</TableHead>
-                      <TableHead>有效 Token 配额</TableHead>
-                      <TableHead className="text-right">操作</TableHead>
+                      <TableHead className="w-px whitespace-nowrap">限速 RPM/QPS/TPM</TableHead>
+                      <TableHead className="w-px whitespace-nowrap">累计 请求/Token</TableHead>
+                      <TableHead className="w-px whitespace-nowrap">配额 请求/Token</TableHead>
+                      <TableHead className="w-px whitespace-nowrap text-right">操作</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {rows.map((row, index) => (
+                    {rows.map((row) => (
                       <TableRow key={row.id}>
-                        <TableCell>{(page - 1) * pageSize + index + 1}</TableCell>
-                        <TableCell>{row.username}</TableCell>
-                        <TableCell>
-                          <Badge variant={row.role === "admin" ? "default" : "secondary"}>{row.role === "admin" ? "管理员" : "普通用户"}</Badge>
+                        <TableCell className="w-40 max-w-40 font-medium text-zinc-100">
+                          <span className="block truncate" title={row.username}>{row.username}</span>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="w-px whitespace-nowrap">
+                          <div className="flex gap-1">
+                            <Badge variant={row.role === "admin" ? "default" : "secondary"}>
+                              {row.role === "admin" ? "管理员" : "普通用户"}
+                            </Badge>
+                            <Badge variant={row.enabled ? "default" : "secondary"}>
+                              {row.enabled ? "启用" : "禁用"}
+                            </Badge>
+                            {row.oidc_subject ? (
+                              <Badge variant="outline" title={`${row.oidc_issuer}\n${row.oidc_subject}`}>OIDC</Badge>
+                            ) : null}
+                          </div>
+                        </TableCell>
+                        <TableCell className="w-px whitespace-nowrap">
                           <span className="text-sm text-zinc-300">{row.group_name ?? "-"}</span>
                         </TableCell>
-                        <TableCell className="max-w-56">
-                          <span className="block truncate text-zinc-300" title={row.note ?? ""}>
+                        <TableCell className="max-w-0">
+                          <span className="block truncate text-sm text-zinc-300" title={row.note ?? ""}>
                             {row.note?.trim() || "-"}
                           </span>
                         </TableCell>
-                        <TableCell>
-                          {row.oidc_subject ? (
-                            <Badge variant="default" title={`${row.oidc_issuer}\n${row.oidc_subject}`}>已绑定</Badge>
-                          ) : (
-                            <span className="text-sm text-zinc-500">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={row.enabled ? "default" : "secondary"}>{row.enabled ? "启用" : "禁用"}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <span title={`用户: ${formatLimit(row.rpm)}/${formatLimit(row.qps)}/${formatLimit(row.tpm)}`}>
+                        <TableCell className="w-px whitespace-nowrap">
+                          <span
+                            className="font-mono text-sm"
+                            title={`用户: ${formatLimit(row.rpm)}/${formatLimit(row.qps)}/${formatLimit(row.tpm)}`}
+                          >
                             {formatLimit(row.effective_rpm)}/{formatLimit(row.effective_qps)}/{formatLimit(row.effective_tpm)}
                           </span>
                         </TableCell>
-                        <TableCell>{formatNumber(row.used_requests)}</TableCell>
-                        <TableCell>{formatNumber(row.used_tokens)}</TableCell>
-                        <TableCell>{row.effective_quota_requests === null ? "∞" : formatNumber(row.effective_quota_requests)}</TableCell>
-                        <TableCell>{row.effective_quota_tokens === null ? "∞" : formatNumber(row.effective_quota_tokens)}</TableCell>
-                        <TableCell className="space-x-2 text-right">
+                        <TableCell className="w-px whitespace-nowrap font-mono text-sm" title="请求 / Token">
+                          {formatNumber(row.used_requests)} / {formatNumber(row.used_tokens)}
+                        </TableCell>
+                        <TableCell className="w-px whitespace-nowrap font-mono text-sm" title="请求 / Token">
+                          {row.effective_quota_requests === null ? "∞" : formatNumber(row.effective_quota_requests)}
+                          {" / "}
+                          {row.effective_quota_tokens === null ? "∞" : formatNumber(row.effective_quota_tokens)}
+                        </TableCell>
+                        <TableCell className="w-px space-x-2 whitespace-nowrap text-right">
                           <Button size="sm" variant="outline" onClick={() => onEditClick(row)}>编辑</Button>
                           <AlertDialog>
                             <AlertDialogTrigger asChild>

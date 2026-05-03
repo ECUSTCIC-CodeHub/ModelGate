@@ -228,47 +228,66 @@ export default function AdminLogsPage() {
   })();
 
   const columns = useMemo<Array<ColumnDef<LogRow>>>(() => {
-    const cols: Array<ColumnDef<LogRow>> = [{
-      id: "serial",
-      header: "序号",
-      cell: ({ row }) => (page - 1) * pageSize + row.index + 1,
-    }];
+    const cols: Array<ColumnDef<LogRow>> = [];
+
+    cols.push({
+      accessorKey: "created_at",
+      header: "时间",
+      cell: ({ row }) => (
+        <span className="whitespace-nowrap font-mono text-xs text-zinc-300">
+          {new Date(row.original.created_at).toLocaleString()}
+        </span>
+      ),
+    });
 
     if (role === "admin") {
-      cols.push({ accessorKey: "username", header: "用户" });
+      cols.push({
+        accessorKey: "username",
+        header: "用户",
+        cell: ({ row }) => (
+          <span className="block max-w-32 truncate" title={row.original.username}>
+            {row.original.username}
+          </span>
+        ),
+      });
+    }
+
+    cols.push({
+      id: "model",
+      header: "模型",
+      cell: ({ row }) => {
+        const text = row.original.real_model ?? row.original.model_alias ?? "-";
+        return (
+          <span className="block max-w-48 truncate" title={text}>{text}</span>
+        );
+      },
+    });
+
+    if (role === "admin") {
+      cols.push({
+        accessorKey: "channel_name",
+        header: "渠道",
+        cell: ({ row }) => {
+          const text = row.original.channel_name ?? (row.original.status_code >= 400 ? "网关拦截" : "-");
+          return <span className="block max-w-40 truncate" title={text}>{text}</span>;
+        },
+      });
     }
 
     cols.push(
       {
-        id: "model",
-        header: "模型",
-        cell: ({ row }) => row.original.real_model ?? row.original.model_alias ?? "-",
-      },
-      ...(role === "admin"
-        ? [{
-            accessorKey: "channel_name",
-            header: "渠道",
-            cell: ({ row }: { row: { original: LogRow } }) =>
-              row.original.channel_name ?? (row.original.status_code >= 400 ? "网关拦截" : "-"),
-          } satisfies ColumnDef<LogRow>]
-        : []),
-      {
-        accessorKey: "stream",
-        header: "类型",
-        cell: ({ row }) => (row.original.stream ? "流式" : "普通"),
-      },
-      {
         accessorKey: "status_code",
         header: "状态",
         cell: ({ row }) => (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 whitespace-nowrap">
             <Badge variant={row.original.status_code >= 400 ? "secondary" : "default"}>
               {row.original.status_code}
             </Badge>
+            <span className="text-xs text-zinc-500">{row.original.stream ? "流式" : "普通"}</span>
             {role === "admin" && (row.original.route_attempts ?? 1) > 1 ? (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span className="cursor-help text-xs text-zinc-400">重试</span>
+                  <span className="cursor-help text-xs text-zinc-400">·重试</span>
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>路由尝试 {(row.original.route_attempts ?? 1)} 次</p>
@@ -292,7 +311,7 @@ export default function AdminLogsPage() {
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  className="inline-flex items-center text-left text-inherit"
+                  className="inline-flex items-center whitespace-nowrap text-left text-inherit"
                   title={formatNumber(totalTokens)}
                 >
                   <span>{formatTokenCount(totalTokens)}</span>
@@ -307,26 +326,27 @@ export default function AdminLogsPage() {
         },
       },
       {
-        accessorKey: "first_token_latency_ms",
-        header: "首Token用时",
-        cell: ({ row }) => formatDuration(row.original.first_token_latency_ms),
-      },
-      {
-        accessorKey: "output_tps",
-        header: "速度",
-        cell: ({ row }) =>
-          typeof row.original.output_tps === "number" ? `${row.original.output_tps.toFixed(2)} token/s` : "-",
-      },
-      {
-        accessorKey: "latency_ms",
-        header: "总用时",
-        cell: ({ row }) => formatDuration(row.original.latency_ms),
+        id: "performance",
+        header: "耗时 / 速度",
+        cell: ({ row }) => {
+          const total = formatDuration(row.original.latency_ms);
+          const ttft = formatDuration(row.original.first_token_latency_ms);
+          const tps = typeof row.original.output_tps === "number"
+            ? `${row.original.output_tps.toFixed(1)} t/s`
+            : "-";
+          return (
+            <div className="whitespace-nowrap leading-tight">
+              <div className="text-sm text-zinc-100">{total}</div>
+              <div className="text-xs text-zinc-500">首 {ttft} · {tps}</div>
+            </div>
+          );
+        },
       },
       {
         accessorKey: "error_message",
         header: "失败原因",
         cell: ({ row }) => {
-          if (row.original.status_code < 400) return "-";
+          if (row.original.status_code < 400) return <span className="text-zinc-500">-</span>;
           return (
             <span className="block max-w-56 truncate text-zinc-300" title={row.original.error_message ?? "-"}>
               {row.original.error_message ?? "-"}
@@ -334,15 +354,10 @@ export default function AdminLogsPage() {
           );
         },
       },
-      {
-        accessorKey: "created_at",
-        header: "时间",
-        cell: ({ row }) => new Date(row.original.created_at).toLocaleString(),
-      },
     );
 
     return cols;
-  }, [page, role]);
+  }, [role]);
 
   return (
     <DashboardShell
@@ -416,7 +431,6 @@ export default function AdminLogsPage() {
                   columns={columns}
                   data={rows}
                   emptyText={loading ? "加载中..." : "暂无日志"}
-                  tableClassName="min-w-[1280px]"
                 />
               </div>
             ) : (

@@ -77,7 +77,8 @@ export async function GET(request: Request) {
   let discovery;
   try {
     discovery = await fetchDiscovery(config.issuerUrl);
-  } catch {
+  } catch (err) {
+    console.error("[OIDC] discovery failed:", err);
     return redirectWithError(origin, "无法连接 OIDC 提供商", isBind);
   }
 
@@ -90,7 +91,8 @@ export async function GET(request: Request) {
       code,
       redirectUri,
     );
-  } catch {
+  } catch (err) {
+    console.error("[OIDC] exchangeCode failed:", err);
     return redirectWithError(origin, "Token 交换失败", isBind);
   }
 
@@ -106,10 +108,29 @@ export async function GET(request: Request) {
       );
       rawClaims = result._claims;
       userInfo = result;
-    } else {
-      userInfo = await fetchUserInfo(discovery, tokenResponse.access_token);
     }
-  } catch {
+
+    if (discovery.userinfo_endpoint && tokenResponse.access_token) {
+      try {
+        const ui = await fetchUserInfo(discovery, tokenResponse.access_token);
+        rawClaims = { ...rawClaims, ...ui._claims };
+        userInfo = {
+          sub: ui.sub ?? userInfo!?.sub,
+          name: ui.name ?? userInfo?.name,
+          preferred_username: ui.preferred_username ?? userInfo?.preferred_username,
+          email: ui.email ?? userInfo?.email,
+        };
+      } catch (err) {
+        if (!userInfo!) throw err;
+        console.warn("[OIDC] userinfo fetch failed, falling back to id_token claims:", err);
+      }
+    }
+
+    if (!userInfo!) throw new Error("No id_token and no userinfo");
+    console.log("[OIDC] merged userInfo:", userInfo);
+    console.log("[OIDC] merged claim keys:", Object.keys(rawClaims));
+  } catch (err) {
+    console.error("[OIDC] userInfo resolution failed:", err);
     return redirectWithError(origin, "用户信息获取失败", isBind);
   }
 
