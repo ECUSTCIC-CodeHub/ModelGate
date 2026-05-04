@@ -8,6 +8,7 @@ import {
   generateState,
   generateNonce,
   buildAuthorizationUrl,
+  resolveRedirectUri,
 } from "@/lib/oidc";
 
 export async function GET(request: Request) {
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const bind = url.searchParams.get("bind") === "1";
-  const redirectUri = `${url.origin}/api/auth/oidc/callback`;
+  const redirectUri = resolveRedirectUri(config, request.url);
 
   let discovery;
   try {
@@ -32,12 +33,6 @@ export async function GET(request: Request) {
 
   const statePayload = JSON.stringify({ state, nonce, bind });
 
-  console.log("[OIDC] authorize request:", {
-    configuredScopes: config.scopes,
-    redirectUri,
-    bind,
-  });
-
   const authUrl = buildAuthorizationUrl(
     discovery,
     config.clientId,
@@ -46,7 +41,6 @@ export async function GET(request: Request) {
     state,
     nonce,
   );
-  console.log("[OIDC] authorization URL:", authUrl);
 
   const response = NextResponse.redirect(authUrl, 302);
   response.cookies.set("oidc-state", statePayload, {

@@ -11,6 +11,7 @@ import {
   fetchUserInfo,
   deriveUsername,
   resolveGroupFromClaims,
+  resolveRedirectUri,
   type OidcUserInfo,
 } from "@/lib/oidc";
 import { getGatewaySettings } from "@/lib/settings";
@@ -72,13 +73,12 @@ export async function GET(request: Request) {
   }
 
   const isBind = statePayload.bind;
-  const redirectUri = `${origin}/api/auth/oidc/callback`;
+  const redirectUri = resolveRedirectUri(config, request.url);
 
   let discovery;
   try {
     discovery = await fetchDiscovery(config.issuerUrl);
-  } catch (err) {
-    console.error("[OIDC] discovery failed:", err);
+  } catch {
     return redirectWithError(origin, "无法连接 OIDC 提供商", isBind);
   }
 
@@ -91,8 +91,7 @@ export async function GET(request: Request) {
       code,
       redirectUri,
     );
-  } catch (err) {
-    console.error("[OIDC] exchangeCode failed:", err);
+  } catch {
     return redirectWithError(origin, "Token 交换失败", isBind);
   }
 
@@ -122,15 +121,11 @@ export async function GET(request: Request) {
         };
       } catch (err) {
         if (!userInfo) throw err;
-        console.warn("[OIDC] userinfo fetch failed, falling back to id_token claims:", err);
       }
     }
 
     if (!userInfo) throw new Error("No id_token and no userinfo");
-    console.log("[OIDC] merged userInfo:", userInfo);
-    console.log("[OIDC] merged claim keys:", Object.keys(rawClaims));
-  } catch (err) {
-    console.error("[OIDC] userInfo resolution failed:", err);
+  } catch {
     return redirectWithError(origin, "用户信息获取失败", isBind);
   }
 

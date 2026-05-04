@@ -33,6 +33,7 @@ export default function AdminSettingsPage() {
   const [oidcAutoRegister, setOidcAutoRegister] = useState(true);
   const [oidcButtonText, setOidcButtonText] = useState("OIDC 登录");
   const [oidcGroupClaim, setOidcGroupClaim] = useState("");
+  const [oidcRedirectUri, setOidcRedirectUri] = useState("");
   const { toast } = useToast();
 
   async function ensureAdmin() {
@@ -71,6 +72,11 @@ export default function AdminSettingsPage() {
       setOidcAutoRegister(data.data.oidc_auto_register !== 0);
       setOidcButtonText(data.data.oidc_button_text ?? "OIDC 登录");
       setOidcGroupClaim(data.data.oidc_group_claim ?? "");
+      const savedRedirectUri = data.data.oidc_redirect_uri ?? "";
+      setOidcRedirectUri(
+        savedRedirectUri ||
+          (typeof window !== "undefined" ? `${window.location.origin}/api/auth/oidc/callback` : ""),
+      );
     }
   }
 
@@ -99,6 +105,7 @@ export default function AdminSettingsPage() {
         oidc_auto_register: oidcAutoRegister,
         oidc_button_text: oidcButtonText,
         oidc_group_claim: oidcGroupClaim,
+        oidc_redirect_uri: oidcRedirectUri,
       }),
     });
     const data = await response.json().catch(() => null);
@@ -213,15 +220,18 @@ export default function AdminSettingsPage() {
             <div className="space-y-2 rounded-xl border border-white/10 bg-slate-950/50 px-4 py-3">
               <Label>回调地址 (Redirect URI)</Label>
               <div className="flex items-center gap-2">
-                <code className="flex-1 truncate rounded bg-white/5 px-3 py-2 text-sm text-zinc-300">
-                  {typeof window !== "undefined" ? `${window.location.origin}/api/auth/oidc/callback` : "/api/auth/oidc/callback"}
-                </code>
+                <Input
+                  className="flex-1"
+                  placeholder={typeof window !== "undefined" ? `${window.location.origin}/api/auth/oidc/callback` : "https://your-domain.com/api/auth/oidc/callback"}
+                  value={oidcRedirectUri}
+                  onChange={(e) => setOidcRedirectUri(e.target.value)}
+                />
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    const url = `${window.location.origin}/api/auth/oidc/callback`;
+                    const url = oidcRedirectUri || `${window.location.origin}/api/auth/oidc/callback`;
                     void navigator.clipboard.writeText(url).then(() => {
                       toast({ variant: "success", description: "已复制到剪贴板" });
                     });
@@ -230,7 +240,7 @@ export default function AdminSettingsPage() {
                   复制
                 </Button>
               </div>
-              <p className="text-xs text-zinc-500">在 OIDC 提供商中配置此地址作为允许的回调 URI。</p>
+              <p className="text-xs text-zinc-500">默认按当前页面 origin 自动填充，保存后将固化到服务端，OIDC 流程统一使用此地址。</p>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
