@@ -31,7 +31,7 @@ export type GatewaySettings = {
   oidc_auto_register: number;
   oidc_button_text: string;
   oidc_group_claim: string;
-  oidc_redirect_uri: string;
+  public_base_url: string;
 };
 
 function rateLimitInt(value: string | null | undefined, fallback: number) {
@@ -57,7 +57,7 @@ const OIDC_KEYS = [
   "oidc_auto_register",
   "oidc_button_text",
   "oidc_group_claim",
-  "oidc_redirect_uri",
+  "public_base_url",
 ] as const;
 
 const GATEWAY_KEYS = [
@@ -102,7 +102,7 @@ export function getGatewaySettings(): GatewaySettings {
     oidc_auto_register: map.get("oidc_auto_register") === "0" ? 0 : 1,
     oidc_button_text: map.get("oidc_button_text") || "OIDC 登录",
     oidc_group_claim: map.get("oidc_group_claim") ?? "",
-    oidc_redirect_uri: map.get("oidc_redirect_uri") ?? "",
+    public_base_url: map.get("public_base_url") ?? "",
   };
 }
 
@@ -124,7 +124,7 @@ export function setGatewaySettings(input: {
   oidc_auto_register?: boolean;
   oidc_button_text?: string;
   oidc_group_claim?: string;
-  oidc_redirect_uri?: string;
+  public_base_url?: string;
 }) {
   const values: Record<string, string> = {
     registration_enabled: input.registration_enabled ? "1" : "0",
@@ -146,7 +146,7 @@ export function setGatewaySettings(input: {
   if (input.oidc_auto_register !== undefined) values.oidc_auto_register = input.oidc_auto_register ? "1" : "0";
   if (input.oidc_button_text !== undefined) values.oidc_button_text = input.oidc_button_text.trim() || "OIDC 登录";
   if (input.oidc_group_claim !== undefined) values.oidc_group_claim = input.oidc_group_claim.trim();
-  if (input.oidc_redirect_uri !== undefined) values.oidc_redirect_uri = input.oidc_redirect_uri.trim();
+  if (input.public_base_url !== undefined) values.public_base_url = input.public_base_url.trim().replace(/\/+$/, "");
 
   const upsert = gatewayDb.prepare(
     `INSERT INTO settings (key, value, updated_at)

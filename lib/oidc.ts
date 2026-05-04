@@ -39,13 +39,17 @@ export function getOidcConfig() {
     autoRegister: s.oidc_auto_register === 1,
     buttonText: s.oidc_button_text,
     groupClaim: s.oidc_group_claim,
-    redirectUri: s.oidc_redirect_uri,
   };
 }
 
-export function resolveRedirectUri(config: { redirectUri: string }, requestUrl: string): string {
-  if (config.redirectUri) return config.redirectUri;
-  return `${new URL(requestUrl).origin}/api/auth/oidc/callback`;
+export function getPublicOrigin(requestUrl: string): string {
+  const s = getGatewaySettings();
+  if (s.public_base_url) return s.public_base_url;
+  return new URL(requestUrl).origin;
+}
+
+export function resolveRedirectUri(requestUrl: string): string {
+  return `${getPublicOrigin(requestUrl)}/api/auth/oidc/callback`;
 }
 
 export async function fetchDiscovery(issuerUrl: string): Promise<OidcDiscovery> {

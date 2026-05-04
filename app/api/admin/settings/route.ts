@@ -23,7 +23,7 @@ const schema = z.object({
   oidc_auto_register: z.boolean().optional(),
   oidc_button_text: z.string().optional(),
   oidc_group_claim: z.string().optional(),
-  oidc_redirect_uri: z.string().optional(),
+  public_base_url: z.string().optional(),
 });
 
 export async function GET(request: Request) {

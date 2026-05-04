@@ -12,6 +12,7 @@ import {
   deriveUsername,
   resolveGroupFromClaims,
   resolveRedirectUri,
+  getPublicOrigin,
   type OidcUserInfo,
 } from "@/lib/oidc";
 import { getGatewaySettings } from "@/lib/settings";
@@ -37,7 +38,7 @@ function redirectWithError(origin: string, message: string, bind = false) {
 export async function GET(request: Request) {
   const config = getOidcConfig();
   const url = new URL(request.url);
-  const origin = url.origin;
+  const origin = getPublicOrigin(request.url);
 
   if (!config.enabled || !config.issuerUrl || !config.clientId) {
     return redirectWithError(origin, "OIDC 未启用");
@@ -73,7 +74,7 @@ export async function GET(request: Request) {
   }
 
   const isBind = statePayload.bind;
-  const redirectUri = resolveRedirectUri(config, request.url);
+  const redirectUri = resolveRedirectUri(request.url);
 
   let discovery;
   try {

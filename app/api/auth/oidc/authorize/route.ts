@@ -19,7 +19,7 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const bind = url.searchParams.get("bind") === "1";
-  const redirectUri = resolveRedirectUri(config, request.url);
+  const redirectUri = resolveRedirectUri(request.url);
 
   let discovery;
   try {
