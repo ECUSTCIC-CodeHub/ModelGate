@@ -96,7 +96,7 @@ export async function GET(request: Request) {
     return redirectWithError(origin, "Token 交换失败", isBind);
   }
 
-  let userInfo: OidcUserInfo;
+  let userInfo: OidcUserInfo | undefined;
   let rawClaims: Record<string, unknown> = {};
   try {
     if (tokenResponse.id_token) {
@@ -115,18 +115,18 @@ export async function GET(request: Request) {
         const ui = await fetchUserInfo(discovery, tokenResponse.access_token);
         rawClaims = { ...rawClaims, ...ui._claims };
         userInfo = {
-          sub: ui.sub ?? userInfo!?.sub,
+          sub: ui.sub ?? userInfo?.sub,
           name: ui.name ?? userInfo?.name,
           preferred_username: ui.preferred_username ?? userInfo?.preferred_username,
           email: ui.email ?? userInfo?.email,
         };
       } catch (err) {
-        if (!userInfo!) throw err;
+        if (!userInfo) throw err;
         console.warn("[OIDC] userinfo fetch failed, falling back to id_token claims:", err);
       }
     }
 
-    if (!userInfo!) throw new Error("No id_token and no userinfo");
+    if (!userInfo) throw new Error("No id_token and no userinfo");
     console.log("[OIDC] merged userInfo:", userInfo);
     console.log("[OIDC] merged claim keys:", Object.keys(rawClaims));
   } catch (err) {
