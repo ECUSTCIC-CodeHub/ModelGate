@@ -503,26 +503,26 @@ export default function AdminChannelsPage() {
   return (
     <DashboardShell
       role="admin"
-      title="API 接口与模型管理"
-      subtitle="统一管理渠道接口、模型映射、状态、权重与测试动作。"
+      title="渠道与模型管理"
+      subtitle="统一管理上游渠道、模型映射、状态、权重与测试动作。"
     >
       <div className="space-y-4 pb-6">
         {error ? <p className="text-sm text-red-400">{error}</p> : null}
         <Card>
           <CardHeader>
-            <SectionTitle title="接口与模型配置" description="按渠道管理 API 接口，在模型标签页管理 alias 与真实模型映射。" />
+            <SectionTitle title="渠道与模型配置" description="在渠道标签页管理上游 API 接入，在模型标签页配置 alias 与真实模型映射。" />
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="channels" className="space-y-4">
               <TabsList>
-                <TabsTrigger value="channels">接口渠道</TabsTrigger>
+                <TabsTrigger value="channels">渠道</TabsTrigger>
                 <TabsTrigger value="models">模型映射</TabsTrigger>
               </TabsList>
 
               <TabsContent value="channels" className="space-y-4">
                 <PageToolbar>
-                  <p className="text-sm text-zinc-400">渠道代表实际可访问的上游 API 接口，包括 Base URL、API Key、超时和权重。</p>
-                  <Button onClick={openCreateChannel}>新增接口渠道</Button>
+                  <p className="text-sm text-zinc-400">渠道代表一条上游 API 接入，包含 Base URL、API Key、超时和权重。</p>
+                  <Button onClick={openCreateChannel}>新增渠道</Button>
                 </PageToolbar>
                 {channels.length > 0 ? (
                   <div className="overflow-x-auto rounded-xl border border-white/10">

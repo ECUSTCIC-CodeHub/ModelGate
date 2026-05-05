@@ -73,7 +73,7 @@ type ProfileBrief = {
 const adminMenus = [
   { href: "/dashboard", label: "首页概览", icon: LayoutGrid },
   { href: "/dashboard/logs", label: "请求日志", icon: Sparkles },
-  { href: "/dashboard/channels", label: "API 接口管理", icon: Waypoints },
+  { href: "/dashboard/channels", label: "渠道管理", icon: Waypoints },
   { href: "/dashboard/users", label: "用户管理", icon: UserCog },
   { href: "/dashboard/groups", label: "用户组管理", icon: Users },
   { href: "/dashboard/settings", label: "系统设置", icon: Settings2 },
