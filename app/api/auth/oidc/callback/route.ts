@@ -15,7 +15,6 @@ import {
   getPublicOrigin,
   type OidcUserInfo,
 } from "@/lib/oidc";
-import { getGatewaySettings } from "@/lib/settings";
 import { randomBytes } from "node:crypto";
 
 function parseCookie(cookieHeader: string | null, name: string) {
@@ -174,7 +173,6 @@ export async function GET(request: Request) {
       return clearStateCookie(redirectWithError(origin, "未找到绑定的账号，且自动注册已关闭"));
     }
 
-    const settings = getGatewaySettings();
     const adminCount = gatewayDb
       .prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL")
       .get() as { count: number };
@@ -201,7 +199,7 @@ export async function GET(request: Request) {
       .prepare(
         `INSERT INTO users (username, password_hash, role, group_id, oidc_issuer, oidc_subject,
            rpm, qps, tpm, quota_tokens, quota_requests, enabled)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+         VALUES (?, ?, ?, ?, ?, ?, -1, -1, -1, NULL, NULL, 1)`,
       )
       .run(
         username,
@@ -210,11 +208,6 @@ export async function GET(request: Request) {
         groupId,
         issuer,
         userInfo.sub,
-        settings.default_rpm,
-        settings.default_qps,
-        settings.default_tpm,
-        settings.default_quota_tokens < 0 ? null : settings.default_quota_tokens,
-        settings.default_quota_requests < 0 ? null : settings.default_quota_requests,
       );
 
     user = gatewayDb

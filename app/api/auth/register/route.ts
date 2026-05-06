@@ -44,18 +44,13 @@ export async function POST(request: Request) {
   const result = gatewayDb
     .prepare(
       `INSERT INTO users (username, password_hash, role, group_id, rpm, qps, tpm, quota_tokens, quota_requests, enabled)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+       VALUES (?, ?, ?, ?, -1, -1, -1, NULL, NULL, 1)`,
     )
     .run(
       parsed.data.username,
       passwordHash,
       role,
       defaultGroup?.id ?? null,
-      settings.default_rpm,
-      settings.default_qps,
-      settings.default_tpm,
-      settings.default_quota_tokens < 0 ? null : settings.default_quota_tokens,
-      settings.default_quota_requests < 0 ? null : settings.default_quota_requests,
     );
 
   const user = gatewayDb

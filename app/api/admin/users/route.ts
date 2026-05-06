@@ -7,7 +7,6 @@ import { ensureAdmin } from "@/lib/guards";
 import { jsonError, jsonOk } from "@/lib/http";
 import { getEffectiveLimits, getUserGroup } from "@/lib/effective-limits";
 import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/model-access";
-import { getGatewaySettings } from "@/lib/settings";
 import { USERNAME_SCHEMA } from "@/lib/username";
 import { friendlyCredentialPayloadError } from "@/lib/validation";
 
@@ -46,12 +45,30 @@ export async function GET(request: Request) {
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? 20)));
   const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0));
   const keyword = (url.searchParams.get("keyword") ?? "").trim();
+  const groupParam = (url.searchParams.get("group_id") ?? "").trim();
   const sortBy = (url.searchParams.get("sort_by") ?? "created_at").trim() as keyof typeof USER_SORT_COLUMNS;
   const sortDir = (url.searchParams.get("sort_dir") ?? "desc").trim().toLowerCase() === "asc" ? "ASC" : "DESC";
   const orderColumn = USER_SORT_COLUMNS[sortBy] ?? USER_SORT_COLUMNS.created_at;
 
-  const whereSql = keyword ? "WHERE u.deleted_at IS NULL AND u.username LIKE ?" : "WHERE u.deleted_at IS NULL";
-  const whereArgs = keyword ? [`%${keyword}%`] : [];
+  let groupFilterId: number | null = null;
+  if (groupParam !== "" && groupParam !== "all") {
+    const groupId = Number(groupParam);
+    if (Number.isFinite(groupId) && groupId > 0) {
+      groupFilterId = groupId;
+    }
+  }
+
+  const whereParts = ["u.deleted_at IS NULL"];
+  const whereArgs: Array<string | number> = [];
+  if (keyword) {
+    whereParts.push("u.username LIKE ?");
+    whereArgs.push(`%${keyword}%`);
+  }
+  if (groupFilterId !== null) {
+    whereParts.push("u.group_id = ?");
+    whereArgs.push(groupFilterId);
+  }
+  const whereSql = `WHERE ${whereParts.join(" AND ")}`;
 
   const rows = gatewayDb
     .prepare(
@@ -66,16 +83,23 @@ export async function GET(request: Request) {
     )
     .all(...whereArgs, limit, offset) as Array<Record<string, unknown> & { allowed_model_aliases: string }>;
 
-  const totalWhereSql = keyword ? "WHERE deleted_at IS NULL AND username LIKE ?" : "WHERE deleted_at IS NULL";
+  const totalWhereParts = ["deleted_at IS NULL"];
+  const totalWhereArgs: Array<string | number> = [];
+  if (keyword) {
+    totalWhereParts.push("username LIKE ?");
+    totalWhereArgs.push(`%${keyword}%`);
+  }
+  if (groupFilterId !== null) {
+    totalWhereParts.push("group_id = ?");
+    totalWhereArgs.push(groupFilterId);
+  }
   const total = gatewayDb
     .prepare(
       `SELECT COUNT(*) AS total
        FROM users
-       ${totalWhereSql}`,
+       WHERE ${totalWhereParts.join(" AND ")}`,
     )
-    .get(...whereArgs) as { total: number };
-
-  const settings = getGatewaySettings();
+    .get(...totalWhereArgs) as { total: number };
 
   return jsonOk({
     data: rows.map((row) => {
@@ -118,8 +142,6 @@ export async function POST(request: Request) {
     .get(parsed.data.username) as { id: number } | undefined;
   if (existing) return jsonError("用户名已存在", 409);
 
-  const settings = getGatewaySettings();
-
   let groupId = parsed.data.group_id ?? null;
   if (groupId === null) {
     const defaultGroup = gatewayDb
@@ -147,9 +169,9 @@ export async function POST(request: Request) {
       parsed.data.role ?? "user",
       groupId,
       parsed.data.enabled === false ? 0 : 1,
-      parsed.data.rpm ?? settings.default_rpm,
-      parsed.data.qps ?? settings.default_qps,
-      parsed.data.tpm ?? settings.default_tpm,
+      parsed.data.rpm ?? -1,
+      parsed.data.qps ?? -1,
+      parsed.data.tpm ?? -1,
       normalizeQuota(parsed.data.quota_tokens),
       normalizeQuota(parsed.data.quota_requests),
       stringifyAllowedModelAliases(parsed.data.allowed_model_aliases ?? []),

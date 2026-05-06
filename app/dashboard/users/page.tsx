@@ -158,6 +158,7 @@ export default function AdminUsersPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [keyword, setKeyword] = useState("");
+  const [groupFilter, setGroupFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<UserSortKey>("created_at");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [aliasOptions, setAliasOptions] = useState<AliasOption[]>([]);
@@ -184,6 +185,7 @@ export default function AdminUsersPage() {
     nextKeyword = keyword,
     nextSortBy = sortBy,
     nextSortDir = sortDir,
+    nextGroupFilter = groupFilter,
   ) {
     if (!(await ensureAdmin())) return;
     const offset = (nextPage - 1) * pageSize;
@@ -194,6 +196,7 @@ export default function AdminUsersPage() {
       sort_dir: nextSortDir,
     });
     if (nextKeyword.trim()) params.set("keyword", nextKeyword.trim());
+    if (nextGroupFilter && nextGroupFilter !== "all") params.set("group_id", nextGroupFilter);
 
     const response = await authedFetch(`/api/dashboard/users?${params.toString()}`);
     const data = await response.json();
@@ -359,8 +362,27 @@ export default function AdminUsersPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <PageToolbar>
-              <div className="grid flex-1 gap-3 md:grid-cols-[minmax(0,1fr)_180px_140px_auto_auto]">
+              <div className="grid flex-1 gap-3 md:grid-cols-[minmax(0,1fr)_160px_180px_140px_auto_auto]">
                 <Input placeholder="搜索用户名" value={keyword} onChange={(e) => setKeyword(e.target.value)} />
+                <Select
+                  value={groupFilter}
+                  onValueChange={(value) => {
+                    setGroupFilter(value);
+                    void load(1, keyword, sortBy, sortDir, value);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="按分组筛选" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部分组</SelectItem>
+                    {groupOptions.map((g) => (
+                      <SelectItem key={g.id} value={String(g.id)}>
+                        {g.name}{g.is_default ? "（默认）" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Select value={sortBy} onValueChange={(value) => setSortBy(value as UserSortKey)}>
                   <SelectTrigger>
                     <SelectValue placeholder="排序字段" />
@@ -381,14 +403,15 @@ export default function AdminUsersPage() {
                     <SelectItem value="asc">升序</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button variant="outline" onClick={() => void load(1, keyword, sortBy, sortDir)}>搜索</Button>
+                <Button variant="outline" onClick={() => void load(1, keyword, sortBy, sortDir, groupFilter)}>搜索</Button>
                 <Button
                   variant="ghost"
                   onClick={() => {
                     setKeyword("");
+                    setGroupFilter("all");
                     setSortBy("created_at");
                     setSortDir("desc");
-                    void load(1, "", "created_at", "desc");
+                    void load(1, "", "created_at", "desc", "all");
                   }}
                 >
                   重置
@@ -399,27 +422,27 @@ export default function AdminUsersPage() {
 
             {rows.length > 0 ? (
               <div className="overflow-x-auto rounded-xl border border-white/10">
-                <Table>
+                <Table className="min-w-[1180px] table-fixed">
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-40">用户名</TableHead>
-                      <TableHead className="w-px whitespace-nowrap">标签</TableHead>
-                      <TableHead className="w-px whitespace-nowrap">用户组</TableHead>
-                      <TableHead>备注</TableHead>
-                      <TableHead className="w-px whitespace-nowrap">限速 RPM/QPS/TPM</TableHead>
-                      <TableHead className="w-px whitespace-nowrap">累计 请求/Token</TableHead>
-                      <TableHead className="w-px whitespace-nowrap">配额 请求/Token</TableHead>
-                      <TableHead className="w-px whitespace-nowrap text-right">操作</TableHead>
+                      <TableHead className="w-[180px]">用户名</TableHead>
+                      <TableHead className="w-[180px]">标签</TableHead>
+                      <TableHead className="w-[120px]">用户组</TableHead>
+                      <TableHead className="w-[220px]">备注</TableHead>
+                      <TableHead className="w-[180px]">限速 RPM/QPS/TPM</TableHead>
+                      <TableHead className="w-[150px]">累计 请求/Token</TableHead>
+                      <TableHead className="w-[150px]">配额 请求/Token</TableHead>
+                      <TableHead className="w-[160px] text-right">操作</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {rows.map((row) => (
                       <TableRow key={row.id}>
-                        <TableCell className="w-40 max-w-40 font-medium text-zinc-100">
+                        <TableCell className="font-medium text-zinc-100">
                           <span className="block truncate" title={row.username}>{row.username}</span>
                         </TableCell>
-                        <TableCell className="w-px whitespace-nowrap">
-                          <div className="flex gap-1">
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
                             <Badge variant={row.role === "admin" ? "default" : "secondary"}>
                               {row.role === "admin" ? "管理员" : "普通用户"}
                             </Badge>
@@ -431,31 +454,37 @@ export default function AdminUsersPage() {
                             ) : null}
                           </div>
                         </TableCell>
-                        <TableCell className="w-px whitespace-nowrap">
-                          <span className="text-sm text-zinc-300">{row.group_name ?? "-"}</span>
+                        <TableCell>
+                          <span className="block truncate text-sm text-zinc-300" title={row.group_name ?? ""}>
+                            {row.group_name ?? "-"}
+                          </span>
                         </TableCell>
-                        <TableCell className="max-w-0">
+                        <TableCell>
                           <span className="block truncate text-sm text-zinc-300" title={row.note ?? ""}>
                             {row.note?.trim() || "-"}
                           </span>
                         </TableCell>
-                        <TableCell className="w-px whitespace-nowrap">
+                        <TableCell>
                           <span
-                            className="font-mono text-sm"
-                            title={`用户: ${formatLimit(row.rpm)}/${formatLimit(row.qps)}/${formatLimit(row.tpm)}`}
+                            className="block truncate font-mono text-sm"
+                            title={`生效: ${formatLimit(row.effective_rpm)}/${formatLimit(row.effective_qps)}/${formatLimit(row.effective_tpm)}\n用户: ${formatLimit(row.rpm)}/${formatLimit(row.qps)}/${formatLimit(row.tpm)}`}
                           >
                             {formatLimit(row.effective_rpm)}/{formatLimit(row.effective_qps)}/{formatLimit(row.effective_tpm)}
                           </span>
                         </TableCell>
-                        <TableCell className="w-px whitespace-nowrap font-mono text-sm" title="请求 / Token">
-                          {formatNumber(row.used_requests)} / {formatNumber(row.used_tokens)}
+                        <TableCell>
+                          <span className="block truncate font-mono text-sm" title="请求 / Token">
+                            {formatNumber(row.used_requests)} / {formatNumber(row.used_tokens)}
+                          </span>
                         </TableCell>
-                        <TableCell className="w-px whitespace-nowrap font-mono text-sm" title="请求 / Token">
-                          {row.effective_quota_requests === null ? "∞" : formatNumber(row.effective_quota_requests)}
-                          {" / "}
-                          {row.effective_quota_tokens === null ? "∞" : formatNumber(row.effective_quota_tokens)}
+                        <TableCell>
+                          <span className="block truncate font-mono text-sm" title="请求 / Token">
+                            {row.effective_quota_requests === null ? "∞" : formatNumber(row.effective_quota_requests)}
+                            {" / "}
+                            {row.effective_quota_tokens === null ? "∞" : formatNumber(row.effective_quota_tokens)}
+                          </span>
                         </TableCell>
-                        <TableCell className="w-px space-x-2 whitespace-nowrap text-right">
+                        <TableCell className="space-x-2 whitespace-nowrap text-right">
                           <Button size="sm" variant="outline" onClick={() => onEditClick(row)}>编辑</Button>
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
