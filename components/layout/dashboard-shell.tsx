@@ -7,9 +7,11 @@ import {
   ChevronRight,
   KeyRound,
   LayoutGrid,
+  Link2,
+  Link2Off,
+  LockKeyhole,
   LogOut,
   Menu,
-  MoreHorizontal,
   Settings2,
   Shield,
   Sparkles,
@@ -17,14 +19,6 @@ import {
   Users,
   Waypoints,
 } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useAuthProfile, useOidcEnabled } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import {
@@ -198,53 +192,66 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
               </nav>
             </ScrollArea>
             {profileBrief ? (
-              <div
-                className="mt-4 flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3"
-                title={`RPM ${formatLimit(profileBrief.rpm)} · QPS ${formatLimit(profileBrief.qps)} · TPM ${formatLimit(profileBrief.tpm)}${oidcAvailable ? ` · OIDC ${profileBrief.oidc_subject ? "已绑定" : "未绑定"}` : ""}`}
-              >
-                <div className="min-w-0 flex-1">
+              <div className="mt-4 space-y-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-zinc-100">{profileBrief.username}</p>
                   <p className="mt-0.5 truncate text-xs text-zinc-400">{role === "admin" ? "管理员" : "普通用户"}</p>
                 </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" aria-label="账户操作" className="shrink-0">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" side="top" className="w-52">
-                    <DropdownMenuLabel className="font-normal">
-                      <div className="grid grid-cols-3 gap-2 text-center">
-                        <div>
-                          <p className="text-[10px] uppercase tracking-wide text-zinc-500">RPM</p>
-                          <p className="mt-0.5 truncate font-mono text-sm text-zinc-100">{formatLimit(profileBrief.rpm)}</p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] uppercase tracking-wide text-zinc-500">QPS</p>
-                          <p className="mt-0.5 truncate font-mono text-sm text-zinc-100">{formatLimit(profileBrief.qps)}</p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] uppercase tracking-wide text-zinc-500">TPM</p>
-                          <p className="mt-0.5 truncate font-mono text-sm text-zinc-100">{formatLimit(profileBrief.tpm)}</p>
-                        </div>
-                      </div>
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onSelect={() => setPasswordDrawerOpen(true)}>修改密码</DropdownMenuItem>
-                    {oidcAvailable ? (
-                      profileBrief.oidc_subject ? (
-                        <DropdownMenuItem onSelect={onOidcUnbind}>解绑 OIDC</DropdownMenuItem>
-                      ) : (
-                        <DropdownMenuItem onSelect={onOidcBind}>绑定 OIDC</DropdownMenuItem>
-                      )
-                    ) : null}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onSelect={onLogout} className="text-rose-300 focus:text-rose-200">
-                      <LogOut className="h-4 w-4" />
-                      退出登录
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <div className="grid grid-cols-3 gap-2 rounded-lg bg-black/20 px-2 py-2 text-center">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-zinc-500">RPM</p>
+                    <p className="mt-0.5 truncate font-mono text-sm text-zinc-100">{formatLimit(profileBrief.rpm)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-zinc-500">QPS</p>
+                    <p className="mt-0.5 truncate font-mono text-sm text-zinc-100">{formatLimit(profileBrief.qps)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-zinc-500">TPM</p>
+                    <p className="mt-0.5 truncate font-mono text-sm text-zinc-100">{formatLimit(profileBrief.tpm)}</p>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => setPasswordDrawerOpen(true)}
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
+                  >
+                    <LockKeyhole className="h-4 w-4 shrink-0" />
+                    <span className="flex-1 text-left">修改密码</span>
+                  </button>
+                  {oidcAvailable ? (
+                    profileBrief.oidc_subject ? (
+                      <button
+                        type="button"
+                        onClick={onOidcUnbind}
+                        className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
+                      >
+                        <Link2Off className="h-4 w-4 shrink-0" />
+                        <span className="flex-1 text-left">解绑 OIDC</span>
+                        <span className="text-[10px] text-emerald-400">已绑定</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={onOidcBind}
+                        className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
+                      >
+                        <Link2 className="h-4 w-4 shrink-0" />
+                        <span className="flex-1 text-left">绑定 OIDC</span>
+                        <span className="text-[10px] text-zinc-500">未绑定</span>
+                      </button>
+                    )
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={onLogout}
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-rose-300 transition-colors hover:bg-rose-500/10 hover:text-rose-200"
+                  >
+                    <LogOut className="h-4 w-4 shrink-0" />
+                    <span className="flex-1 text-left">退出登录</span>
+                  </button>
+                </div>
               </div>
             ) : null}
           </div>
