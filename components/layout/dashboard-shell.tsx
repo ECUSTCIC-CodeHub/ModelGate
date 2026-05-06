@@ -12,6 +12,7 @@ import {
   LockKeyhole,
   LogOut,
   Menu,
+  RefreshCw,
   Settings2,
   Shield,
   Sparkles,
@@ -127,6 +128,10 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
     window.location.href = "/api/auth/oidc/bind";
   }
 
+  function onOidcSync() {
+    window.location.href = "/api/auth/oidc/bind";
+  }
+
   async function onOidcUnbind() {
     const response = await authedFetch("/api/auth/oidc/unbind", { method: "POST" });
     const data = await response.json().catch(() => null);
@@ -222,15 +227,25 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                   </button>
                   {oidcAvailable ? (
                     profileBrief.oidc_subject ? (
-                      <button
-                        type="button"
-                        onClick={onOidcUnbind}
-                        className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
-                      >
-                        <Link2Off className="h-4 w-4 shrink-0" />
-                        <span className="flex-1 text-left">解绑 OIDC</span>
-                        <span className="text-[10px] text-emerald-400">已绑定</span>
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={onOidcSync}
+                          className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
+                        >
+                          <RefreshCw className="h-4 w-4 shrink-0" />
+                          <span className="flex-1 text-left">同步 OIDC</span>
+                          <span className="text-[10px] text-emerald-400">已绑定</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={onOidcUnbind}
+                          className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
+                        >
+                          <Link2Off className="h-4 w-4 shrink-0" />
+                          <span className="flex-1 text-left">解绑 OIDC</span>
+                        </button>
+                      </>
                     ) : (
                       <button
                         type="button"
@@ -331,9 +346,14 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
               </Button>
               {oidcAvailable ? (
                 profileBrief?.oidc_subject ? (
-                  <Button variant="outline" className="w-full" onClick={() => { setMobileNavOpen(false); onOidcUnbind(); }}>
-                    解绑 OIDC
-                  </Button>
+                  <>
+                    <Button variant="outline" className="w-full" onClick={() => { setMobileNavOpen(false); onOidcSync(); }}>
+                      同步 OIDC
+                    </Button>
+                    <Button variant="outline" className="w-full" onClick={() => { setMobileNavOpen(false); onOidcUnbind(); }}>
+                      解绑 OIDC
+                    </Button>
+                  </>
                 ) : (
                   <Button variant="outline" className="w-full" onClick={() => { setMobileNavOpen(false); onOidcBind(); }}>
                     绑定 OIDC
