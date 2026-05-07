@@ -6,6 +6,9 @@ export type EffectiveLimits = {
   tpm: number;
   quota_requests: number | null;
   quota_tokens: number | null;
+  quota_period: number | null;
+  period_quota_tokens: number | null;
+  period_quota_requests: number | null;
 };
 
 function pickRate(userVal: number, groupVal: number): number {
@@ -20,6 +23,12 @@ function pickQuota(userVal: number | null, groupVal: number | null): number | nu
   return null;
 }
 
+function pickPeriod(userVal: number | null, groupVal: number | null): number | null {
+  if (userVal !== null && userVal > 0) return userVal;
+  if (groupVal !== null && groupVal > 0) return groupVal;
+  return null;
+}
+
 export function getUserGroup(groupId: number | null): DbGroup | null {
   if (groupId === null) return null;
   const group = gatewayDb
@@ -31,11 +40,16 @@ export function getUserGroup(groupId: number | null): DbGroup | null {
 export function getEffectiveLimits(user: DbUser): EffectiveLimits {
   const group = getUserGroup(user.group_id);
 
+  const period = pickPeriod(user.quota_period ?? null, group?.quota_period ?? null);
+
   return {
     qps: pickRate(user.qps, group?.qps ?? -1),
     rpm: pickRate(user.rpm, group?.rpm ?? -1),
     tpm: pickRate(user.tpm, group?.tpm ?? -1),
     quota_requests: pickQuota(user.quota_requests, group?.quota_requests ?? null),
     quota_tokens: pickQuota(user.quota_tokens, group?.quota_tokens ?? null),
+    quota_period: period,
+    period_quota_tokens: period ? pickQuota(user.period_quota_tokens ?? null, group?.period_quota_tokens ?? null) : null,
+    period_quota_requests: period ? pickQuota(user.period_quota_requests ?? null, group?.period_quota_requests ?? null) : null,
   };
 }

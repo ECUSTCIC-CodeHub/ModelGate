@@ -66,7 +66,7 @@ function inferErrorType(status: number): ApiErrorType {
   return "invalid_request_error";
 }
 
-export function jsonError(message: string, status = 400, options: JsonErrorOptions = {}) {
+export function jsonError(message: string, status = 400, options: JsonErrorOptions = {}, extraHeaders?: Record<string, string>) {
   return NextResponse.json(
     {
       error: {
@@ -76,7 +76,7 @@ export function jsonError(message: string, status = 400, options: JsonErrorOptio
         code: String(options.code ?? status),
       },
     },
-    { status },
+    { status, headers: extraHeaders },
   );
 }
 

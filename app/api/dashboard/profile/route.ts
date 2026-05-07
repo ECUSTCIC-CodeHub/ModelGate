@@ -20,6 +20,9 @@ export async function GET(request: Request) {
       tpm: effective.tpm,
       quota_tokens: effective.quota_tokens,
       quota_requests: effective.quota_requests,
+      quota_period: effective.quota_period,
+      period_quota_tokens: effective.period_quota_tokens,
+      period_quota_requests: effective.period_quota_requests,
     },
   });
 }

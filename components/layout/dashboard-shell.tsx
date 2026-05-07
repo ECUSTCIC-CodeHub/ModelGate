@@ -61,6 +61,16 @@ type ProfileBrief = {
   rpm: number;
   qps: number;
   tpm: number;
+  quota_tokens: number | null;
+  quota_requests: number | null;
+  quota_period: number | null;
+  period_quota_tokens: number | null;
+  period_quota_requests: number | null;
+  used_tokens?: number;
+  used_requests?: number;
+  period_used_tokens?: number;
+  period_used_requests?: number;
+  period_reset_at?: string | null;
   oidc_issuer?: string | null;
   oidc_subject?: string | null;
 };
@@ -122,6 +132,23 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
     if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
     if (abs >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
     return String(value);
+  }
+
+  function formatQuota(limit: number | null | undefined, used: number | undefined) {
+    if (limit === null || limit === undefined) return null;
+    const remaining = Math.max(0, limit - (used ?? 0));
+    return `${formatLimit(remaining)} / ${formatLimit(limit)}`;
+  }
+
+  function periodLabel(seconds: number | null | undefined) {
+    if (!seconds || seconds <= 0) return "";
+    if (seconds === 3600) return "每小时";
+    if (seconds === 86400) return "每日";
+    if (seconds === 604800) return "每周";
+    if (seconds === 2592000) return "每月";
+    if (seconds >= 86400) return `每${Math.round(seconds / 86400)}天`;
+    if (seconds >= 3600) return `每${Math.round(seconds / 3600)}时`;
+    return `每${seconds}秒`;
   }
 
   function onOidcBind() {
@@ -202,19 +229,43 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                   <p className="truncate text-sm font-semibold text-zinc-100">{profileBrief.username}</p>
                   <p className="mt-0.5 truncate text-xs text-zinc-400">{role === "admin" ? "管理员" : "普通用户"}</p>
                 </div>
-                <div className="space-y-1.5 rounded-lg bg-black/20 px-3 py-2">
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-[10px] uppercase tracking-wide text-zinc-500">RPM</span>
-                    <span className="font-mono text-sm text-zinc-100">{formatLimit(profileBrief.rpm)}</span>
-                  </div>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-[10px] uppercase tracking-wide text-zinc-500">QPS</span>
-                    <span className="font-mono text-sm text-zinc-100">{formatLimit(profileBrief.qps)}</span>
-                  </div>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-[10px] uppercase tracking-wide text-zinc-500">TPM</span>
-                    <span className="font-mono text-sm text-zinc-100">{formatLimit(profileBrief.tpm)}</span>
-                  </div>
+                <div className="space-y-1.5 rounded-lg bg-black/20 px-3 py-2 tabular-nums">
+                  {([
+                    ["RPM", formatLimit(profileBrief.rpm)],
+                    ["QPS", formatLimit(profileBrief.qps)],
+                    ["TPM", formatLimit(profileBrief.tpm)],
+                  ] as const).map(([label, value]) => (
+                    <div key={label} className="flex items-baseline justify-between">
+                      <span className="text-[10px] uppercase tracking-wide text-zinc-500">{label}</span>
+                      <span className="font-mono text-sm text-zinc-100">{value}</span>
+                    </div>
+                  ))}
+                  {([
+                    profileBrief.quota_requests !== null && profileBrief.quota_requests !== undefined
+                      ? ["总请求", profileBrief.used_requests ?? 0, profileBrief.quota_requests] as const
+                      : null,
+                    profileBrief.quota_tokens !== null && profileBrief.quota_tokens !== undefined
+                      ? ["总Token", profileBrief.used_tokens ?? 0, profileBrief.quota_tokens] as const
+                      : null,
+                    profileBrief.quota_period && profileBrief.period_quota_requests !== null && profileBrief.period_quota_requests !== undefined
+                      ? [`${periodLabel(profileBrief.quota_period)}请求`, profileBrief.period_used_requests ?? 0, profileBrief.period_quota_requests] as const
+                      : null,
+                    profileBrief.quota_period && profileBrief.period_quota_tokens !== null && profileBrief.period_quota_tokens !== undefined
+                      ? [`${periodLabel(profileBrief.quota_period)}Token`, profileBrief.period_used_tokens ?? 0, profileBrief.period_quota_tokens] as const
+                      : null,
+                  ]).filter(Boolean).map((item) => {
+                    const [label, used, total] = item!;
+                    const remaining = Math.max(0, total - used);
+                    return (
+                      <div key={label} className="flex items-baseline justify-between">
+                        <span className="shrink-0 text-[10px] tracking-wide text-zinc-500">{label}</span>
+                        <span className="text-right font-mono text-xs text-zinc-100">
+                          <span>{formatLimit(remaining)}</span>
+                          <span className="text-zinc-500">/{formatLimit(total)}</span>
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
                 <div className="space-y-1">
                   <button
@@ -332,6 +383,16 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                   <p className="truncate text-sm font-semibold text-zinc-100">{profileBrief.username}</p>
                   <p className="mt-1 text-xs text-zinc-400">RPM {formatLimit(profileBrief.rpm)} / QPS {formatLimit(profileBrief.qps)} / TPM {formatLimit(profileBrief.tpm)}</p>
+                  {profileBrief.quota_requests !== null || profileBrief.quota_tokens !== null ? (
+                    <p className="mt-1 text-xs text-zinc-400">
+                      配额: 请求 {formatQuota(profileBrief.quota_requests, profileBrief.used_requests) ?? "∞"} / Token {formatQuota(profileBrief.quota_tokens, profileBrief.used_tokens) ?? "∞"}
+                    </p>
+                  ) : null}
+                  {profileBrief.quota_period ? (
+                    <p className="mt-1 text-xs text-zinc-400">
+                      {periodLabel(profileBrief.quota_period)}: 请求 {formatQuota(profileBrief.period_quota_requests, profileBrief.period_used_requests) ?? "∞"} / Token {formatQuota(profileBrief.period_quota_tokens, profileBrief.period_used_tokens) ?? "∞"}
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
               <Button

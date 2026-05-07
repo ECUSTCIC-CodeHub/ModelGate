@@ -30,6 +30,33 @@ import { formatNumber, formatTokenCount } from "@/lib/utils";
 
 type Role = "admin" | "user";
 
+type QuotaData = {
+  total: {
+    quota_requests: number | null;
+    quota_tokens: number | null;
+    used_requests: number;
+    used_tokens: number;
+    remaining_requests: number | null;
+    remaining_tokens: number | null;
+  };
+  period: {
+    period_seconds: number;
+    period_label: string;
+    quota_requests: number | null;
+    quota_tokens: number | null;
+    used_requests: number;
+    used_tokens: number;
+    remaining_requests: number | null;
+    remaining_tokens: number | null;
+    reset_at: string | null;
+  } | null;
+  rate: {
+    rpm: number;
+    qps: number;
+    tpm: number;
+  };
+};
+
 type Summary = {
   total_requests: number;
   total_tokens: number;
@@ -66,6 +93,7 @@ export default function DashboardHomePage() {
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<Role>(() => (initialProfile?.role as Role | undefined) ?? (getCachedProfile()?.role as Role | undefined) ?? "user");
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [quota, setQuota] = useState<QuotaData | null>(null);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setChartReady(true));
@@ -73,8 +101,8 @@ export default function DashboardHomePage() {
   }, []);
 
   useEffect(() => {
-    void Promise.all([getOrFetchProfile(), authedFetch("/api/dashboard/summary")])
-      .then(async ([profile, summaryResp]) => {
+    void Promise.all([getOrFetchProfile(), authedFetch("/api/dashboard/summary"), authedFetch("/api/user/quota")])
+      .then(async ([profile, summaryResp, quotaResp]) => {
         if (!profile) {
           clearSession();
           router.replace("/login");
@@ -85,6 +113,10 @@ export default function DashboardHomePage() {
         if (summaryResp.ok) {
           const summaryData = await summaryResp.json();
           setSummary(summaryData.data ?? null);
+        }
+        if (quotaResp.ok) {
+          const quotaData = await quotaResp.json();
+          setQuota(quotaData ?? null);
         }
       })
       .finally(() => setLoading(false));
@@ -146,6 +178,15 @@ export default function DashboardHomePage() {
       },
     ],
     [],
+  );
+
+  const hasQuota = quota && (
+    quota.total.quota_requests !== null ||
+    quota.total.quota_tokens !== null ||
+    quota.period !== null ||
+    quota.rate.rpm >= 0 ||
+    quota.rate.qps >= 0 ||
+    quota.rate.tpm >= 0
   );
 
   const isAdmin = role === "admin";
@@ -227,6 +268,91 @@ export default function DashboardHomePage() {
             />
           ))}
         </div>
+
+        {hasQuota ? (
+          <Card>
+            <CardHeader>
+              <SectionTitle title="我的配额与限制" description="查看当前账户的速率限制、配额使用情况。" />
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {(quota.rate.rpm >= 0 || quota.rate.qps >= 0 || quota.rate.tpm >= 0) ? (
+                  <div className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs text-zinc-500">速率限制</p>
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-400">RPM</span>
+                        <span className="font-mono text-zinc-100">{quota.rate.rpm < 0 ? "∞" : formatNumber(quota.rate.rpm)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-400">QPS</span>
+                        <span className="font-mono text-zinc-100">{quota.rate.qps < 0 ? "∞" : formatNumber(quota.rate.qps)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-400">TPM</span>
+                        <span className="font-mono text-zinc-100">{quota.rate.tpm < 0 ? "∞" : formatTokenCount(quota.rate.tpm)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+                {quota.total.quota_requests !== null ? (
+                  <div className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs text-zinc-500">总请求配额</p>
+                    <p className="text-lg font-semibold text-zinc-100">
+                      {formatNumber(quota.total.remaining_requests)} <span className="text-sm font-normal text-zinc-500">剩余</span>
+                    </p>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                      <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, quota.total.quota_requests > 0 ? ((quota.total.remaining_requests ?? 0) / quota.total.quota_requests) * 100 : 0))}%` }} />
+                    </div>
+                    <p className="text-xs text-zinc-500">{formatNumber(quota.total.used_requests)} / {formatNumber(quota.total.quota_requests)} 已使用</p>
+                  </div>
+                ) : null}
+                {quota.total.quota_tokens !== null ? (
+                  <div className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs text-zinc-500">总 Token 配额</p>
+                    <p className="text-lg font-semibold text-zinc-100">
+                      {formatTokenCount(quota.total.remaining_tokens)} <span className="text-sm font-normal text-zinc-500">剩余</span>
+                    </p>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                      <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, quota.total.quota_tokens > 0 ? ((quota.total.remaining_tokens ?? 0) / quota.total.quota_tokens) * 100 : 0))}%` }} />
+                    </div>
+                    <p className="text-xs text-zinc-500">{formatTokenCount(quota.total.used_tokens)} / {formatTokenCount(quota.total.quota_tokens)} 已使用</p>
+                  </div>
+                ) : null}
+                {quota.period?.quota_requests !== null && quota.period ? (
+                  <div className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs text-zinc-500">{quota.period.period_label}请求配额</p>
+                    <p className="text-lg font-semibold text-zinc-100">
+                      {formatNumber(quota.period.remaining_requests)} <span className="text-sm font-normal text-zinc-500">剩余</span>
+                    </p>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                      <div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, quota.period.quota_requests! > 0 ? ((quota.period.remaining_requests ?? 0) / quota.period.quota_requests!) * 100 : 0))}%` }} />
+                    </div>
+                    <p className="text-xs text-zinc-500">
+                      {formatNumber(quota.period.used_requests)} / {formatNumber(quota.period.quota_requests)} 已使用
+                      {quota.period.reset_at ? ` · 重置于 ${new Date(quota.period.reset_at).toLocaleString()}` : ""}
+                    </p>
+                  </div>
+                ) : null}
+                {quota.period?.quota_tokens !== null && quota.period ? (
+                  <div className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs text-zinc-500">{quota.period.period_label} Token 配额</p>
+                    <p className="text-lg font-semibold text-zinc-100">
+                      {formatTokenCount(quota.period.remaining_tokens)} <span className="text-sm font-normal text-zinc-500">剩余</span>
+                    </p>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                      <div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, quota.period.quota_tokens! > 0 ? ((quota.period.remaining_tokens ?? 0) / quota.period.quota_tokens!) * 100 : 0))}%` }} />
+                    </div>
+                    <p className="text-xs text-zinc-500">
+                      {formatTokenCount(quota.period.used_tokens)} / {formatTokenCount(quota.period.quota_tokens)} 已使用
+                      {quota.period.reset_at ? ` · 重置于 ${new Date(quota.period.reset_at).toLocaleString()}` : ""}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
           <Card>

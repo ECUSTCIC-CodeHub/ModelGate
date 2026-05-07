@@ -21,6 +21,9 @@ const createSchema = z.object({
   tpm: z.number().int().min(-1).optional(),
   quota_tokens: z.number().int().min(-1).nullable().optional(),
   quota_requests: z.number().int().min(-1).nullable().optional(),
+  quota_period: z.number().int().min(0).nullable().optional(),
+  period_quota_tokens: z.number().int().min(-1).nullable().optional(),
+  period_quota_requests: z.number().int().min(-1).nullable().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
   note: z.string().max(500).nullable().optional(),
 });
@@ -74,6 +77,8 @@ export async function GET(request: Request) {
     .prepare(
       `SELECT u.id, u.username, u.role, u.group_id, g.name AS group_name,
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
+              u.quota_period, u.period_quota_tokens, u.period_quota_requests,
+              u.period_used_tokens, u.period_used_requests, u.period_reset_at,
               u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.enabled, u.created_at
        FROM users u
        LEFT JOIN groups g ON g.id = u.group_id AND g.deleted_at IS NULL
@@ -114,11 +119,17 @@ export async function GET(request: Request) {
         group_tpm: group?.tpm ?? null,
         group_quota_requests: group?.quota_requests ?? null,
         group_quota_tokens: group?.quota_tokens ?? null,
+        group_quota_period: group?.quota_period ?? null,
+        group_period_quota_tokens: group?.period_quota_tokens ?? null,
+        group_period_quota_requests: group?.period_quota_requests ?? null,
         effective_rpm: effective.rpm,
         effective_qps: effective.qps,
         effective_tpm: effective.tpm,
         effective_quota_requests: effective.quota_requests,
         effective_quota_tokens: effective.quota_tokens,
+        effective_quota_period: effective.quota_period,
+        effective_period_quota_tokens: effective.period_quota_tokens,
+        effective_period_quota_requests: effective.period_quota_requests,
       };
     }),
     paging: { limit, offset, total: total.total ?? 0 },
@@ -160,8 +171,10 @@ export async function POST(request: Request) {
     .prepare(
       `INSERT INTO users (
          username, password_hash, role, group_id, enabled,
-         rpm, qps, tpm, quota_tokens, quota_requests, allowed_model_aliases, note
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         rpm, qps, tpm, quota_tokens, quota_requests,
+         quota_period, period_quota_tokens, period_quota_requests,
+         allowed_model_aliases, note
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       parsed.data.username,
@@ -174,6 +187,9 @@ export async function POST(request: Request) {
       parsed.data.tpm ?? -1,
       normalizeQuota(parsed.data.quota_tokens),
       normalizeQuota(parsed.data.quota_requests),
+      normalizeQuota(parsed.data.quota_period),
+      normalizeQuota(parsed.data.period_quota_tokens),
+      normalizeQuota(parsed.data.period_quota_requests),
       stringifyAllowedModelAliases(parsed.data.allowed_model_aliases ?? []),
       parsed.data.note?.trim() ? parsed.data.note.trim() : null,
     );
@@ -182,6 +198,8 @@ export async function POST(request: Request) {
     .prepare(
       `SELECT u.id, u.username, u.role, u.group_id, g.name AS group_name,
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
+              u.quota_period, u.period_quota_tokens, u.period_quota_requests,
+              u.period_used_tokens, u.period_used_requests, u.period_reset_at,
               u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.enabled, u.created_at
        FROM users u
        LEFT JOIN groups g ON g.id = u.group_id AND g.deleted_at IS NULL

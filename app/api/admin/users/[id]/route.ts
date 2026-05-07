@@ -19,6 +19,9 @@ const updateSchema = z.object({
   tpm: z.number().int().min(-1).optional(),
   quota_tokens: z.number().int().min(-1).nullable().optional(),
   quota_requests: z.number().int().min(-1).nullable().optional(),
+  quota_period: z.number().int().min(0).nullable().optional(),
+  period_quota_tokens: z.number().int().min(-1).nullable().optional(),
+  period_quota_requests: z.number().int().min(-1).nullable().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
   note: z.string().max(500).nullable().optional(),
   new_password: z.string().min(8).optional(),
@@ -40,8 +43,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
   const existing = gatewayDb
     .prepare(
-      `SELECT id, username, role, group_id, enabled, rpm, qps, tpm, quota_tokens, quota_requests
-       , allowed_model_aliases, note
+      `SELECT id, username, role, group_id, enabled, rpm, qps, tpm,
+              quota_tokens, quota_requests,
+              quota_period, period_quota_tokens, period_quota_requests,
+              allowed_model_aliases, note
        FROM users WHERE id = ? AND deleted_at IS NULL`,
     )
     .get(id) as
@@ -56,6 +61,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         tpm: number;
         quota_tokens: number | null;
         quota_requests: number | null;
+        quota_period: number | null;
+        period_quota_tokens: number | null;
+        period_quota_requests: number | null;
         allowed_model_aliases: string;
         note: string | null;
       }
@@ -92,6 +100,18 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       parsed.data.quota_requests === undefined
         ? existing.quota_requests
         : normalizeQuota(parsed.data.quota_requests),
+    quota_period:
+      parsed.data.quota_period === undefined
+        ? existing.quota_period
+        : normalizeQuota(parsed.data.quota_period),
+    period_quota_tokens:
+      parsed.data.period_quota_tokens === undefined
+        ? existing.period_quota_tokens
+        : normalizeQuota(parsed.data.period_quota_tokens),
+    period_quota_requests:
+      parsed.data.period_quota_requests === undefined
+        ? existing.period_quota_requests
+        : normalizeQuota(parsed.data.period_quota_requests),
     allowed_model_aliases:
       parsed.data.allowed_model_aliases === undefined
         ? existing.allowed_model_aliases
@@ -118,7 +138,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     gatewayDb
       .prepare(
         `UPDATE users
-         SET username = ?, role = ?, group_id = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?, quota_tokens = ?, quota_requests = ?, allowed_model_aliases = ?, note = ?, password_hash = ?
+         SET username = ?, role = ?, group_id = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?,
+             quota_tokens = ?, quota_requests = ?,
+             quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?,
+             allowed_model_aliases = ?, note = ?, password_hash = ?
          WHERE id = ?`,
       )
       .run(
@@ -131,6 +154,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         merged.tpm,
         merged.quota_tokens,
         merged.quota_requests,
+        merged.quota_period,
+        merged.period_quota_tokens,
+        merged.period_quota_requests,
         merged.allowed_model_aliases,
         merged.note,
         nextPasswordHash,
@@ -140,7 +166,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     gatewayDb
       .prepare(
         `UPDATE users
-         SET username = ?, role = ?, group_id = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?, quota_tokens = ?, quota_requests = ?, allowed_model_aliases = ?, note = ?
+         SET username = ?, role = ?, group_id = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?,
+             quota_tokens = ?, quota_requests = ?,
+             quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?,
+             allowed_model_aliases = ?, note = ?
          WHERE id = ?`,
       )
       .run(
@@ -153,6 +182,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         merged.tpm,
         merged.quota_tokens,
         merged.quota_requests,
+        merged.quota_period,
+        merged.period_quota_tokens,
+        merged.period_quota_requests,
         merged.allowed_model_aliases,
         merged.note,
         id,
@@ -163,6 +195,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     .prepare(
       `SELECT u.id, u.username, u.role, u.group_id, g.name AS group_name,
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
+              u.quota_period, u.period_quota_tokens, u.period_quota_requests,
+              u.period_used_tokens, u.period_used_requests, u.period_reset_at,
               u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.enabled, u.created_at
        FROM users u
        LEFT JOIN groups g ON g.id = u.group_id AND g.deleted_at IS NULL

@@ -14,6 +14,9 @@ const updateSchema = z.object({
   tpm: z.number().int().min(-1).optional(),
   quota_requests: z.number().int().min(-1).nullable().optional(),
   quota_tokens: z.number().int().min(-1).nullable().optional(),
+  quota_period: z.number().int().min(0).nullable().optional(),
+  period_quota_tokens: z.number().int().min(-1).nullable().optional(),
+  period_quota_requests: z.number().int().min(-1).nullable().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
   oidc_claim_value: z.string().max(128).nullable().optional(),
   is_default: z.boolean().optional(),
@@ -66,6 +69,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         tpm: number;
         quota_requests: number | null;
         quota_tokens: number | null;
+        quota_period: number | null;
+        period_quota_tokens: number | null;
+        period_quota_requests: number | null;
         allowed_model_aliases: string;
         oidc_claim_value: string | null;
         is_default: number;
@@ -101,6 +107,18 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       parsed.data.quota_tokens === undefined
         ? existing.quota_tokens
         : normalizeQuota(parsed.data.quota_tokens),
+    quota_period:
+      parsed.data.quota_period === undefined
+        ? existing.quota_period
+        : normalizeQuota(parsed.data.quota_period),
+    period_quota_tokens:
+      parsed.data.period_quota_tokens === undefined
+        ? existing.period_quota_tokens
+        : normalizeQuota(parsed.data.period_quota_tokens),
+    period_quota_requests:
+      parsed.data.period_quota_requests === undefined
+        ? existing.period_quota_requests
+        : normalizeQuota(parsed.data.period_quota_requests),
     allowed_model_aliases:
       parsed.data.allowed_model_aliases === undefined
         ? existing.allowed_model_aliases
@@ -125,7 +143,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       .prepare(
         `UPDATE groups
          SET name = ?, description = ?, qps = ?, rpm = ?, tpm = ?,
-             quota_requests = ?, quota_tokens = ?, allowed_model_aliases = ?,
+             quota_requests = ?, quota_tokens = ?,
+             quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?,
+             allowed_model_aliases = ?,
              oidc_claim_value = ?, is_default = ?, enabled = ?
          WHERE id = ?`,
       )
@@ -137,6 +157,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         merged.tpm,
         merged.quota_requests,
         merged.quota_tokens,
+        merged.quota_period,
+        merged.period_quota_tokens,
+        merged.period_quota_requests,
         merged.allowed_model_aliases,
         merged.oidc_claim_value,
         merged.is_default,

@@ -53,6 +53,9 @@ type GroupRow = {
   tpm: number;
   quota_requests: number | null;
   quota_tokens: number | null;
+  quota_period: number | null;
+  period_quota_tokens: number | null;
+  period_quota_requests: number | null;
   allowed_model_aliases: string[];
   oidc_claim_value: string | null;
   is_default: number;
@@ -66,6 +69,33 @@ type AliasOption = {
   is_public: number;
 };
 
+const PERIOD_PRESETS = [
+  { label: "不限制", value: "" },
+  { label: "每小时", value: "3600" },
+  { label: "每日", value: "86400" },
+  { label: "每周", value: "604800" },
+  { label: "每月", value: "2592000" },
+  { label: "自定义", value: "custom" },
+] as const;
+
+function periodToPreset(v: number | null): string {
+  if (v === null || v <= 0) return "";
+  if (v === 3600) return "3600";
+  if (v === 86400) return "86400";
+  if (v === 604800) return "604800";
+  if (v === 2592000) return "2592000";
+  return "custom";
+}
+
+function formatPeriodLabel(v: number | null): string {
+  if (v === null || v <= 0) return "-";
+  const preset = PERIOD_PRESETS.find((p) => p.value === String(v));
+  if (preset) return preset.label;
+  if (v >= 86400) return `每 ${Math.round(v / 86400)} 天`;
+  if (v >= 3600) return `每 ${Math.round(v / 3600)} 小时`;
+  return `每 ${v} 秒`;
+}
+
 type GroupForm = {
   name: string;
   description: string;
@@ -74,6 +104,10 @@ type GroupForm = {
   tpm: number;
   quota_requests: string;
   quota_tokens: string;
+  quota_period_preset: string;
+  quota_period_custom: string;
+  period_quota_tokens: string;
+  period_quota_requests: string;
   allowed_model_aliases: string[];
   oidc_claim_value: string;
   is_default: boolean;
@@ -88,6 +122,10 @@ const initialForm: GroupForm = {
   tpm: -1,
   quota_requests: "",
   quota_tokens: "",
+  quota_period_preset: "",
+  quota_period_custom: "",
+  period_quota_tokens: "",
+  period_quota_requests: "",
   allowed_model_aliases: [],
   oidc_claim_value: "",
   is_default: false,
@@ -160,6 +198,7 @@ export default function AdminGroupsPage() {
 
   function onEditClick(row: GroupRow) {
     setEditingId(row.id);
+    const preset = periodToPreset(row.quota_period);
     setForm({
       name: row.name,
       description: row.description ?? "",
@@ -168,6 +207,10 @@ export default function AdminGroupsPage() {
       tpm: row.tpm,
       quota_requests: row.quota_requests === null ? "" : String(row.quota_requests),
       quota_tokens: row.quota_tokens === null ? "" : String(row.quota_tokens),
+      quota_period_preset: preset,
+      quota_period_custom: preset === "custom" && row.quota_period ? String(row.quota_period) : "",
+      period_quota_tokens: row.period_quota_tokens === null ? "" : String(row.period_quota_tokens),
+      period_quota_requests: row.period_quota_requests === null ? "" : String(row.period_quota_requests),
       allowed_model_aliases: row.allowed_model_aliases ?? [],
       oidc_claim_value: row.oidc_claim_value ?? "",
       is_default: row.is_default === 1,
@@ -188,6 +231,10 @@ export default function AdminGroupsPage() {
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
 
+    const periodValue = form.quota_period_preset === "custom"
+      ? (form.quota_period_custom.trim() === "" ? null : Number(form.quota_period_custom))
+      : (form.quota_period_preset === "" ? null : Number(form.quota_period_preset));
+
     const payload = {
       name: form.name,
       description: form.description.trim() || null,
@@ -196,6 +243,9 @@ export default function AdminGroupsPage() {
       tpm: form.tpm,
       quota_requests: form.quota_requests.trim() === "" ? null : Number(form.quota_requests),
       quota_tokens: form.quota_tokens.trim() === "" ? null : Number(form.quota_tokens),
+      quota_period: periodValue,
+      period_quota_tokens: form.period_quota_tokens.trim() === "" ? null : Number(form.period_quota_tokens),
+      period_quota_requests: form.period_quota_requests.trim() === "" ? null : Number(form.period_quota_requests),
       allowed_model_aliases: form.allowed_model_aliases,
       oidc_claim_value: form.oidc_claim_value.trim() || null,
       is_default: form.is_default,
@@ -276,6 +326,7 @@ export default function AdminGroupsPage() {
                       <TableHead>限速 (RPM/QPS/TPM)</TableHead>
                       <TableHead>请求配额</TableHead>
                       <TableHead>Token 配额</TableHead>
+                      <TableHead>周期配额</TableHead>
                       <TableHead>模型白名单</TableHead>
                       <TableHead className="text-right">操作</TableHead>
                     </TableRow>
@@ -299,6 +350,13 @@ export default function AdminGroupsPage() {
                         <TableCell>{formatLimit(row.rpm)}/{formatLimit(row.qps)}/{formatLimit(row.tpm)}</TableCell>
                         <TableCell>{row.quota_requests === null ? "∞" : formatLimit(row.quota_requests)}</TableCell>
                         <TableCell>{row.quota_tokens === null ? "∞" : formatLimit(row.quota_tokens)}</TableCell>
+                        <TableCell>
+                          {row.quota_period ? (
+                            <span className="text-sm" title={`${formatPeriodLabel(row.quota_period)}: 请求 ${row.period_quota_requests === null ? "∞" : formatLimit(row.period_quota_requests)} / Token ${row.period_quota_tokens === null ? "∞" : formatLimit(row.period_quota_tokens)}`}>
+                              {formatPeriodLabel(row.quota_period)}
+                            </span>
+                          ) : "-"}
+                        </TableCell>
                         <TableCell className="max-w-48">
                           <span className="block truncate text-zinc-300">
                             {row.allowed_model_aliases.length > 0 ? row.allowed_model_aliases.join(", ") : "-"}
@@ -424,6 +482,41 @@ export default function AdminGroupsPage() {
                 <div className="space-y-2">
                   <Label>总 Token 配额</Label>
                   <Input type="number" min={-1} value={form.quota_tokens} onChange={(e) => setForm({ ...form, quota_tokens: e.target.value })} />
+                </div>
+              </div>
+              <div className="mt-3 border-t border-white/10 pt-3">
+                <p className="text-sm font-medium text-zinc-100">周期配额</p>
+                <p className="mb-3 text-xs text-zinc-500">按固定时间间隔重置用量计数器，留空表示不启用周期配额。</p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>重置周期</Label>
+                    <Select value={form.quota_period_preset || "none"} onValueChange={(value) => setForm({ ...form, quota_period_preset: value === "none" ? "" : value, quota_period_custom: value === "custom" ? form.quota_period_custom : "" })}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="不限制" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PERIOD_PRESETS.map((p) => (
+                          <SelectItem key={p.value || "none"} value={p.value || "none"}>
+                            {p.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {form.quota_period_preset === "custom" ? (
+                    <div className="space-y-2">
+                      <Label>自定义周期（秒）</Label>
+                      <Input type="number" min={60} value={form.quota_period_custom} onChange={(e) => setForm({ ...form, quota_period_custom: e.target.value })} placeholder="如 7200 = 2小时" />
+                    </div>
+                  ) : <div />}
+                  <div className="space-y-2">
+                    <Label>周期请求配额</Label>
+                    <Input type="number" min={-1} value={form.period_quota_requests} onChange={(e) => setForm({ ...form, period_quota_requests: e.target.value })} placeholder="留空不限制" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>周期 Token 配额</Label>
+                    <Input type="number" min={-1} value={form.period_quota_tokens} onChange={(e) => setForm({ ...form, period_quota_tokens: e.target.value })} placeholder="留空不限制" />
+                  </div>
                 </div>
               </div>
             </div>

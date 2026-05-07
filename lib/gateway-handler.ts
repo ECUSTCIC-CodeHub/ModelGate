@@ -22,9 +22,53 @@ import { getGatewaySettings } from "@/lib/settings";
 import { countTextTokens } from "@/lib/tokenizer";
 import type { GatewayProtocol } from "@/lib/protocols";
 
-function checkQuota(userId: number, estimatedTokens: number) {
+function appendQuotaHeaders(headers: Record<string, string>, quota: QuotaInfo) {
+  if (quota.remaining_requests !== null) {
+    headers["X-Quota-Limit-Requests-Remaining"] = String(quota.remaining_requests);
+  }
+  if (quota.remaining_tokens !== null) {
+    headers["X-Quota-Limit-Tokens-Remaining"] = String(quota.remaining_tokens);
+  }
+  if (quota.period_remaining_requests !== null) {
+    headers["X-Period-Quota-Requests-Remaining"] = String(quota.period_remaining_requests);
+  }
+  if (quota.period_remaining_tokens !== null) {
+    headers["X-Period-Quota-Tokens-Remaining"] = String(quota.period_remaining_tokens);
+  }
+  if (quota.period_reset_at) {
+    headers["X-Period-Quota-Reset"] = quota.period_reset_at;
+  }
+}
+
+type QuotaInfo = {
+  remaining_requests: number | null;
+  remaining_tokens: number | null;
+  period_remaining_requests: number | null;
+  period_remaining_tokens: number | null;
+  period_reset_at: string | null;
+};
+
+function ensurePeriodReset(userId: number, period: number, resetAt: string | null): { period_used_tokens: number; period_used_requests: number; period_reset_at: string } {
+  const now = new Date();
+  if (resetAt && new Date(resetAt) > now) {
+    const row = gatewayDb
+      .prepare("SELECT period_used_tokens, period_used_requests, period_reset_at FROM users WHERE id = ?")
+      .get(userId) as { period_used_tokens: number; period_used_requests: number; period_reset_at: string };
+    return row;
+  }
+  const nextReset = new Date(now.getTime() + period * 1000).toISOString();
+  gatewayDb
+    .prepare("UPDATE users SET period_used_tokens = 0, period_used_requests = 0, period_reset_at = ? WHERE id = ?")
+    .run(nextReset, userId);
+  return { period_used_tokens: 0, period_used_requests: 0, period_reset_at: nextReset };
+}
+
+function checkQuota(userId: number, estimatedTokens: number): { ok: false; reason: string; quota?: QuotaInfo } | { ok: true; quota: QuotaInfo } {
   const user = gatewayDb
-    .prepare("SELECT id, group_id, quota_tokens, quota_requests, used_tokens, used_requests, rpm, qps, tpm FROM users WHERE id = ? AND deleted_at IS NULL")
+    .prepare(`SELECT id, group_id, quota_tokens, quota_requests, used_tokens, used_requests,
+              quota_period, period_quota_tokens, period_quota_requests,
+              period_used_tokens, period_used_requests, period_reset_at,
+              rpm, qps, tpm FROM users WHERE id = ? AND deleted_at IS NULL`)
     .get(userId) as
     | {
         id: number;
@@ -33,6 +77,12 @@ function checkQuota(userId: number, estimatedTokens: number) {
         quota_requests: number | null;
         used_tokens: number;
         used_requests: number;
+        quota_period: number | null;
+        period_quota_tokens: number | null;
+        period_quota_requests: number | null;
+        period_used_tokens: number;
+        period_used_requests: number;
+        period_reset_at: string | null;
         rpm: number;
         qps: number;
         tpm: number;
@@ -45,15 +95,42 @@ function checkQuota(userId: number, estimatedTokens: number) {
 
   const limits = getEffectiveLimits(user as any);
 
+  const quota: QuotaInfo = {
+    remaining_requests: limits.quota_requests !== null ? Math.max(0, limits.quota_requests - user.used_requests) : null,
+    remaining_tokens: limits.quota_tokens !== null ? Math.max(0, limits.quota_tokens - user.used_tokens) : null,
+    period_remaining_requests: null,
+    period_remaining_tokens: null,
+    period_reset_at: null,
+  };
+
   if (limits.quota_requests !== null && user.used_requests >= limits.quota_requests) {
-    return { ok: false, reason: "请求配额已用尽" };
+    return { ok: false, reason: "请求配额已用尽", quota };
   }
 
   if (limits.quota_tokens !== null && user.used_tokens + estimatedTokens > limits.quota_tokens) {
-    return { ok: false, reason: "Token 配额已用尽" };
+    return { ok: false, reason: "Token 配额已用尽", quota };
   }
 
-  return { ok: true as const };
+  if (limits.quota_period) {
+    const period = ensurePeriodReset(userId, limits.quota_period, user.period_reset_at);
+    quota.period_reset_at = period.period_reset_at;
+
+    if (limits.period_quota_requests !== null) {
+      quota.period_remaining_requests = Math.max(0, limits.period_quota_requests - period.period_used_requests);
+      if (period.period_used_requests >= limits.period_quota_requests) {
+        return { ok: false, reason: "周期请求配额已用尽", quota };
+      }
+    }
+
+    if (limits.period_quota_tokens !== null) {
+      quota.period_remaining_tokens = Math.max(0, limits.period_quota_tokens - period.period_used_tokens);
+      if (period.period_used_tokens + estimatedTokens > limits.period_quota_tokens) {
+        return { ok: false, reason: "周期 Token 配额已用尽", quota };
+      }
+    }
+  }
+
+  return { ok: true, quota };
 }
 
 function addUsage(userId: number, keyId: number, tokens: number, requests = 1) {
@@ -61,10 +138,11 @@ function addUsage(userId: number, keyId: number, tokens: number, requests = 1) {
     gatewayDb
       .prepare(
         `UPDATE users
-         SET used_tokens = used_tokens + ?, used_requests = used_requests + ?
+         SET used_tokens = used_tokens + ?, used_requests = used_requests + ?,
+             period_used_tokens = period_used_tokens + ?, period_used_requests = period_used_requests + ?
          WHERE id = ? AND deleted_at IS NULL`,
       )
-      .run(tokens, requests, userId);
+      .run(tokens, requests, tokens, requests, userId);
 
     gatewayDb
       .prepare(
@@ -200,11 +278,24 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
   }
   const resolvedAlias = resolved.alias;
 
-  const quota = checkQuota(auth.user.id, estimatedTokens);
-  if (!quota.ok) {
-    logRejected(429, quota.reason, alias, estimatedTokens);
-    return jsonError(quota.reason, 429);
+  const quotaResult = checkQuota(auth.user.id, estimatedTokens);
+  if (!quotaResult.ok) {
+    logRejected(429, quotaResult.reason, alias, estimatedTokens);
+    const headers: Record<string, string> = {};
+    if (quotaResult.quota) {
+      appendQuotaHeaders(headers, quotaResult.quota);
+    }
+    return jsonError(quotaResult.reason, 429, undefined, headers);
   }
+  const quotaHeaders: Record<string, string> = {};
+  appendQuotaHeaders(quotaHeaders, quotaResult.quota);
+
+  const withQuotaHeaders = (resp: Response): Response => {
+    for (const [k, v] of Object.entries(quotaHeaders)) {
+      resp.headers.set(k, v);
+    }
+    return resp;
+  };
 
   const rate = checkUserRateLimit(auth.user, estimatedTokens);
   if (!rate.ok) {
@@ -314,7 +405,6 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
 
   const picked = await requestUpstreamWithFallback();
   if (!picked.ok) {
-    addUsage(auth.user.id, auth.key.id, Math.max(1, estimatedTokens), 1);
     insertChatLog({
       user_id: auth.user.id,
       key_id: auth.key.id,
@@ -334,11 +424,11 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
       attempted_channels: picked.attemptedChannelNames.join(" -> "),
       error_message: "上游请求失败",
     });
-    return jsonError("上游请求失败", 502, {
+    return withQuotaHeaders(jsonError("上游请求失败", 502, {
       type: "upstream_error",
       param: "None",
       code: "502",
-    });
+    }));
   }
 
   if ("queued" in picked && picked.queued) {
@@ -363,7 +453,6 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
                 const text = await upstream.text().catch(() => "");
                 const upstreamError = parseUpstreamError(text, upstream.status);
                 lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
-                addUsage(auth.user.id, auth.key.id, Math.max(1, localPromptTokens), 1);
                 insertChatLog({
                   user_id: auth.user.id,
                   key_id: auth.key.id,
@@ -439,17 +528,20 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
                 if (finalized) return;
                 finalized = true;
                 const totalLatencyMs = Date.now() - startedAt;
-                lease.complete({ ok: upstream.status < 400, latencyMs: totalLatencyMs });
-                const actualCompletionTokens = Math.max(0, countTextTokens(transformed.completionText(), route.model.real_model));
+                const success = upstream.status < 400;
+                lease.complete({ ok: success, latencyMs: totalLatencyMs });
+                const actualCompletionTokens = success ? Math.max(0, countTextTokens(transformed.completionText(), route.model.real_model)) : 0;
                 const actualTotalTokens = localPromptTokens + actualCompletionTokens;
                 const outputTps =
-                  actualCompletionTokens > 0
+                  success && actualCompletionTokens > 0
                     ? Number(((actualCompletionTokens * 1000) / Math.max(1, totalLatencyMs)).toFixed(2))
                     : null;
                 const firstTokenAt = transformed.firstTokenAt();
                 const firstTokenLatencyMs = firstTokenAt !== null ? Math.max(0, firstTokenAt - startedAt) : null;
 
-                addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1);
+                if (success) {
+                  addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1);
+                }
                 insertChatLog({
                   user_id: auth.user.id,
                   key_id: auth.key.id,
@@ -467,7 +559,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
                   output_tps: outputTps,
                   route_attempts: Math.max(1, attemptedChannels.length),
                   attempted_channels: attemptedChannelNames.join(" -> "),
-                  error_message: upstream.status >= 400 ? `上游流式请求失败: ${upstream.status}` : null,
+                  error_message: success ? null : `上游流式请求失败: ${upstream.status}`,
                 });
               };
 
@@ -486,7 +578,6 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
               }
             } catch {
               lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
-              addUsage(auth.user.id, auth.key.id, Math.max(1, localPromptTokens), 1);
               insertChatLog({
                 user_id: auth.user.id,
                 key_id: auth.key.id,
@@ -517,14 +608,14 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
         },
       });
 
-      return new Response(queuedStream, {
+      return withQuotaHeaders(new Response(queuedStream, {
         status: 200,
         headers: {
           "content-type": "text/event-stream",
           "cache-control": "no-cache",
           connection: "keep-alive",
         },
-      });
+      }));
     }
 
     const queuedBody = new ReadableStream<Uint8Array>({
@@ -543,7 +634,6 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
             if (upstream.status >= 400) {
               const upstreamError = parseUpstreamError(rawText, upstream.status);
               lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
-              addUsage(auth.user.id, auth.key.id, Math.max(1, localPromptTokens), 1);
               insertChatLog({
                 user_id: auth.user.id,
                 key_id: auth.key.id,
@@ -605,7 +695,6 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
             controller.close();
           } catch {
             lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
-            addUsage(auth.user.id, auth.key.id, Math.max(1, localPromptTokens), 1);
             insertChatLog({
               user_id: auth.user.id,
               key_id: auth.key.id,
@@ -634,22 +723,22 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
       },
     });
 
-    return new Response(queuedBody, {
+    return withQuotaHeaders(new Response(queuedBody, {
       status: 200,
       headers: {
         "content-type": "application/json",
         "cache-control": "no-cache",
         connection: "keep-alive",
       },
-    });
+    }));
   }
 
   if (!("upstream" in picked)) {
-    return jsonError("上游请求失败", 502, {
+    return withQuotaHeaders(jsonError("上游请求失败", 502, {
       type: "upstream_error",
       param: "None",
       code: "502",
-    });
+    }));
   }
 
   const { route, upstream, lease, attemptedChannels, attemptedChannelNames } = picked;
@@ -660,7 +749,6 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
       const text = await upstream.text().catch(() => "");
       const upstreamError = parseUpstreamError(text, upstream.status);
       lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
-      addUsage(auth.user.id, auth.key.id, Math.max(1, localPromptTokens), 1);
       insertChatLog({
         user_id: auth.user.id,
         key_id: auth.key.id,
@@ -683,12 +771,12 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
       const errorBody = route.model.upstream_protocol === inboundProtocol
         ? text
         : buildErrorResponseBody(upstreamError.message, upstream.status, inboundProtocol, upstreamError.type, upstreamError.code);
-      return new Response(errorBody, {
+      return withQuotaHeaders(new Response(errorBody, {
         status: upstream.status,
         headers: {
           "content-type": "application/json",
         },
-      });
+      }));
     }
 
     if (!upstream.body) {
@@ -696,7 +784,6 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
       if (upstream.status >= 400) {
         const upstreamError = parseUpstreamError(rawText, upstream.status);
         lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
-        addUsage(auth.user.id, auth.key.id, Math.max(1, localPromptTokens), 1);
         insertChatLog({
           user_id: auth.user.id,
           key_id: auth.key.id,
@@ -719,12 +806,12 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
         const errorBody = route.model.upstream_protocol === inboundProtocol
           ? rawText
           : buildErrorResponseBody(upstreamError.message, upstream.status, inboundProtocol, upstreamError.type, upstreamError.code);
-        return new Response(errorBody, {
+        return withQuotaHeaders(new Response(errorBody, {
           status: upstream.status,
           headers: {
             "content-type": "application/json",
           },
-        });
+        }));
       }
       const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol);
       const usage = getUsageFromBody(rawText, route.model.upstream_protocol);
@@ -757,12 +844,12 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
         attempted_channels: attemptedChannelNames.join(" -> "),
         error_message: null,
       });
-      return new Response(adaptedText, {
+      return withQuotaHeaders(new Response(adaptedText, {
         status: upstream.status,
         headers: {
           "content-type": inboundProtocol === "responses" ? "application/json" : "application/json",
         },
-      });
+      }));
     }
 
     const transformed = createTransformedStream(upstream.body, route.model.upstream_protocol, inboundProtocol);
@@ -783,7 +870,9 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
       const firstTokenAt = transformed.firstTokenAt();
       const firstTokenLatencyMs = firstTokenAt !== null ? Math.max(0, firstTokenAt - startedAt) : null;
 
-      addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1);
+      if (success) {
+        addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1);
+      }
       insertChatLog({
         user_id: auth.user.id,
         key_id: auth.key.id,
@@ -801,7 +890,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
         output_tps: outputTps,
         route_attempts: Math.max(1, attemptedChannels.length),
         attempted_channels: attemptedChannelNames.join(" -> "),
-        error_message: upstream.status >= 400 ? `上游流式请求失败: ${upstream.status}` : null,
+        error_message: success ? null : `上游流式请求失败: ${upstream.status}`,
       });
     };
 
@@ -827,21 +916,20 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
       },
     });
 
-    return new Response(wrapped, {
+    return withQuotaHeaders(new Response(wrapped, {
       status: upstream.status,
       headers: {
         "content-type": inboundProtocol === "responses" ? "text/event-stream" : "text/event-stream",
         "cache-control": upstream.headers.get("cache-control") ?? "no-cache",
         connection: upstream.headers.get("connection") ?? "keep-alive",
       },
-    });
+    }));
   }
 
   const rawText = await upstream.text();
   if (upstream.status >= 400) {
     const upstreamError = parseUpstreamError(rawText, upstream.status);
     lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
-    addUsage(auth.user.id, auth.key.id, Math.max(1, localPromptTokens), 1);
     insertChatLog({
       user_id: auth.user.id,
       key_id: auth.key.id,
@@ -863,12 +951,12 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
     const errorBody = route.model.upstream_protocol === inboundProtocol
       ? rawText
       : buildErrorResponseBody(upstreamError.message, upstream.status, inboundProtocol, upstreamError.type, upstreamError.code);
-    return new Response(errorBody, {
+    return withQuotaHeaders(new Response(errorBody, {
       status: upstream.status,
       headers: {
         "content-type": "application/json",
       },
-    });
+    }));
   }
   const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol);
   const usage = getUsageFromBody(rawText, route.model.upstream_protocol);
@@ -902,10 +990,10 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
     error_message: null,
   });
 
-  return new Response(adaptedText, {
+  return withQuotaHeaders(new Response(adaptedText, {
     status: upstream.status,
     headers: {
       "content-type": upstream.headers.get("content-type") ?? "application/json",
     },
-  });
+  }));
 }

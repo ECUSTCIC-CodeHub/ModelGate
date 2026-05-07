@@ -66,6 +66,12 @@ type UserRow = {
   tpm: number;
   quota_tokens: number | null;
   quota_requests: number | null;
+  quota_period: number | null;
+  period_quota_tokens: number | null;
+  period_quota_requests: number | null;
+  period_used_tokens: number;
+  period_used_requests: number;
+  period_reset_at: string | null;
   used_tokens: number;
   used_requests: number;
   allowed_model_aliases: string[];
@@ -76,11 +82,17 @@ type UserRow = {
   group_tpm: number | null;
   group_quota_requests: number | null;
   group_quota_tokens: number | null;
+  group_quota_period: number | null;
+  group_period_quota_tokens: number | null;
+  group_period_quota_requests: number | null;
   effective_rpm: number;
   effective_qps: number;
   effective_tpm: number;
   effective_quota_requests: number | null;
   effective_quota_tokens: number | null;
+  effective_quota_period: number | null;
+  effective_period_quota_tokens: number | null;
+  effective_period_quota_requests: number | null;
 };
 
 type AliasOption = {
@@ -97,6 +109,35 @@ type GroupOption = {
 
 type UserSortKey = "created_at" | "used_requests" | "used_tokens" | "username";
 
+const PERIOD_PRESETS = [
+  { label: "不限制（继承组）", value: "" },
+  { label: "每小时", value: "3600" },
+  { label: "每日", value: "86400" },
+  { label: "每周", value: "604800" },
+  { label: "每月", value: "2592000" },
+  { label: "自定义", value: "custom" },
+] as const;
+
+function periodToPreset(v: number | null): string {
+  if (v === null || v <= 0) return "";
+  if (v === 3600) return "3600";
+  if (v === 86400) return "86400";
+  if (v === 604800) return "604800";
+  if (v === 2592000) return "2592000";
+  return "custom";
+}
+
+function formatPeriodLabel(v: number | null): string {
+  if (v === null || v <= 0) return "-";
+  if (v === 3600) return "每小时";
+  if (v === 86400) return "每日";
+  if (v === 604800) return "每周";
+  if (v === 2592000) return "每月";
+  if (v >= 86400) return `每 ${Math.round(v / 86400)} 天`;
+  if (v >= 3600) return `每 ${Math.round(v / 3600)} 小时`;
+  return `每 ${v} 秒`;
+}
+
 type UserForm = {
   username: string;
   password: string;
@@ -109,6 +150,10 @@ type UserForm = {
   tpm: number;
   quota_tokens: string;
   quota_requests: string;
+  quota_period_preset: string;
+  quota_period_custom: string;
+  period_quota_tokens: string;
+  period_quota_requests: string;
   allowed_model_aliases: string[];
   note: string;
 };
@@ -125,6 +170,10 @@ const initialForm: UserForm = {
   tpm: -1,
   quota_tokens: "",
   quota_requests: "",
+  quota_period_preset: "",
+  quota_period_custom: "",
+  period_quota_tokens: "",
+  period_quota_requests: "",
   allowed_model_aliases: [],
   note: "",
 };
@@ -154,6 +203,7 @@ export default function AdminUsersPage() {
   const [editingGroupLimits, setEditingGroupLimits] = useState<{
     rpm: number | null; qps: number | null; tpm: number | null;
     quota_requests: number | null; quota_tokens: number | null;
+    quota_period: number | null; period_quota_tokens: number | null; period_quota_requests: number | null;
   } | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -258,7 +308,9 @@ export default function AdminUsersPage() {
     setEditingGroupLimits(row.group_id ? {
       rpm: row.group_rpm, qps: row.group_qps, tpm: row.group_tpm,
       quota_requests: row.group_quota_requests, quota_tokens: row.group_quota_tokens,
+      quota_period: row.group_quota_period, period_quota_tokens: row.group_period_quota_tokens, period_quota_requests: row.group_period_quota_requests,
     } : null);
+    const preset = periodToPreset(row.quota_period);
     setForm({
       username: row.username,
       password: "",
@@ -272,6 +324,10 @@ export default function AdminUsersPage() {
       tpm: row.tpm,
       quota_tokens: row.quota_tokens === null ? "" : String(row.quota_tokens),
       quota_requests: row.quota_requests === null ? "" : String(row.quota_requests),
+      quota_period_preset: preset,
+      quota_period_custom: preset === "custom" && row.quota_period ? String(row.quota_period) : "",
+      period_quota_tokens: row.period_quota_tokens === null ? "" : String(row.period_quota_tokens),
+      period_quota_requests: row.period_quota_requests === null ? "" : String(row.period_quota_requests),
       allowed_model_aliases: row.allowed_model_aliases ?? [],
     });
     setDrawerOpen(true);
@@ -289,6 +345,10 @@ export default function AdminUsersPage() {
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
 
+    const periodValue = form.quota_period_preset === "custom"
+      ? (form.quota_period_custom.trim() === "" ? null : Number(form.quota_period_custom))
+      : (form.quota_period_preset === "" ? null : Number(form.quota_period_preset));
+
     const payload = {
       username: form.username,
       role: form.role,
@@ -299,6 +359,9 @@ export default function AdminUsersPage() {
       tpm: form.tpm,
       quota_tokens: form.quota_tokens.trim() === "" ? null : Number(form.quota_tokens),
       quota_requests: form.quota_requests.trim() === "" ? null : Number(form.quota_requests),
+      quota_period: periodValue,
+      period_quota_tokens: form.period_quota_tokens.trim() === "" ? null : Number(form.period_quota_tokens),
+      period_quota_requests: form.period_quota_requests.trim() === "" ? null : Number(form.period_quota_requests),
       allowed_model_aliases: form.allowed_model_aliases,
       note: form.note.trim() === "" ? null : form.note.trim(),
       ...(form.new_password.trim() ? { new_password: form.new_password.trim() } : {}),
@@ -704,6 +767,50 @@ export default function AdminUsersPage() {
                   {form.quota_tokens.trim() === "" && editingGroupLimits ? (
                     <p className="text-xs text-zinc-500">← 继承组: {editingGroupLimits.quota_tokens === null ? "∞" : formatLimit(editingGroupLimits.quota_tokens)}</p>
                   ) : null}
+                </div>
+              </div>
+              <div className="mt-3 border-t border-white/10 pt-3">
+                <p className="text-sm font-medium text-zinc-100">周期配额</p>
+                <p className="mb-3 text-xs text-zinc-500">按固定时间间隔重置用量，留空表示继承组设置。</p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>重置周期</Label>
+                    <Select value={form.quota_period_preset || "none"} onValueChange={(value) => setForm({ ...form, quota_period_preset: value === "none" ? "" : value, quota_period_custom: value === "custom" ? form.quota_period_custom : "" })}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="继承组设置" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PERIOD_PRESETS.map((p) => (
+                          <SelectItem key={p.value || "none"} value={p.value || "none"}>
+                            {p.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {form.quota_period_preset === "" && editingGroupLimits ? (
+                      <p className="text-xs text-zinc-500">← 继承组: {formatPeriodLabel(editingGroupLimits.quota_period)}</p>
+                    ) : null}
+                  </div>
+                  {form.quota_period_preset === "custom" ? (
+                    <div className="space-y-2">
+                      <Label>自定义周期（秒）</Label>
+                      <Input type="number" min={60} value={form.quota_period_custom} onChange={(e) => setForm({ ...form, quota_period_custom: e.target.value })} placeholder="如 7200 = 2小时" />
+                    </div>
+                  ) : <div />}
+                  <div className="space-y-2">
+                    <Label>周期请求配额</Label>
+                    <Input type="number" min={-1} value={form.period_quota_requests} onChange={(e) => setForm({ ...form, period_quota_requests: e.target.value })} placeholder="留空继承组设置" />
+                    {form.period_quota_requests.trim() === "" && editingGroupLimits ? (
+                      <p className="text-xs text-zinc-500">← 继承组: {editingGroupLimits.period_quota_requests === null ? "∞" : formatLimit(editingGroupLimits.period_quota_requests)}</p>
+                    ) : null}
+                  </div>
+                  <div className="space-y-2">
+                    <Label>周期 Token 配额</Label>
+                    <Input type="number" min={-1} value={form.period_quota_tokens} onChange={(e) => setForm({ ...form, period_quota_tokens: e.target.value })} placeholder="留空继承组设置" />
+                    {form.period_quota_tokens.trim() === "" && editingGroupLimits ? (
+                      <p className="text-xs text-zinc-500">← 继承组: {editingGroupLimits.period_quota_tokens === null ? "∞" : formatLimit(editingGroupLimits.period_quota_tokens)}</p>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </div>
