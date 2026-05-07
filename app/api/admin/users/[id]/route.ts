@@ -25,6 +25,7 @@ const updateSchema = z.object({
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
   note: z.string().max(500).nullable().optional(),
   new_password: z.string().min(8).optional(),
+  reset_usage: z.enum(["all", "total", "period"]).optional(),
 });
 
 function normalizeQuota(value: number | null | undefined) {
@@ -191,6 +192,20 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       );
   }
 
+  if (parsed.data.reset_usage === "all" || parsed.data.reset_usage === "total") {
+    gatewayDb
+      .prepare("UPDATE users SET used_tokens = 0, used_requests = 0 WHERE id = ?")
+      .run(id);
+    gatewayDb
+      .prepare("UPDATE keys SET used_tokens = 0, used_requests = 0 WHERE user_id = ? AND deleted_at IS NULL")
+      .run(id);
+  }
+  if (parsed.data.reset_usage === "all" || parsed.data.reset_usage === "period") {
+    gatewayDb
+      .prepare("UPDATE users SET period_used_tokens = 0, period_used_requests = 0, period_reset_at = NULL WHERE id = ?")
+      .run(id);
+  }
+
   const row = gatewayDb
     .prepare(
       `SELECT u.id, u.username, u.role, u.group_id, g.name AS group_name,
@@ -205,7 +220,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     .get(id) as { allowed_model_aliases: string } & Record<string, unknown>;
 
   return jsonOk({
-    message: "用户更新成功。",
+    message: parsed.data.reset_usage ? "用量已重置。" : "用户更新成功。",
     data: { ...row, allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases) },
   });
 }

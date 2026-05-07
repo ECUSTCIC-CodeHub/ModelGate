@@ -400,6 +400,20 @@ export default function AdminUsersPage() {
     toast({ variant: "error", description: getApiMessage(data, "更新用户失败。") });
   }
 
+  async function resetUsage(id: number, type: "all" | "total" | "period") {
+    const response = await authedFetch(`/api/dashboard/users/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ reset_usage: type }),
+    });
+    const data = await response.json().catch(() => null);
+    if (response.ok) {
+      toast({ variant: "success", description: getApiMessage(data, "用量已重置。") });
+      await load(page);
+      return;
+    }
+    toast({ variant: "error", description: getApiMessage(data, "重置失败。") });
+  }
+
   async function remove(id: number) {
     const response = await authedFetch(`/api/dashboard/users/${id}`, { method: "DELETE" });
     const data = await response.json().catch(() => null);
@@ -549,6 +563,23 @@ export default function AdminUsersPage() {
                         </TableCell>
                         <TableCell className="space-x-2 whitespace-nowrap text-right">
                           <Button size="sm" variant="outline" onClick={() => onEditClick(row)}>编辑</Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="sm" variant="outline">重置用量</Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>重置用户 {row.username} 的用量？</AlertDialogTitle>
+                                <AlertDialogDescription>选择要重置的用量类型，重置后不可恢复。</AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+                                <AlertDialogCancel>取消</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => resetUsage(row.id, "period")}>仅周期用量</AlertDialogAction>
+                                <AlertDialogAction onClick={() => resetUsage(row.id, "total")}>仅总用量</AlertDialogAction>
+                                <AlertDialogAction onClick={() => resetUsage(row.id, "all")}>全部重置</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button size="sm" variant="destructive">删除</Button>
