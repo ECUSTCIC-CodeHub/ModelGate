@@ -257,12 +257,12 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                     const [label, used, total] = item!;
                     const remaining = Math.max(0, total - used);
                     return (
-                      <div key={label} className="flex items-baseline justify-between">
-                        <span className="shrink-0 text-[10px] tracking-wide text-zinc-500">{label}</span>
-                        <span className="text-right font-mono text-xs text-zinc-100">
+                      <div key={label} className="mt-0.5">
+                        <span className="text-[10px] tracking-wide text-zinc-500">{label}</span>
+                        <div className="flex justify-end font-mono text-sm text-zinc-100">
                           <span>{formatLimit(remaining)}</span>
-                          <span className="text-zinc-500">/{formatLimit(total)}</span>
-                        </span>
+                          <span className="text-zinc-500"> / {formatLimit(total)}</span>
+                        </div>
                       </div>
                     );
                   })}
