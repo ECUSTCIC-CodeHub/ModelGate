@@ -19,6 +19,7 @@ const schema = z.object({
   oidc_button_text: z.string().optional(),
   oidc_group_claim: z.string().optional(),
   public_base_url: z.string().optional(),
+  announcement_content: z.string().max(5000).optional(),
 });
 
 export async function GET(request: Request) {

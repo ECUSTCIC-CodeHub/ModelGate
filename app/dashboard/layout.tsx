@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { AnnouncementDialog } from "@/components/dashboard/announcement-dialog";
 import { AuthProvider } from "@/components/providers/auth-provider";
 import { getServerProfileFromCookieStore } from "@/lib/auth";
 import { getAuthStatus } from "@/lib/auth-status";
@@ -23,6 +24,7 @@ export default async function DashboardLayout({
   return (
     <AuthProvider initialProfile={profile} oidcEnabled={authStatus.oidc_enabled}>
       {children}
+      <AnnouncementDialog />
     </AuthProvider>
   );
 }

@@ -333,6 +333,7 @@ CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
   initSetting.run("oidc_auto_register", "1");
   initSetting.run("oidc_button_text", "OIDC 登录");
   initSetting.run("oidc_group_claim", "");
+  initSetting.run("announcement_content", "");
 
 // Historical compatibility (one-time):
 // previous versions used 0 as "unlimited"; now -1 is unlimited.

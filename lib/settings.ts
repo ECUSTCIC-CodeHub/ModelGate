@@ -20,6 +20,7 @@ export type GatewaySettings = {
   oidc_button_text: string;
   oidc_group_claim: string;
   public_base_url: string;
+  announcement_content: string;
 };
 
 function positiveInt(value: string | null | undefined, fallback: number) {
@@ -46,6 +47,7 @@ const GATEWAY_KEYS = [
   "upstream_retry_enabled",
   "upstream_retry_max_attempts",
   ...OIDC_KEYS,
+  "announcement_content",
 ] as const;
 
 export function getGatewaySettings(): GatewaySettings {
@@ -73,6 +75,7 @@ export function getGatewaySettings(): GatewaySettings {
     oidc_button_text: map.get("oidc_button_text") || "OIDC 登录",
     oidc_group_claim: map.get("oidc_group_claim") ?? "",
     public_base_url: map.get("public_base_url") ?? "",
+    announcement_content: map.get("announcement_content") ?? "",
   };
 }
 
@@ -90,6 +93,7 @@ export function setGatewaySettings(input: {
   oidc_button_text?: string;
   oidc_group_claim?: string;
   public_base_url?: string;
+  announcement_content?: string;
 }) {
   const values: Record<string, string> = {
     registration_enabled: input.registration_enabled ? "1" : "0",
@@ -107,6 +111,7 @@ export function setGatewaySettings(input: {
   if (input.oidc_button_text !== undefined) values.oidc_button_text = input.oidc_button_text.trim() || "OIDC 登录";
   if (input.oidc_group_claim !== undefined) values.oidc_group_claim = input.oidc_group_claim.trim();
   if (input.public_base_url !== undefined) values.public_base_url = input.public_base_url.trim().replace(/\/+$/, "");
+  if (input.announcement_content !== undefined) values.announcement_content = input.announcement_content;
 
   const upsert = gatewayDb.prepare(
     `INSERT INTO settings (key, value, updated_at)

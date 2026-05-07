@@ -29,6 +29,7 @@ export default function AdminSettingsPage() {
   const [oidcButtonText, setOidcButtonText] = useState("OIDC 登录");
   const [oidcGroupClaim, setOidcGroupClaim] = useState("");
   const [publicBaseUrl, setPublicBaseUrl] = useState("");
+  const [announcementContent, setAnnouncementContent] = useState("");
   const { toast } = useToast();
 
   async function ensureAdmin() {
@@ -66,6 +67,7 @@ export default function AdminSettingsPage() {
       setPublicBaseUrl(
         savedBase || (typeof window !== "undefined" ? window.location.origin : ""),
       );
+      setAnnouncementContent(data.data.announcement_content ?? "");
     }
   }
 
@@ -90,6 +92,7 @@ export default function AdminSettingsPage() {
         oidc_button_text: oidcButtonText,
         oidc_group_claim: oidcGroupClaim,
         public_base_url: publicBaseUrl,
+        announcement_content: announcementContent,
       }),
     });
     const data = await response.json().catch(() => null);
@@ -268,6 +271,24 @@ export default function AdminSettingsPage() {
               </div>
               <Switch checked={oidcAutoRegister} onCheckedChange={setOidcAutoRegister} />
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <SectionTitle
+              title="系统公告"
+              description="用户登录仪表盘后将弹窗展示公告内容，支持 Markdown 格式。留空则不展示。"
+            />
+          </CardHeader>
+          <CardContent>
+            <textarea
+              className="flex min-h-40 w-full rounded-xl border border-white/10 bg-slate-950/50 px-4 py-3 text-sm text-zinc-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] placeholder:text-zinc-500 focus-visible:border-[rgba(159,232,216,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(159,232,216,0.18)]"
+              placeholder={"支持 Markdown，例如：\n# 公告标题\n\n公告正文内容..."}
+              value={announcementContent}
+              onChange={(e) => setAnnouncementContent(e.target.value)}
+              maxLength={5000}
+            />
           </CardContent>
         </Card>
 
