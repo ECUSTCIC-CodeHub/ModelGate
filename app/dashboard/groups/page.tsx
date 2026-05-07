@@ -352,9 +352,14 @@ export default function AdminGroupsPage() {
                         <TableCell>{row.quota_tokens === null ? "∞" : formatLimit(row.quota_tokens)}</TableCell>
                         <TableCell>
                           {row.quota_period ? (
-                            <span className="text-sm" title={`${formatPeriodLabel(row.quota_period)}: 请求 ${row.period_quota_requests === null ? "∞" : formatLimit(row.period_quota_requests)} / Token ${row.period_quota_tokens === null ? "∞" : formatLimit(row.period_quota_tokens)}`}>
-                              {formatPeriodLabel(row.quota_period)}
-                            </span>
+                            <div className="space-y-0.5 text-sm">
+                              <p className="font-medium text-zinc-200">{formatPeriodLabel(row.quota_period)}</p>
+                              <p className="text-xs text-zinc-400">
+                                请求 {row.period_quota_requests === null ? "∞" : formatLimit(row.period_quota_requests)}
+                                {" / "}
+                                Token {row.period_quota_tokens === null ? "∞" : formatLimit(row.period_quota_tokens)}
+                              </p>
+                            </div>
                           ) : "-"}
                         </TableCell>
                         <TableCell className="max-w-48">

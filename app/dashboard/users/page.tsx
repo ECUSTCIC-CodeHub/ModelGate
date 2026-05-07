@@ -499,7 +499,7 @@ export default function AdminUsersPage() {
 
             {rows.length > 0 ? (
               <div className="overflow-x-auto rounded-xl border border-white/10">
-                <Table className="min-w-[1180px] table-fixed">
+                <Table className="min-w-[1360px] table-fixed">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[180px]">用户名</TableHead>
@@ -509,6 +509,7 @@ export default function AdminUsersPage() {
                       <TableHead className="w-[180px]">限速 RPM/QPS/TPM</TableHead>
                       <TableHead className="w-[150px]">累计 请求/Token</TableHead>
                       <TableHead className="w-[150px]">配额 请求/Token</TableHead>
+                      <TableHead className="w-[180px]">周期配额</TableHead>
                       <TableHead className="w-[160px] text-right">操作</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -560,6 +561,21 @@ export default function AdminUsersPage() {
                             {" / "}
                             {row.effective_quota_tokens === null ? "∞" : formatNumber(row.effective_quota_tokens)}
                           </span>
+                        </TableCell>
+                        <TableCell>
+                          {row.effective_quota_period ? (
+                            <div className="space-y-0.5 text-sm">
+                              <p className="font-medium text-zinc-200">{formatPeriodLabel(row.effective_quota_period)}</p>
+                              <p className="text-xs text-zinc-400">
+                                请求 {row.effective_period_quota_requests === null ? "∞" : formatLimit(row.effective_period_quota_requests)}
+                                {" / "}
+                                Token {row.effective_period_quota_tokens === null ? "∞" : formatLimit(row.effective_period_quota_tokens)}
+                              </p>
+                              <p className="text-xs text-zinc-500">
+                                已用 {formatNumber(row.period_used_requests)} / {formatNumber(row.period_used_tokens)}
+                              </p>
+                            </div>
+                          ) : <span className="text-sm text-zinc-500">-</span>}
                         </TableCell>
                         <TableCell className="space-x-2 whitespace-nowrap text-right">
                           <Button size="sm" variant="outline" onClick={() => onEditClick(row)}>编辑</Button>

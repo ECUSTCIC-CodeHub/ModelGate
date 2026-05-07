@@ -4,6 +4,8 @@ import { AnnouncementDialog } from "@/components/dashboard/announcement-dialog";
 import { AuthProvider } from "@/components/providers/auth-provider";
 import { getServerProfileFromCookieStore } from "@/lib/auth";
 import { getAuthStatus } from "@/lib/auth-status";
+import { type DbUser } from "@/lib/db";
+import { getEffectiveLimits } from "@/lib/effective-limits";
 
 export const dynamic = "force-dynamic";
 
@@ -19,10 +21,23 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
+  const effective = getEffectiveLimits(profile as DbUser);
+  const enrichedProfile = {
+    ...profile,
+    rpm: effective.rpm,
+    qps: effective.qps,
+    tpm: effective.tpm,
+    quota_tokens: effective.quota_tokens,
+    quota_requests: effective.quota_requests,
+    quota_period: effective.quota_period,
+    period_quota_tokens: effective.period_quota_tokens,
+    period_quota_requests: effective.period_quota_requests,
+  };
+
   const authStatus = getAuthStatus();
 
   return (
-    <AuthProvider initialProfile={profile} oidcEnabled={authStatus.oidc_enabled}>
+    <AuthProvider initialProfile={enrichedProfile} oidcEnabled={authStatus.oidc_enabled}>
       {children}
       <AnnouncementDialog />
     </AuthProvider>
