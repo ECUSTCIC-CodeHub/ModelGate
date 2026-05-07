@@ -202,18 +202,16 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                   <p className="truncate text-sm font-semibold text-zinc-100">{profileBrief.username}</p>
                   <p className="mt-0.5 truncate text-xs text-zinc-400">{role === "admin" ? "管理员" : "普通用户"}</p>
                 </div>
-                <div className="flex items-center justify-between gap-1 rounded-lg bg-black/20 px-3 py-2">
-                  <div className="flex items-baseline gap-1">
+                <div className="space-y-1.5 rounded-lg bg-black/20 px-3 py-2">
+                  <div className="flex items-baseline justify-between">
                     <span className="text-[10px] uppercase tracking-wide text-zinc-500">RPM</span>
                     <span className="font-mono text-sm text-zinc-100">{formatLimit(profileBrief.rpm)}</span>
                   </div>
-                  <span className="text-zinc-600">/</span>
-                  <div className="flex items-baseline gap-1">
+                  <div className="flex items-baseline justify-between">
                     <span className="text-[10px] uppercase tracking-wide text-zinc-500">QPS</span>
                     <span className="font-mono text-sm text-zinc-100">{formatLimit(profileBrief.qps)}</span>
                   </div>
-                  <span className="text-zinc-600">/</span>
-                  <div className="flex items-baseline gap-1">
+                  <div className="flex items-baseline justify-between">
                     <span className="text-[10px] uppercase tracking-wide text-zinc-500">TPM</span>
                     <span className="font-mono text-sm text-zinc-100">{formatLimit(profileBrief.tpm)}</span>
                   </div>
