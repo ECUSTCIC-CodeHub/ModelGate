@@ -703,8 +703,7 @@ export function adaptRequestBody(
     if (systemBlocks.length > 0) {
       next.system = systemBlocks.length === 1 && systemBlocks[0]?.type === "text" ? systemBlocks[0].text : systemBlocks;
     }
-    if (body.max_tokens !== undefined) next.max_tokens = body.max_tokens;
-    if (body.max_output_tokens !== undefined) next.max_tokens = body.max_output_tokens;
+    next.max_tokens = body.max_output_tokens ?? body.max_tokens ?? 8192;
     if (body.temperature !== undefined) next.temperature = body.temperature;
     if (body.top_p !== undefined) next.top_p = body.top_p;
     if (body.stop !== undefined) next.stop_sequences = Array.isArray(body.stop) ? body.stop : [body.stop];
