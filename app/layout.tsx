@@ -4,7 +4,7 @@ import { ToastProvider } from "@/components/ui/toast";
 
 export const metadata: Metadata = {
   title: "ModelGate",
-  description: "Multi-tenant LLM Gateway + Web Console",
+  description: "多租户 LLM 网关管理控制台",
 };
 
 export default function RootLayout({
@@ -13,7 +13,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="zh">
       <body className="antialiased">
         <ToastProvider>{children}</ToastProvider>
       </body>

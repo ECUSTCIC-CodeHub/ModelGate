@@ -302,7 +302,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
         <SheetContent side="left" className="w-[320px] p-0">
           <SheetHeader className="border-b border-white/10 px-5 py-4">
             <SheetTitle>后台导航</SheetTitle>
-            <SheetDescription>保持原有路由结构，统一为 shadcn 风格交互。</SheetDescription>
+            <SheetDescription>快速切换页面与管理账号。</SheetDescription>
           </SheetHeader>
           <div className="flex h-full flex-col">
             <ScrollArea className="flex-1 px-4 py-4">
