@@ -202,18 +202,20 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                   <p className="truncate text-sm font-semibold text-zinc-100">{profileBrief.username}</p>
                   <p className="mt-0.5 truncate text-xs text-zinc-400">{role === "admin" ? "管理员" : "普通用户"}</p>
                 </div>
-                <div className="grid grid-cols-3 gap-2 rounded-lg bg-black/20 px-2 py-2 text-center">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wide text-zinc-500">RPM</p>
-                    <p className="mt-0.5 truncate font-mono text-sm text-zinc-100">{formatLimit(profileBrief.rpm)}</p>
+                <div className="flex items-center justify-between gap-1 rounded-lg bg-black/20 px-3 py-2">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-[10px] uppercase tracking-wide text-zinc-500">RPM</span>
+                    <span className="font-mono text-sm text-zinc-100">{formatLimit(profileBrief.rpm)}</span>
                   </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wide text-zinc-500">QPS</p>
-                    <p className="mt-0.5 truncate font-mono text-sm text-zinc-100">{formatLimit(profileBrief.qps)}</p>
+                  <span className="text-zinc-600">/</span>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-[10px] uppercase tracking-wide text-zinc-500">QPS</span>
+                    <span className="font-mono text-sm text-zinc-100">{formatLimit(profileBrief.qps)}</span>
                   </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wide text-zinc-500">TPM</p>
-                    <p className="mt-0.5 truncate font-mono text-sm text-zinc-100">{formatLimit(profileBrief.tpm)}</p>
+                  <span className="text-zinc-600">/</span>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-[10px] uppercase tracking-wide text-zinc-500">TPM</span>
+                    <span className="font-mono text-sm text-zinc-100">{formatLimit(profileBrief.tpm)}</span>
                   </div>
                 </div>
                 <div className="space-y-1">
