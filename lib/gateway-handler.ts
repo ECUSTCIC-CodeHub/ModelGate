@@ -134,8 +134,8 @@ function checkQuota(userId: number, estimatedTokens: number): { ok: false; reaso
 }
 
 function addUsage(userId: number, keyId: number, tokens: number, requests = 1, tokenMultiplier = 1, requestMultiplier = 1) {
-  const billedTokens = Math.max(0, Math.round(tokens * tokenMultiplier));
-  const billedRequests = Math.max(0, Math.round(requests * requestMultiplier));
+  const billedTokens = Math.max(0, tokens * tokenMultiplier);
+  const billedRequests = Math.max(0, requests * requestMultiplier);
   const tx = gatewayDb.transaction(() => {
     gatewayDb
       .prepare(
