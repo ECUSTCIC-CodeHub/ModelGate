@@ -1,32 +1,32 @@
-# ModelGate API Reference
+# ModelGate API 文档
 
-## Overview
+## 概述
 
-ModelGate is an LLM gateway that provides OpenAI-compatible API endpoints with user management, quota control, and multi-channel routing.
+ModelGate 是一个 LLM 网关，提供 OpenAI 兼容的 API 端点，支持用户管理、配额控制和多渠道路由。
 
 **Base URL:** `http://your-domain:3000`
 
-## Authentication
+## 认证方式
 
-### Web Authentication
+### Web 认证
 
-Dashboard and management APIs use JWT Bearer tokens or HTTP-only cookies.
+管理后台和仪表盘接口使用 JWT Bearer Token 或 HTTP-only Cookie：
 
 ```
 Authorization: Bearer <access_token>
 ```
 
-Tokens are obtained via `/api/auth/login` or `/api/auth/register`.
+通过 `/api/auth/login` 或 `/api/auth/register` 获取 Token。
 
-### API Key Authentication
+### API Key 认证
 
-Gateway endpoints (`/api/v1/*`) use API keys:
+网关端点（`/api/v1/*`）使用 API Key：
 
 ```
 Authorization: Bearer sk-gw-xxxxx
 ```
 
-or
+或
 
 ```
 x-api-key: sk-gw-xxxxx
@@ -34,15 +34,15 @@ x-api-key: sk-gw-xxxxx
 
 ---
 
-## Auth
+## 认证接口
 
 ### POST /api/auth/login
 
-Login with username and password.
+账号密码登录。
 
-**Auth:** None
+**认证:** 无
 
-**Request:**
+**请求体:**
 ```json
 {
   "username": "admin",
@@ -50,7 +50,7 @@ Login with username and password.
 }
 ```
 
-**Response (200):**
+**响应 (200):**
 ```json
 {
   "message": "登录成功。",
@@ -61,17 +61,17 @@ Login with username and password.
 }
 ```
 
-> Rate limited: 5 attempts per IP per minute, returns 429 if exceeded.
+> 登录限流：每个 IP 每分钟最多 5 次尝试，超出返回 429。
 
 ---
 
 ### POST /api/auth/register
 
-Register a new account. First registered user becomes admin.
+注册新账号。首个注册用户自动成为管理员。
 
-**Auth:** None
+**认证:** 无
 
-**Request:**
+**请求体:**
 ```json
 {
   "username": "newuser",
@@ -79,7 +79,7 @@ Register a new account. First registered user becomes admin.
 }
 ```
 
-**Response (201):**
+**响应 (201):**
 ```json
 {
   "message": "注册成功。",
@@ -90,29 +90,29 @@ Register a new account. First registered user becomes admin.
 }
 ```
 
-| Field | Type | Rule |
+| 字段 | 类型 | 规则 |
 |:---|:---|:---|
-| username | string | Alphanumeric, 3-32 chars |
-| password | string | Min 8 chars |
+| username | string | 仅英文字母和数字，3-32 位 |
+| password | string | 最少 8 位 |
 
 ---
 
 ### POST /api/auth/refresh
 
-Refresh access token using refresh token.
+使用 Refresh Token 刷新 Access Token。
 
-**Auth:** None
+**认证:** 无
 
-**Request:**
+**请求体:**
 ```json
 {
   "refresh_token": "eyJ..."
 }
 ```
 
-Or send via `vlm-refresh-token` cookie (auto).
+也可通过 `vlm-refresh-token` Cookie 自动传递。
 
-**Response (200):**
+**响应 (200):**
 ```json
 {
   "message": "令牌刷新成功。",
@@ -126,11 +126,11 @@ Or send via `vlm-refresh-token` cookie (auto).
 
 ### POST /api/auth/logout
 
-Clear auth cookies.
+清除认证 Cookie，退出登录。
 
-**Auth:** None
+**认证:** 无
 
-**Response (200):**
+**响应 (200):**
 ```json
 { "ok": true, "message": "已登出。" }
 ```
@@ -139,11 +139,11 @@ Clear auth cookies.
 
 ### GET /api/auth/me
 
-Get current authenticated user profile.
+获取当前登录用户信息。
 
-**Auth:** User
+**认证:** 用户
 
-**Response (200):**
+**响应 (200):**
 ```json
 {
   "user": { "id": 1, "username": "admin", "role": "admin" }
@@ -154,34 +154,34 @@ Get current authenticated user profile.
 
 ### POST /api/auth/change-password
 
-Change the current user's password.
+修改当前用户密码。
 
-**Auth:** User
+**认证:** 用户
 
-**Request:**
+**请求体:**
 ```json
 {
-  "current_password": "old-password",
-  "new_password": "new-password-8chars"
+  "current_password": "旧密码",
+  "new_password": "新密码至少8位"
 }
 ```
 
-**Response (200):**
+**响应 (200):**
 ```json
 { "ok": true, "message": "密码修改成功。" }
 ```
 
 ---
 
-## Admin - Settings
+## 管理接口 - 系统设置
 
 ### GET /api/admin/settings
 
-Get system settings.
+获取系统设置。
 
-**Auth:** Admin
+**认证:** 管理员
 
-**Response (200):**
+**响应 (200):**
 ```json
 {
   "message": "系统设置获取成功。",
@@ -199,11 +199,11 @@ Get system settings.
 
 ### PUT /api/admin/settings
 
-Update system settings.
+更新系统设置。
 
-**Auth:** Admin
+**认证:** 管理员
 
-**Request:**
+**请求体:**
 ```json
 {
   "registration_enabled": true,
@@ -212,32 +212,42 @@ Update system settings.
   "upstream_retry_max_attempts": 3,
   "upstream_circuit_breaker_enabled": true,
   "public_base_url": "https://your-domain.com",
-  "announcement_content": "# Welcome"
+  "announcement_content": "# 欢迎"
 }
 ```
 
+| 字段 | 类型 | 说明 |
+|:---|:---|:---|
+| registration_enabled | boolean | 是否允许注册 |
+| password_login_enabled | boolean | 是否允许密码登录 |
+| upstream_retry_enabled | boolean | 是否开启上游自动重试 |
+| upstream_retry_max_attempts | 1-10 | 最大重试次数 |
+| upstream_circuit_breaker_enabled | boolean | 是否开启上游熔断 |
+| public_base_url | string | 对外服务域名 |
+| announcement_content | string | 系统公告内容（支持 Markdown，最长 5000 字符） |
+
 ---
 
-## Admin - Users
+## 管理接口 - 用户管理
 
 ### GET /api/admin/users
 
-List all users with pagination, search, and sorting.
+分页查询用户列表，支持搜索和排序。
 
-**Auth:** Admin
+**认证:** 管理员
 
-**Query Parameters:**
+**查询参数:**
 
-| Param | Type | Default | Description |
+| 参数 | 类型 | 默认值 | 说明 |
 |:---|:---|:---|:---|
-| limit | 1-100 | 20 | Page size |
-| offset | int | 0 | Offset |
-| keyword | string | | Search by username |
-| group_id | int / "all" | | Filter by group |
-| sort_by | string | created_at | `created_at` / `used_requests` / `used_tokens` / `username` |
-| sort_dir | string | desc | `asc` / `desc` |
+| limit | 1-100 | 20 | 每页数量 |
+| offset | int | 0 | 偏移量 |
+| keyword | string | | 按用户名搜索 |
+| group_id | int / "all" | | 按用户组筛选 |
+| sort_by | string | created_at | 排序字段：`created_at` / `used_requests` / `used_tokens` / `username` |
+| sort_dir | string | desc | 排序方向：`asc` / `desc` |
 
-**Response (200):**
+**响应 (200):**
 ```json
 {
   "data": [
@@ -267,11 +277,11 @@ List all users with pagination, search, and sorting.
 
 ### POST /api/admin/users
 
-Create a new user.
+创建用户。
 
-**Auth:** Admin
+**认证:** 管理员
 
-**Request:**
+**请求体:**
 ```json
 {
   "username": "newuser",
@@ -283,52 +293,69 @@ Create a new user.
   "quota_tokens": null,
   "quota_requests": null,
   "allowed_model_aliases": [],
-  "note": "test user"
+  "note": "备注"
 }
 ```
 
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|:---|:---|:---|:---|:---|
+| username | string | 是 | | 仅英文字母和数字，3-32 位 |
+| password | string | 是 | | 最少 8 位 |
+| role | string | 否 | user | `admin` / `user` |
+| group_id | int/null | 否 | 默认组 | 用户组 ID |
+| enabled | bool | 否 | true | 是否启用 |
+| rpm / qps / tpm | int | 否 | -1 | 速率限制，-1 表示继承组设置 |
+| quota_tokens / quota_requests | int/null | 否 | null | 总量配额，null 表示继承组设置 |
+| allowed_model_aliases | string[] | 否 | [] | 可访问的模型白名单 |
+| note | string | 否 | null | 备注，最长 500 字符 |
+
 ### PUT /api/admin/users/:id
 
-Update a user. All fields optional.
+更新用户，所有字段可选。
 
-**Auth:** Admin
+**认证:** 管理员
 
-**Request:**
+**请求体:**
 ```json
 {
   "role": "admin",
   "enabled": true,
   "rpm": 100,
-  "new_password": "new-password",
+  "new_password": "新密码",
   "reset_usage": "all"
 }
 ```
 
-| reset_usage | Effect |
+| reset_usage 值 | 效果 |
 |:---|:---|
-| `"all"` | Reset total + period usage |
-| `"total"` | Reset total usage only |
-| `"period"` | Reset period usage only |
+| `"all"` | 重置总量 + 周期用量 |
+| `"total"` | 仅重置总量用量 |
+| `"period"` | 仅重置周期用量 |
 
 ### DELETE /api/admin/users/:id
 
-Soft-delete a user. Cannot delete the last enabled admin.
+软删除用户。不能删除最后一个启用的管理员。
 
-**Auth:** Admin
+**认证:** 管理员
+
+**响应 (200):**
+```json
+{ "ok": true, "message": "用户删除成功。" }
+```
 
 ---
 
-## Admin - Groups
+## 管理接口 - 用户组
 
 ### GET /api/admin/groups
 
-List all user groups.
+获取用户组列表。
 
-**Auth:** Admin
+**认证:** 管理员
 
-**Query Parameters:** `limit` (1-100, default 50), `offset` (default 0)
+**查询参数:** `limit`（1-100，默认 50），`offset`（默认 0）
 
-**Response (200):**
+**响应 (200):**
 ```json
 {
   "data": [
@@ -352,15 +379,15 @@ List all user groups.
 
 ### POST /api/admin/groups
 
-Create a user group.
+创建用户组。
 
-**Auth:** Admin
+**认证:** 管理员
 
-**Request:**
+**请求体:**
 ```json
 {
   "name": "vip",
-  "description": "VIP users",
+  "description": "VIP 用户",
   "rpm": 200, "qps": 50, "tpm": 1000000,
   "quota_requests": 10000,
   "quota_tokens": 50000000,
@@ -371,14 +398,25 @@ Create a user group.
 }
 ```
 
-#### OIDC Claim Expression Syntax
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|:---|:---|:---|:---|:---|
+| name | string | 是 | | 组名，1-64 字符 |
+| description | string | 否 | null | 描述，最长 200 字符 |
+| rpm / qps / tpm | int | 否 | -1 | 速率限制，-1 表示不限 |
+| quota_requests / quota_tokens | int/null | 否 | null | 总量配额，null 表示不限 |
+| allowed_model_aliases | string[] | 否 | [] | 可访问模型白名单 |
+| oidc_claim_expr | string | 否 | null | OIDC Claim 匹配表达式，最长 512 字符 |
+| oidc_claim_priority | int | 否 | 0 | 匹配优先级，0-9999，越大越优先 |
+| is_default | bool | 否 | false | 设为默认组（新用户自动加入） |
 
-Supports matching OIDC token claims for auto-assignment:
+#### OIDC Claim 表达式语法
+
+用于 OIDC 登录时自动分配用户组：
 
 ```
-# Operators: ==, !=, contains, matches (regex), exists
-# Logic: AND, OR, parentheses
-# Dot-notation for nested fields
+# 操作符：==、!=、contains、matches（正则）、exists
+# 逻辑：AND、OR、括号分组
+# 点号访问嵌套字段
 
 role == "admin"
 groups contains "vip"
@@ -388,31 +426,36 @@ tdp_social.tencent_uin exists
 email matches ".*@company\\.com"
 ```
 
-Higher `oidc_claim_priority` matches first.
+`oidc_claim_priority` 越高越优先匹配，用于解决多个组表达式同时满足时的冲突。
 
 ### PUT /api/admin/groups/:id
 
-Update a group. All fields optional.
+更新用户组，所有字段可选。
 
-**Auth:** Admin
+**认证:** 管理员
 
 ### DELETE /api/admin/groups/:id
 
-Delete a group. Cannot delete default group or groups with users.
+删除用户组。不能删除默认组或仍有用户的组。
 
-**Auth:** Admin
+**认证:** 管理员
+
+**响应 (200):**
+```json
+{ "ok": true, "message": "用户组删除成功。" }
+```
 
 ---
 
-## Admin - Channels
+## 管理接口 - 渠道管理
 
 ### GET /api/admin/channels
 
-List all upstream channels with their models.
+获取所有上游渠道及其模型列表。
 
-**Auth:** Admin
+**认证:** 管理员
 
-**Response (200):**
+**响应 (200):**
 ```json
 {
   "data": [
@@ -447,11 +490,11 @@ List all upstream channels with their models.
 
 ### POST /api/admin/channels
 
-Create a channel with optional initial models.
+创建渠道，可附带初始模型列表。
 
-**Auth:** Admin
+**认证:** 管理员
 
-**Request:**
+**请求体:**
 ```json
 {
   "name": "openai-main",
@@ -473,25 +516,36 @@ Create a channel with optional initial models.
 }
 ```
 
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|:---|:---|:---|:---|:---|
+| name | string | 是 | | 渠道名称 |
+| base_url | string | 是 | | 上游 API 地址 |
+| api_key | string | 是 | | 上游 API Key |
+| supported_protocols | string[] | 否 | ["chat_completions"] | 支持的协议 |
+| weight | int | 否 | 1 | 路由权重 |
+| max_concurrency | int | 否 | 64 | 最大并发数 |
+| timeout | int | 否 | 60 | 超时时间（秒） |
+| models | array | 否 | [] | 初始模型列表 |
+
 ### PUT /api/admin/channels/:id
 
-Update a channel. All fields optional.
+更新渠道，所有字段可选。
 
-**Auth:** Admin
+**认证:** 管理员
 
 ### DELETE /api/admin/channels/:id
 
-Soft-delete a channel and all its models.
+软删除渠道及其所有模型。
 
-**Auth:** Admin
+**认证:** 管理员
 
 ### POST /api/admin/channels/:id/test
 
-Test a channel by sending a probe request through its first model.
+测试渠道连通性，通过其第一个模型发送探测请求。
 
-**Auth:** Admin
+**认证:** 管理员
 
-**Response (200):**
+**响应 (200):**
 ```json
 {
   "message": "渠道测试成功。",
@@ -508,11 +562,11 @@ Test a channel by sending a probe request through its first model.
 
 ### POST /api/admin/channels/probe-models
 
-Probe an upstream endpoint for available models.
+探测上游端点可用的模型列表。
 
-**Auth:** Admin
+**认证:** 管理员
 
-**Request:**
+**请求体:**
 ```json
 {
   "base_url": "https://api.openai.com/v1",
@@ -520,28 +574,28 @@ Probe an upstream endpoint for available models.
 }
 ```
 
-**Response (200):**
+**响应 (200):**
 ```json
-{ "data": ["gpt-4-turbo", "gpt-3.5-turbo", "..."] }
+{ "data": ["gpt-4-turbo", "gpt-3.5-turbo"] }
 ```
 
 ---
 
-## Admin - Models
+## 管理接口 - 模型管理
 
 ### GET /api/admin/models
 
-List all models.
+获取所有模型列表。
 
-**Auth:** Admin
+**认证:** 管理员
 
 ### POST /api/admin/models
 
-Create a model mapping.
+创建模型映射。
 
-**Auth:** Admin
+**认证:** 管理员
 
-**Request:**
+**请求体:**
 ```json
 {
   "alias": "gpt-4",
@@ -556,46 +610,65 @@ Create a model mapping.
 }
 ```
 
-| Field | Type | Default | Description |
-|:---|:---|:---|:---|
-| alias | string | required | Client-facing model name |
-| real_model | string | required | Upstream model name |
-| channel_id | int | required | Target channel |
-| upstream_protocol | enum | chat_completions | `chat_completions` / `anthropic_messages` / `responses` |
-| is_public | bool | true | false = whitelist-only access |
-| weight | int | 1 | Routing weight (higher = more traffic) |
-| token_multiplier | float | 1 | Billing: actual_tokens = tokens * multiplier |
-| request_multiplier | float | 1 | Billing: actual_requests = requests * multiplier |
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|:---|:---|:---|:---|:---|
+| alias | string | 是 | | 客户端调用时的模型名 |
+| real_model | string | 是 | | 上游真实模型名 |
+| channel_id | int | 是 | | 所属渠道 ID |
+| upstream_protocol | enum | 否 | chat_completions | `chat_completions` / `anthropic_messages` / `responses` |
+| is_public | bool | 否 | true | false 时仅白名单用户可访问 |
+| weight | int | 否 | 1 | 路由权重（越大流量越多） |
+| token_multiplier | float | 否 | 1 | Token 计费倍率：实际扣量 = 使用量 x 倍率 |
+| request_multiplier | float | 否 | 1 | 请求计费倍率：实际扣量 = 请求次数 x 倍率 |
 
 ### PUT /api/admin/models/:id
 
-Update a model. All fields optional.
+更新模型，所有字段可选。
 
-**Auth:** Admin
+**认证:** 管理员
 
 ### DELETE /api/admin/models/:id
 
-Soft-delete a model.
+软删除模型。
 
-**Auth:** Admin
+**认证:** 管理员
 
 ### POST /api/admin/models/:id/test
 
-Test a specific model by sending a probe request.
+测试指定模型，发送探测请求。
 
-**Auth:** Admin
+**认证:** 管理员
+
+**响应 (200):**
+```json
+{
+  "message": "模型测试成功。",
+  "data": {
+    "model_id": 1,
+    "model_alias": "gpt-4",
+    "real_model": "gpt-4-turbo",
+    "channel_id": 1,
+    "channel_name": "openai-main",
+    "ok": true,
+    "status": 200,
+    "latency_ms": 1234,
+    "summary": "响应摘要",
+    "body_preview": "..."
+  }
+}
+```
 
 ---
 
-## User - Keys
+## 用户接口 - 密钥管理
 
 ### GET /api/user/keys
 
-List current user's API keys.
+获取当前用户的 API 密钥列表。
 
-**Auth:** User
+**认证:** 用户
 
-**Response (200):**
+**响应 (200):**
 ```json
 {
   "data": [
@@ -614,53 +687,58 @@ List current user's API keys.
 
 ### POST /api/user/keys
 
-Create a new API key.
+创建新的 API 密钥。
 
-**Auth:** User
+**认证:** 用户
 
-**Request:**
+**请求体:**
 ```json
 {
-  "name": "production-key"
+  "name": "生产环境密钥"
 }
 ```
 
-| Field | Type | Default | Description |
-|:---|:---|:---|:---|
-| name | string | "" | Key label, max 64 chars |
-| enabled | bool | true | |
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|:---|:---|:---|:---|:---|
+| name | string | 否 | "" | 备注名，最长 64 字符 |
+| enabled | bool | 否 | true | 是否启用 |
 
 ### PUT /api/user/keys/:id
 
-Update key name or enabled status.
+更新密钥备注或启用状态。
 
-**Auth:** User
+**认证:** 用户
 
-**Request:**
+**请求体:**
 ```json
 {
-  "name": "renamed-key",
+  "name": "改名后的密钥",
   "enabled": false
 }
 ```
 
 ### DELETE /api/user/keys/:id
 
-Delete an API key.
+删除密钥（软删除）。
 
-**Auth:** User
+**认证:** 用户
+
+**响应 (200):**
+```json
+{ "ok": true, "message": "密钥删除成功。" }
+```
 
 ---
 
-## User - Quota
+## 用户接口 - 配额查询
 
 ### GET /api/user/quota
 
-Get current user's quota and rate limit info.
+获取当前用户的配额和速率限制信息。
 
-**Auth:** User
+**认证:** 用户
 
-**Response (200):**
+**响应 (200):**
 ```json
 {
   "total": {
@@ -679,32 +757,32 @@ Get current user's quota and rate limit info.
 }
 ```
 
-> `null` values mean unlimited. Rate limit `-1` means unlimited.
+> `null` 表示不限制。速率限制 `-1` 表示不限制。
 
 ---
 
-## Dashboard - Logs
+## 仪表盘接口 - 日志查询
 
 ### GET /api/dashboard/logs
 
-Query request logs with filters.
+查询请求日志，支持多维筛选。管理员可查看所有用户，普通用户仅查看自己的日志。
 
-**Auth:** User (admins see all users, regular users see own logs only)
+**认证:** 用户
 
-**Query Parameters:**
+**查询参数:**
 
-| Param | Type | Description |
+| 参数 | 类型 | 说明 |
 |:---|:---|:---|
-| limit | 1-200 | Page size (default 50) |
-| offset | int | Offset (default 0) |
-| user | string | Search by username (admin only) |
-| model | string | Search by model alias or real model |
-| channel | string | Search by channel name (admin only) |
-| ip | string | Search by client IP |
-| start_date | YYYY-MM-DD | Start date filter |
-| end_date | YYYY-MM-DD | End date filter |
+| limit | 1-200 | 每页数量（默认 50） |
+| offset | int | 偏移量（默认 0） |
+| user | string | 按用户名搜索（仅管理员） |
+| model | string | 按模型别名或真实模型搜索 |
+| channel | string | 按渠道名搜索（仅管理员） |
+| ip | string | 按客户端 IP 搜索 |
+| start_date | YYYY-MM-DD | 开始日期 |
+| end_date | YYYY-MM-DD | 结束日期 |
 
-**Response (200):**
+**响应 (200):**
 ```json
 {
   "summary": {
@@ -741,17 +819,19 @@ Query request logs with filters.
 }
 ```
 
+> 普通用户不会看到 `username`、`channel_name`、`route_attempts`、`attempted_channels` 字段。
+
 ---
 
-## Dashboard - Summary
+## 仪表盘接口 - 统计概览
 
 ### GET /api/dashboard/summary
 
-Get dashboard statistics. Admin sees global stats, users see their own.
+获取仪表盘统计数据。管理员看全局统计，普通用户看自己的统计。
 
-**Auth:** User
+**认证:** 用户
 
-**Response (200):**
+**响应 (200):**
 ```json
 {
   "data": {
@@ -783,33 +863,48 @@ Get dashboard statistics. Admin sees global stats, users see their own.
 }
 ```
 
+| 字段 | 说明 |
+|:---|:---|
+| total_requests | 总请求数 |
+| total_tokens | 总 Token 消耗 |
+| failed_requests | 失败请求数 |
+| total_keys | 密钥数量 |
+| active_users | 活跃用户数（普通用户始终为 1） |
+| avg_latency_ms | 平均响应延迟 |
+| avg_output_tps | 平均输出速度（token/s） |
+| success_rate | 成功率（百分比） |
+| hourly_tokens | 最近 24 小时 Token 趋势 |
+| top_models | Top 5 模型（按请求量） |
+| top_channels | Top 5 渠道（按请求量） |
+| recent_logs | 最近 8 条请求记录 |
+
 ---
 
-## Dashboard - Profile
+## 仪表盘接口 - 用户资料
 
 ### GET /api/dashboard/profile
 
-Get current user's profile with effective limits.
+获取当前用户资料（含生效的限制配置）。
 
-**Auth:** User
+**认证:** 用户
 
 ### PUT /api/dashboard/profile/password
 
-Change password (same as `/api/auth/change-password`).
+修改密码（等同于 `/api/auth/change-password`）。
 
-**Auth:** User
+**认证:** 用户
 
 ---
 
-## Dashboard - Available Models
+## 仪表盘接口 - 可用模型
 
 ### GET /api/dashboard/available-models
 
-List models accessible to the current user.
+获取当前用户可访问的模型列表。
 
-**Auth:** User
+**认证:** 用户
 
-**Response (200):**
+**响应 (200):**
 ```json
 {
   "object": "list",
@@ -822,30 +917,30 @@ List models accessible to the current user.
 
 ---
 
-## Gateway - OpenAI Compatible
+## 网关接口 - OpenAI 兼容
 
-All gateway endpoints authenticate via API key.
+所有网关端点通过 API Key 认证。
 
 ### POST /api/v1/chat/completions
 
-OpenAI Chat Completions compatible endpoint.
+OpenAI Chat Completions 兼容端点。
 
-**Auth:** API Key
+**认证:** API Key
 
-**Request:** Standard OpenAI chat completion format:
+**请求体:** 标准 OpenAI 格式：
 ```json
 {
   "model": "gpt-4",
   "messages": [
-    { "role": "user", "content": "Hello" }
+    { "role": "user", "content": "你好" }
   ],
   "stream": false
 }
 ```
 
-**Response:** Standard OpenAI chat completion response. Supports streaming (`stream: true`).
+**响应:** 标准 OpenAI Chat Completion 响应，支持流式输出（`stream: true`）。
 
-**Extra Response Headers:**
+**额外响应头:**
 ```
 X-Quota-Limit-Requests-Remaining: 9877
 X-Quota-Limit-Tokens-Remaining: 49543211
@@ -855,17 +950,17 @@ X-Quota-Limit-Tokens-Remaining: 49543211
 
 ### POST /api/v1/messages
 
-Anthropic Messages compatible endpoint.
+Anthropic Messages 兼容端点。
 
-**Auth:** API Key
+**认证:** API Key
 
-**Request:** Standard Anthropic messages format:
+**请求体:** 标准 Anthropic 格式：
 ```json
 {
   "model": "claude-3",
   "max_tokens": 1024,
   "messages": [
-    { "role": "user", "content": "Hello" }
+    { "role": "user", "content": "你好" }
   ]
 }
 ```
@@ -874,19 +969,19 @@ Anthropic Messages compatible endpoint.
 
 ### POST /api/v1/responses
 
-OpenAI Responses API compatible endpoint.
+OpenAI Responses API 兼容端点。
 
-**Auth:** API Key
+**认证:** API Key
 
 ---
 
 ### GET /api/v1/models
 
-List available models for the authenticated API key.
+获取当前 API Key 可用的模型列表。
 
-**Auth:** API Key
+**认证:** API Key
 
-**Response:**
+**响应:**
 ```json
 {
   "object": "list",
@@ -898,14 +993,14 @@ List available models for the authenticated API key.
 
 ---
 
-## Error Format
+## 错误格式
 
-All errors follow a consistent format:
+所有错误遵循统一格式：
 
 ```json
 {
   "error": {
-    "message": "Error description",
+    "message": "错误描述",
     "type": "invalid_request_error",
     "param": "None",
     "code": "400"
@@ -913,28 +1008,29 @@ All errors follow a consistent format:
 }
 ```
 
-| HTTP Status | Meaning |
+| HTTP 状态码 | 含义 |
 |:---|:---|
-| 400 | Bad request / validation error |
-| 401 | Authentication failed |
-| 403 | Forbidden (feature disabled) |
-| 404 | Not found |
-| 409 | Conflict (duplicate) |
-| 429 | Rate limited |
-| 502 | Upstream error |
+| 400 | 请求参数错误 |
+| 401 | 认证失败 |
+| 403 | 禁止访问（功能未开启） |
+| 404 | 资源不存在 |
+| 409 | 冲突（如重名） |
+| 429 | 请求过于频繁 |
+| 502 | 上游服务错误 |
 
 ---
 
-## Rate Limits & Quotas
+## 速率限制与配额
 
-- **RPM / QPS / TPM:** Per-user rate limits, `-1` = unlimited
-- **quota_tokens / quota_requests:** Lifetime quotas, `null` = unlimited
-- **Model multipliers:** `token_multiplier` and `request_multiplier` scale billed usage
-  - Billed tokens = actual tokens x token_multiplier
-  - Billed requests = actual requests x request_multiplier
-- Limits inherit from user group if not set on user (`-1` or `null`)
+- **RPM / QPS / TPM:** 用户级速率限制，`-1` 表示不限制
+- **quota_tokens / quota_requests:** 总量配额，`null` 表示不限制
+- **模型倍率:** `token_multiplier` 和 `request_multiplier` 控制计费扣量
+  - 实际扣除 Token = 使用量 x token_multiplier
+  - 实际扣除请求次数 = 请求次数 x request_multiplier
+  - 支持小数累积（如 0.1 倍率，10 次请求累积扣 1 次）
+- 用户限制未设置时（`-1` 或 `null`）自动继承所属用户组的配置
 
-## Upstream Retry & Circuit Breaker
+## 上游重试与熔断
 
-- **Retry:** Automatic failover on 401/429/5xx, configurable max attempts
-- **Circuit Breaker:** 3 consecutive failures = 15s channel pause, configurable on/off
+- **自动重试:** 上游返回 401/429/5xx 时自动切换到其他渠道，最大重试次数可配置
+- **熔断机制:** 连续失败 3 次后暂停该渠道 15 秒，可通过设置开关关闭
