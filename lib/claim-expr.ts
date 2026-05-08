@@ -1,7 +1,7 @@
 type ComparisonNode = {
   type: "comparison";
   path: string;
-  operator: "==" | "!=" | "contains" | "matches";
+  operator: "==" | "!=" | "contains" | "matches" | "exists";
   value: string;
 };
 
@@ -66,6 +66,7 @@ function tokenize(input: string): Token[] {
       else if (word === "OR") tokens.push({ type: "OR" });
       else if (word === "contains") tokens.push({ type: "OP", value: "contains" });
       else if (word === "matches") tokens.push({ type: "OP", value: "matches" });
+      else if (word === "exists") tokens.push({ type: "OP", value: "exists" });
       else tokens.push({ type: "IDENT", value: word });
       continue;
     }
@@ -135,6 +136,9 @@ class Parser {
   private parseComparison(): ExprNode {
     const ident = this.expect("IDENT") as { type: "IDENT"; value: string };
     const op = this.expect("OP") as { type: "OP"; value: ComparisonNode["operator"] };
+    if (op.value === "exists") {
+      return { type: "comparison", path: ident.value, operator: "exists", value: "" };
+    }
     const val = this.expect("STRING") as { type: "STRING"; value: string };
     return { type: "comparison", path: ident.value, operator: op.value, value: val.value };
   }
@@ -186,6 +190,7 @@ export function evaluateClaimExpr(node: ExprNode, claims: Record<string, unknown
   }
 
   const values = resolvePath(claims, node.path);
+  if (node.operator === "exists") return values.length > 0;
   if (values.length === 0) return false;
   switch (node.operator) {
     case "==":

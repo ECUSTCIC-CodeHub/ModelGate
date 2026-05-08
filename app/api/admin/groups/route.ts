@@ -20,6 +20,7 @@ const createSchema = z.object({
   period_quota_requests: z.number().int().min(-1).nullable().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
   oidc_claim_expr: z.string().max(512).nullable().optional(),
+  oidc_claim_priority: z.number().int().min(0).max(9999).optional(),
   is_default: z.boolean().optional(),
 });
 
@@ -87,8 +88,8 @@ export async function POST(request: Request) {
 
     return gatewayDb
       .prepare(
-        `INSERT INTO groups (name, description, qps, rpm, tpm, quota_requests, quota_tokens, quota_period, period_quota_tokens, period_quota_requests, allowed_model_aliases, oidc_claim_expr, is_default)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO groups (name, description, qps, rpm, tpm, quota_requests, quota_tokens, quota_period, period_quota_tokens, period_quota_requests, allowed_model_aliases, oidc_claim_expr, oidc_claim_priority, is_default)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         parsed.data.name,
@@ -103,6 +104,7 @@ export async function POST(request: Request) {
         normalizeQuota(parsed.data.period_quota_requests),
         stringifyAllowedModelAliases(parsed.data.allowed_model_aliases ?? []),
         exprTrimmed,
+        parsed.data.oidc_claim_priority ?? 0,
         setDefault ? 1 : 0,
       );
   });

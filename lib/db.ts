@@ -233,6 +233,7 @@ CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
   ensureColumn("users", "oidc_subject", "oidc_subject TEXT");
   ensureColumn("groups", "oidc_claim_value", "oidc_claim_value TEXT");
   ensureColumn("groups", "oidc_claim_expr", "oidc_claim_expr TEXT");
+  ensureColumn("groups", "oidc_claim_priority", "oidc_claim_priority INTEGER DEFAULT 0");
   ensureColumn("groups", "quota_period", "quota_period INTEGER");
   ensureColumn("groups", "period_quota_tokens", "period_quota_tokens INTEGER");
   ensureColumn("groups", "period_quota_requests", "period_quota_requests INTEGER");
@@ -435,6 +436,7 @@ export type DbGroup = {
   allowed_model_aliases: string;
   oidc_claim_value: string | null;
   oidc_claim_expr: string | null;
+  oidc_claim_priority: number;
   is_default: number;
   enabled: number;
   created_at: string;

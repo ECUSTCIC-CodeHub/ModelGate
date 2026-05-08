@@ -20,6 +20,7 @@ const updateSchema = z.object({
   period_quota_requests: z.number().int().min(-1).nullable().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
   oidc_claim_expr: z.string().max(512).nullable().optional(),
+  oidc_claim_priority: z.number().int().min(0).max(9999).optional(),
   is_default: z.boolean().optional(),
   enabled: z.boolean().optional(),
 });
@@ -81,6 +82,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         period_quota_requests: number | null;
         allowed_model_aliases: string;
         oidc_claim_expr: string | null;
+        oidc_claim_priority: number;
         is_default: number;
         enabled: number;
       }
@@ -134,6 +136,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       parsed.data.oidc_claim_expr === undefined
         ? existing.oidc_claim_expr
         : exprTrimmed,
+    oidc_claim_priority: parsed.data.oidc_claim_priority ?? existing.oidc_claim_priority,
     is_default: setDefault ? 1 : (parsed.data.is_default === false ? 0 : existing.is_default),
     enabled:
       parsed.data.enabled === undefined
@@ -153,7 +156,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
              quota_requests = ?, quota_tokens = ?,
              quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?,
              allowed_model_aliases = ?,
-             oidc_claim_expr = ?, is_default = ?, enabled = ?
+             oidc_claim_expr = ?, oidc_claim_priority = ?, is_default = ?, enabled = ?
          WHERE id = ?`,
       )
       .run(
@@ -169,6 +172,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         merged.period_quota_requests,
         merged.allowed_model_aliases,
         merged.oidc_claim_expr,
+        merged.oidc_claim_priority,
         merged.is_default,
         merged.enabled,
         id,

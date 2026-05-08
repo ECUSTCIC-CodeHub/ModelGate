@@ -221,7 +221,7 @@ export function resolveGroupFromClaims(
 ): number | null {
   const groups = gatewayDb
     .prepare(
-      "SELECT id, oidc_claim_expr FROM groups WHERE oidc_claim_expr IS NOT NULL AND oidc_claim_expr != '' AND enabled = 1 AND deleted_at IS NULL",
+      "SELECT id, oidc_claim_expr FROM groups WHERE oidc_claim_expr IS NOT NULL AND oidc_claim_expr != '' AND enabled = 1 AND deleted_at IS NULL ORDER BY oidc_claim_priority DESC, id ASC",
     )
     .all() as Array<{ id: number; oidc_claim_expr: string }>;
 

@@ -59,6 +59,7 @@ type GroupRow = {
   period_quota_requests: number | null;
   allowed_model_aliases: string[];
   oidc_claim_expr: string | null;
+  oidc_claim_priority: number;
   is_default: number;
   enabled: number;
   user_count: number;
@@ -111,6 +112,7 @@ type GroupForm = {
   period_quota_requests: string;
   allowed_model_aliases: string[];
   oidc_claim_expr: string;
+  oidc_claim_priority: string;
   is_default: boolean;
   enabled: boolean;
 };
@@ -129,6 +131,7 @@ const initialForm: GroupForm = {
   period_quota_requests: "",
   allowed_model_aliases: [],
   oidc_claim_expr: "",
+  oidc_claim_priority: "0",
   is_default: false,
   enabled: true,
 };
@@ -214,6 +217,7 @@ export default function AdminGroupsPage() {
       period_quota_requests: row.period_quota_requests === null ? "" : String(row.period_quota_requests),
       allowed_model_aliases: row.allowed_model_aliases ?? [],
       oidc_claim_expr: row.oidc_claim_expr ?? "",
+      oidc_claim_priority: String(row.oidc_claim_priority ?? 0),
       is_default: row.is_default === 1,
       enabled: row.enabled === 1,
     });
@@ -249,6 +253,7 @@ export default function AdminGroupsPage() {
       period_quota_requests: form.period_quota_requests.trim() === "" ? null : Number(form.period_quota_requests),
       allowed_model_aliases: form.allowed_model_aliases,
       oidc_claim_expr: form.oidc_claim_expr.trim() || null,
+      oidc_claim_priority: Number(form.oidc_claim_priority) || 0,
       is_default: form.is_default,
       enabled: form.enabled,
     };
@@ -462,9 +467,21 @@ export default function AdminGroupsPage() {
                     })()
                   ) : (
                     <p className="text-xs text-zinc-500">
-                      支持操作符: ==、!=、contains、matches（正则）；逻辑: AND、OR、括号分组；点号访问嵌套字段。留空则不参与 OIDC 组映射。
+                      支持操作符: ==、!=、contains、matches（正则）、exists；逻辑: AND、OR、括号分组；点号访问嵌套字段。留空则不参与 OIDC 组映射。
                     </p>
                   )}
+                </div>
+                <div className="space-y-2">
+                  <Label>匹配优先级</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={9999}
+                    value={form.oidc_claim_priority}
+                    onChange={(e) => setForm({ ...form, oidc_claim_priority: e.target.value })}
+                    placeholder="0"
+                  />
+                  <p className="text-xs text-zinc-500">数值越大越优先匹配，用于解决多个组表达式同时满足时的冲突。</p>
                 </div>
                 <div className="flex items-center gap-3 md:col-span-2">
                   <Checkbox
