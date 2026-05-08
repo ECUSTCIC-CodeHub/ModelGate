@@ -245,15 +245,16 @@ export default function AdminLogsPage() {
       cols.push({
         accessorKey: "username",
         header: "用户",
-        cell: ({ row }) => (
-          <span className="block max-w-32 truncate" title={row.original.username}>
-            {row.original.username}
-          </span>
-        ),
+        cell: ({ row }) => {
+          const ip = row.original.client_ip;
+          return (
+            <span className="block max-w-44 truncate" title={ip ? `${row.original.username} (${ip})` : row.original.username}>
+              {row.original.username}{ip ? <span className="text-zinc-500"> ({ip})</span> : null}
+            </span>
+          );
+        },
       });
-    }
-
-    if (role === "admin") {
+    } else {
       cols.push({
         accessorKey: "client_ip",
         header: "IP",
