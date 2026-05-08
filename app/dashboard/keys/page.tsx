@@ -229,9 +229,6 @@ export default function ConsoleKeysPage() {
                                                     <Badge variant={row.enabled ? "default" : "secondary"}>{row.enabled ? "启用" : "禁用"}</Badge>
                                                 </TableCell>
                                                 <TableCell className="space-x-2 text-right">
-                                                    <Button size="sm" variant="outline" onClick={() => void copyKey(row.key)}>
-                                                        复制
-                                                    </Button>
                                                     <Button size="sm" variant="outline" onClick={() => toggleKey(row.id, row.enabled !== 1)}>
                                                         {row.enabled ? "禁用" : "启用"}
                                                     </Button>

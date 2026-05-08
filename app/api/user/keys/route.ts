@@ -22,7 +22,11 @@ export async function GET(request: Request) {
        WHERE user_id = ? AND deleted_at IS NULL
        ORDER BY id DESC`,
     )
-    .all(guard.auth.user.id);
+    .all(guard.auth.user.id) as { key: string; [k: string]: unknown }[];
+
+  for (const row of rows) {
+    row.key = row.key.slice(0, 10) + "..." + row.key.slice(-4);
+  }
 
   return jsonOk({ data: rows });
 }
@@ -34,6 +38,13 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
+
+  const keyCount = gatewayDb
+    .prepare("SELECT COUNT(*) AS count FROM keys WHERE user_id = ? AND deleted_at IS NULL")
+    .get(guard.auth.user.id) as { count: number };
+  if (keyCount.count >= 50) {
+    return jsonError("密钥数量已达上限", 400);
+  }
 
   const apiKey = generateGatewayKey();
   const result = gatewayDb
