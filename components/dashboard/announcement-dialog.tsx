@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,7 +45,7 @@ export function AnnouncementDialog() {
 
         setContentHash(hash);
         const rendered = await marked.parse(content);
-        setHtml(rendered);
+        setHtml(DOMPurify.sanitize(rendered));
         setOpen(true);
       } catch {
         // silently ignore
