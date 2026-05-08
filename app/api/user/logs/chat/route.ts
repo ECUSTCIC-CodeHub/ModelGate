@@ -21,7 +21,7 @@ export async function GET(request: Request) {
          l.estimated_tokens, l.prompt_tokens, l.completion_tokens, l.total_tokens,
          l.latency_ms, l.first_token_latency_ms, l.output_tps, l.token_source,
          l.error_message, l.created_at
-       FROM chat_logs l
+       FROM logs l
        LEFT JOIN users u ON u.id = l.user_id
        LEFT JOIN channels c ON c.id = l.channel_id
        WHERE l.user_id = ?
@@ -31,7 +31,7 @@ export async function GET(request: Request) {
     .all(guard.auth.user.id, limit, offset);
 
   const total = gatewayDb
-    .prepare("SELECT COUNT(*) AS total FROM chat_logs WHERE user_id = ?")
+    .prepare("SELECT COUNT(*) AS total FROM logs WHERE user_id = ?")
     .get(guard.auth.user.id) as { total: number };
 
   const summary = gatewayDb
@@ -43,7 +43,7 @@ export async function GET(request: Request) {
          COALESCE(AVG(latency_ms), 0) AS avg_latency_ms,
          COALESCE(AVG(first_token_latency_ms), 0) AS avg_first_token_latency_ms,
          COALESCE(AVG(output_tps), 0) AS avg_output_tps
-       FROM chat_logs
+       FROM logs
        WHERE user_id = ?`,
     )
     .get(guard.auth.user.id) as {
