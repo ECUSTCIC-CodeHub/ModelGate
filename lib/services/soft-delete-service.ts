@@ -6,7 +6,7 @@ export function softDeleteUser(userId: string) {
       .prepare("UPDATE keys SET enabled = 0, deleted_at = CURRENT_TIMESTAMP WHERE user_id = ? AND deleted_at IS NULL")
       .run(userId);
     gatewayDb
-      .prepare("UPDATE users SET username = username || '_del_' || id, enabled = 0, deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL")
+      .prepare("UPDATE users SET username = 'del' || id || hex(randomblob(3)), enabled = 0, deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL")
       .run(userId);
   });
   tx();
