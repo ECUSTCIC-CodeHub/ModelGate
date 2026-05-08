@@ -126,8 +126,6 @@ export async function GET(request: Request) {
     return redirectWithError(origin, "用户信息获取失败", isBind);
   }
 
-  console.log("[OIDC] rawClaims:", JSON.stringify(rawClaims, null, 2));
-
   const issuer = config.issuerUrl.replace(/\/+$/, "");
   const clearStateCookie = (res: NextResponse) => {
     res.cookies.set("oidc-state", "", { httpOnly: true, sameSite: "lax", secure: false, path: "/", maxAge: 0 });

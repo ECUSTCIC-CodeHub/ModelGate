@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     .prepare("SELECT id FROM users WHERE username = ?")
     .get(parsed.data.username) as { id: number } | undefined;
 
-  if (existing) return jsonError("用户名已存在", 409);
+  if (existing) return jsonError("注册失败，请检查输入", 400);
 
   const role: "admin" | "user" = adminCount.count === 0 ? "admin" : "user";
   const passwordHash = await hashPassword(parsed.data.password);
