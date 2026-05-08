@@ -28,6 +28,7 @@ export async function GET(request: Request) {
   const user = (url.searchParams.get("user") ?? "").trim();
   const model = (url.searchParams.get("model") ?? "").trim();
   const channel = (url.searchParams.get("channel") ?? "").trim();
+  const ip = (url.searchParams.get("ip") ?? "").trim();
   const startDate = parseDateParam(url.searchParams.get("start_date") ?? "");
   const endDate = parseDateParam(url.searchParams.get("end_date") ?? "");
 
@@ -50,6 +51,11 @@ export async function GET(request: Request) {
   if (channel) {
     whereClauses.push("c.name LIKE ?");
     whereArgs.push(`%${channel}%`);
+  }
+
+  if (ip) {
+    whereClauses.push("l.client_ip LIKE ?");
+    whereArgs.push(`%${ip}%`);
   }
 
   if (startDate) {

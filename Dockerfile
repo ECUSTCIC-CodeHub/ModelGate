@@ -1,23 +1,21 @@
-FROM node:20-bookworm-slim AS build
+FROM node:20-bookworm-slim AS deps
 
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV TZ=Asia/Shanghai
 
-# better-sqlite3 may require native build toolchain during npm install.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 make g++ tzdata \
-  && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
-  && echo $TZ > /etc/timezone \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
 RUN npm config set registry https://mirrors.cloud.tencent.com/npm/
 RUN npm ci
 
+FROM deps AS build
+
 COPY . .
 RUN npm run build
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev && npm cache clean --force
 
 FROM node:20-bookworm-slim AS run
 
@@ -38,7 +36,6 @@ COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
 
-# SQLite data directory
 RUN mkdir -p /app/data && chown -R node:node /app
 VOLUME ["/app/data"]
 

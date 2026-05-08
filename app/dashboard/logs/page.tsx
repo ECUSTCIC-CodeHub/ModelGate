@@ -158,6 +158,7 @@ export default function AdminLogsPage() {
   const [filterUser, setFilterUser] = useState("");
   const [filterModel, setFilterModel] = useState("");
   const [filterChannel, setFilterChannel] = useState("");
+  const [filterIp, setFilterIp] = useState("");
   const [filterStartDate, setFilterStartDate] = useState("");
   const [filterEndDate, setFilterEndDate] = useState("");
   const loadSeqRef = useRef(0);
@@ -168,6 +169,7 @@ export default function AdminLogsPage() {
       user?: string;
       model?: string;
       channel?: string;
+      ip?: string;
       startDate?: string;
       endDate?: string;
     },
@@ -188,6 +190,7 @@ export default function AdminLogsPage() {
     const nextFilterUser = filters?.user ?? filterUser;
     const nextFilterModel = filters?.model ?? filterModel;
     const nextFilterChannel = filters?.channel ?? filterChannel;
+    const nextFilterIp = filters?.ip ?? filterIp;
     const nextFilterStartDate = filters?.startDate ?? filterStartDate;
     const nextFilterEndDate = filters?.endDate ?? filterEndDate;
     const offset = (nextPage - 1) * pageSize;
@@ -198,6 +201,7 @@ export default function AdminLogsPage() {
     if (nextRole === "admin" && nextFilterUser.trim()) params.set("user", nextFilterUser.trim());
     if (nextFilterModel.trim()) params.set("model", nextFilterModel.trim());
     if (nextRole === "admin" && nextFilterChannel.trim()) params.set("channel", nextFilterChannel.trim());
+    if (nextFilterIp.trim()) params.set("ip", nextFilterIp.trim());
     if (nextFilterStartDate) params.set("start_date", nextFilterStartDate);
     if (nextFilterEndDate) params.set("end_date", nextFilterEndDate);
 
@@ -394,8 +398,8 @@ export default function AdminLogsPage() {
             <div
               className={
                 role === "admin"
-                  ? "grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_180px_180px_auto]"
-                  : "grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_180px_180px_auto]"
+                  ? "grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_180px_180px_auto]"
+                  : "grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_180px_180px_auto]"
               }
             >
               {role === "admin" ? (
@@ -405,6 +409,7 @@ export default function AdminLogsPage() {
               {role === "admin" ? (
                 <Input placeholder="搜索渠道" value={filterChannel} onChange={(e) => setFilterChannel(e.target.value)} />
               ) : null}
+              <Input placeholder="搜索 IP" value={filterIp} onChange={(e) => setFilterIp(e.target.value)} />
               <DateFilter value={filterStartDate} placeholder="开始日期" onChange={setFilterStartDate} />
               <DateFilter value={filterEndDate} placeholder="结束日期" onChange={setFilterEndDate} />
               <div className="flex items-center gap-2 whitespace-nowrap xl:justify-end">
@@ -413,10 +418,11 @@ export default function AdminLogsPage() {
                   variant="ghost"
                   disabled={loading}
                   onClick={() => {
-                    const emptyFilters = { user: "", model: "", channel: "", startDate: "", endDate: "" };
+                    const emptyFilters = { user: "", model: "", channel: "", ip: "", startDate: "", endDate: "" };
                     setFilterUser(emptyFilters.user);
                     setFilterModel(emptyFilters.model);
                     setFilterChannel(emptyFilters.channel);
+                    setFilterIp(emptyFilters.ip);
                     setFilterStartDate(emptyFilters.startDate);
                     setFilterEndDate(emptyFilters.endDate);
                     void load(1, emptyFilters);
