@@ -43,6 +43,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
 import { authedFetch, clearSession, getOrFetchProfile } from "@/lib/client-auth";
+import { validateClaimExpr } from "@/lib/claim-expr";
 
 type GroupRow = {
   id: number;
@@ -57,7 +58,7 @@ type GroupRow = {
   period_quota_tokens: number | null;
   period_quota_requests: number | null;
   allowed_model_aliases: string[];
-  oidc_claim_value: string | null;
+  oidc_claim_expr: string | null;
   is_default: number;
   enabled: number;
   user_count: number;
@@ -109,7 +110,7 @@ type GroupForm = {
   period_quota_tokens: string;
   period_quota_requests: string;
   allowed_model_aliases: string[];
-  oidc_claim_value: string;
+  oidc_claim_expr: string;
   is_default: boolean;
   enabled: boolean;
 };
@@ -127,7 +128,7 @@ const initialForm: GroupForm = {
   period_quota_tokens: "",
   period_quota_requests: "",
   allowed_model_aliases: [],
-  oidc_claim_value: "",
+  oidc_claim_expr: "",
   is_default: false,
   enabled: true,
 };
@@ -212,7 +213,7 @@ export default function AdminGroupsPage() {
       period_quota_tokens: row.period_quota_tokens === null ? "" : String(row.period_quota_tokens),
       period_quota_requests: row.period_quota_requests === null ? "" : String(row.period_quota_requests),
       allowed_model_aliases: row.allowed_model_aliases ?? [],
-      oidc_claim_value: row.oidc_claim_value ?? "",
+      oidc_claim_expr: row.oidc_claim_expr ?? "",
       is_default: row.is_default === 1,
       enabled: row.enabled === 1,
     });
@@ -247,7 +248,7 @@ export default function AdminGroupsPage() {
       period_quota_tokens: form.period_quota_tokens.trim() === "" ? null : Number(form.period_quota_tokens),
       period_quota_requests: form.period_quota_requests.trim() === "" ? null : Number(form.period_quota_requests),
       allowed_model_aliases: form.allowed_model_aliases,
-      oidc_claim_value: form.oidc_claim_value.trim() || null,
+      oidc_claim_expr: form.oidc_claim_expr.trim() || null,
       is_default: form.is_default,
       enabled: form.enabled,
     };
@@ -443,14 +444,27 @@ export default function AdminGroupsPage() {
                   />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label>OIDC Claim 匹配值</Label>
-                  <Input
-                    value={form.oidc_claim_value}
-                    onChange={(e) => setForm({ ...form, oidc_claim_value: e.target.value })}
-                    placeholder="如 vip、premium（留空则不参与 OIDC 组映射）"
-                    maxLength={128}
+                  <Label>OIDC Claim 表达式</Label>
+                  <textarea
+                    className="flex w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm font-mono placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-600 disabled:opacity-50"
+                    rows={3}
+                    value={form.oidc_claim_expr}
+                    onChange={(e) => setForm({ ...form, oidc_claim_expr: e.target.value })}
+                    placeholder={'groups contains "vip"\nrole == "admin" OR role == "superadmin"'}
+                    maxLength={512}
                   />
-                  <p className="text-xs text-zinc-500">OIDC 登录时，若 token 中指定 claim 的值匹配此项，用户将自动分配到该组。</p>
+                  {form.oidc_claim_expr.trim() ? (
+                    (() => {
+                      const result = validateClaimExpr(form.oidc_claim_expr);
+                      return result.valid
+                        ? <p className="text-xs text-green-500">&#10003; 表达式语法正确</p>
+                        : <p className="text-xs text-red-400">&#10007; {result.error}</p>;
+                    })()
+                  ) : (
+                    <p className="text-xs text-zinc-500">
+                      支持操作符: ==、!=、contains、matches（正则）；逻辑: AND、OR、括号分组；点号访问嵌套字段。留空则不参与 OIDC 组映射。
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-3 md:col-span-2">
                   <Checkbox

@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { gatewayDb } from "@/lib/db";
+import { validateClaimExpr } from "@/lib/claim-expr";
 import { ensureAdmin } from "@/lib/guards";
 import { jsonError, jsonOk } from "@/lib/http";
 import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/model-access";
@@ -18,7 +19,7 @@ const updateSchema = z.object({
   period_quota_tokens: z.number().int().min(-1).nullable().optional(),
   period_quota_requests: z.number().int().min(-1).nullable().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
-  oidc_claim_value: z.string().max(128).nullable().optional(),
+  oidc_claim_expr: z.string().max(512).nullable().optional(),
   is_default: z.boolean().optional(),
   enabled: z.boolean().optional(),
 });
@@ -57,6 +58,12 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
+  const exprTrimmed = parsed.data.oidc_claim_expr?.trim() || null;
+  if (exprTrimmed) {
+    const result = validateClaimExpr(exprTrimmed);
+    if (!result.valid) return jsonError(`Claim 表达式语法错误: ${result.error}`, 400);
+  }
+
   const existing = gatewayDb
     .prepare("SELECT * FROM groups WHERE id = ? AND deleted_at IS NULL")
     .get(id) as
@@ -73,7 +80,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         period_quota_tokens: number | null;
         period_quota_requests: number | null;
         allowed_model_aliases: string;
-        oidc_claim_value: string | null;
+        oidc_claim_expr: string | null;
         is_default: number;
         enabled: number;
       }
@@ -123,10 +130,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       parsed.data.allowed_model_aliases === undefined
         ? existing.allowed_model_aliases
         : stringifyAllowedModelAliases(parsed.data.allowed_model_aliases),
-    oidc_claim_value:
-      parsed.data.oidc_claim_value === undefined
-        ? existing.oidc_claim_value
-        : parsed.data.oidc_claim_value?.trim() || null,
+    oidc_claim_expr:
+      parsed.data.oidc_claim_expr === undefined
+        ? existing.oidc_claim_expr
+        : exprTrimmed,
     is_default: setDefault ? 1 : (parsed.data.is_default === false ? 0 : existing.is_default),
     enabled:
       parsed.data.enabled === undefined
@@ -146,7 +153,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
              quota_requests = ?, quota_tokens = ?,
              quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?,
              allowed_model_aliases = ?,
-             oidc_claim_value = ?, is_default = ?, enabled = ?
+             oidc_claim_expr = ?, is_default = ?, enabled = ?
          WHERE id = ?`,
       )
       .run(
@@ -161,7 +168,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         merged.period_quota_tokens,
         merged.period_quota_requests,
         merged.allowed_model_aliases,
-        merged.oidc_claim_value,
+        merged.oidc_claim_expr,
         merged.is_default,
         merged.enabled,
         id,

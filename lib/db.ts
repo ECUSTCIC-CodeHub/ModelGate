@@ -232,6 +232,7 @@ CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
   ensureColumn("users", "oidc_issuer", "oidc_issuer TEXT");
   ensureColumn("users", "oidc_subject", "oidc_subject TEXT");
   ensureColumn("groups", "oidc_claim_value", "oidc_claim_value TEXT");
+  ensureColumn("groups", "oidc_claim_expr", "oidc_claim_expr TEXT");
   ensureColumn("groups", "quota_period", "quota_period INTEGER");
   ensureColumn("groups", "period_quota_tokens", "period_quota_tokens INTEGER");
   ensureColumn("groups", "period_quota_requests", "period_quota_requests INTEGER");
@@ -254,6 +255,22 @@ CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
   ensureColumn("logs", "output_tps", "output_tps REAL");
   ensureColumn("logs", "route_attempts", "route_attempts INTEGER DEFAULT 1");
   ensureColumn("logs", "attempted_channels", "attempted_channels TEXT");
+
+  // Migrate oidc_claim_value → oidc_claim_expr
+  {
+    const migrated = db.prepare("SELECT value FROM settings WHERE key = 'oidc_claim_expr_migrated'").get() as { value: string } | undefined;
+    if (!migrated) {
+      const groupClaim = (db.prepare("SELECT value FROM settings WHERE key = 'oidc_group_claim'").get() as { value: string } | undefined)?.value || "";
+      if (groupClaim) {
+        const rows = db.prepare("SELECT id, oidc_claim_value FROM groups WHERE oidc_claim_value IS NOT NULL AND oidc_claim_value != ''").all() as Array<{ id: number; oidc_claim_value: string }>;
+        for (const row of rows) {
+          const escaped = row.oidc_claim_value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+          db.prepare("UPDATE groups SET oidc_claim_expr = ? WHERE id = ?").run(`${groupClaim} == "${escaped}"`, row.id);
+        }
+      }
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('oidc_claim_expr_migrated', '1')").run();
+    }
+  }
 
   if (addedKeyUsedTokens || addedKeyUsedRequests) {
     db.exec(`
@@ -417,6 +434,7 @@ export type DbGroup = {
   period_quota_requests: number | null;
   allowed_model_aliases: string;
   oidc_claim_value: string | null;
+  oidc_claim_expr: string | null;
   is_default: number;
   enabled: number;
   created_at: string;

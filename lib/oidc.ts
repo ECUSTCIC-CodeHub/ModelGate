@@ -1,5 +1,6 @@
 import { randomBytes, createHash } from "node:crypto";
 import { gatewayDb } from "@/lib/db";
+import { parseClaimExpr, evaluateClaimExpr } from "@/lib/claim-expr";
 import { getGatewaySettings } from "@/lib/settings";
 
 export type OidcDiscovery = {
@@ -217,23 +218,20 @@ export function deriveUsername(info: OidcUserInfo): string {
 
 export function resolveGroupFromClaims(
   claims: Record<string, unknown>,
-  groupClaim: string,
 ): number | null {
-  if (!groupClaim) return null;
-
-  const value = claims[groupClaim];
-  if (value === undefined || value === null) return null;
-
-  const claimValues = Array.isArray(value) ? value.map(String) : [String(value)];
-
   const groups = gatewayDb
     .prepare(
-      "SELECT id, oidc_claim_value FROM groups WHERE oidc_claim_value IS NOT NULL AND oidc_claim_value != '' AND enabled = 1 AND deleted_at IS NULL",
+      "SELECT id, oidc_claim_expr FROM groups WHERE oidc_claim_expr IS NOT NULL AND oidc_claim_expr != '' AND enabled = 1 AND deleted_at IS NULL",
     )
-    .all() as Array<{ id: number; oidc_claim_value: string }>;
+    .all() as Array<{ id: number; oidc_claim_expr: string }>;
 
   for (const group of groups) {
-    if (claimValues.includes(group.oidc_claim_value)) return group.id;
+    try {
+      const ast = parseClaimExpr(group.oidc_claim_expr);
+      if (evaluateClaimExpr(ast, claims)) return group.id;
+    } catch {
+      continue;
+    }
   }
 
   return null;

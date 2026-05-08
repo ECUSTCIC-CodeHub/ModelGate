@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { gatewayDb } from "@/lib/db";
+import { validateClaimExpr } from "@/lib/claim-expr";
 import { ensureAdmin } from "@/lib/guards";
 import { jsonError, jsonOk } from "@/lib/http";
 import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/model-access";
@@ -18,7 +19,7 @@ const createSchema = z.object({
   period_quota_tokens: z.number().int().min(-1).nullable().optional(),
   period_quota_requests: z.number().int().min(-1).nullable().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
-  oidc_claim_value: z.string().max(128).nullable().optional(),
+  oidc_claim_expr: z.string().max(512).nullable().optional(),
   is_default: z.boolean().optional(),
 });
 
@@ -66,6 +67,12 @@ export async function POST(request: Request) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
+  const exprTrimmed = parsed.data.oidc_claim_expr?.trim() || null;
+  if (exprTrimmed) {
+    const result = validateClaimExpr(exprTrimmed);
+    if (!result.valid) return jsonError(`Claim 表达式语法错误: ${result.error}`, 400);
+  }
+
   const existing = gatewayDb
     .prepare("SELECT id FROM groups WHERE name = ? AND deleted_at IS NULL")
     .get(parsed.data.name) as { id: number } | undefined;
@@ -80,7 +87,7 @@ export async function POST(request: Request) {
 
     return gatewayDb
       .prepare(
-        `INSERT INTO groups (name, description, qps, rpm, tpm, quota_requests, quota_tokens, quota_period, period_quota_tokens, period_quota_requests, allowed_model_aliases, oidc_claim_value, is_default)
+        `INSERT INTO groups (name, description, qps, rpm, tpm, quota_requests, quota_tokens, quota_period, period_quota_tokens, period_quota_requests, allowed_model_aliases, oidc_claim_expr, is_default)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
@@ -95,7 +102,7 @@ export async function POST(request: Request) {
         normalizeQuota(parsed.data.period_quota_tokens),
         normalizeQuota(parsed.data.period_quota_requests),
         stringifyAllowedModelAliases(parsed.data.allowed_model_aliases ?? []),
-        parsed.data.oidc_claim_value?.trim() || null,
+        exprTrimmed,
         setDefault ? 1 : 0,
       );
   });

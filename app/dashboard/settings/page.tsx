@@ -255,13 +255,13 @@ export default function AdminSettingsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>用户组 Claim</Label>
+                <Label>用户组 Claim（已弃用）</Label>
                 <Input
                   placeholder="如 group、role、department"
                   value={oidcGroupClaim}
                   onChange={(e) => setOidcGroupClaim(e.target.value)}
                 />
-                <p className="text-xs text-zinc-500">留空则不做组映射。填写后需在各用户组中配置对应的 Claim 匹配值。</p>
+                <p className="text-xs text-zinc-500">此字段已弃用。请在各用户组中直接使用 Claim 表达式配置组映射规则。</p>
               </div>
             </div>
             <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">

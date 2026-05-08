@@ -43,36 +43,33 @@ export async function GET(request: Request) {
     return redirectWithError(origin, "OIDC 未启用");
   }
 
+  const stateCookie = parseCookie(request.headers.get("cookie"), "oidc-state");
+  let statePayload: { state: string; nonce: string; bind: boolean } | null = null;
+  try {
+    if (stateCookie) statePayload = JSON.parse(stateCookie);
+  } catch {}
+  const isBind = statePayload?.bind ?? false;
+
   const code = url.searchParams.get("code");
   const returnedState = url.searchParams.get("state");
   const error = url.searchParams.get("error");
 
   if (error) {
     const desc = url.searchParams.get("error_description") ?? error;
-    return redirectWithError(origin, desc);
+    return redirectWithError(origin, desc, isBind);
   }
 
   if (!code || !returnedState) {
-    return redirectWithError(origin, "缺少授权参数");
+    return redirectWithError(origin, "缺少授权参数", isBind);
   }
 
-  const stateCookie = parseCookie(request.headers.get("cookie"), "oidc-state");
-  if (!stateCookie) {
-    return redirectWithError(origin, "状态验证失败，请重试");
-  }
-
-  let statePayload: { state: string; nonce: string; bind: boolean };
-  try {
-    statePayload = JSON.parse(stateCookie);
-  } catch {
-    return redirectWithError(origin, "状态验证失败");
+  if (!statePayload) {
+    return redirectWithError(origin, "状态验证失败，请重试", isBind);
   }
 
   if (statePayload.state !== returnedState) {
-    return redirectWithError(origin, "状态验证失败");
+    return redirectWithError(origin, "状态验证失败", isBind);
   }
-
-  const isBind = statePayload.bind;
   const redirectUri = resolveRedirectUri(request.url);
 
   let discovery;
@@ -149,7 +146,7 @@ export async function GET(request: Request) {
       return clearStateCookie(redirectWithError(origin, "该 OIDC 账号已被其他用户绑定", true));
     }
 
-    const claimGroupId = resolveGroupFromClaims(rawClaims, config.groupClaim);
+    const claimGroupId = resolveGroupFromClaims(rawClaims);
     if (claimGroupId !== null) {
       gatewayDb
         .prepare("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, group_id = ? WHERE id = ?")
@@ -178,7 +175,7 @@ export async function GET(request: Request) {
       .get() as { count: number };
 
     const role: "admin" | "user" = adminCount.count === 0 ? "admin" : "user";
-    const claimGroupId = resolveGroupFromClaims(rawClaims, config.groupClaim);
+    const claimGroupId = resolveGroupFromClaims(rawClaims);
     const defaultGroup = gatewayDb
       .prepare("SELECT id FROM groups WHERE is_default = 1 AND deleted_at IS NULL")
       .get() as { id: number } | undefined;
@@ -219,8 +216,8 @@ export async function GET(request: Request) {
     }
   }
 
-  if (config.groupClaim) {
-    const claimGroupId = resolveGroupFromClaims(rawClaims, config.groupClaim);
+  {
+    const claimGroupId = resolveGroupFromClaims(rawClaims);
     if (claimGroupId !== null && claimGroupId !== user.group_id) {
       gatewayDb
         .prepare("UPDATE users SET group_id = ? WHERE id = ?")
