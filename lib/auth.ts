@@ -6,8 +6,19 @@ import { gatewayDb, type DbUser } from "@/lib/db";
 import { parseBearerToken } from "@/lib/http";
 import { AUTH_DISABLED, getNoAuthContext } from "@/lib/no-auth";
 
-const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || randomBytes(32).toString("hex");
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || randomBytes(32).toString("hex");
+declare global {
+  var __jwtAccessSecret__: string | undefined;
+  var __jwtRefreshSecret__: string | undefined;
+}
+
+function resolveSecret(envKey: string, globalKey: "__jwtAccessSecret__" | "__jwtRefreshSecret__"): string {
+  if (process.env[envKey]) return process.env[envKey]!;
+  if (!globalThis[globalKey]) globalThis[globalKey] = randomBytes(32).toString("hex");
+  return globalThis[globalKey];
+}
+
+const ACCESS_SECRET = resolveSecret("JWT_ACCESS_SECRET", "__jwtAccessSecret__");
+const REFRESH_SECRET = resolveSecret("JWT_REFRESH_SECRET", "__jwtRefreshSecret__");
 const ACCESS_EXPIRES_SECONDS = Number(process.env.JWT_ACCESS_EXPIRES_SECONDS ?? 900);
 const REFRESH_EXPIRES_SECONDS = Number(process.env.JWT_REFRESH_EXPIRES_SECONDS ?? 604800);
 export const ACCESS_COOKIE_NAME = "vlm-access-token";
