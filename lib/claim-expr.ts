@@ -182,31 +182,32 @@ function resolvePath(obj: unknown, path: string): string[] {
 }
 
 export function evaluateClaimExpr(node: ExprNode, claims: Record<string, unknown>): boolean {
-  if (node.type === "and") {
-    return evaluateClaimExpr(node.left, claims) && evaluateClaimExpr(node.right, claims);
-  }
-  if (node.type === "or") {
-    return evaluateClaimExpr(node.left, claims) || evaluateClaimExpr(node.right, claims);
-  }
-
-  const comp: ComparisonNode = node;
-  const values = resolvePath(claims, comp.path);
-  if (comp.operator === "exists") return values.length > 0;
-  if (values.length === 0) return false;
-  switch (comp.operator) {
-    case "==":
-      return values.some((v) => v === comp.value);
-    case "!=":
-      return values.every((v) => v !== comp.value);
-    case "contains":
-      return values.some((v) => v === comp.value);
-    case "matches": {
-      let re: RegExp;
-      try { re = new RegExp(comp.value); } catch { return false; }
-      return values.some((v) => re.test(v));
+  switch (node.type) {
+    case "and":
+      return evaluateClaimExpr(node.left, claims) && evaluateClaimExpr(node.right, claims);
+    case "or":
+      return evaluateClaimExpr(node.left, claims) || evaluateClaimExpr(node.right, claims);
+    case "comparison": {
+      const values = resolvePath(claims, node.path);
+      if (node.operator === "exists") return values.length > 0;
+      if (values.length === 0) return false;
+      switch (node.operator) {
+        case "==":
+          return values.some((v) => v === node.value);
+        case "!=":
+          return values.every((v) => v !== node.value);
+        case "contains":
+          return values.some((v) => v === node.value);
+        case "matches": {
+          let re: RegExp;
+          try { re = new RegExp(node.value); } catch { return false; }
+          return values.some((v) => re.test(v));
+        }
+        default:
+          return false;
+      }
     }
   }
-  return false;
 }
 
 export function validateClaimExpr(expr: string): { valid: true } | { valid: false; error: string } {
