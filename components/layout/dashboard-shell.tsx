@@ -134,6 +134,11 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
     return String(value);
   }
 
+  function periodExpired(resetAt: string | null | undefined): boolean {
+    if (!resetAt) return false;
+    return new Date(resetAt) <= new Date();
+  }
+
   function periodLabel(seconds: number | null | undefined) {
     if (!seconds || seconds <= 0) return "";
     if (seconds === 3600) return "每小时";
@@ -241,10 +246,10 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                       ? ["总Token", profileBrief.used_tokens ?? 0, profileBrief.quota_tokens] as const
                       : null,
                     profileBrief.quota_period && profileBrief.period_quota_requests !== null && profileBrief.period_quota_requests !== undefined
-                      ? [`${periodLabel(profileBrief.quota_period)}请求`, profileBrief.period_used_requests ?? 0, profileBrief.period_quota_requests] as const
+                      ? [`${periodLabel(profileBrief.quota_period)}请求`, periodExpired(profileBrief.period_reset_at) ? 0 : (profileBrief.period_used_requests ?? 0), profileBrief.period_quota_requests] as const
                       : null,
                     profileBrief.quota_period && profileBrief.period_quota_tokens !== null && profileBrief.period_quota_tokens !== undefined
-                      ? [`${periodLabel(profileBrief.quota_period)}Token`, profileBrief.period_used_tokens ?? 0, profileBrief.period_quota_tokens] as const
+                      ? [`${periodLabel(profileBrief.quota_period)}Token`, periodExpired(profileBrief.period_reset_at) ? 0 : (profileBrief.period_used_tokens ?? 0), profileBrief.period_quota_tokens] as const
                       : null,
                   ]).filter(Boolean).map((item) => {
                     const [label, used, total] = item!;
@@ -383,7 +388,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                   ) : null}
                   {profileBrief.quota_period ? (
                     <p className="mt-1 text-xs text-zinc-400">
-                      {periodLabel(profileBrief.quota_period)}: 请求 {formatLimit(profileBrief.period_used_requests ?? 0)}/{formatLimit(profileBrief.period_quota_requests)} / Token {formatLimit(profileBrief.period_used_tokens ?? 0)}/{formatLimit(profileBrief.period_quota_tokens)}
+                      {periodLabel(profileBrief.quota_period)}: 请求 {formatLimit(periodExpired(profileBrief.period_reset_at) ? 0 : (profileBrief.period_used_requests ?? 0))}/{formatLimit(profileBrief.period_quota_requests)} / Token {formatLimit(periodExpired(profileBrief.period_reset_at) ? 0 : (profileBrief.period_used_tokens ?? 0))}/{formatLimit(profileBrief.period_quota_tokens)}
                     </p>
                   ) : null}
                 </div>
