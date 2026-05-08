@@ -205,6 +205,7 @@ export function evaluateClaimExpr(node: ExprNode, claims: Record<string, unknown
       return values.some((v) => re.test(v));
     }
   }
+  return false;
 }
 
 export function validateClaimExpr(expr: string): { valid: true } | { valid: false; error: string } {
