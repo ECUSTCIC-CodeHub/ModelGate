@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { gatewayDb, type DbUser } from "@/lib/db";
 import { getEffectiveLimits } from "@/lib/effective-limits";
-import { ensureWebUser } from "@/lib/guards";
+import { ensureUser } from "@/lib/guards";
 import { jsonOk } from "@/lib/http";
 
 function formatPeriodLabel(seconds: number): string {
@@ -16,7 +16,7 @@ function formatPeriodLabel(seconds: number): string {
 }
 
 export async function GET(request: Request) {
-  const guard = ensureWebUser(request);
+  const guard = ensureUser(request);
   if ("error" in guard) return guard.error;
 
   const userId = guard.auth.user.id;

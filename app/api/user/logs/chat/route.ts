@@ -1,11 +1,11 @@
 export const dynamic = "force-dynamic";
 
 import { gatewayDb } from "@/lib/db";
-import { ensureWebUser } from "@/lib/guards";
+import { ensureUser } from "@/lib/guards";
 import { jsonOk } from "@/lib/http";
 
 export async function GET(request: Request) {
-  const guard = ensureWebUser(request);
+  const guard = ensureUser(request);
   if ("error" in guard) return guard.error;
 
   const url = new URL(request.url);

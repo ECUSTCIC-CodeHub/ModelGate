@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { gatewayDb } from "@/lib/db";
-import { ensureWebUser } from "@/lib/guards";
+import { ensureUser } from "@/lib/guards";
 import { jsonError, jsonOk } from "@/lib/http";
 import { generateGatewayKey } from "@/lib/keys";
 
@@ -11,7 +11,7 @@ const createSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const guard = ensureWebUser(request);
+  const guard = ensureUser(request);
   if ("error" in guard) return guard.error;
 
   const rows = gatewayDb
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const guard = ensureWebUser(request);
+  const guard = ensureUser(request);
   if ("error" in guard) return guard.error;
 
   const body = await request.json().catch(() => ({}));

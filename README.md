@@ -121,10 +121,102 @@ SQLite 数据库：`data/gateway.db`（首次运行自动创建）
 
 | 接口范围 | 权限要求 |
 |----------|----------|
-| `/api/admin/*` | 管理员角色 |
+| `/api/admin/*`、`/api/dashboard/*` | 管理员角色 |
 | `/api/user/*` | 已认证用户，仅限本人资源 |
-| `/api/dashboard/*` | 已认证用户 (Web 认证) |
-| `/api/v1/*` | API Key 认证 (`Authorization: Bearer sk-gw-...`) |
+| `/api/v1/*` | API Key 认证 |
+
+所有接口均支持两种认证方式：
+- **Session 认证**：JWT Cookie（Web 控制台自动管理）
+- **API Key 认证**：`Authorization: Bearer sk-gw-...` 或 `x-api-key: sk-gw-...`
+
+## 用户 API 接入指南
+
+用户生成的 API Key（`sk-gw-*`）除了调用网关端点外，还可以调用以下用户自助接口：
+
+### 配额查询
+
+```bash
+curl http://localhost:3000/api/user/quota \
+  -H 'Authorization: Bearer sk-gw-xxxx'
+```
+
+返回示例：
+
+```json
+{
+  "total": {
+    "quota_requests": 10000,
+    "quota_tokens": 5000000,
+    "used_requests": 128,
+    "used_tokens": 45200,
+    "remaining_requests": 9872,
+    "remaining_tokens": 4954800
+  },
+  "period": {
+    "period_seconds": 86400,
+    "period_label": "每日",
+    "quota_requests": 1000,
+    "quota_tokens": 500000,
+    "used_requests": 12,
+    "used_tokens": 3200,
+    "remaining_requests": 988,
+    "remaining_tokens": 496800,
+    "reset_at": "2026-05-08 00:00:00"
+  },
+  "rate": {
+    "rpm": 60,
+    "qps": 5,
+    "tpm": 100000
+  }
+}
+```
+
+> `total` 为终身配额，`period` 为周期性配额（到期自动重置），`rate` 为实时限流参数。值为 `null` 或 `-1` 表示无限制。
+
+### 密钥管理
+
+```bash
+# 查看所有密钥
+curl http://localhost:3000/api/user/keys \
+  -H 'Authorization: Bearer sk-gw-xxxx'
+
+# 创建密钥
+curl -X POST http://localhost:3000/api/user/keys \
+  -H 'Authorization: Bearer sk-gw-xxxx' \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+
+# 启用/禁用密钥
+curl -X PUT http://localhost:3000/api/user/keys/{id} \
+  -H 'Authorization: Bearer sk-gw-xxxx' \
+  -H 'Content-Type: application/json' \
+  -d '{"enabled": false}'
+
+# 删除密钥
+curl -X DELETE http://localhost:3000/api/user/keys/{id} \
+  -H 'Authorization: Bearer sk-gw-xxxx'
+```
+
+### 使用日志
+
+```bash
+curl 'http://localhost:3000/api/user/logs/chat?limit=50&offset=0' \
+  -H 'Authorization: Bearer sk-gw-xxxx'
+```
+
+返回分页日志列表，包含模型、渠道、状态码、Token 用量、延迟等信息，以及汇总统计。
+
+### 网关响应中的配额头
+
+每次调用网关端点（`/api/v1/*`）时，响应头中会包含当前配额剩余：
+
+```
+X-Quota-Limit-Requests-Remaining: 9872
+X-Quota-Limit-Tokens-Remaining: 4954800
+X-Period-Quota-Requests-Remaining: 988
+X-Period-Quota-Tokens-Remaining: 496800
+X-Period-Quota-Reset: 2026-05-08T00:00:00.000Z
+```
 
 ## 使用示例
 
