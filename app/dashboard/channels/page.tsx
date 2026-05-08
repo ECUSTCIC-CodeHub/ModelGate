@@ -645,8 +645,8 @@ export default function AdminChannelsPage() {
                               <Badge variant={model.is_public ? "default" : "secondary"}>{model.is_public ? "公开" : "白名单"}</Badge>
                             </TableCell>
                             <TableCell>{model.weight}</TableCell>
-                            <TableCell>{model.token_multiplier}x</TableCell>
-                            <TableCell>{model.request_multiplier}x</TableCell>
+                            <TableCell>{model.token_multiplier ?? 1}x</TableCell>
+                            <TableCell>{model.request_multiplier ?? 1}x</TableCell>
                             <TableCell className="space-x-2 text-right">
                               <Button size="sm" variant="outline" onClick={() => testModel(model)} disabled={testingModelId === model.id}>
                                 {testingModelId === model.id ? "测试中..." : "测试"}
