@@ -4,6 +4,7 @@ import { z } from "zod";
 import { gatewayDb, type DbUser } from "@/lib/db";
 import { applyAuthCookies, hashPassword, issueAuthTokens, sanitizeUser } from "@/lib/auth";
 import { jsonError, jsonOk } from "@/lib/http";
+import { checkLoginRateLimit } from "@/lib/login-ratelimit";
 import { getGatewaySettings } from "@/lib/settings";
 import { USERNAME_SCHEMA } from "@/lib/username";
 import { friendlyCredentialPayloadError } from "@/lib/validation";
@@ -18,6 +19,11 @@ export async function POST(request: Request) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) return jsonError(friendlyCredentialPayloadError(parsed.error), 400);
 
+  const rateCheck = checkLoginRateLimit(request);
+  if (!rateCheck.ok) {
+    return jsonError("注册尝试过于频繁，请稍后再试", 429);
+  }
+
   const settings = getGatewaySettings();
 
   const adminCount = gatewayDb.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL").get() as {
@@ -26,6 +32,10 @@ export async function POST(request: Request) {
 
   if (settings.registration_enabled !== 1 && adminCount.count > 0) {
     return jsonError("注册功能已关闭", 403);
+  }
+
+  if (settings.password_login_enabled === 0 && adminCount.count > 0) {
+    return jsonError("当前仅支持 OIDC 登录，注册功能已关闭", 403);
   }
 
   const existing = gatewayDb
