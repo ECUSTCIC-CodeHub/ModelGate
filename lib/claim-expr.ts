@@ -16,7 +16,7 @@ export type ExprNode = ComparisonNode | LogicalNode;
 type Token =
   | { type: "IDENT"; value: string }
   | { type: "STRING"; value: string }
-  | { type: "OP"; value: "==" | "!=" | "contains" | "matches" }
+  | { type: "OP"; value: "==" | "!=" | "contains" | "matches" | "exists" }
   | { type: "AND" }
   | { type: "OR" }
   | { type: "LPAREN" }
