@@ -245,6 +245,7 @@ CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
   ensureColumn("users", "period_reset_at", "period_reset_at DATETIME");
   ensureColumn("keys", "deleted_at", "deleted_at DATETIME");
   ensureColumn("keys", "name", "name TEXT DEFAULT ''");
+  ensureColumn("logs", "client_ip", "client_ip TEXT");
   const addedKeyUsedTokens = ensureColumn("keys", "used_tokens", "used_tokens INTEGER DEFAULT 0");
   const addedKeyUsedRequests = ensureColumn("keys", "used_requests", "used_requests INTEGER DEFAULT 0");
   ensureColumn("channels", "supported_protocols", `supported_protocols TEXT DEFAULT '["chat_completions"]'`);

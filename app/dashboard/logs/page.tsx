@@ -50,6 +50,7 @@ type LogRow = {
   output_tps: number | null;
   route_attempts: number | null;
   attempted_channels: string | null;
+  client_ip: string | null;
   created_at: string;
 };
 
@@ -248,6 +249,16 @@ export default function AdminLogsPage() {
           <span className="block max-w-32 truncate" title={row.original.username}>
             {row.original.username}
           </span>
+        ),
+      });
+    }
+
+    if (role === "admin") {
+      cols.push({
+        accessorKey: "client_ip",
+        header: "IP",
+        cell: ({ row }) => (
+          <span className="font-mono text-xs text-zinc-400">{row.original.client_ip ?? "-"}</span>
         ),
       });
     }
