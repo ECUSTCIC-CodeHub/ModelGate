@@ -252,7 +252,7 @@ export default function AdminLogsPage() {
         cell: ({ row }) => {
           const ip = row.original.client_ip;
           return (
-            <span className="block max-w-44 truncate" title={ip ? `${row.original.username} (${ip})` : row.original.username}>
+            <span className="whitespace-nowrap">
               {row.original.username}{ip ? <span className="text-zinc-500"> ({ip})</span> : null}
             </span>
           );
