@@ -189,19 +189,20 @@ export function evaluateClaimExpr(node: ExprNode, claims: Record<string, unknown
     return evaluateClaimExpr(node.left, claims) || evaluateClaimExpr(node.right, claims);
   }
 
-  const values = resolvePath(claims, node.path);
-  if (node.operator === "exists") return values.length > 0;
+  const comp: ComparisonNode = node;
+  const values = resolvePath(claims, comp.path);
+  if (comp.operator === "exists") return values.length > 0;
   if (values.length === 0) return false;
-  switch (node.operator) {
+  switch (comp.operator) {
     case "==":
-      return values.some((v) => v === node.value);
+      return values.some((v) => v === comp.value);
     case "!=":
-      return values.every((v) => v !== node.value);
+      return values.every((v) => v !== comp.value);
     case "contains":
-      return values.some((v) => v === node.value);
+      return values.some((v) => v === comp.value);
     case "matches": {
       let re: RegExp;
-      try { re = new RegExp(node.value); } catch { return false; }
+      try { re = new RegExp(comp.value); } catch { return false; }
       return values.some((v) => re.test(v));
     }
   }
