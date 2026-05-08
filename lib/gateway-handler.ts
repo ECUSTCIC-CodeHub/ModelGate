@@ -133,7 +133,9 @@ function checkQuota(userId: number, estimatedTokens: number): { ok: false; reaso
   return { ok: true, quota };
 }
 
-function addUsage(userId: number, keyId: number, tokens: number, requests = 1) {
+function addUsage(userId: number, keyId: number, tokens: number, requests = 1, tokenMultiplier = 1, requestMultiplier = 1) {
+  const billedTokens = Math.max(0, Math.round(tokens * tokenMultiplier));
+  const billedRequests = Math.max(0, Math.round(requests * requestMultiplier));
   const tx = gatewayDb.transaction(() => {
     gatewayDb
       .prepare(
@@ -142,7 +144,7 @@ function addUsage(userId: number, keyId: number, tokens: number, requests = 1) {
              period_used_tokens = period_used_tokens + ?, period_used_requests = period_used_requests + ?
          WHERE id = ? AND deleted_at IS NULL`,
       )
-      .run(tokens, requests, tokens, requests, userId);
+      .run(billedTokens, billedRequests, billedTokens, billedRequests, userId);
 
     gatewayDb
       .prepare(
@@ -150,7 +152,7 @@ function addUsage(userId: number, keyId: number, tokens: number, requests = 1) {
          SET used_tokens = used_tokens + ?, used_requests = used_requests + ?
          WHERE id = ? AND deleted_at IS NULL`,
       )
-      .run(tokens, requests, keyId);
+      .run(billedTokens, billedRequests, keyId);
   });
   tx();
 }
@@ -501,7 +503,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
                     : null;
 
                 lease.complete({ ok: true, latencyMs: Date.now() - startedAt });
-                addUsage(auth.user.id, auth.key.id, Math.max(1, totalTokens), 1);
+                addUsage(auth.user.id, auth.key.id, Math.max(1, totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier);
                 insertChatLog({
                   user_id: auth.user.id,
                   key_id: auth.key.id,
@@ -547,7 +549,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
                 const firstTokenLatencyMs = firstTokenAt !== null ? Math.max(0, firstTokenAt - startedAt) : null;
 
                 if (success) {
-                  addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1);
+                  addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier);
                 }
                 insertChatLog({
                   user_id: auth.user.id,
@@ -681,7 +683,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
                 : null;
 
             lease.complete({ ok: true, latencyMs: Date.now() - startedAt });
-            addUsage(auth.user.id, auth.key.id, Math.max(1, localTotalTokens), 1);
+            addUsage(auth.user.id, auth.key.id, Math.max(1, localTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier);
             insertChatLog({
               user_id: auth.user.id,
               key_id: auth.key.id,
@@ -838,7 +840,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
           : null;
 
       lease.complete({ ok: upstream.status < 400, latencyMs: Date.now() - startedAt });
-      addUsage(auth.user.id, auth.key.id, Math.max(1, totalTokens), 1);
+      addUsage(auth.user.id, auth.key.id, Math.max(1, totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier);
       insertChatLog({
         user_id: auth.user.id,
         key_id: auth.key.id,
@@ -886,7 +888,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
       const firstTokenLatencyMs = firstTokenAt !== null ? Math.max(0, firstTokenAt - startedAt) : null;
 
       if (success) {
-        addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1);
+        addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier);
       }
       insertChatLog({
         user_id: auth.user.id,
@@ -987,7 +989,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
       : null;
 
   lease.complete({ ok: true, latencyMs: Date.now() - startedAt });
-  addUsage(auth.user.id, auth.key.id, Math.max(1, localTotalTokens), 1);
+  addUsage(auth.user.id, auth.key.id, Math.max(1, localTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier);
   insertChatLog({
     user_id: auth.user.id,
     key_id: auth.key.id,

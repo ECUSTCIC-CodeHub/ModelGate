@@ -14,6 +14,8 @@ const createSchema = z.object({
   is_public: z.boolean().optional(),
   enabled: z.boolean().optional(),
   weight: z.number().int().min(1).optional(),
+  token_multiplier: z.number().min(0).max(100).optional(),
+  request_multiplier: z.number().min(0).max(100).optional(),
 });
 
 export async function GET(request: Request) {
@@ -52,8 +54,8 @@ export async function POST(request: Request) {
 
   const result = gatewayDb
     .prepare(
-      `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, is_public, enabled, weight)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, is_public, enabled, weight, token_multiplier, request_multiplier)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       parsed.data.alias,
@@ -63,6 +65,8 @@ export async function POST(request: Request) {
       parsed.data.is_public === false ? 0 : 1,
       parsed.data.enabled === false ? 0 : 1,
       parsed.data.weight ?? 1,
+      parsed.data.token_multiplier ?? 1,
+      parsed.data.request_multiplier ?? 1,
     );
 
   const row = gatewayDb.prepare("SELECT * FROM models WHERE id = ? AND deleted_at IS NULL").get(result.lastInsertRowid);

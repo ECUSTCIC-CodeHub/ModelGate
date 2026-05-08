@@ -254,6 +254,8 @@ CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
   ensureColumn("models", "deleted_at", "deleted_at DATETIME");
   ensureColumn("models", "is_public", "is_public INTEGER DEFAULT 1");
   ensureColumn("models", "upstream_protocol", `upstream_protocol TEXT DEFAULT 'chat_completions'`);
+  ensureColumn("models", "token_multiplier", "token_multiplier REAL DEFAULT 1");
+  ensureColumn("models", "request_multiplier", "request_multiplier REAL DEFAULT 1");
   ensureColumn("logs", "first_token_latency_ms", "first_token_latency_ms INTEGER");
   ensureColumn("logs", "output_tps", "output_tps REAL");
   ensureColumn("logs", "route_attempts", "route_attempts INTEGER DEFAULT 1");
@@ -420,6 +422,8 @@ export type DbModel = {
   is_public: number;
   enabled: number;
   weight: number;
+  token_multiplier: number;
+  request_multiplier: number;
   created_at: string;
   deleted_at: string | null;
 };

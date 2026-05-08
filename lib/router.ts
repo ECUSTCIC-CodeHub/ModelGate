@@ -16,6 +16,8 @@ type CandidateRow = {
   is_public: number;
   model_enabled: number;
   model_weight: number;
+  token_multiplier: number;
+  request_multiplier: number;
   model_created_at: string;
   model_deleted_at: string | null;
   channel_id_2: number;
@@ -54,6 +56,8 @@ function mapRowToRoute(row: CandidateRow): RoutedModel {
       is_public: row.is_public,
       enabled: row.model_enabled,
       weight: row.model_weight,
+      token_multiplier: row.token_multiplier ?? 1,
+      request_multiplier: row.request_multiplier ?? 1,
       created_at: row.model_created_at,
       deleted_at: row.model_deleted_at,
     },
@@ -85,6 +89,8 @@ export function listModelRoutes(alias: string, options?: { excludeChannelIds?: n
         m.is_public,
         m.enabled as model_enabled,
         m.weight as model_weight,
+        m.token_multiplier,
+        m.request_multiplier,
         m.created_at as model_created_at,
         m.deleted_at as model_deleted_at,
         c.id as channel_id_2,

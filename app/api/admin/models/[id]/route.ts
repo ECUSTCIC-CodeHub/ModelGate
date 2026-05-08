@@ -15,6 +15,8 @@ const updateSchema = z.object({
   is_public: z.boolean().optional(),
   enabled: z.boolean().optional(),
   weight: z.number().int().min(1).optional(),
+  token_multiplier: z.number().min(0).max(100).optional(),
+  request_multiplier: z.number().min(0).max(100).optional(),
 });
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -53,6 +55,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         is_public: number;
         enabled: number;
         weight: number;
+        token_multiplier: number;
+        request_multiplier: number;
       }
     | undefined;
   if (!existing) return jsonError("模型不存在", 404);
@@ -96,10 +100,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   gatewayDb
     .prepare(
       `UPDATE models
-       SET alias = ?, real_model = ?, channel_id = ?, upstream_protocol = ?, is_public = ?, enabled = ?, weight = ?
+       SET alias = ?, real_model = ?, channel_id = ?, upstream_protocol = ?, is_public = ?, enabled = ?, weight = ?, token_multiplier = ?, request_multiplier = ?
        WHERE id = ?`,
     )
-    .run(merged.alias, merged.real_model, merged.channel_id, merged.upstream_protocol, merged.is_public, merged.enabled, merged.weight, id);
+    .run(merged.alias, merged.real_model, merged.channel_id, merged.upstream_protocol, merged.is_public, merged.enabled, merged.weight, merged.token_multiplier, merged.request_multiplier, id);
 
   const row = gatewayDb.prepare("SELECT * FROM models WHERE id = ? AND deleted_at IS NULL").get(id);
   return jsonOk({ data: row });

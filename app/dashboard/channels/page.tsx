@@ -75,6 +75,8 @@ type ModelRow = {
   is_public: number;
   enabled: number;
   weight: number;
+  token_multiplier: number;
+  request_multiplier: number;
 };
 
 type Channel = {
@@ -96,6 +98,8 @@ type ChannelModelDraft = {
   upstream_protocol: Protocol;
   is_public: boolean;
   weight: number;
+  token_multiplier: number;
+  request_multiplier: number;
   enabled: boolean;
 };
 
@@ -116,6 +120,8 @@ type ModelForm = {
   upstream_protocol: Protocol;
   is_public: boolean;
   weight: number;
+  token_multiplier: number;
+  request_multiplier: number;
   enabled: boolean;
 };
 
@@ -135,6 +141,8 @@ const initialModelDraft: ChannelModelDraft = {
   upstream_protocol: "chat_completions",
   is_public: true,
   weight: 1,
+  token_multiplier: 1,
+  request_multiplier: 1,
   enabled: true,
 };
 
@@ -145,6 +153,8 @@ const initialModelForm: ModelForm = {
   upstream_protocol: "chat_completions",
   is_public: true,
   weight: 1,
+  token_multiplier: 1,
+  request_multiplier: 1,
   enabled: true,
 };
 
@@ -429,6 +439,8 @@ export default function AdminChannelsPage() {
       upstream_protocol: row.upstream_protocol,
       is_public: row.is_public === 1,
       weight: row.weight,
+      token_multiplier: row.token_multiplier ?? 1,
+      request_multiplier: row.request_multiplier ?? 1,
       enabled: row.enabled === 1,
     });
     setModelDrawerOpen(true);
@@ -611,6 +623,8 @@ export default function AdminChannelsPage() {
                           <TableHead>上游协议</TableHead>
                           <TableHead>可见性</TableHead>
                           <TableHead>权重</TableHead>
+                          <TableHead>Token 倍率</TableHead>
+                          <TableHead>请求倍率</TableHead>
                           <TableHead className="text-right">操作</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -631,6 +645,8 @@ export default function AdminChannelsPage() {
                               <Badge variant={model.is_public ? "default" : "secondary"}>{model.is_public ? "公开" : "白名单"}</Badge>
                             </TableCell>
                             <TableCell>{model.weight}</TableCell>
+                            <TableCell>{model.token_multiplier}x</TableCell>
+                            <TableCell>{model.request_multiplier}x</TableCell>
                             <TableCell className="space-x-2 text-right">
                               <Button size="sm" variant="outline" onClick={() => testModel(model)} disabled={testingModelId === model.id}>
                                 {testingModelId === model.id ? "测试中..." : "测试"}
@@ -759,7 +775,11 @@ export default function AdminChannelsPage() {
                     <div key={index} className="grid gap-3 rounded-lg border border-white/10 p-3 md:grid-cols-2">
                       <Input placeholder="别名" value={item.alias} onChange={(e) => updateChannelModelDraft(index, { alias: e.target.value })} />
                       <Input placeholder="真实模型" value={item.real_model} onChange={(e) => updateChannelModelDraft(index, { real_model: e.target.value })} />
-                      <Input type="number" min={1} placeholder="权重" value={item.weight} onChange={(e) => updateChannelModelDraft(index, { weight: Number(e.target.value) || 1 })} />
+                      <div className="grid gap-2 md:grid-cols-3">
+                        <Input type="number" min={1} placeholder="权重" value={item.weight} onChange={(e) => updateChannelModelDraft(index, { weight: Number(e.target.value) || 1 })} />
+                        <Input type="number" min={0} step={0.1} placeholder="Token倍率" value={item.token_multiplier} onChange={(e) => updateChannelModelDraft(index, { token_multiplier: Number(e.target.value) || 1 })} />
+                        <Input type="number" min={0} step={0.1} placeholder="请求倍率" value={item.request_multiplier} onChange={(e) => updateChannelModelDraft(index, { request_multiplier: Number(e.target.value) || 1 })} />
+                      </div>
                       <Select value={item.upstream_protocol} onValueChange={(value: Protocol) => updateChannelModelDraft(index, { upstream_protocol: value })}>
                         <SelectTrigger>
                           <SelectValue />
@@ -861,10 +881,21 @@ export default function AdminChannelsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label>权重</Label>
-              <Input type="number" min={1} value={modelForm.weight} onChange={(e) => setModelForm({ ...modelForm, weight: Number(e.target.value) || 1 })} />
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="space-y-2">
+                <Label>权重</Label>
+                <Input type="number" min={1} value={modelForm.weight} onChange={(e) => setModelForm({ ...modelForm, weight: Number(e.target.value) || 1 })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Token 倍率</Label>
+                <Input type="number" min={0} step={0.1} value={modelForm.token_multiplier} onChange={(e) => setModelForm({ ...modelForm, token_multiplier: Number(e.target.value) || 1 })} />
+              </div>
+              <div className="space-y-2">
+                <Label>请求倍率</Label>
+                <Input type="number" min={0} step={0.1} value={modelForm.request_multiplier} onChange={(e) => setModelForm({ ...modelForm, request_multiplier: Number(e.target.value) || 1 })} />
+              </div>
             </div>
+            <p className="text-xs text-zinc-500">倍率用于计费扣量，如 Token 倍率 2 则实际扣除 Token = 使用量 × 2。默认均为 1。</p>
             <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-4">
               <div>
                 <p className="text-sm font-medium text-zinc-100">公开模型</p>
