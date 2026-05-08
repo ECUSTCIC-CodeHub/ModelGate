@@ -38,7 +38,6 @@ export async function GET(request: Request) {
   if (limits.quota_period && periodResetAt && new Date(periodResetAt) <= now) {
     periodUsedTokens = 0;
     periodUsedRequests = 0;
-    periodResetAt = new Date(now.getTime() + limits.quota_period * 1000).toISOString();
   }
 
   return jsonOk({
