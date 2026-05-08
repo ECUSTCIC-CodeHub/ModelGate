@@ -72,6 +72,33 @@ export function verifyRefreshToken(token: string) {
   return jwt.verify(token, REFRESH_SECRET) as TokenPayload;
 }
 
+export type OidcPendingPayload = {
+  sub: string;
+  issuer: string;
+  name?: string;
+  preferred_username?: string;
+  email?: string;
+  rawClaims: Record<string, unknown>;
+  type: "oidc_pending";
+};
+
+const OIDC_PENDING_EXPIRES_SECONDS = 600;
+export const OIDC_PENDING_COOKIE_NAME = "oidc-pending";
+
+export function signOidcPendingToken(payload: Omit<OidcPendingPayload, "type">): string {
+  return jwt.sign({ ...payload, type: "oidc_pending" }, ACCESS_SECRET, { expiresIn: OIDC_PENDING_EXPIRES_SECONDS });
+}
+
+export function verifyOidcPendingToken(token: string): OidcPendingPayload | null {
+  try {
+    const decoded = jwt.verify(token, ACCESS_SECRET) as OidcPendingPayload;
+    if (decoded.type !== "oidc_pending") return null;
+    return decoded;
+  } catch {
+    return null;
+  }
+}
+
 export async function hashPassword(password: string) {
   return bcrypt.hash(password, 10);
 }

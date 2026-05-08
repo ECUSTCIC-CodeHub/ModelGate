@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { applyAuthCookies, hashPassword, issueAuthTokens, requireWebAuthWithRefresh, sanitizeUser } from "@/lib/auth";
+import { applyAuthCookies, hashPassword, issueAuthTokens, requireWebAuthWithRefresh, sanitizeUser, signOidcPendingToken, OIDC_PENDING_COOKIE_NAME } from "@/lib/auth";
 import { gatewayDb, type DbUser } from "@/lib/db";
 import {
   getOidcConfig,
@@ -16,6 +16,7 @@ import {
   type OidcUserInfo,
 } from "@/lib/oidc";
 import { randomBytes } from "node:crypto";
+import { getGatewaySettings } from "@/lib/settings";
 
 function parseCookie(cookieHeader: string | null, name: string) {
   if (!cookieHeader) return null;
@@ -166,6 +167,31 @@ export async function GET(request: Request) {
     .get(issuer, userInfo.sub) as DbUser | undefined;
 
   if (!user) {
+    const settings = getGatewaySettings();
+    const isOidcOnlyMode = settings.password_login_enabled === 0;
+
+    if (isOidcOnlyMode) {
+      const stripped = { ...rawClaims };
+      for (const k of ["at_hash", "c_hash", "auth_time", "iat", "exp", "nonce"]) delete stripped[k];
+      const pendingToken = signOidcPendingToken({
+        sub: userInfo.sub,
+        issuer,
+        name: userInfo.name,
+        preferred_username: userInfo.preferred_username,
+        email: userInfo.email,
+        rawClaims: stripped,
+      });
+      const res = NextResponse.redirect(`${origin}/oidc-bind`, 302);
+      res.cookies.set(OIDC_PENDING_COOKIE_NAME, pendingToken, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: false,
+        path: "/",
+        maxAge: 600,
+      });
+      return clearStateCookie(res);
+    }
+
     if (!config.autoRegister) {
       return clearStateCookie(redirectWithError(origin, "未找到绑定的账号，且自动注册已关闭"));
     }
