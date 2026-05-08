@@ -1,3 +1,9 @@
+import { getGatewaySettings } from "@/lib/settings";
+
+function isCircuitBreakerEnabled(): boolean {
+  return getGatewaySettings().upstream_circuit_breaker_enabled === 1;
+}
+
 type ChannelRuntimeState = {
   inFlight: number;
   consecutiveFailures: number;
@@ -117,7 +123,7 @@ export class ChannelLease {
     if (result.ok) {
       this.state.consecutiveFailures = 0;
       this.state.circuitOpenUntil = 0;
-    } else {
+    } else if (isCircuitBreakerEnabled()) {
       this.state.consecutiveFailures += 1;
       if (this.state.consecutiveFailures >= CIRCUIT_FAILURE_THRESHOLD) {
         this.state.circuitOpenUntil = Date.now() + CIRCUIT_OPEN_MS;
@@ -142,7 +148,7 @@ export function tryAcquireChannel(channelId: number, maxConcurrency: number): Le
   syncStateConfig(state, maxConcurrency);
   const now = Date.now();
 
-  if (state.circuitOpenUntil > now) {
+  if (isCircuitBreakerEnabled() && state.circuitOpenUntil > now) {
     return { ok: false, reason: "circuit_open" };
   }
 
@@ -158,7 +164,7 @@ export function acquireChannel(channelId: number, maxConcurrency: number, signal
   syncStateConfig(state, maxConcurrency);
   const now = Date.now();
 
-  if (state.circuitOpenUntil > now) {
+  if (isCircuitBreakerEnabled() && state.circuitOpenUntil > now) {
     return { ok: false, reason: "circuit_open" };
   }
 
@@ -195,7 +201,7 @@ export function scoreChannel(channelId: number, staticWeight: number, maxConcurr
   syncStateConfig(state, maxConcurrency);
   const now = Date.now();
 
-  if (state.circuitOpenUntil > now) {
+  if (isCircuitBreakerEnabled() && state.circuitOpenUntil > now) {
     return 0;
   }
 

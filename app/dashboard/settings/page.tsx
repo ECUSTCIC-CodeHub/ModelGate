@@ -20,6 +20,7 @@ export default function AdminSettingsPage() {
   const [passwordLoginEnabled, setPasswordLoginEnabled] = useState(true);
   const [upstreamRetryEnabled, setUpstreamRetryEnabled] = useState(true);
   const [upstreamRetryMaxAttempts, setUpstreamRetryMaxAttempts] = useState(3);
+  const [circuitBreakerEnabled, setCircuitBreakerEnabled] = useState(true);
   const [oidcEnabled, setOidcEnabled] = useState(false);
   const [oidcIssuerUrl, setOidcIssuerUrl] = useState("");
   const [oidcClientId, setOidcClientId] = useState("");
@@ -55,6 +56,7 @@ export default function AdminSettingsPage() {
       setPasswordLoginEnabled(data.data.password_login_enabled !== 0);
       setUpstreamRetryEnabled(data.data.upstream_retry_enabled !== 0);
       setUpstreamRetryMaxAttempts(Number(data.data.upstream_retry_max_attempts ?? 3));
+      setCircuitBreakerEnabled(data.data.upstream_circuit_breaker_enabled !== 0);
       setOidcEnabled(data.data.oidc_enabled === 1);
       setOidcIssuerUrl(data.data.oidc_issuer_url ?? "");
       setOidcClientId(data.data.oidc_client_id ?? "");
@@ -83,6 +85,7 @@ export default function AdminSettingsPage() {
         password_login_enabled: passwordLoginEnabled,
         upstream_retry_enabled: upstreamRetryEnabled,
         upstream_retry_max_attempts: upstreamRetryMaxAttempts,
+        upstream_circuit_breaker_enabled: circuitBreakerEnabled,
         oidc_enabled: oidcEnabled,
         oidc_issuer_url: oidcIssuerUrl,
         oidc_client_id: oidcClientId,
@@ -146,6 +149,13 @@ export default function AdminSettingsPage() {
                   <p className="text-xs text-zinc-500">命中 401、429 或 5xx 时尝试其他渠道。</p>
                 </div>
                 <Switch checked={upstreamRetryEnabled} onCheckedChange={setUpstreamRetryEnabled} />
+              </div>
+              <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium text-zinc-100">上游熔断</p>
+                  <p className="text-xs text-zinc-500">连续失败 3 次后暂停该渠道 15 秒，防止雪崩。关闭后所有渠道始终可用。</p>
+                </div>
+                <Switch checked={circuitBreakerEnabled} onCheckedChange={setCircuitBreakerEnabled} />
               </div>
               <div className="space-y-2">
                 <Label>最大路由尝试次数</Label>

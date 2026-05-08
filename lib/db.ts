@@ -354,6 +354,7 @@ CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
   initSetting.run("default_tpm", "-1");
   initSetting.run("upstream_retry_enabled", "1");
   initSetting.run("upstream_retry_max_attempts", "3");
+  initSetting.run("upstream_circuit_breaker_enabled", "1");
   initSetting.run("oidc_enabled", "0");
   initSetting.run("oidc_issuer_url", "");
   initSetting.run("oidc_client_id", "");

@@ -11,6 +11,7 @@ export type GatewaySettings = {
   password_login_enabled: number;
   upstream_retry_enabled: number;
   upstream_retry_max_attempts: number;
+  upstream_circuit_breaker_enabled: number;
   oidc_enabled: number;
   oidc_issuer_url: string;
   oidc_client_id: string;
@@ -46,6 +47,7 @@ const GATEWAY_KEYS = [
   "password_login_enabled",
   "upstream_retry_enabled",
   "upstream_retry_max_attempts",
+  "upstream_circuit_breaker_enabled",
   ...OIDC_KEYS,
   "announcement_content",
 ] as const;
@@ -62,6 +64,7 @@ export function getGatewaySettings(): GatewaySettings {
     registration_enabled: map.get("registration_enabled") === "0" ? 0 : 1,
     password_login_enabled: map.get("password_login_enabled") === "0" ? 0 : 1,
     upstream_retry_enabled: map.get("upstream_retry_enabled") === "0" ? 0 : 1,
+    upstream_circuit_breaker_enabled: map.get("upstream_circuit_breaker_enabled") === "0" ? 0 : 1,
     upstream_retry_max_attempts: positiveInt(
       map.get("upstream_retry_max_attempts"),
       DEFAULTS.upstream_retry_max_attempts,
@@ -84,6 +87,7 @@ export function setGatewaySettings(input: {
   password_login_enabled: boolean;
   upstream_retry_enabled: boolean;
   upstream_retry_max_attempts: number;
+  upstream_circuit_breaker_enabled: boolean;
   oidc_enabled?: boolean;
   oidc_issuer_url?: string;
   oidc_client_id?: string;
@@ -99,6 +103,7 @@ export function setGatewaySettings(input: {
     registration_enabled: input.registration_enabled ? "1" : "0",
     password_login_enabled: input.password_login_enabled ? "1" : "0",
     upstream_retry_enabled: input.upstream_retry_enabled ? "1" : "0",
+    upstream_circuit_breaker_enabled: input.upstream_circuit_breaker_enabled ? "1" : "0",
     upstream_retry_max_attempts: String(Math.max(1, Math.trunc(input.upstream_retry_max_attempts))),
   };
 
