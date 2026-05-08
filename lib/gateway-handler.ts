@@ -259,6 +259,12 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
     });
   };
 
+  const contentLength = parseInt(request.headers.get("content-length") || "0");
+  if (contentLength > 10 * 1024 * 1024) {
+    logRejected(413, "请求体过大", null);
+    return jsonError("请求体过大", 413);
+  }
+
   const rawBody = await request.json().catch(() => null);
   if (!rawBody || typeof rawBody !== "object") {
     logRejected(400, "请求参数不正确", null);
