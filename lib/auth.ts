@@ -1,12 +1,13 @@
 import bcrypt from "bcryptjs";
+import { randomBytes } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { NextResponse } from "next/server";
 import { gatewayDb, type DbUser } from "@/lib/db";
 import { parseBearerToken } from "@/lib/http";
 import { AUTH_DISABLED, getNoAuthContext } from "@/lib/no-auth";
 
-const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET ?? "dev-access-secret-change-me";
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET ?? "dev-refresh-secret-change-me";
+const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || randomBytes(32).toString("hex");
+const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || randomBytes(32).toString("hex");
 const ACCESS_EXPIRES_SECONDS = Number(process.env.JWT_ACCESS_EXPIRES_SECONDS ?? 900);
 const REFRESH_EXPIRES_SECONDS = Number(process.env.JWT_REFRESH_EXPIRES_SECONDS ?? 604800);
 export const ACCESS_COOKIE_NAME = "vlm-access-token";
