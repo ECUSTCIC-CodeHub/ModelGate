@@ -68,12 +68,9 @@ export async function POST(request: Request) {
     const ok = await comparePassword(linkParsed.data.password, user.password_hash);
     if (!ok) return jsonError("用户名或密码错误", 401);
 
-    const existingBind = gatewayDb
-      .prepare("SELECT id FROM users WHERE oidc_issuer = ? AND oidc_subject = ? AND deleted_at IS NULL")
-      .get(pending.issuer, pending.sub) as { id: number } | undefined;
-    if (existingBind && existingBind.id !== user.id) {
-      return jsonError("该 OIDC 账号已被其他用户绑定", 409);
-    }
+    gatewayDb
+      .prepare("UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL WHERE oidc_issuer = ? AND oidc_subject = ? AND id != ?")
+      .run(pending.issuer, pending.sub, user.id);
 
     const claimGroupId = resolveGroupFromClaims(pending.rawClaims);
     if (claimGroupId !== null) {
@@ -93,10 +90,9 @@ export async function POST(request: Request) {
   }
 
   if (createParsed.success) {
-    const existingBind = gatewayDb
-      .prepare("SELECT id FROM users WHERE oidc_issuer = ? AND oidc_subject = ? AND deleted_at IS NULL")
-      .get(pending.issuer, pending.sub) as { id: number } | undefined;
-    if (existingBind) return jsonError("该 OIDC 账号已绑定", 409);
+    gatewayDb
+      .prepare("UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL WHERE oidc_issuer = ? AND oidc_subject = ?")
+      .run(pending.issuer, pending.sub);
 
     const adminCount = gatewayDb
       .prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL")
