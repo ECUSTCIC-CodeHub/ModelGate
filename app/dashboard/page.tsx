@@ -180,14 +180,7 @@ export default function DashboardHomePage() {
     [],
   );
 
-  const hasQuota = quota && (
-    quota.total.quota_requests !== null ||
-    quota.total.quota_tokens !== null ||
-    quota.period !== null ||
-    quota.rate.rpm >= 0 ||
-    quota.rate.qps >= 0 ||
-    quota.rate.tpm >= 0
-  );
+  const hasQuota = quota && quota.period !== null;
 
   const isAdmin = role === "admin";
   const statCards = [
