@@ -9,7 +9,11 @@
   stages:
     - name: docker build & push
       script: |
-        docker buildx build -t ${IMAGE}:latest -t ${IMAGE}:${CNB_BRANCH} --platform linux/amd64,linux/arm64 --push .
+        docker buildx build \
+          --cache-from type=registry,ref=${IMAGE}:buildcache \
+          --cache-to type=registry,ref=${IMAGE}:buildcache,mode=max \
+          -t ${IMAGE}:latest -t ${IMAGE}:${CNB_BRANCH} \
+          --platform linux/amd64,linux/arm64 --push .
 
 .push: &push
   stages:
