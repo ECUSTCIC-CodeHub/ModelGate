@@ -7,7 +7,8 @@ import { jsonError, jsonOk } from "@/lib/http";
 import { softDeleteKey } from "@/lib/services/soft-delete-service";
 
 const updateSchema = z.object({
-  enabled: z.boolean(),
+  name: z.string().max(64).optional(),
+  enabled: z.boolean().optional(),
 });
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -24,9 +25,19 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     .get(id, guard.auth.user.id);
   if (!existing) return jsonError("密钥不存在", 404);
 
-  gatewayDb
-    .prepare("UPDATE keys SET enabled = ? WHERE id = ?")
-    .run(parsed.data.enabled ? 1 : 0, id);
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  if (parsed.data.enabled !== undefined) {
+    sets.push("enabled = ?");
+    params.push(parsed.data.enabled ? 1 : 0);
+  }
+  if (parsed.data.name !== undefined) {
+    sets.push("name = ?");
+    params.push(parsed.data.name.trim());
+  }
+  if (sets.length === 0) return jsonError("没有可更新的字段", 400);
+  params.push(id);
+  gatewayDb.prepare(`UPDATE keys SET ${sets.join(", ")} WHERE id = ?`).run(...params);
 
   const row = gatewayDb.prepare("SELECT * FROM keys WHERE id = ? AND deleted_at IS NULL").get(id);
   return jsonOk({ message: "密钥更新成功。", data: row });

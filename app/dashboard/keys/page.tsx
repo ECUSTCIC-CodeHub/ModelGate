@@ -22,6 +22,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
@@ -30,6 +31,7 @@ import { authedFetch, clearSession, getCachedProfile, getOrFetchProfile } from "
 type KeyRow = {
     id: number;
     key: string;
+    name: string;
     used_tokens: number;
     used_requests: number;
     enabled: number;
@@ -51,6 +53,9 @@ export default function ConsoleKeysPage() {
     const [keys, setKeys] = useState<KeyRow[]>([]);
     const [error, setError] = useState("");
     const [role, setRole] = useState<"admin" | "user">(() => initialProfile?.role ?? getCachedProfile()?.role ?? "user");
+    const [newKeyName, setNewKeyName] = useState("");
+    const [editingNameId, setEditingNameId] = useState<number | null>(null);
+    const [editingNameValue, setEditingNameValue] = useState("");
     const { toast } = useToast();
 
     async function load() {
@@ -87,10 +92,11 @@ export default function ConsoleKeysPage() {
     }
 
     async function createKey() {
-        const response = await authedFetch("/api/dashboard/keys", { method: "POST", body: JSON.stringify({}) });
+        const response = await authedFetch("/api/dashboard/keys", { method: "POST", body: JSON.stringify({ name: newKeyName.trim() || undefined }) });
         const data = await response.json().catch(() => null);
         if (response.ok) {
             toast({ variant: "success", description: getApiMessage(data, "创建密钥成功。") });
+            setNewKeyName("");
             if (data?.data?.key && typeof data.data.key === "string") {
                 await copyKey(data.data.key);
             }
@@ -98,6 +104,21 @@ export default function ConsoleKeysPage() {
             return;
         }
         toast({ variant: "error", description: getApiMessage(data, "创建密钥失败。") });
+    }
+
+    async function renameKey(id: number, name: string) {
+        const response = await authedFetch(`/api/dashboard/keys/${id}`, {
+            method: "PUT",
+            body: JSON.stringify({ name }),
+        });
+        const data = await response.json().catch(() => null);
+        if (response.ok) {
+            toast({ variant: "success", description: "备注已更新。" });
+            setEditingNameId(null);
+            await load();
+            return;
+        }
+        toast({ variant: "error", description: getApiMessage(data, "更新备注失败。") });
     }
 
     async function toggleKey(id: number, enabled: boolean) {
@@ -143,7 +164,19 @@ export default function ConsoleKeysPage() {
                         <SectionTitle
                             title="密钥列表"
                             description="请妥善保管密钥；Base URL、协议端点等接入参数请查看「接入指南」。"
-                            action={<Button onClick={createKey}>创建密钥</Button>}
+                            action={
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        className="w-36"
+                                        placeholder="备注名（可选）"
+                                        value={newKeyName}
+                                        onChange={(e) => setNewKeyName(e.target.value)}
+                                        maxLength={64}
+                                        onKeyDown={(e) => { if (e.key === "Enter") void createKey(); }}
+                                    />
+                                    <Button onClick={createKey}>创建密钥</Button>
+                                </div>
+                            }
                         />
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -154,6 +187,7 @@ export default function ConsoleKeysPage() {
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead>序号</TableHead>
+                                            <TableHead>备注</TableHead>
                                             <TableHead>Key</TableHead>
                                             <TableHead>累计请求</TableHead>
                                             <TableHead>累计 Token</TableHead>
@@ -165,6 +199,29 @@ export default function ConsoleKeysPage() {
                                         {keys.map((row, index) => (
                                             <TableRow key={row.id}>
                                                 <TableCell>{index + 1}</TableCell>
+                                                <TableCell className="max-w-[160px]">
+                                                    {editingNameId === row.id ? (
+                                                        <Input
+                                                            className="h-7 text-xs"
+                                                            value={editingNameValue}
+                                                            onChange={(e) => setEditingNameValue(e.target.value)}
+                                                            maxLength={64}
+                                                            autoFocus
+                                                            onBlur={() => void renameKey(row.id, editingNameValue)}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === "Enter") void renameKey(row.id, editingNameValue);
+                                                                if (e.key === "Escape") setEditingNameId(null);
+                                                            }}
+                                                        />
+                                                    ) : (
+                                                        <span
+                                                            className="cursor-pointer text-sm text-zinc-300 hover:text-white"
+                                                            onClick={() => { setEditingNameId(row.id); setEditingNameValue(row.name || ""); }}
+                                                        >
+                                                            {row.name || <span className="text-zinc-600">点击添加备注</span>}
+                                                        </span>
+                                                    )}
+                                                </TableCell>
                                                 <TableCell className="max-w-[320px] font-mono text-xs md:text-sm">{row.key}</TableCell>
                                                 <TableCell>{formatNumber(row.used_requests)}</TableCell>
                                                 <TableCell>{formatNumber(row.used_tokens)}</TableCell>

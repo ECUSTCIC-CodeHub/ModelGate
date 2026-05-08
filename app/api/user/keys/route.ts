@@ -7,6 +7,7 @@ import { jsonError, jsonOk } from "@/lib/http";
 import { generateGatewayKey } from "@/lib/keys";
 
 const createSchema = z.object({
+  name: z.string().max(64).optional(),
   enabled: z.boolean().optional(),
 });
 
@@ -16,7 +17,7 @@ export async function GET(request: Request) {
 
   const rows = gatewayDb
     .prepare(
-      `SELECT id, key, user_id, used_tokens, used_requests, enabled, created_at
+      `SELECT id, key, name, user_id, used_tokens, used_requests, enabled, created_at
        FROM keys
        WHERE user_id = ? AND deleted_at IS NULL
        ORDER BY id DESC`,
@@ -36,12 +37,12 @@ export async function POST(request: Request) {
 
   const apiKey = generateGatewayKey();
   const result = gatewayDb
-    .prepare("INSERT INTO keys (key, user_id, enabled) VALUES (?, ?, ?)")
-    .run(apiKey, guard.auth.user.id, parsed.data.enabled === false ? 0 : 1);
+    .prepare("INSERT INTO keys (key, name, user_id, enabled) VALUES (?, ?, ?, ?)")
+    .run(apiKey, parsed.data.name?.trim() || "", guard.auth.user.id, parsed.data.enabled === false ? 0 : 1);
 
   const row = gatewayDb
     .prepare(
-      `SELECT id, key, user_id, used_tokens, used_requests, enabled, created_at
+      `SELECT id, key, name, user_id, used_tokens, used_requests, enabled, created_at
        FROM keys
        WHERE id = ? AND deleted_at IS NULL`,
     )
