@@ -270,73 +270,73 @@ export default function DashboardHomePage() {
             <CardContent>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {(quota.rate.rpm >= 0 || quota.rate.qps >= 0 || quota.rate.tpm >= 0) ? (
-                  <div className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-xs text-zinc-500">速率限制</p>
+                  <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+                    <p className="text-xs text-[var(--color-foreground-muted)]">速率限制</p>
                     <div className="space-y-1">
                       <div className="flex justify-between text-sm">
-                        <span className="text-zinc-400">RPM</span>
-                        <span className="font-mono text-zinc-100">{quota.rate.rpm < 0 ? "∞" : formatNumber(quota.rate.rpm)}</span>
+                        <span className="text-[var(--color-foreground-muted)]">RPM</span>
+                        <span className="font-mono text-[var(--color-foreground)]">{quota.rate.rpm < 0 ? "∞" : formatNumber(quota.rate.rpm)}</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-zinc-400">QPS</span>
-                        <span className="font-mono text-zinc-100">{quota.rate.qps < 0 ? "∞" : formatNumber(quota.rate.qps)}</span>
+                        <span className="text-[var(--color-foreground-muted)]">QPS</span>
+                        <span className="font-mono text-[var(--color-foreground)]">{quota.rate.qps < 0 ? "∞" : formatNumber(quota.rate.qps)}</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-zinc-400">TPM</span>
-                        <span className="font-mono text-zinc-100">{quota.rate.tpm < 0 ? "∞" : formatTokenCount(quota.rate.tpm)}</span>
+                        <span className="text-[var(--color-foreground-muted)]">TPM</span>
+                        <span className="font-mono text-[var(--color-foreground)]">{quota.rate.tpm < 0 ? "∞" : formatTokenCount(quota.rate.tpm)}</span>
                       </div>
                     </div>
                   </div>
                 ) : null}
                 {quota.total.quota_requests !== null ? (
-                  <div className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-xs text-zinc-500">总请求配额</p>
-                    <p className="text-lg font-semibold text-zinc-100">
-                      {formatNumber(quota.total.remaining_requests)} <span className="text-sm font-normal text-zinc-500">剩余</span>
+                  <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+                    <p className="text-xs text-[var(--color-foreground-muted)]">总请求配额</p>
+                    <p className="text-lg font-semibold text-[var(--color-foreground)]">
+                      {formatNumber(quota.total.remaining_requests)} <span className="text-sm font-normal text-[var(--color-foreground-muted)]">剩余</span>
                     </p>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-surface-hover)]">
                       <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, quota.total.quota_requests > 0 ? ((quota.total.remaining_requests ?? 0) / quota.total.quota_requests) * 100 : 0))}%` }} />
                     </div>
-                    <p className="text-xs text-zinc-500">{formatNumber(quota.total.used_requests)} / {formatNumber(quota.total.quota_requests)} 已使用</p>
+                    <p className="text-xs text-[var(--color-foreground-muted)]">{formatNumber(quota.total.used_requests)} / {formatNumber(quota.total.quota_requests)} 已使用</p>
                   </div>
                 ) : null}
                 {quota.total.quota_tokens !== null ? (
-                  <div className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-xs text-zinc-500">总 Token 配额</p>
-                    <p className="text-lg font-semibold text-zinc-100">
-                      {formatTokenCount(quota.total.remaining_tokens)} <span className="text-sm font-normal text-zinc-500">剩余</span>
+                  <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+                    <p className="text-xs text-[var(--color-foreground-muted)]">总 Token 配额</p>
+                    <p className="text-lg font-semibold text-[var(--color-foreground)]">
+                      {formatTokenCount(quota.total.remaining_tokens)} <span className="text-sm font-normal text-[var(--color-foreground-muted)]">剩余</span>
                     </p>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-surface-hover)]">
                       <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, quota.total.quota_tokens > 0 ? ((quota.total.remaining_tokens ?? 0) / quota.total.quota_tokens) * 100 : 0))}%` }} />
                     </div>
-                    <p className="text-xs text-zinc-500">{formatTokenCount(quota.total.used_tokens)} / {formatTokenCount(quota.total.quota_tokens)} 已使用</p>
+                    <p className="text-xs text-[var(--color-foreground-muted)]">{formatTokenCount(quota.total.used_tokens)} / {formatTokenCount(quota.total.quota_tokens)} 已使用</p>
                   </div>
                 ) : null}
                 {quota.period?.quota_requests !== null && quota.period ? (
-                  <div className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-xs text-zinc-500">{quota.period.period_label}请求配额</p>
-                    <p className="text-lg font-semibold text-zinc-100">
-                      {formatNumber(quota.period.remaining_requests)} <span className="text-sm font-normal text-zinc-500">剩余</span>
+                  <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+                    <p className="text-xs text-[var(--color-foreground-muted)]">{quota.period.period_label}请求配额</p>
+                    <p className="text-lg font-semibold text-[var(--color-foreground)]">
+                      {formatNumber(quota.period.remaining_requests)} <span className="text-sm font-normal text-[var(--color-foreground-muted)]">剩余</span>
                     </p>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-surface-hover)]">
                       <div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, quota.period.quota_requests! > 0 ? ((quota.period.remaining_requests ?? 0) / quota.period.quota_requests!) * 100 : 0))}%` }} />
                     </div>
-                    <p className="text-xs text-zinc-500">
+                    <p className="text-xs text-[var(--color-foreground-muted)]">
                       {formatNumber(quota.period.used_requests)} / {formatNumber(quota.period.quota_requests)} 已使用
                       {quota.period.reset_at ? ` · 重置于 ${new Date(quota.period.reset_at).toLocaleString()}` : ""}
                     </p>
                   </div>
                 ) : null}
                 {quota.period?.quota_tokens !== null && quota.period ? (
-                  <div className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-xs text-zinc-500">{quota.period.period_label} Token 配额</p>
-                    <p className="text-lg font-semibold text-zinc-100">
-                      {formatTokenCount(quota.period.remaining_tokens)} <span className="text-sm font-normal text-zinc-500">剩余</span>
+                  <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+                    <p className="text-xs text-[var(--color-foreground-muted)]">{quota.period.period_label} Token 配额</p>
+                    <p className="text-lg font-semibold text-[var(--color-foreground)]">
+                      {formatTokenCount(quota.period.remaining_tokens)} <span className="text-sm font-normal text-[var(--color-foreground-muted)]">剩余</span>
                     </p>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-surface-hover)]">
                       <div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, quota.period.quota_tokens! > 0 ? ((quota.period.remaining_tokens ?? 0) / quota.period.quota_tokens!) * 100 : 0))}%` }} />
                     </div>
-                    <p className="text-xs text-zinc-500">
+                    <p className="text-xs text-[var(--color-foreground-muted)]">
                       {formatTokenCount(quota.period.used_tokens)} / {formatTokenCount(quota.period.quota_tokens)} 已使用
                       {quota.period.reset_at ? ` · 重置于 ${new Date(quota.period.reset_at).toLocaleString()}` : ""}
                     </p>
@@ -388,7 +388,7 @@ export default function DashboardHomePage() {
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="h-full rounded-xl border border-white/10 bg-white/5" />
+                <div className="h-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)]" />
               )}
             </CardContent>
           </Card>
@@ -439,7 +439,7 @@ export default function DashboardHomePage() {
             </CardHeader>
             <CardContent className="min-w-0">
               {(summary?.top_models?.length ?? 0) > 0 ? (
-                <div className="max-w-full overflow-x-auto rounded-xl border border-white/10">
+                <div className="max-w-full overflow-x-auto rounded-xl border border-[var(--color-border)]">
                   <DataTable columns={topModelColumns} data={summary?.top_models ?? []} tableClassName="w-full sm:min-w-[420px]" />
                 </div>
               ) : (
@@ -454,7 +454,7 @@ export default function DashboardHomePage() {
             </CardHeader>
             <CardContent className="min-w-0">
               {(summary?.top_channels?.length ?? 0) > 0 ? (
-                <div className="max-w-full overflow-x-auto rounded-xl border border-white/10">
+                <div className="max-w-full overflow-x-auto rounded-xl border border-[var(--color-border)]">
                   <DataTable columns={topChannelColumns} data={summary?.top_channels ?? []} tableClassName="w-full sm:min-w-[420px]" />
                 </div>
               ) : (
@@ -470,7 +470,7 @@ export default function DashboardHomePage() {
           </CardHeader>
           <CardContent>
             {(summary?.recent_logs?.length ?? 0) > 0 ? (
-              <div className="overflow-x-auto rounded-xl border border-white/10">
+              <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
                 <DataTable columns={recentLogColumns} data={summary?.recent_logs ?? []} tableClassName="min-w-[820px]" />
               </div>
             ) : (

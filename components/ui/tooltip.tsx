@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
-
 import { cn } from "@/lib/utils";
 
 function TooltipProvider({
@@ -38,7 +37,7 @@ function TooltipContent({
       <TooltipPrimitive.Content
         sideOffset={sideOffset}
         className={cn(
-          "z-50 w-fit max-w-[280px] rounded-md border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-100 shadow-md",
+          "z-50 w-fit max-w-[280px] rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-foreground)] shadow-[var(--shadow-md)]",
           className,
         )}
         {...props}

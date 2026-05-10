@@ -24,6 +24,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     const options = {
       description: input.title ? input.description : undefined,
       duration: input.durationMs ?? 2600,
+      className: "!border-[var(--color-border)] !bg-[var(--color-surface)] !text-[var(--color-foreground)] !shadow-[var(--shadow-lg)]",
+      descriptionClassName: "!text-[var(--color-foreground-muted)]",
     };
 
     if (input.title) {
@@ -40,28 +42,21 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }
 
     if (variant === "success") {
-      sonnerToast.success(input.description, { duration: options.duration });
+      sonnerToast.success(input.description, { ...options, description: undefined });
       return;
     }
     if (variant === "error") {
-      sonnerToast.error(input.description, { duration: options.duration });
+      sonnerToast.error(input.description, { ...options, description: undefined });
       return;
     }
-    sonnerToast(input.description, { duration: options.duration });
+    sonnerToast(input.description, { ...options, description: undefined });
   }, []);
   const value = useMemo(() => ({ toast }), [toast]);
 
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <Toaster
-        position="top-right"
-        richColors
-        toastOptions={{
-          className: "!border-white/10 !bg-[rgba(10,15,27,0.96)] !text-zinc-100",
-          descriptionClassName: "!text-zinc-400",
-        }}
-      />
+      <Toaster position="top-right" richColors />
     </ToastContext.Provider>
   );
 }
