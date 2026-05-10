@@ -47,11 +47,11 @@ import { authedFetch, clearSession, getOrFetchProfile } from "@/lib/client-auth"
 
 type Protocol = "chat_completions" | "responses" | "anthropic_messages" | "embeddings";
 
-const protocolOptions: Array<{ value: Protocol; label: string }> = [
-  { value: "chat_completions", label: "Chat Completions" },
-  { value: "responses", label: "Responses" },
-  { value: "anthropic_messages", label: "Claude Messages" },
-  { value: "embeddings", label: "Embeddings" },
+const protocolOptions: Array<{ value: Protocol; label: string; shortLabel: string }> = [
+  { value: "chat_completions", label: "Chat Completions", shortLabel: "Chat" },
+  { value: "responses", label: "Responses", shortLabel: "Responses" },
+  { value: "anthropic_messages", label: "Claude Messages", shortLabel: "Claude" },
+  { value: "embeddings", label: "Embeddings", shortLabel: "Embeddings" },
 ];
 
 function isProtocol(value: unknown): value is Protocol {
@@ -63,7 +63,7 @@ function protocolLabel(protocol: Protocol) {
 }
 
 function shortProtocolLabel(protocol: Protocol) {
-  return protocol === "chat_completions" ? "Chat" : protocolLabel(protocol).replace("Claude Messages", "Claude");
+  return protocolOptions.find((option) => option.value === protocol)?.shortLabel ?? "Chat";
 }
 
 function parseSupportedProtocols(raw: string | null | undefined): Protocol[] {

@@ -13,8 +13,15 @@ function normalizeProviderBaseUrl(baseUrl: string) {
     .replace(/\/models$/, "");
 }
 
+const PROTOCOL_PATH: Record<GatewayProtocol, string> = {
+  chat_completions: "chat/completions",
+  responses: "responses",
+  anthropic_messages: "messages",
+  embeddings: "embeddings",
+};
+
 function buildUpstreamUrl(baseUrl: string, protocol: GatewayProtocol) {
-  return `${normalizeProviderBaseUrl(baseUrl)}/${protocol === "responses" ? "responses" : protocol === "anthropic_messages" ? "messages" : protocol === "embeddings" ? "embeddings" : "chat/completions"}`;
+  return `${normalizeProviderBaseUrl(baseUrl)}/${PROTOCOL_PATH[protocol]}`;
 }
 
 function buildUpstreamHeaders(route: RoutedModel, protocol: GatewayProtocol): Record<string, string> {

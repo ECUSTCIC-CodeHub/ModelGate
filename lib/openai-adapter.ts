@@ -40,12 +40,7 @@ function stringifyEmbeddingInput(input: unknown): string {
   if (typeof input === "string") return input;
   if (Array.isArray(input)) {
     return input
-      .map((item) => {
-        if (typeof item === "string") return item;
-        if (Array.isArray(item)) return "";
-        return typeof item === "number" ? String(item) : "";
-      })
-      .filter(Boolean)
+      .filter((item): item is string => typeof item === "string")
       .join("\n");
   }
   return "";
@@ -1397,10 +1392,6 @@ export function createTransformedStream(
   outboundProtocol: GatewayProtocol,
   inboundProtocol: GatewayProtocol,
 ) : StreamTransformResult {
-  if (inboundProtocol === "embeddings" || outboundProtocol === "embeddings") {
-    return createPassthroughStream(upstream, outboundProtocol);
-  }
-
   if (outboundProtocol === inboundProtocol) {
     return createPassthroughStream(upstream, outboundProtocol);
   }
