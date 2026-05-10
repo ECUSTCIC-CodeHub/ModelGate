@@ -22,6 +22,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
@@ -56,6 +64,7 @@ export default function ConsoleKeysPage() {
     const [newKeyName, setNewKeyName] = useState("");
     const [editingNameId, setEditingNameId] = useState<number | null>(null);
     const [editingNameValue, setEditingNameValue] = useState("");
+    const [createdKey, setCreatedKey] = useState("");
     const { toast } = useToast();
 
     async function load() {
@@ -95,10 +104,9 @@ export default function ConsoleKeysPage() {
         const response = await authedFetch("/api/dashboard/keys", { method: "POST", body: JSON.stringify({ name: newKeyName.trim() || undefined }) });
         const data = await response.json().catch(() => null);
         if (response.ok) {
-            toast({ variant: "success", description: getApiMessage(data, "创建密钥成功。") });
             setNewKeyName("");
             if (data?.data?.key && typeof data.data.key === "string") {
-                await copyKey(data.data.key);
+                setCreatedKey(data.data.key);
             }
             await load();
             return;
@@ -261,6 +269,24 @@ export default function ConsoleKeysPage() {
                     </CardContent>
                 </Card>
             </div>
+
+            <Dialog open={!!createdKey} onOpenChange={(open) => { if (!open) setCreatedKey(""); }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>密钥创建成功</DialogTitle>
+                        <DialogDescription>
+                            请立即复制并妥善保存，关闭后将无法再次查看完整密钥。
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                        <code className="block break-all text-sm text-zinc-200">{createdKey}</code>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setCreatedKey("")}>关闭</Button>
+                        <Button onClick={() => copyKey(createdKey)}>复制密钥</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </DashboardShell>
     );
 }
