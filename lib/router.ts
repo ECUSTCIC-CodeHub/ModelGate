@@ -77,8 +77,14 @@ function mapRowToRoute(row: CandidateRow): RoutedModel {
   };
 }
 
-export function listModelRoutes(alias: string, options?: { excludeChannelIds?: number[] }): RoutedModel[] {
+function isProtocolCompatible(inboundProtocol: GatewayProtocol, upstreamProtocol: GatewayProtocol) {
+  if (inboundProtocol === "embeddings") return upstreamProtocol === "embeddings";
+  return upstreamProtocol !== "embeddings";
+}
+
+export function listModelRoutes(alias: string, options?: { excludeChannelIds?: number[]; protocol?: GatewayProtocol }): RoutedModel[] {
   const exclude = new Set(options?.excludeChannelIds ?? []);
+  const protocol = options?.protocol;
   const query = gatewayDb.prepare(
     `SELECT
         m.id as model_id,
@@ -111,10 +117,15 @@ export function listModelRoutes(alias: string, options?: { excludeChannelIds?: n
 
   const findRows = (targetAlias: string) => query.all(targetAlias) as CandidateRow[];
 
-  const exactRows = findRows(alias).filter((row) => !exclude.has(row.channel_id_2));
+  const filterRows = (rows: CandidateRow[]) => rows.filter((row) =>
+    !exclude.has(row.channel_id_2)
+    && (!protocol || isProtocolCompatible(protocol, row.upstream_protocol)),
+  );
+
+  const exactRows = filterRows(findRows(alias));
   const candidateRows = exactRows.length > 0
     ? exactRows
-    : findRows("*").filter((row) => !exclude.has(row.channel_id_2));
+    : filterRows(findRows("*"));
 
   return candidateRows
     .map((row) => ({
@@ -131,6 +142,6 @@ export function listModelRoutes(alias: string, options?: { excludeChannelIds?: n
     .map((item) => item.route);
 }
 
-export function selectModelRoute(alias: string, options?: { excludeChannelIds?: number[] }): RoutedModel | null {
+export function selectModelRoute(alias: string, options?: { excludeChannelIds?: number[]; protocol?: GatewayProtocol }): RoutedModel | null {
   return listModelRoutes(alias, options)[0] ?? null;
 }

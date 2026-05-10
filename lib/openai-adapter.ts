@@ -36,6 +36,30 @@ function asArray(value: unknown) {
   return Array.isArray(value) ? value : [];
 }
 
+function stringifyEmbeddingInput(input: unknown): string {
+  if (typeof input === "string") return input;
+  if (Array.isArray(input)) {
+    return input
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (Array.isArray(item)) return "";
+        return typeof item === "number" ? String(item) : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  return "";
+}
+
+function estimateEmbeddingInputTokens(input: unknown): number {
+  if (typeof input === "string") return Math.ceil(input.length / 4);
+  if (typeof input === "number") return Number.isFinite(input) ? 1 : 0;
+  if (Array.isArray(input)) {
+    return input.reduce((total, item) => total + estimateEmbeddingInputTokens(item), 0);
+  }
+  return 0;
+}
+
 function normalizeContentParts(value: unknown): NormalizedContentPart[] {
   if (typeof value === "string") {
     return value.length > 0 ? [{ type: "text", text: value }] : [];
@@ -600,6 +624,10 @@ function responsesTextFormatToChat(text: unknown) {
 }
 
 export function estimateRequestTokensForProtocol(body: JsonRecord, protocol: GatewayProtocol) {
+  if (protocol === "embeddings") {
+    return Math.max(1, estimateEmbeddingInputTokens(body.input));
+  }
+
   const text = countInputText(body, protocol);
   const maxTokens = Number(
     protocol === "responses"
@@ -613,6 +641,10 @@ export function estimateRequestTokensForProtocol(body: JsonRecord, protocol: Gat
 }
 
 export function countInputText(body: JsonRecord, protocol: GatewayProtocol) {
+  if (protocol === "embeddings") {
+    return stringifyEmbeddingInput(body.input);
+  }
+
   const messages = protocol === "responses"
     ? normalizeResponsesInput(body.input, typeof body.instructions === "string" ? body.instructions : undefined)
     : protocol === "anthropic_messages"
@@ -627,6 +659,10 @@ export function countInputText(body: JsonRecord, protocol: GatewayProtocol) {
 }
 
 export function countPromptTokensForProtocol(body: JsonRecord, protocol: GatewayProtocol, model: string) {
+  if (protocol === "embeddings") {
+    return Math.max(0, estimateEmbeddingInputTokens(body.input));
+  }
+
   return Math.max(0, countTextTokens(countInputText(body, protocol), model));
 }
 
@@ -640,6 +676,12 @@ export function adaptRequestBody(
   outboundProtocol: GatewayProtocol,
   realModel: string,
 ) {
+  if (inboundProtocol === "embeddings" || outboundProtocol === "embeddings") {
+    if (inboundProtocol !== outboundProtocol) {
+      throw new Error("Embeddings protocol only supports passthrough requests");
+    }
+  }
+
   if (inboundProtocol === outboundProtocol) {
     return {
       ...body,
@@ -960,6 +1002,8 @@ function extractResponsesMessage(output: unknown) {
 }
 
 export function extractCompletionTextFromBody(text: string, protocol: GatewayProtocol) {
+  if (protocol === "embeddings") return "";
+
   try {
     const parsed = JSON.parse(text) as JsonRecord;
     if (protocol === "chat_completions") {
@@ -991,6 +1035,13 @@ export function getUsageFromBody(text: string, protocol: GatewayProtocol) {
   try {
     const parsed = JSON.parse(text) as JsonRecord;
     const usage = asRecord(parsed.usage);
+    if (protocol === "embeddings") {
+      if (!usage) return null;
+      const promptTokens = Number(usage?.prompt_tokens ?? 0);
+      const totalTokens = Number(usage?.total_tokens ?? promptTokens);
+      return { prompt_tokens: promptTokens, completion_tokens: 0, total_tokens: totalTokens };
+    }
+
     if (protocol === "chat_completions") {
       const promptTokens = Number(usage?.prompt_tokens ?? 0);
       const completionTokens = Number(usage?.completion_tokens ?? 0);
@@ -1015,6 +1066,12 @@ export function getUsageFromBody(text: string, protocol: GatewayProtocol) {
 }
 
 export function adaptResponseBody(text: string, outboundProtocol: GatewayProtocol, inboundProtocol: GatewayProtocol) {
+  if (inboundProtocol === "embeddings" || outboundProtocol === "embeddings") {
+    if (inboundProtocol !== outboundProtocol) {
+      throw new Error("Embeddings protocol only supports passthrough responses");
+    }
+  }
+
   if (outboundProtocol === inboundProtocol) return text;
 
   const parsed = JSON.parse(text) as JsonRecord;
@@ -1340,6 +1397,10 @@ export function createTransformedStream(
   outboundProtocol: GatewayProtocol,
   inboundProtocol: GatewayProtocol,
 ) : StreamTransformResult {
+  if (inboundProtocol === "embeddings" || outboundProtocol === "embeddings") {
+    return createPassthroughStream(upstream, outboundProtocol);
+  }
+
   if (outboundProtocol === inboundProtocol) {
     return createPassthroughStream(upstream, outboundProtocol);
   }

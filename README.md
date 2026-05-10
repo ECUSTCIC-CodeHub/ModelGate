@@ -19,6 +19,7 @@
   - `POST /api/v1/chat/completions` — OpenAI Chat Completions
   - `POST /api/v1/responses` — OpenAI Responses
   - `POST /api/v1/messages` — Anthropic Claude Messages
+  - `POST /api/v1/embeddings` — OpenAI Embeddings
   - `GET /api/v1/models` — 获取可用模型列表
 - **用户与角色** — 管理员 / 普通用户，API Key 自助管理
 - **用户组** — 组级限流 (QPS/RPM/TPM)、配额、模型白名单，支持继承机制 (`用户 > 组 > 全局默认`)
@@ -247,11 +248,17 @@ curl http://localhost:3000/api/v1/messages \
   -H 'Authorization: Bearer sk-gw-xxxx' \
   -H 'Content-Type: application/json' \
   -d '{"model": "claude-sonnet-4-6", "max_tokens": 1024, "messages": [{"role": "user", "content": "你好"}]}'
+
+# OpenAI Embeddings
+curl http://localhost:3000/api/v1/embeddings \
+  -H 'Authorization: Bearer sk-gw-xxxx' \
+  -H 'Content-Type: application/json' \
+  -d '{"model": "text-embedding-3-small", "input": "你好"}'
 ```
 
 ## 备注
 
 - 渠道声明支持的上游协议，每个模型映射指定使用哪种上游协议。
-- 客户端可调用三种端点中的任意一种，网关会在入站协议与上游协议不一致时自动转换。
+- 客户端可调用 Chat Completions、Responses、Claude Messages 三种生成端点中的任意一种，网关会在入站协议与上游协议不一致时自动转换；Embeddings 仅直通 `/embeddings`，不参与协议转换。
 - 限流为单实例内存实现，不支持多实例部署。
 - 全部采用软删除，记录通过 `deleted_at` 标记而非物理删除。

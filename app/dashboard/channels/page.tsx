@@ -45,20 +45,33 @@ import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
 import { authedFetch, clearSession, getOrFetchProfile } from "@/lib/client-auth";
 
-type Protocol = "chat_completions" | "responses" | "anthropic_messages";
+type Protocol = "chat_completions" | "responses" | "anthropic_messages" | "embeddings";
 
 const protocolOptions: Array<{ value: Protocol; label: string }> = [
   { value: "chat_completions", label: "Chat Completions" },
   { value: "responses", label: "Responses" },
   { value: "anthropic_messages", label: "Claude Messages" },
+  { value: "embeddings", label: "Embeddings" },
 ];
+
+function isProtocol(value: unknown): value is Protocol {
+  return value === "chat_completions" || value === "responses" || value === "anthropic_messages" || value === "embeddings";
+}
+
+function protocolLabel(protocol: Protocol) {
+  return protocolOptions.find((option) => option.value === protocol)?.label ?? "Chat Completions";
+}
+
+function shortProtocolLabel(protocol: Protocol) {
+  return protocol === "chat_completions" ? "Chat" : protocolLabel(protocol).replace("Claude Messages", "Claude");
+}
 
 function parseSupportedProtocols(raw: string | null | undefined): Protocol[] {
   if (!raw) return ["chat_completions"];
   try {
     const parsed = JSON.parse(raw) as unknown;
     const normalized = Array.isArray(parsed)
-      ? parsed.filter((item): item is Protocol => item === "chat_completions" || item === "responses" || item === "anthropic_messages")
+      ? parsed.filter(isProtocol)
       : [];
     return normalized.length > 0 ? normalized : ["chat_completions"];
   } catch {
@@ -565,7 +578,7 @@ export default function AdminChannelsPage() {
                             <TableCell>
                               <div className="flex flex-wrap gap-1">
                                 {parseSupportedProtocols(row.supported_protocols).map((protocol: Protocol) => (
-                                  <Badge key={protocol} variant="outline">{protocol === "responses" ? "Responses" : protocol === "anthropic_messages" ? "Claude" : "Chat"}</Badge>
+                                  <Badge key={protocol} variant="outline">{shortProtocolLabel(protocol)}</Badge>
                                 ))}
                               </div>
                             </TableCell>
@@ -639,7 +652,7 @@ export default function AdminChannelsPage() {
                               <Badge variant={model.enabled ? "default" : "secondary"}>{model.enabled ? "启用" : "禁用"}</Badge>
                             </TableCell>
                             <TableCell>
-                              <Badge variant="outline">{model.upstream_protocol === "responses" ? "Responses" : model.upstream_protocol === "anthropic_messages" ? "Claude" : "Chat"}</Badge>
+                              <Badge variant="outline">{shortProtocolLabel(model.upstream_protocol)}</Badge>
                             </TableCell>
                             <TableCell>
                               <Badge variant={model.is_public ? "default" : "secondary"}>{model.is_public ? "公开" : "白名单"}</Badge>
@@ -786,7 +799,7 @@ export default function AdminChannelsPage() {
                         </SelectTrigger>
                         <SelectContent>
                           {channelForm.supported_protocols.map((protocol) => (
-                            <SelectItem key={protocol} value={protocol}>{protocol === "responses" ? "Responses" : protocol === "anthropic_messages" ? "Claude Messages" : "Chat Completions"}</SelectItem>
+                            <SelectItem key={protocol} value={protocol}>{protocolLabel(protocol)}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -876,7 +889,7 @@ export default function AdminChannelsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {selectedChannelProtocols.map((protocol) => (
-                    <SelectItem key={protocol} value={protocol}>{protocol === "responses" ? "Responses" : protocol === "anthropic_messages" ? "Claude Messages" : "Chat Completions"}</SelectItem>
+                    <SelectItem key={protocol} value={protocol}>{protocolLabel(protocol)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

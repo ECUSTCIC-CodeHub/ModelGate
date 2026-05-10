@@ -33,18 +33,15 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     : stringifySupportedProtocols(normalizeSupportedProtocols(parsed.data.supported_protocols));
   const nextProtocolList = parseSupportedProtocols(nextProtocols);
 
+  const placeholders = nextProtocolList.map(() => "?").join(", ");
   const incompatibleModel = gatewayDb
     .prepare(
       `SELECT id
        FROM models
-       WHERE channel_id = ? AND deleted_at IS NULL AND enabled = 1 AND upstream_protocol NOT IN (?, ?) 
+       WHERE channel_id = ? AND deleted_at IS NULL AND enabled = 1 AND upstream_protocol NOT IN (${placeholders})
        LIMIT 1`,
     )
-    .get(
-      id,
-      nextProtocolList[0] ?? "",
-      nextProtocolList[1] ?? "",
-    ) as { id: number } | undefined;
+    .get(id, ...nextProtocolList) as { id: number } | undefined;
   if (incompatibleModel) {
     return jsonError("该渠道下存在使用未被保留协议的启用模型", 400);
   }

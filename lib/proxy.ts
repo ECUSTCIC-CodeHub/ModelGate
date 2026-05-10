@@ -9,11 +9,12 @@ function normalizeProviderBaseUrl(baseUrl: string) {
     .replace(/\/chat\/completions$/, "")
     .replace(/\/messages$/, "")
     .replace(/\/responses$/, "")
+    .replace(/\/embeddings$/, "")
     .replace(/\/models$/, "");
 }
 
 function buildUpstreamUrl(baseUrl: string, protocol: GatewayProtocol) {
-  return `${normalizeProviderBaseUrl(baseUrl)}/${protocol === "responses" ? "responses" : protocol === "anthropic_messages" ? "messages" : "chat/completions"}`;
+  return `${normalizeProviderBaseUrl(baseUrl)}/${protocol === "responses" ? "responses" : protocol === "anthropic_messages" ? "messages" : protocol === "embeddings" ? "embeddings" : "chat/completions"}`;
 }
 
 function buildUpstreamHeaders(route: RoutedModel, protocol: GatewayProtocol): Record<string, string> {
@@ -89,6 +90,11 @@ export async function testUpstreamModel(target: {
               max_output_tokens: 1,
               stream: false,
             }
+          : protocol === "embeddings"
+            ? {
+                model: target.model.real_model,
+                input: "ping",
+              }
           : protocol === "anthropic_messages"
             ? {
                 model: target.model.real_model,

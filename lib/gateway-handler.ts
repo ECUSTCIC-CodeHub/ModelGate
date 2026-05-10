@@ -315,7 +315,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
     return jsonError(rate.reason, 429);
   }
 
-  const existingRoute = selectModelRoute(resolvedAlias);
+  const existingRoute = selectModelRoute(resolvedAlias, { protocol: inboundProtocol });
   if (!existingRoute) {
     logRejected(404, "模型别名不存在或已禁用", alias);
     return jsonError("模型别名不存在或已禁用", 404);
@@ -324,7 +324,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
   const settings = getGatewaySettings();
   const retryEnabled = settings.upstream_retry_enabled === 1;
   const maxRouteAttempts = retryEnabled ? Math.max(1, settings.upstream_retry_max_attempts) : 1;
-  const stream = getStreamFlag(body);
+  const stream = inboundProtocol === "embeddings" ? false : getStreamFlag(body);
 
   const requestUpstreamWithFallback = async (): Promise<
     | {
@@ -358,6 +358,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
     while (attempt < maxRouteAttempts) {
       const route = selectModelRoute(resolvedAlias, {
         excludeChannelIds: [...attemptedChannels],
+        protocol: inboundProtocol,
       });
 
       if (!route) {

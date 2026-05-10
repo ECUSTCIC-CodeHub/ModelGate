@@ -24,6 +24,7 @@ const ENDPOINTS = [
   { label: "Chat Completions (OpenAI)", path: "/api/v1/chat/completions", method: "POST" },
   { label: "Responses (OpenAI)", path: "/api/v1/responses", method: "POST" },
   { label: "Messages (Anthropic Claude)", path: "/api/v1/messages", method: "POST" },
+  { label: "Embeddings (OpenAI)", path: "/api/v1/embeddings", method: "POST" },
 ] as const;
 
 export default function AvailableModelsPage() {
@@ -79,7 +80,7 @@ export default function AvailableModelsPage() {
           <CardHeader>
             <SectionTitle
               title="接入配置"
-              description="将 Base URL 填入客户端配置，使用 API Key 和模型 ID 即可调用；网关同时兼容下方三种协议端点。"
+              description="将 Base URL 填入客户端配置，使用 API Key 和模型 ID 即可调用；网关同时兼容下方四种协议端点。"
             />
           </CardHeader>
           <CardContent className="space-y-5">
@@ -123,7 +124,7 @@ export default function AvailableModelsPage() {
                   </TableBody>
                 </Table>
               </div>
-              <p className="text-xs text-zinc-500">三种协议共用同一 API Key 与模型 ID。</p>
+              <p className="text-xs text-zinc-500">四种协议共用同一 API Key；模型 ID 填写对应协议可用的模型映射。</p>
             </div>
           </CardContent>
         </Card>
@@ -132,7 +133,7 @@ export default function AvailableModelsPage() {
           <CardHeader>
             <SectionTitle
               title="模型列表"
-              description="模型 ID 用于请求中的 model 字段，三种协议均通用。"
+              description="模型 ID 用于请求中的 model 字段，需匹配对应协议可用的模型映射。"
             />
           </CardHeader>
           <CardContent className="space-y-4">

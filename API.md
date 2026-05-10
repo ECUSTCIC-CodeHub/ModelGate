@@ -521,7 +521,7 @@ email matches ".*@company\\.com"
 | name | string | 是 | | 渠道名称 |
 | base_url | string | 是 | | 上游 API 地址 |
 | api_key | string | 是 | | 上游 API Key |
-| supported_protocols | string[] | 否 | ["chat_completions"] | 支持的协议 |
+| supported_protocols | string[] | 否 | ["chat_completions"] | 支持的协议：`chat_completions` / `anthropic_messages` / `responses` / `embeddings` |
 | weight | int | 否 | 1 | 路由权重 |
 | max_concurrency | int | 否 | 64 | 最大并发数 |
 | timeout | int | 否 | 60 | 超时时间（秒） |
@@ -615,7 +615,7 @@ email matches ".*@company\\.com"
 | alias | string | 是 | | 客户端调用时的模型名 |
 | real_model | string | 是 | | 上游真实模型名 |
 | channel_id | int | 是 | | 所属渠道 ID |
-| upstream_protocol | enum | 否 | chat_completions | `chat_completions` / `anthropic_messages` / `responses` |
+| upstream_protocol | enum | 否 | chat_completions | `chat_completions` / `anthropic_messages` / `responses` / `embeddings` |
 | is_public | bool | 否 | true | false 时仅白名单用户可访问 |
 | weight | int | 否 | 1 | 路由权重（越大流量越多） |
 | token_multiplier | float | 否 | 1 | Token 计费倍率：实际扣量 = 使用量 x 倍率 |
@@ -972,6 +972,24 @@ Anthropic Messages 兼容端点。
 OpenAI Responses API 兼容端点。
 
 **认证:** API Key
+
+---
+
+### POST /api/v1/embeddings
+
+OpenAI Embeddings 兼容端点，直通上游 `/embeddings`，不参与 Chat Completions / Responses / Claude Messages 协议转换。
+
+**认证:** API Key
+
+**请求体:** 标准 OpenAI Embeddings 格式：
+```json
+{
+  "model": "text-embedding-3-small",
+  "input": "你好"
+}
+```
+
+**响应:** 标准 OpenAI Embeddings 响应。
 
 ---
 
