@@ -160,29 +160,34 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  /* Layered liquid background: flat base + glow blobs */
+  /* Anime wallpaper from loliapi.com/acg (double-sided adaptive).
+     The upstream endpoint issues a 302 redirect to a real image URL,
+     which browsers happily follow when used as a CSS background. */
   background-color: var(--color-bg);
-  background-image: var(--glow-a), var(--glow-b), var(--glow-c);
+  background-image: url("https://www.loliapi.com/acg/");
+  background-size: cover;
+  background-position: center center;
   background-attachment: fixed;
   background-repeat: no-repeat;
 }
 
-/* A second decorative layer with a faint noise/mesh for extra depth */
+/* Overlay above the wallpaper:
+   - Soft dim layer to keep UI legible through the glass panels.
+   - Keep the original colored glow blobs so the liquid feel is preserved. */
 body::before {
   content: "";
   position: fixed;
-  inset: -10%;
+  inset: 0;
   pointer-events: none;
   z-index: -1;
-  background:
-    radial-gradient(40% 40% at 80% 80%, rgba(59, 130, 246, 0.18), transparent 60%),
-    radial-gradient(45% 45% at 15% 70%, rgba(236, 72, 153, 0.15), transparent 60%);
-  filter: blur(40px) saturate(1.2);
-  opacity: 0.9;
+  background-color: color-mix(in oklab, var(--color-bg) 55%, transparent);
+  background-image: var(--glow-a), var(--glow-b), var(--glow-c);
+  background-repeat: no-repeat;
+  filter: saturate(1.05);
 }
 
 .dark body::before {
-  opacity: 0.7;
+  background-color: color-mix(in oklab, var(--color-bg) 62%, transparent);
 }
 
 ::selection {
