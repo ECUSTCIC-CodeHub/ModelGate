@@ -54,7 +54,7 @@ export function RegisterForm({ status }: { status: AuthStatus }) {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[var(--color-bg)] px-4 py-8">
+    <main className="flex min-h-screen items-center justify-center px-4 py-8">
       <div className="w-full max-w-sm space-y-6">
         <div className="space-y-2 text-center">
           <h1 className="font-mono text-2xl font-semibold tracking-tight text-[var(--color-foreground)]">ModelGate</h1>

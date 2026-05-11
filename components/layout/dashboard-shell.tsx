@@ -194,11 +194,11 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
   }
 
   return (
-    <main className="min-h-screen bg-[var(--color-bg)] text-[var(--color-foreground)]">
+    <main className="min-h-screen text-[var(--color-foreground)]">
       <div className="flex min-h-screen gap-4 px-3 py-4 lg:gap-6 lg:px-6">
         {/* Sidebar */}
         <aside className="hidden w-60 shrink-0 lg:block">
-          <div className="sticky top-4 flex h-[calc(100vh-2rem)] flex-col rounded-xl border border-[var(--color-sidebar-border)] bg-[var(--color-sidebar-bg)] p-4 shadow-[var(--shadow-sm)] backdrop-blur">
+          <div className="sticky top-4 flex h-[calc(100vh-2rem)] flex-col rounded-xl border border-[var(--color-sidebar-border)] bg-[var(--color-sidebar-bg)] p-4 shadow-[var(--shadow-md)]">
             <div className="space-y-4">
               <div className="px-1 py-2">
                 <p className="font-mono text-sm font-semibold text-[var(--color-foreground)]">ModelGate</p>
@@ -342,7 +342,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
 
         {/* Main Content */}
         <section className="flex min-w-0 flex-1 flex-col gap-4">
-          <header className="sticky top-4 z-20 rounded-xl border border-[var(--color-header-border)] bg-[var(--color-header-bg)] px-4 py-3 shadow-[var(--shadow-sm)] backdrop-blur lg:px-6 lg:py-4">
+          <header className="sticky top-4 z-20 rounded-xl border border-[var(--color-header-border)] bg-[var(--color-header-bg)] px-4 py-3 shadow-[var(--shadow-md)] lg:px-6 lg:py-4">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="hidden items-center gap-1.5 text-xs text-[var(--color-foreground-muted)] lg:flex">

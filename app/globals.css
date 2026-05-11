@@ -5,103 +5,127 @@
 
 /* ========== Design Tokens ========== */
 :root {
-  /* Light mode */
-  --color-bg: #f1f5f9;
-  --color-bg-alt: #ffffff;
-  --color-surface: #ffffff;
-  --color-surface-hover: #f8fafc;
-  --color-surface-elevated: rgba(255, 255, 255, 0.88);
+  /* Light mode — frosted glass on a soft sky gradient */
+  --color-bg: #e9eef7;
+  --color-bg-alt: #f3f6fc;
+  --color-surface: rgba(255, 255, 255, 0.62);
+  --color-surface-hover: rgba(255, 255, 255, 0.78);
+  --color-surface-elevated: rgba(255, 255, 255, 0.72);
 
-  --color-foreground: #0f172a;
-  --color-foreground-secondary: #334155;
-  --color-foreground-muted: #64748b;
-  --color-foreground-subtle: #94a3b8;
+  /* Higher-contrast text for readability on frosted panels */
+  --color-foreground: #0b1220;
+  --color-foreground-secondary: #1f2a44;
+  --color-foreground-muted: #475467;
+  --color-foreground-subtle: #667085;
 
-  --color-border: #e2e8f0;
-  --color-border-hover: #cbd5e1;
-  --color-border-strong: #94a3b8;
+  /* Hairline borders that read as glass edges */
+  --color-border: rgba(15, 23, 42, 0.12);
+  --color-border-hover: rgba(15, 23, 42, 0.2);
+  --color-border-strong: rgba(15, 23, 42, 0.3);
 
-  --color-primary: #1e293b;
-  --color-primary-hover: #0f172a;
+  --color-primary: #0f172a;
+  --color-primary-hover: #050c1c;
   --color-primary-foreground: #ffffff;
-  --color-primary-ring: rgba(30, 41, 59, 0.25);
+  --color-primary-ring: rgba(15, 23, 42, 0.25);
 
-  --color-accent: #22c55e;
-  --color-accent-hover: #16a34a;
-  --color-accent-foreground: #052e16;
-  --color-accent-muted: #dcfce7;
+  --color-accent: #16a34a;
+  --color-accent-hover: #15803d;
+  --color-accent-foreground: #f0fdf4;
+  --color-accent-muted: rgba(34, 197, 94, 0.16);
 
-  --color-destructive: #ef4444;
-  --color-destructive-hover: #dc2626;
+  --color-destructive: #dc2626;
+  --color-destructive-hover: #b91c1c;
   --color-destructive-foreground: #fef2f2;
 
-  --color-sidebar-bg: #f8fafc;
-  --color-sidebar-border: #e2e8f0;
-  --color-sidebar-text: #475569;
-  --color-sidebar-active-bg: #1e293b;
-  --color-sidebar-active-text: #f1f5f9;
+  --color-sidebar-bg: rgba(255, 255, 255, 0.55);
+  --color-sidebar-border: rgba(15, 23, 42, 0.1);
+  --color-sidebar-text: #334155;
+  --color-sidebar-active-bg: rgba(15, 23, 42, 0.92);
+  --color-sidebar-active-text: #f8fafc;
   --color-sidebar-hover: rgba(15, 23, 42, 0.06);
 
-  --color-header-bg: rgba(255, 255, 255, 0.82);
-  --color-header-border: #e2e8f0;
+  --color-header-bg: rgba(255, 255, 255, 0.55);
+  --color-header-border: rgba(15, 23, 42, 0.1);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.08);
-  --shadow-xl: 0 20px 48px rgba(0, 0, 0, 0.1);
+  /* Glass highlight: subtle inner top-light for a liquid sheen */
+  --glass-highlight: rgba(255, 255, 255, 0.75);
+  --glass-shadow: rgba(15, 23, 42, 0.08);
+  --glass-blur: 22px;
+  --glass-saturate: 180%;
+
+  /* Background glow layers (visible through translucent panels) */
+  --glow-a: radial-gradient(60% 60% at 12% 8%, rgba(56, 189, 248, 0.38), transparent 60%);
+  --glow-b: radial-gradient(55% 55% at 92% 18%, rgba(168, 85, 247, 0.32), transparent 60%);
+  --glow-c: radial-gradient(70% 70% at 50% 105%, rgba(34, 197, 94, 0.28), transparent 60%);
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  --shadow-lg: 0 20px 48px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  --shadow-xl: 0 28px 64px rgba(15, 23, 42, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.5);
 
   --radius-sm: 0.5rem;
-  --radius: 0.75rem;
-  --radius-lg: 1rem;
-  --radius-xl: 1.25rem;
+  --radius: 0.85rem;
+  --radius-lg: 1.1rem;
+  --radius-xl: 1.4rem;
 
   color-scheme: light;
 }
 
 .dark {
-  --color-bg: #070e1b;
-  --color-bg-alt: #0b1322;
-  --color-surface: #0f172a;
-  --color-surface-hover: #1a2338;
-  --color-surface-elevated: rgba(15, 23, 42, 0.88);
+  /* Dark mode — deep blue-violet base with glowing accents */
+  --color-bg: #060912;
+  --color-bg-alt: #0b1022;
+  --color-surface: rgba(20, 26, 48, 0.55);
+  --color-surface-hover: rgba(30, 38, 66, 0.7);
+  --color-surface-elevated: rgba(20, 26, 48, 0.72);
 
-  --color-foreground: #f1f5f9;
-  --color-foreground-secondary: #cbd5e1;
-  --color-foreground-muted: #94a3b8;
-  --color-foreground-subtle: #64748b;
+  /* Brighter foreground for frosted dark panels */
+  --color-foreground: #f8fafc;
+  --color-foreground-secondary: #e2e8f0;
+  --color-foreground-muted: #b8c2d6;
+  --color-foreground-subtle: #8a95af;
 
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-hover: rgba(255, 255, 255, 0.14);
-  --color-border-strong: rgba(255, 255, 255, 0.2);
+  --color-border: rgba(255, 255, 255, 0.12);
+  --color-border-hover: rgba(255, 255, 255, 0.2);
+  --color-border-strong: rgba(255, 255, 255, 0.28);
 
-  --color-primary: #f1f5f9;
+  --color-primary: #f8fafc;
   --color-primary-hover: #e2e8f0;
-  --color-primary-foreground: #0f172a;
-  --color-primary-ring: rgba(241, 245, 249, 0.2);
+  --color-primary-foreground: #0b1022;
+  --color-primary-ring: rgba(248, 250, 252, 0.22);
 
   --color-accent: #22c55e;
   --color-accent-hover: #4ade80;
   --color-accent-foreground: #052e16;
-  --color-accent-muted: rgba(34, 197, 94, 0.12);
+  --color-accent-muted: rgba(34, 197, 94, 0.18);
 
   --color-destructive: #f87171;
   --color-destructive-hover: #ef4444;
   --color-destructive-foreground: #450a0a;
 
-  --color-sidebar-bg: rgba(15, 23, 42, 0.75);
-  --color-sidebar-border: rgba(255, 255, 255, 0.08);
-  --color-sidebar-text: #94a3b8;
-  --color-sidebar-active-bg: rgba(255, 255, 255, 0.08);
-  --color-sidebar-active-text: #f1f5f9;
-  --color-sidebar-hover: rgba(255, 255, 255, 0.05);
+  --color-sidebar-bg: rgba(15, 20, 40, 0.55);
+  --color-sidebar-border: rgba(255, 255, 255, 0.1);
+  --color-sidebar-text: #b8c2d6;
+  --color-sidebar-active-bg: rgba(255, 255, 255, 0.12);
+  --color-sidebar-active-text: #ffffff;
+  --color-sidebar-hover: rgba(255, 255, 255, 0.06);
 
-  --color-header-bg: rgba(15, 23, 42, 0.82);
-  --color-header-border: rgba(255, 255, 255, 0.08);
+  --color-header-bg: rgba(15, 20, 40, 0.55);
+  --color-header-border: rgba(255, 255, 255, 0.1);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
-  --shadow-xl: 0 20px 48px rgba(0, 0, 0, 0.6);
+  --glass-highlight: rgba(255, 255, 255, 0.14);
+  --glass-shadow: rgba(0, 0, 0, 0.45);
+  --glass-blur: 24px;
+  --glass-saturate: 170%;
+
+  --glow-a: radial-gradient(60% 60% at 12% 8%, rgba(56, 189, 248, 0.24), transparent 60%);
+  --glow-b: radial-gradient(55% 55% at 92% 18%, rgba(168, 85, 247, 0.22), transparent 60%);
+  --glow-c: radial-gradient(70% 70% at 50% 105%, rgba(34, 197, 94, 0.18), transparent 60%);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-xl: 0 28px 64px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 
   color-scheme: dark;
 }
@@ -111,8 +135,8 @@
   --color-foreground: var(--color-foreground);
   --color-muted: var(--color-foreground-muted);
 
-  --font-sans: "Fira Sans", "Inter", "SF Pro Display", "Segoe UI", system-ui, sans-serif;
-  --font-mono: "Fira Code", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --font-sans: var(--font-rog), "Fira Sans", "Inter", "SF Pro Display", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: var(--font-rog), "Fira Code", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
 
 /* ========== Base ========== */
@@ -128,12 +152,37 @@ html {
 
 body {
   min-height: 100vh;
-  background: var(--color-bg);
   color: var(--color-foreground);
-  font-family: "Fira Sans", "Inter", "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-rog), "Fira Sans", "Inter", "SF Pro Display", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-weight: 450;
+  letter-spacing: -0.005em;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  /* Layered liquid background: flat base + glow blobs */
+  background-color: var(--color-bg);
+  background-image: var(--glow-a), var(--glow-b), var(--glow-c);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+/* A second decorative layer with a faint noise/mesh for extra depth */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -10%;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    radial-gradient(40% 40% at 80% 80%, rgba(59, 130, 246, 0.18), transparent 60%),
+    radial-gradient(45% 45% at 15% 70%, rgba(236, 72, 153, 0.15), transparent 60%);
+  filter: blur(40px) saturate(1.2);
+  opacity: 0.9;
+}
+
+.dark body::before {
+  opacity: 0.7;
 }
 
 ::selection {
@@ -143,8 +192,8 @@ body {
 
 /* ========== Scrollbar ========== */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -154,10 +203,13 @@ body {
 ::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: var(--color-border-strong);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-foreground-muted);
+  background-clip: padding-box;
 }
 
 /* ========== Focus ========== */
@@ -165,6 +217,69 @@ body {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
+}
+
+/* ========== Liquid Glass Utilities ========== */
+/*
+  Usage: add `.glass` / `.glass-strong` / `.glass-subtle` to any panel.
+  Existing components that reference --color-surface / --color-sidebar-bg /
+  --color-header-bg already pick up the frosted look automatically; the
+  utilities below are available for new UI that wants explicit glass.
+*/
+.glass,
+.glass-subtle,
+.glass-strong {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  position: relative;
+  isolation: isolate;
+}
+
+.glass-subtle {
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  box-shadow: var(--shadow-sm);
+}
+
+.glass-strong {
+  backdrop-filter: blur(32px) saturate(190%);
+  -webkit-backdrop-filter: blur(32px) saturate(190%);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Top inner highlight — the signature liquid glass sheen */
+.glass::before,
+.glass-subtle::before,
+.glass-strong::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    var(--glass-highlight) 0%,
+    transparent 35%,
+    transparent 100%
+  );
+  mix-blend-mode: overlay;
+  opacity: 0.8;
+  z-index: 0;
+}
+
+/* Apply frosted blur to the existing surface-based components */
+aside > div,
+main header,
+[role="dialog"],
+.backdrop-blur,
+.backdrop-blur-sm,
+.backdrop-blur-md,
+.backdrop-blur-lg {
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 /* ========== Transition Helpers ========== */
