@@ -209,7 +209,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                   width={36}
                   height={36}
                   priority
-                  className="shrink-0"
+                  className="shrink-0 dark:invert"
                 />
                 <div className="min-w-0">
                   <p className="font-mono text-sm font-semibold text-[var(--color-foreground)]">ModelGate</p>
@@ -395,7 +395,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                 alt="TDP Logo"
                 width={32}
                 height={32}
-                className="shrink-0"
+                className="shrink-0 dark:invert"
               />
               <div className="min-w-0">
                 <SheetTitle>后台导航</SheetTitle>
