@@ -320,7 +320,7 @@ export default function AdminGroupsPage() {
             </PageToolbar>
 
             {rows.length > 0 ? (
-              <div className="overflow-x-auto rounded-xl border border-white/10">
+              <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
                 <Table className="min-w-[900px]">
                   <TableHeader>
                     <TableRow>
@@ -342,7 +342,7 @@ export default function AdminGroupsPage() {
                       <TableRow key={row.id}>
                         <TableCell className="font-medium">{row.name}</TableCell>
                         <TableCell className="max-w-48">
-                          <span className="block truncate text-zinc-300" title={row.description ?? ""}>
+                          <span className="block truncate text-[var(--color-foreground-secondary)]" title={row.description ?? ""}>
                             {row.description?.trim() || "-"}
                           </span>
                         </TableCell>
@@ -359,8 +359,8 @@ export default function AdminGroupsPage() {
                         <TableCell>
                           {row.quota_period ? (
                             <div className="space-y-0.5 text-sm">
-                              <p className="font-medium text-zinc-200">{formatPeriodLabel(row.quota_period)}</p>
-                              <p className="text-xs text-zinc-400">
+                              <p className="font-medium text-[var(--color-foreground)]">{formatPeriodLabel(row.quota_period)}</p>
+                              <p className="text-xs text-[var(--color-foreground-muted)]">
                                 请求 {row.period_quota_requests === null ? "∞" : formatLimit(row.period_quota_requests)}
                                 {" / "}
                                 Token {row.period_quota_tokens === null ? "∞" : formatLimit(row.period_quota_tokens)}
@@ -369,7 +369,7 @@ export default function AdminGroupsPage() {
                           ) : "-"}
                         </TableCell>
                         <TableCell className="max-w-48">
-                          <span className="block truncate text-zinc-300">
+                          <span className="block truncate text-[var(--color-foreground-secondary)]">
                             {row.allowed_model_aliases.length > 0 ? row.allowed_model_aliases.join(", ") : "-"}
                           </span>
                         </TableCell>
@@ -416,8 +416,8 @@ export default function AdminGroupsPage() {
             <SheetDescription>{editingId === null ? "创建新用户组并配置限流与模型白名单。" : "修改组的限速、配额与模型访问权限。"}</SheetDescription>
           </SheetHeader>
           <form onSubmit={onSubmit} className="mt-4 space-y-4 overflow-y-auto pr-1">
-            <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
-              <p className="text-sm font-medium text-zinc-100">基础信息</p>
+            <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+              <p className="text-sm font-medium text-[var(--color-foreground)]">基础信息</p>
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label>组名</Label>
@@ -451,7 +451,7 @@ export default function AdminGroupsPage() {
                 <div className="space-y-2 md:col-span-2">
                   <Label>OIDC Claim 表达式</Label>
                   <textarea
-                    className="flex w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm font-mono placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-600 disabled:opacity-50"
+                    className="flex w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm font-mono placeholder:text-[var(--color-foreground-muted)] focus:outline-none focus:ring-1 focus:ring-text-[var(--color-foreground-subtle)] disabled:opacity-50"
                     rows={3}
                     value={form.oidc_claim_expr}
                     onChange={(e) => setForm({ ...form, oidc_claim_expr: e.target.value })}
@@ -466,7 +466,7 @@ export default function AdminGroupsPage() {
                         : <p className="text-xs text-red-400">&#10007; {result.error}</p>;
                     })()
                   ) : (
-                    <p className="text-xs text-zinc-500">
+                    <p className="text-xs text-[var(--color-foreground-muted)]">
                       支持操作符: ==、!=、contains、matches（正则）、exists；逻辑: AND、OR、括号分组；点号访问嵌套字段。留空则不参与 OIDC 组映射。
                     </p>
                   )}
@@ -481,7 +481,7 @@ export default function AdminGroupsPage() {
                     onChange={(e) => setForm({ ...form, oidc_claim_priority: e.target.value })}
                     placeholder="0"
                   />
-                  <p className="text-xs text-zinc-500">数值越大越优先匹配，用于解决多个组表达式同时满足时的冲突。</p>
+                  <p className="text-xs text-[var(--color-foreground-muted)]">数值越大越优先匹配，用于解决多个组表达式同时满足时的冲突。</p>
                 </div>
                 <div className="flex items-center gap-3 md:col-span-2">
                   <Checkbox
@@ -493,9 +493,9 @@ export default function AdminGroupsPage() {
               </div>
             </div>
 
-            <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
-              <p className="text-sm font-medium text-zinc-100">配额配置</p>
-              <p className="text-xs text-zinc-500">`-1` 表示不限制。组配额作为用户的默认值，用户级设置可覆盖。</p>
+            <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+              <p className="text-sm font-medium text-[var(--color-foreground)]">配额配置</p>
+              <p className="text-xs text-[var(--color-foreground-muted)]">`-1` 表示不限制。组配额作为用户的默认值，用户级设置可覆盖。</p>
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="space-y-2">
                   <Label>RPM</Label>
@@ -520,9 +520,9 @@ export default function AdminGroupsPage() {
                   <Input type="number" min={-1} value={form.quota_tokens} onChange={(e) => setForm({ ...form, quota_tokens: e.target.value })} />
                 </div>
               </div>
-              <div className="mt-3 border-t border-white/10 pt-3">
-                <p className="text-sm font-medium text-zinc-100">周期配额</p>
-                <p className="mb-3 text-xs text-zinc-500">按固定时间间隔重置用量计数器，留空表示不启用周期配额。</p>
+              <div className="mt-3 border-t border-[var(--color-border)] pt-3">
+                <p className="text-sm font-medium text-[var(--color-foreground)]">周期配额</p>
+                <p className="mb-3 text-xs text-[var(--color-foreground-muted)]">按固定时间间隔重置用量计数器，留空表示不启用周期配额。</p>
                 <div className="grid gap-3 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label>重置周期</Label>
@@ -557,22 +557,22 @@ export default function AdminGroupsPage() {
               </div>
             </div>
 
-            <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
-              <p className="text-sm font-medium text-zinc-100">模型白名单</p>
-              <p className="text-xs text-zinc-500">组级别的非公开模型白名单，与用户级白名单取并集。</p>
+            <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+              <p className="text-sm font-medium text-[var(--color-foreground)]">模型白名单</p>
+              <p className="text-xs text-[var(--color-foreground-muted)]">组级别的非公开模型白名单，与用户级白名单取并集。</p>
               <div className="grid gap-2 md:grid-cols-2">
                 {aliasOptions.map((item) => (
-                  <label key={item.alias} className="flex items-center gap-3 rounded-lg border border-white/10 px-3 py-3 text-sm">
+                  <label key={item.alias} className="flex items-center gap-3 rounded-lg border border-[var(--color-border)] px-3 py-3 text-sm">
                     <Checkbox
                       checked={form.allowed_model_aliases.includes(item.alias)}
                       onCheckedChange={() => toggleAllowedAlias(item.alias)}
                     />
                     <div className="min-w-0">
-                      <p className="truncate font-mono text-zinc-100">{item.alias}</p>
+                      <p className="truncate font-mono text-[var(--color-foreground)]">{item.alias}</p>
                     </div>
                   </label>
                 ))}
-                {aliasOptions.length === 0 ? <p className="text-sm text-zinc-500">暂无非公开模型可选</p> : null}
+                {aliasOptions.length === 0 ? <p className="text-sm text-[var(--color-foreground-muted)]">暂无非公开模型可选</p> : null}
               </div>
             </div>
 

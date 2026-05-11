@@ -104,10 +104,10 @@ function DateFilter({ value, placeholder, onChange }: DateFilterProps) {
             variant="outline"
             className={cn(
               "group h-10 w-full justify-start gap-2 rounded-md bg-transparent px-3 text-left font-normal shadow-none",
-              !selected ? "text-zinc-500" : "text-zinc-100",
+              !selected ? "text-[var(--color-foreground-muted)]" : "text-[var(--color-foreground)]",
             )}
           >
-            <CalendarIcon className="h-4 w-4 text-zinc-500 transition-colors group-hover:text-zinc-300" />
+            <CalendarIcon className="h-4 w-4 text-[var(--color-foreground-muted)] transition-colors group-hover:text-[var(--color-foreground-secondary)]" />
             <span className="truncate">{selected ? format(selected, "yyyy-MM-dd", { locale: zhCN }) : placeholder}</span>
             {value ? (
               <span
@@ -125,7 +125,7 @@ function DateFilter({ value, placeholder, onChange }: DateFilterProps) {
                     onChange("");
                   }
                 }}
-                className="ml-auto inline-flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 transition hover:bg-white/6 hover:text-zinc-200"
+                className="ml-auto inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--color-foreground-muted)] transition hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-foreground)]"
               >
                 <X className="h-3.5 w-3.5" />
               </span>
@@ -239,7 +239,7 @@ export default function AdminLogsPage() {
       accessorKey: "created_at",
       header: "时间",
       cell: ({ row }) => (
-        <span className="whitespace-nowrap font-mono text-xs text-zinc-300">
+        <span className="whitespace-nowrap font-mono text-xs text-[var(--color-foreground-secondary)]">
           {new Date(row.original.created_at).toLocaleString()}
         </span>
       ),
@@ -253,7 +253,7 @@ export default function AdminLogsPage() {
           const ip = row.original.client_ip;
           return (
             <span className="whitespace-nowrap">
-              {row.original.username}{ip ? <span className="text-zinc-500"> ({ip})</span> : null}
+              {row.original.username}{ip ? <span className="text-[var(--color-foreground-muted)]"> ({ip})</span> : null}
             </span>
           );
         },
@@ -263,7 +263,7 @@ export default function AdminLogsPage() {
         accessorKey: "client_ip",
         header: "IP",
         cell: ({ row }) => (
-          <span className="font-mono text-xs text-zinc-400">{row.original.client_ip ?? "-"}</span>
+          <span className="font-mono text-xs text-[var(--color-foreground-muted)]">{row.original.client_ip ?? "-"}</span>
         ),
       });
     }
@@ -299,11 +299,11 @@ export default function AdminLogsPage() {
             <Badge variant={row.original.status_code >= 400 ? "secondary" : "default"}>
               {row.original.status_code}
             </Badge>
-            <span className="text-xs text-zinc-500">{row.original.stream ? "流式" : "普通"}</span>
+            <span className="text-xs text-[var(--color-foreground-muted)]">{row.original.stream ? "流式" : "普通"}</span>
             {role === "admin" && (row.original.route_attempts ?? 1) > 1 ? (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span className="cursor-help text-xs text-zinc-400">·重试</span>
+                  <span className="cursor-help text-xs text-[var(--color-foreground-muted)]">·重试</span>
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>路由尝试 {(row.original.route_attempts ?? 1)} 次</p>
@@ -352,8 +352,8 @@ export default function AdminLogsPage() {
             : "-";
           return (
             <div className="whitespace-nowrap leading-tight">
-              <div className="text-sm text-zinc-100">{total}</div>
-              <div className="text-xs text-zinc-500">首 {ttft} · {tps}</div>
+              <div className="text-sm text-[var(--color-foreground)]">{total}</div>
+              <div className="text-xs text-[var(--color-foreground-muted)]">首 {ttft} · {tps}</div>
             </div>
           );
         },
@@ -362,9 +362,9 @@ export default function AdminLogsPage() {
         accessorKey: "error_message",
         header: "失败原因",
         cell: ({ row }) => {
-          if (row.original.status_code < 400) return <span className="text-zinc-500">-</span>;
+          if (row.original.status_code < 400) return <span className="text-[var(--color-foreground-muted)]">-</span>;
           return (
-            <span className="block max-w-56 truncate text-zinc-300" title={row.original.error_message ?? "-"}>
+            <span className="block max-w-56 truncate text-[var(--color-foreground-secondary)]" title={row.original.error_message ?? "-"}>
               {row.original.error_message ?? "-"}
             </span>
           );
@@ -444,7 +444,7 @@ export default function AdminLogsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {rows.length > 0 ? (
-              <div className="overflow-x-auto rounded-xl border border-white/10">
+              <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
                 <DataTable
                   columns={columns}
                   data={rows}
@@ -457,8 +457,8 @@ export default function AdminLogsPage() {
                 description={loading ? "正在读取当前筛选条件下的请求记录。" : "可以调整筛选条件或等待新请求进入系统。"}
               />
             )}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
-              <p className="text-sm text-zinc-400">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--color-border)] pt-4">
+              <p className="text-sm text-[var(--color-foreground-muted)]">
                 共 {formatNumber(total)} 条，第 {page} / {totalPages} 页
               </p>
               <Pagination className="mx-0 w-auto">

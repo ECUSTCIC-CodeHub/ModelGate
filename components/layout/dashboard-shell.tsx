@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
@@ -12,15 +13,18 @@ import {
   LockKeyhole,
   LogOut,
   Menu,
+  Moon,
   RefreshCw,
   Settings2,
   Shield,
   Sparkles,
+  Sun,
   UserCog,
   Users,
   Waypoints,
 } from "lucide-react";
 import { useAuthProfile, useOidcEnabled } from "@/components/providers/auth-provider";
+import { useTheme } from "@/components/providers/theme-provider";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -41,6 +45,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
 import { authedFetch, clearCachedProfile, clearSession, getCachedProfile, getOrFetchProfile } from "@/lib/client-auth";
 import { getApiMessage } from "@/lib/api-message";
@@ -99,6 +104,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
   const initialProfile = useAuthProfile();
   const menus = role === "admin" ? adminMenus : userMenus;
   const { toast } = useToast();
+  const { theme, toggle: toggleTheme } = useTheme();
   const [profileBrief, setProfileBrief] = useState<ProfileBrief | null>(() => initialProfile ?? getCachedProfile());
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [passwordDrawerOpen, setPasswordDrawerOpen] = useState(false);
@@ -190,14 +196,25 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
   }
 
   return (
-    <main className="min-h-screen bg-transparent text-zinc-100">
+    <main className="min-h-screen text-[var(--color-foreground)]">
       <div className="flex min-h-screen gap-4 px-3 py-4 lg:gap-6 lg:px-6">
+        {/* Sidebar */}
         <aside className="hidden w-60 shrink-0 lg:block">
-          <div className="sticky top-4 flex h-[calc(100vh-2rem)] flex-col rounded-xl border border-white/10 bg-[rgba(15,23,42,0.82)] p-4 shadow-xl backdrop-blur">
+          <div className="sticky top-4 flex h-[calc(100vh-2rem)] flex-col rounded-xl border border-[var(--color-sidebar-border)] bg-[var(--color-sidebar-bg)] p-4 shadow-[var(--shadow-md)]">
             <div className="space-y-4">
-              <div className="px-1 py-2">
-                <p className="text-sm font-semibold text-zinc-100">ModelGate</p>
-                <p className="mt-0.5 text-xs text-zinc-500">模型网关管理控制台</p>
+              <div className="flex items-center gap-3 px-1 py-2">
+                <Image
+                  src="/logo/TDP.svg"
+                  alt="TDP Logo"
+                  width={36}
+                  height={36}
+                  priority
+                  className="shrink-0 dark:invert"
+                />
+                <div className="min-w-0">
+                  <p className="font-mono text-sm font-semibold text-[var(--color-foreground)]">ModelGate</p>
+                  <p className="mt-0.5 text-xs text-[var(--color-foreground-muted)]">模型网关管理控制台</p>
+                </div>
               </div>
               <Separator />
             </div>
@@ -210,32 +227,35 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                       key={item.href}
                       href={item.href}
                       className={cn(
-                        "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-zinc-300 transition-colors",
-                        active ? "bg-white/10 text-white" : "hover:bg-white/6 hover:text-white",
+                        "flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-200",
+                        active
+                          ? "bg-[var(--color-sidebar-active-bg)] text-[var(--color-sidebar-active-text)] shadow-sm"
+                          : "text-[var(--color-sidebar-text)] hover:bg-[var(--color-sidebar-hover)] hover:text-[var(--color-foreground)]",
                       )}
                     >
                       <item.icon className="h-4 w-4 shrink-0" />
                       <span className="flex-1">{item.label}</span>
-                      {active ? <ChevronRight className="h-4 w-4 text-zinc-500" /> : null}
+                      {active ? <ChevronRight className="h-4 w-4 opacity-60" /> : null}
                     </Link>
                   );
                 })}
               </nav>
             </ScrollArea>
+
             {profileBrief ? (
-              <div className="mt-4 space-y-3 rounded-xl border border-white/10 bg-white/5 p-3">
+              <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-3">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-zinc-100">{profileBrief.username}</p>
+                  <p className="truncate text-sm font-semibold text-[var(--color-foreground)]">{profileBrief.username}</p>
                 </div>
-                <div className="space-y-1.5 rounded-lg bg-black/20 px-3 py-2 tabular-nums">
+                <div className="space-y-1.5 rounded-lg bg-[var(--color-bg)]/30 px-3 py-2 tabular-nums">
                   {([
                     ["RPM", formatLimit(profileBrief.rpm)],
                     ["QPS", formatLimit(profileBrief.qps)],
                     ["TPM", formatLimit(profileBrief.tpm)],
                   ] as const).map(([label, value]) => (
                     <div key={label} className="flex items-baseline justify-between">
-                      <span className="text-[10px] uppercase tracking-wide text-zinc-500">{label}</span>
-                      <span className="font-mono text-sm text-zinc-100">{value}</span>
+                      <span className="text-[10px] uppercase tracking-wide text-[var(--color-foreground-muted)]">{label}</span>
+                      <span className="font-mono text-sm text-[var(--color-foreground)]">{value}</span>
                     </div>
                   ))}
                   {([
@@ -256,10 +276,10 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                     const remaining = Math.max(0, total - used);
                     return (
                       <div key={label} className="mt-0.5">
-                        <span className="text-[10px] tracking-wide text-zinc-500">{label}</span>
-                        <div className="flex justify-end font-mono text-sm text-zinc-100">
+                        <span className="text-[10px] tracking-wide text-[var(--color-foreground-muted)]">{label}</span>
+                        <div className="flex justify-end font-mono text-sm text-[var(--color-foreground)]">
                           <span>{formatLimit(remaining)}</span>
-                          <span className="text-zinc-500"> / {formatLimit(total)}</span>
+                          <span className="text-[var(--color-foreground-muted)]"> / {formatLimit(total)}</span>
                         </div>
                       </div>
                     );
@@ -269,7 +289,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                   <button
                     type="button"
                     onClick={() => setPasswordDrawerOpen(true)}
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm text-[var(--color-foreground-muted)] transition-colors duration-200 hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-foreground)]"
                   >
                     <LockKeyhole className="h-4 w-4 shrink-0" />
                     <span className="flex-1 text-left">修改密码</span>
@@ -280,16 +300,16 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                         <button
                           type="button"
                           onClick={onOidcSync}
-                          className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
+                          className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm text-[var(--color-foreground-muted)] transition-colors duration-200 hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-foreground)]"
                         >
                           <RefreshCw className="h-4 w-4 shrink-0" />
                           <span className="flex-1 text-left">同步 OIDC</span>
-                          <span className="text-[10px] text-emerald-400">已绑定</span>
+                          <span className="text-[10px] text-[var(--color-accent)]">已绑定</span>
                         </button>
                         <button
                           type="button"
                           onClick={onOidcUnbind}
-                          className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
+                          className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm text-[var(--color-foreground-muted)] transition-colors duration-200 hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-foreground)]"
                         >
                           <Link2Off className="h-4 w-4 shrink-0" />
                           <span className="flex-1 text-left">解绑 OIDC</span>
@@ -299,18 +319,18 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                       <button
                         type="button"
                         onClick={onOidcBind}
-                        className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
+                        className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm text-[var(--color-foreground-muted)] transition-colors duration-200 hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-foreground)]"
                       >
                         <Link2 className="h-4 w-4 shrink-0" />
                         <span className="flex-1 text-left">绑定 OIDC</span>
-                        <span className="text-[10px] text-zinc-500">未绑定</span>
+                        <span className="text-[10px] text-[var(--color-foreground-subtle)]">未绑定</span>
                       </button>
                     )
                   ) : null}
                   <button
                     type="button"
                     onClick={onLogout}
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-rose-300 transition-colors hover:bg-rose-500/10 hover:text-rose-200"
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm transition-colors duration-200 hover:bg-red-500/10 text-rose-500 hover:text-rose-400"
                   >
                     <LogOut className="h-4 w-4 shrink-0" />
                     <span className="flex-1 text-left">退出登录</span>
@@ -321,20 +341,38 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
           </div>
         </aside>
 
+        {/* Main Content */}
         <section className="flex min-w-0 flex-1 flex-col gap-4">
-          <header className="sticky top-4 z-20 rounded-xl border border-white/10 bg-[rgba(15,23,42,0.82)] px-4 py-3 shadow-xl backdrop-blur lg:px-6 lg:py-4">
+          <header className="sticky top-4 z-20 rounded-xl border border-[var(--color-header-border)] bg-[var(--color-header-bg)] px-4 py-3 shadow-[var(--shadow-md)] lg:px-6 lg:py-4">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="hidden items-center gap-1.5 text-xs text-zinc-500 lg:flex">
+                <div className="hidden items-center gap-1.5 text-xs text-[var(--color-foreground-muted)] lg:flex">
                   <span>Dashboard</span>
                   <span>/</span>
-                  <span className="truncate text-zinc-400">{title}</span>
+                  <span className="truncate text-[var(--color-foreground-secondary)]">{title}</span>
                 </div>
-                <h1 className="text-lg font-semibold tracking-tight text-zinc-50 lg:mt-1 lg:text-2xl">{title}</h1>
-                {subtitle ? <p className="mt-1 hidden max-w-3xl text-sm text-zinc-400 lg:block">{subtitle}</p> : null}
+                <h1 className="font-mono text-lg font-semibold tracking-tight text-[var(--color-foreground)] lg:mt-1 lg:text-2xl">{title}</h1>
+                {subtitle ? <p className="mt-1 hidden max-w-3xl text-sm text-[var(--color-foreground-muted)] lg:block">{subtitle}</p> : null}
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 {right ? <div className="hidden items-center gap-2 sm:flex">{right}</div> : null}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={toggleTheme}
+                        aria-label={theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}
+                      >
+                        {theme === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 <Button variant="outline" size="icon" className="lg:hidden" onClick={() => setMobileNavOpen(true)}>
                   <Menu className="h-4 w-4" />
                   <span className="sr-only">打开菜单</span>
@@ -347,11 +385,23 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
         </section>
       </div>
 
+      {/* Mobile Nav Sheet */}
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
         <SheetContent side="left" className="w-[320px] p-0">
-          <SheetHeader className="border-b border-white/10 px-5 py-4">
-            <SheetTitle>后台导航</SheetTitle>
-            <SheetDescription>快速切换页面与管理账号。</SheetDescription>
+          <SheetHeader className="border-b border-[var(--color-border)] px-5 py-4">
+            <div className="flex items-center gap-3">
+              <Image
+                src="/logo/TDP.svg"
+                alt="TDP Logo"
+                width={32}
+                height={32}
+                className="shrink-0 dark:invert"
+              />
+              <div className="min-w-0">
+                <SheetTitle>后台导航</SheetTitle>
+                <SheetDescription>快速切换页面与管理账号。</SheetDescription>
+              </div>
+            </div>
           </SheetHeader>
           <div className="flex h-full flex-col">
             <ScrollArea className="flex-1 px-4 py-4">
@@ -364,8 +414,10 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                       href={item.href}
                       onClick={onNavigateMobile}
                       className={cn(
-                        "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-zinc-300 transition-colors",
-                        active ? "bg-white/10 text-white" : "hover:bg-white/6 hover:text-white",
+                        "flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-200",
+                        active
+                          ? "bg-[var(--color-sidebar-active-bg)] text-[var(--color-sidebar-active-text)]"
+                          : "text-[var(--color-foreground-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-foreground)]",
                       )}
                     >
                       <item.icon className="h-4 w-4 shrink-0" />
@@ -377,17 +429,27 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
             </ScrollArea>
             <Separator />
             <div className="space-y-3 p-4">
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  toggleTheme();
+                }}
+              >
+                {theme === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+                {theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}
+              </Button>
               {profileBrief ? (
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                  <p className="truncate text-sm font-semibold text-zinc-100">{profileBrief.username}</p>
-                  <p className="mt-1 text-xs text-zinc-400">RPM {formatLimit(profileBrief.rpm)} / QPS {formatLimit(profileBrief.qps)} / TPM {formatLimit(profileBrief.tpm)}</p>
+                <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+                  <p className="truncate text-sm font-semibold text-[var(--color-foreground)]">{profileBrief.username}</p>
+                  <p className="mt-1 text-xs text-[var(--color-foreground-muted)]">RPM {formatLimit(profileBrief.rpm)} / QPS {formatLimit(profileBrief.qps)} / TPM {formatLimit(profileBrief.tpm)}</p>
                   {profileBrief.quota_requests !== null || profileBrief.quota_tokens !== null ? (
-                    <p className="mt-1 text-xs text-zinc-400">
+                    <p className="mt-1 text-xs text-[var(--color-foreground-muted)]">
                       配额: 请求 {formatLimit(profileBrief.used_requests ?? 0)}/{formatLimit(profileBrief.quota_requests)} / Token {formatLimit(profileBrief.used_tokens ?? 0)}/{formatLimit(profileBrief.quota_tokens)}
                     </p>
                   ) : null}
                   {profileBrief.quota_period ? (
-                    <p className="mt-1 text-xs text-zinc-400">
+                    <p className="mt-1 text-xs text-[var(--color-foreground-muted)]">
                       {periodLabel(profileBrief.quota_period)}: 请求 {formatLimit(periodExpired(profileBrief.period_reset_at) ? 0 : (profileBrief.period_used_requests ?? 0))}/{formatLimit(profileBrief.period_quota_requests)} / Token {formatLimit(periodExpired(profileBrief.period_reset_at) ? 0 : (profileBrief.period_used_tokens ?? 0))}/{formatLimit(profileBrief.period_quota_tokens)}
                     </p>
                   ) : null}
@@ -435,6 +497,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
         </SheetContent>
       </Sheet>
 
+      {/* Password Change Dialog */}
       <Dialog open={passwordDrawerOpen} onOpenChange={setPasswordDrawerOpen}>
         <DialogContent>
           <DialogHeader>

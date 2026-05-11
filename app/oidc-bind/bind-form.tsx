@@ -70,8 +70,8 @@ export function BindForm() {
     <main className="flex min-h-screen items-center justify-center px-4 py-8">
       <div className="w-full max-w-sm space-y-4">
         <div className="space-y-2 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">ModelGate</h1>
-          <p className="text-sm text-zinc-400">OIDC 身份验证成功，请选择以下方式继续</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-foreground)]">ModelGate</h1>
+          <p className="text-sm text-[var(--color-foreground-muted)]">OIDC 身份验证成功，请选择以下方式继续</p>
         </div>
 
         <Card>
@@ -87,9 +87,9 @@ export function BindForm() {
         </Card>
 
         <div className="flex items-center gap-3 px-2">
-          <div className="h-px flex-1 bg-white/10" />
-          <span className="text-xs text-zinc-500">或</span>
-          <div className="h-px flex-1 bg-white/10" />
+          <div className="h-px flex-1 bg-[var(--color-border)]" />
+          <span className="text-xs text-[var(--color-foreground)]0">或</span>
+          <div className="h-px flex-1 bg-[var(--color-border)]" />
         </div>
 
         <Card>

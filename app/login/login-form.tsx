@@ -60,11 +60,11 @@ export function LoginForm({ status }: { status: AuthStatus }) {
     <main className="flex min-h-screen items-center justify-center px-4 py-8">
       <div className="w-full max-w-sm space-y-6">
         <div className="space-y-2 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">ModelGate</h1>
-          <p className="text-sm text-zinc-400">登录管理控制台</p>
+          <h1 className="font-mono text-2xl font-semibold tracking-tight text-[var(--color-foreground)]">ModelGate</h1>
+          <p className="text-sm text-[var(--color-foreground-muted)]">登录管理控制台</p>
         </div>
         {oidcError ? (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
             {oidcError}
           </div>
         ) : null}
@@ -116,7 +116,7 @@ export function LoginForm({ status }: { status: AuthStatus }) {
             {passwordEnabled && oidcEnabled ? (
               <div className="my-4 flex items-center gap-3">
                 <Separator className="flex-1" />
-                <span className="text-xs text-zinc-500">或</span>
+                <span className="text-xs text-[var(--color-foreground-muted)]">或</span>
                 <Separator className="flex-1" />
               </div>
             ) : null}
@@ -128,9 +128,9 @@ export function LoginForm({ status }: { status: AuthStatus }) {
             ) : null}
 
             {passwordEnabled && registrationEnabled ? (
-              <p className="mt-4 text-center text-sm text-zinc-400">
+              <p className="mt-4 text-center text-sm text-[var(--color-foreground-muted)]">
                 还没有账号？{" "}
-                <Link href="/register" className="text-zinc-100 underline-offset-4 hover:underline">
+                <Link href="/register" className="text-[var(--color-accent)] underline-offset-4 hover:underline transition-colors duration-200 hover:text-[var(--color-accent-hover)]">
                   注册
                 </Link>
               </p>
