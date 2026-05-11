@@ -59,7 +59,7 @@ export function DataTable<TData>({
             ))
           ) : (
             <TableRow>
-              <TableCell colSpan={columns.length} className="h-20 text-center text-zinc-400">
+              <TableCell colSpan={columns.length} className="h-20 text-center text-[var(--color-foreground-muted)]">
                 {emptyText}
               </TableCell>
             </TableRow>

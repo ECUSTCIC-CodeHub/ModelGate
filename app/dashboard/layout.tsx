@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { AnnouncementDialog } from "@/components/dashboard/announcement-dialog";
 import { AuthProvider } from "@/components/providers/auth-provider";
+import { ThemeProvider } from "@/components/providers/theme-provider";
 import { getServerProfileFromCookieStore } from "@/lib/auth";
 import { getAuthStatus } from "@/lib/auth-status";
 import { type DbUser } from "@/lib/db";
@@ -37,9 +38,11 @@ export default async function DashboardLayout({
   const authStatus = getAuthStatus();
 
   return (
-    <AuthProvider initialProfile={enrichedProfile} oidcEnabled={authStatus.oidc_enabled}>
-      {children}
-      <AnnouncementDialog />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider initialProfile={enrichedProfile} oidcEnabled={authStatus.oidc_enabled}>
+        {children}
+        <AnnouncementDialog />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

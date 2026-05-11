@@ -190,7 +190,7 @@ export default function ConsoleKeysPage() {
                     <CardContent className="space-y-4">
                         {error ? <p className="text-sm text-red-400">{error}</p> : null}
                         {keys.length > 0 ? (
-                            <div className="overflow-x-auto rounded-xl border border-white/10">
+                            <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
                                 <Table className="min-w-[820px]">
                                     <TableHeader>
                                         <TableRow>
@@ -223,10 +223,10 @@ export default function ConsoleKeysPage() {
                                                         />
                                                     ) : (
                                                         <span
-                                                            className="cursor-pointer text-sm text-zinc-300 hover:text-white"
+                                                            className="cursor-pointer text-sm text-[var(--color-foreground-secondary)] hover:text-white"
                                                             onClick={() => { setEditingNameId(row.id); setEditingNameValue(row.name || ""); }}
                                                         >
-                                                            {row.name || <span className="text-zinc-600">点击添加备注</span>}
+                                                            {row.name || <span className="text-[var(--color-foreground-subtle)]">点击添加备注</span>}
                                                         </span>
                                                     )}
                                                 </TableCell>
@@ -278,8 +278,8 @@ export default function ConsoleKeysPage() {
                             请立即复制并妥善保存，关闭后将无法再次查看完整密钥。
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="rounded-lg border border-white/10 bg-white/5 p-3">
-                        <code className="block break-all text-sm text-zinc-200">{createdKey}</code>
+                    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-3">
+                        <code className="block break-all text-sm text-[var(--color-foreground)]">{createdKey}</code>
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setCreatedKey("")}>关闭</Button>

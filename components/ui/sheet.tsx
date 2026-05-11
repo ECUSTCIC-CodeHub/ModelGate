@@ -14,7 +14,10 @@ const SheetOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
-    className={cn("fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm", className)}
+    className={cn(
+      "fixed inset-0 z-50 bg-[var(--color-bg)]/70 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out",
+      className,
+    )}
     {...props}
   />
 ));
@@ -40,14 +43,14 @@ const SheetContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed z-50 flex flex-col gap-4 border-white/10 bg-[rgba(8,13,24,0.98)] p-6 shadow-2xl",
+        "fixed z-50 flex flex-col gap-4 border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-[var(--shadow-xl)]",
         sheetVariants[side],
         className,
       )}
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md p-1 text-zinc-400 hover:bg-white/8 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(159,232,216,0.35)]">
+      <DialogPrimitive.Close className="absolute right-4 top-4 cursor-pointer rounded-md p-1 text-[var(--color-foreground-muted)] transition-colors duration-200 hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/40">
         <X className="h-4 w-4" />
         <span className="sr-only">关闭</span>
       </DialogPrimitive.Close>
@@ -68,7 +71,11 @@ const SheetTitle = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Title>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
 >(({ className, ...props }, ref) => (
-  <DialogPrimitive.Title ref={ref} className={cn("text-lg font-semibold text-zinc-50", className)} {...props} />
+  <DialogPrimitive.Title
+    ref={ref}
+    className={cn("font-mono text-lg font-semibold text-[var(--color-foreground)]", className)}
+    {...props}
+  />
 ));
 SheetTitle.displayName = DialogPrimitive.Title.displayName;
 
@@ -76,7 +83,11 @@ const SheetDescription = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Description>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
 >(({ className, ...props }, ref) => (
-  <DialogPrimitive.Description ref={ref} className={cn("text-sm text-zinc-400", className)} {...props} />
+  <DialogPrimitive.Description
+    ref={ref}
+    className={cn("text-sm text-[var(--color-foreground-muted)]", className)}
+    {...props}
+  />
 ));
 SheetDescription.displayName = DialogPrimitive.Description.displayName;
 

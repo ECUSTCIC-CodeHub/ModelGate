@@ -546,11 +546,11 @@ export default function AdminChannelsPage() {
 
               <TabsContent value="channels" className="space-y-4">
                 <PageToolbar>
-                  <p className="text-sm text-zinc-400">渠道代表一条上游 API 接入，包含 Base URL、API Key、超时和权重。</p>
+                  <p className="text-sm text-[var(--color-foreground-muted)]">渠道代表一条上游 API 接入，包含 Base URL、API Key、超时和权重。</p>
                   <Button onClick={openCreateChannel}>新增渠道</Button>
                 </PageToolbar>
                 {channels.length > 0 ? (
-                  <div className="overflow-x-auto rounded-xl border border-white/10">
+                  <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
                     <Table className="min-w-[960px]">
                       <TableHeader>
                         <TableRow>
@@ -620,11 +620,11 @@ export default function AdminChannelsPage() {
 
               <TabsContent value="models" className="space-y-4">
                 <PageToolbar>
-                  <p className="text-sm text-zinc-400">模型映射决定外部调用时传入的 alias 如何路由到真实模型与渠道。</p>
+                  <p className="text-sm text-[var(--color-foreground-muted)]">模型映射决定外部调用时传入的 alias 如何路由到真实模型与渠道。</p>
                   <Button disabled={channels.length === 0} onClick={() => openCreateModel(channels[0]?.id ?? 0)}>新增模型映射</Button>
                 </PageToolbar>
                 {allModels.length > 0 ? (
-                  <div className="overflow-x-auto rounded-xl border border-white/10">
+                  <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
                     <Table className="min-w-[1020px]">
                       <TableHeader>
                         <TableRow>
@@ -726,12 +726,12 @@ export default function AdminChannelsPage() {
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label>支持协议</Label>
-                <div className="grid gap-2 rounded-xl border border-white/10 bg-white/5 p-4 md:grid-cols-2">
+                <div className="grid gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4 md:grid-cols-2">
                   {protocolOptions.map((option) => {
                     const checked = channelForm.supported_protocols.includes(option.value);
                     return (
-                      <label key={option.value} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 px-3 py-2">
-                        <span className="text-sm text-zinc-100">{option.label}</span>
+                      <label key={option.value} className="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] px-3 py-2">
+                        <span className="text-sm text-[var(--color-foreground)]">{option.label}</span>
                         <Checkbox
                           checked={checked}
                           onCheckedChange={(next) => {
@@ -764,11 +764,11 @@ export default function AdminChannelsPage() {
             </div>
 
             {channelEditingId === null ? (
-              <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
+              <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <p className="text-sm font-medium text-zinc-100">初始模型列表</p>
-                    <p className="text-xs text-zinc-500">别名就是客户端调用时传入的 model，支持 * 作为兜底模型。</p>
+                    <p className="text-sm font-medium text-[var(--color-foreground)]">初始模型列表</p>
+                    <p className="text-xs text-[var(--color-foreground-muted)]">别名就是客户端调用时传入的 model，支持 * 作为兜底模型。</p>
                   </div>
                   <div className="flex shrink-0 gap-2">
                     <Button
@@ -785,7 +785,7 @@ export default function AdminChannelsPage() {
                 </div>
                 <div className="space-y-3">
                   {channelModels.map((item, index) => (
-                    <div key={index} className="grid gap-3 rounded-lg border border-white/10 p-3 md:grid-cols-2">
+                    <div key={index} className="grid gap-3 rounded-lg border border-[var(--color-border)] p-3 md:grid-cols-2">
                       <Input placeholder="别名" value={item.alias} onChange={(e) => updateChannelModelDraft(index, { alias: e.target.value })} />
                       <Input placeholder="真实模型" value={item.real_model} onChange={(e) => updateChannelModelDraft(index, { real_model: e.target.value })} />
                       <div className="grid gap-2 md:grid-cols-3">
@@ -847,7 +847,7 @@ export default function AdminChannelsPage() {
             <SheetDescription>配置 alias、真实模型、所属渠道、公开性与启用状态。</SheetDescription>
           </SheetHeader>
           <form onSubmit={submitModel} className="mt-4 space-y-4 overflow-y-auto pr-1">
-            <p className="text-xs text-zinc-500">别名就是客户端请求时传入的 model，也支持 * 作为兜底模型。</p>
+            <p className="text-xs text-[var(--color-foreground-muted)]">别名就是客户端请求时传入的 model，也支持 * 作为兜底模型。</p>
             <div className="space-y-2">
               <Label>别名</Label>
               <Input value={modelForm.alias} onChange={(e) => setModelForm({ ...modelForm, alias: e.target.value })} />
@@ -908,18 +908,18 @@ export default function AdminChannelsPage() {
                 <Input type="number" min={0} step={0.1} value={modelForm.request_multiplier} onChange={(e) => setModelForm({ ...modelForm, request_multiplier: Number(e.target.value) || 1 })} />
               </div>
             </div>
-            <p className="text-xs text-zinc-500">倍率用于计费扣量，如 Token 倍率 2 则实际扣除 Token = 使用量 × 2。默认均为 1。</p>
-            <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-4">
+            <p className="text-xs text-[var(--color-foreground-muted)]">倍率用于计费扣量，如 Token 倍率 2 则实际扣除 Token = 使用量 × 2。默认均为 1。</p>
+            <div className="flex items-center justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
               <div>
-                <p className="text-sm font-medium text-zinc-100">公开模型</p>
-                <p className="text-xs text-zinc-500">关闭后仅被授权用户可以访问该 alias。</p>
+                <p className="text-sm font-medium text-[var(--color-foreground)]">公开模型</p>
+                <p className="text-xs text-[var(--color-foreground-muted)]">关闭后仅被授权用户可以访问该 alias。</p>
               </div>
               <Checkbox checked={modelForm.is_public} onCheckedChange={(checked) => setModelForm({ ...modelForm, is_public: checked === true })} />
             </div>
-            <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-4">
+            <div className="flex items-center justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
               <div>
-                <p className="text-sm font-medium text-zinc-100">启用状态</p>
-                <p className="text-xs text-zinc-500">关闭后该模型映射不会被路由命中。</p>
+                <p className="text-sm font-medium text-[var(--color-foreground)]">启用状态</p>
+                <p className="text-xs text-[var(--color-foreground-muted)]">关闭后该模型映射不会被路由命中。</p>
               </div>
               <Checkbox checked={modelForm.enabled} onCheckedChange={(checked) => setModelForm({ ...modelForm, enabled: checked === true })} />
             </div>

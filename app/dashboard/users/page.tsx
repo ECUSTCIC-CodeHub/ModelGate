@@ -498,7 +498,7 @@ export default function AdminUsersPage() {
             </PageToolbar>
 
             {rows.length > 0 ? (
-              <div className="overflow-x-auto rounded-xl border border-white/10">
+              <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
                 <Table className="min-w-[1360px] table-fixed">
                   <TableHeader>
                     <TableRow>
@@ -516,7 +516,7 @@ export default function AdminUsersPage() {
                   <TableBody>
                     {rows.map((row) => (
                       <TableRow key={row.id}>
-                        <TableCell className="font-medium text-zinc-100">
+                        <TableCell className="font-medium text-[var(--color-foreground)]">
                           <span className="block truncate" title={row.username}>{row.username}</span>
                         </TableCell>
                         <TableCell>
@@ -533,12 +533,12 @@ export default function AdminUsersPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <span className="block truncate text-sm text-zinc-300" title={row.group_name ?? ""}>
+                          <span className="block truncate text-sm text-[var(--color-foreground-secondary)]" title={row.group_name ?? ""}>
                             {row.group_name ?? "-"}
                           </span>
                         </TableCell>
                         <TableCell>
-                          <span className="block truncate text-sm text-zinc-300" title={row.note ?? ""}>
+                          <span className="block truncate text-sm text-[var(--color-foreground-secondary)]" title={row.note ?? ""}>
                             {row.note?.trim() || "-"}
                           </span>
                         </TableCell>
@@ -565,17 +565,17 @@ export default function AdminUsersPage() {
                         <TableCell>
                           {row.effective_quota_period ? (
                             <div className="space-y-0.5 text-sm">
-                              <p className="font-medium text-zinc-200">{formatPeriodLabel(row.effective_quota_period)}</p>
-                              <p className="text-xs text-zinc-400">
+                              <p className="font-medium text-[var(--color-foreground)]">{formatPeriodLabel(row.effective_quota_period)}</p>
+                              <p className="text-xs text-[var(--color-foreground-muted)]">
                                 请求 {row.effective_period_quota_requests === null ? "∞" : formatLimit(row.effective_period_quota_requests)}
                                 {" / "}
                                 Token {row.effective_period_quota_tokens === null ? "∞" : formatLimit(row.effective_period_quota_tokens)}
                               </p>
-                              <p className="text-xs text-zinc-500">
+                              <p className="text-xs text-[var(--color-foreground-muted)]">
                                 已用 {formatNumber(row.period_used_requests)} / {formatNumber(row.period_used_tokens)}
                               </p>
                             </div>
-                          ) : <span className="text-sm text-zinc-500">-</span>}
+                          ) : <span className="text-sm text-[var(--color-foreground-muted)]">-</span>}
                         </TableCell>
                         <TableCell className="space-x-2 whitespace-nowrap text-right">
                           <Button size="sm" variant="outline" onClick={() => onEditClick(row)}>编辑</Button>
@@ -622,7 +622,7 @@ export default function AdminUsersPage() {
             )}
 
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-zinc-400">共 {formatNumber(total)} 个用户，第 {page} / {totalPages} 页</p>
+              <p className="text-sm text-[var(--color-foreground-muted)]">共 {formatNumber(total)} 个用户，第 {page} / {totalPages} 页</p>
               <Pagination className="mx-0 w-auto">
                 <PaginationContent>
                   <PaginationItem>
@@ -678,8 +678,8 @@ export default function AdminUsersPage() {
             <SheetDescription>{editingId === null ? "创建新用户账号并设置初始配额。" : "修改角色、限速、配额与模型访问权限。"}</SheetDescription>
           </SheetHeader>
           <form onSubmit={onSubmit} className="mt-4 space-y-4 overflow-y-auto pr-1">
-            <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
-              <p className="text-sm font-medium text-zinc-100">基础信息</p>
+            <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+              <p className="text-sm font-medium text-[var(--color-foreground)]">基础信息</p>
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label>用户名</Label>
@@ -748,7 +748,7 @@ export default function AdminUsersPage() {
                 <div className="space-y-2 md:col-span-2">
                   <Label>管理员备注</Label>
                   <textarea
-                    className="flex min-h-24 w-full rounded-xl border border-white/10 bg-slate-950/50 px-4 py-3 text-sm text-zinc-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] placeholder:text-zinc-500 focus-visible:border-[rgba(159,232,216,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(159,232,216,0.18)]"
+                    className="flex min-h-24 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-3 text-sm text-[var(--color-foreground)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] placeholder:text-[var(--color-foreground-muted)] focus-visible:border-[var(--color-accent)]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:focus-visible:ring-[var(--color-accent)]/20"
                     placeholder="仅管理员可见，可记录来源、用途、客户信息等"
                     value={form.note}
                     onChange={(e) => setForm({ ...form, note: e.target.value })}
@@ -759,44 +759,44 @@ export default function AdminUsersPage() {
             </div>
 
             {editingId !== null && editingOidc ? (
-              <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
-                <p className="text-sm font-medium text-zinc-100">OIDC 绑定</p>
+              <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+                <p className="text-sm font-medium text-[var(--color-foreground)]">OIDC 绑定</p>
                 <div className="grid gap-3 md:grid-cols-2">
                   <div className="space-y-1">
-                    <p className="text-xs text-zinc-500">Issuer</p>
-                    <p className="truncate text-sm text-zinc-300" title={editingOidc.issuer}>{editingOidc.issuer}</p>
+                    <p className="text-xs text-[var(--color-foreground-muted)]">Issuer</p>
+                    <p className="truncate text-sm text-[var(--color-foreground-secondary)]" title={editingOidc.issuer}>{editingOidc.issuer}</p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-xs text-zinc-500">Subject</p>
-                    <p className="truncate text-sm text-zinc-300" title={editingOidc.subject}>{editingOidc.subject}</p>
+                    <p className="text-xs text-[var(--color-foreground-muted)]">Subject</p>
+                    <p className="truncate text-sm text-[var(--color-foreground-secondary)]" title={editingOidc.subject}>{editingOidc.subject}</p>
                   </div>
                 </div>
               </div>
             ) : null}
 
-            <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
-              <p className="text-sm font-medium text-zinc-100">配额配置</p>
-              <p className="text-xs text-zinc-500">`-1` 表示继承组设置（无组则不限制），`0` 表示禁止；总量配额留空表示继承组设置。</p>
+            <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+              <p className="text-sm font-medium text-[var(--color-foreground)]">配额配置</p>
+              <p className="text-xs text-[var(--color-foreground-muted)]">`-1` 表示继承组设置（无组则不限制），`0` 表示禁止；总量配额留空表示继承组设置。</p>
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="space-y-2">
                   <Label>RPM</Label>
                   <Input type="number" min={-1} value={form.rpm} onChange={(e) => setForm({ ...form, rpm: Number(e.target.value) })} />
                   {form.rpm < 0 && editingGroupLimits ? (
-                    <p className="text-xs text-zinc-500">← 继承组: {formatLimit(editingGroupLimits.rpm)}</p>
+                    <p className="text-xs text-[var(--color-foreground-muted)]">← 继承组: {formatLimit(editingGroupLimits.rpm)}</p>
                   ) : null}
                 </div>
                 <div className="space-y-2">
                   <Label>QPS</Label>
                   <Input type="number" min={-1} value={form.qps} onChange={(e) => setForm({ ...form, qps: Number(e.target.value) })} />
                   {form.qps < 0 && editingGroupLimits ? (
-                    <p className="text-xs text-zinc-500">← 继承组: {formatLimit(editingGroupLimits.qps)}</p>
+                    <p className="text-xs text-[var(--color-foreground-muted)]">← 继承组: {formatLimit(editingGroupLimits.qps)}</p>
                   ) : null}
                 </div>
                 <div className="space-y-2">
                   <Label>TPM</Label>
                   <Input type="number" min={-1} value={form.tpm} onChange={(e) => setForm({ ...form, tpm: Number(e.target.value) })} />
                   {form.tpm < 0 && editingGroupLimits ? (
-                    <p className="text-xs text-zinc-500">← 继承组: {formatLimit(editingGroupLimits.tpm)}</p>
+                    <p className="text-xs text-[var(--color-foreground-muted)]">← 继承组: {formatLimit(editingGroupLimits.tpm)}</p>
                   ) : null}
                 </div>
               </div>
@@ -805,20 +805,20 @@ export default function AdminUsersPage() {
                   <Label>总请求配额</Label>
                   <Input type="number" min={-1} value={form.quota_requests} onChange={(e) => setForm({ ...form, quota_requests: e.target.value })} />
                   {form.quota_requests.trim() === "" && editingGroupLimits ? (
-                    <p className="text-xs text-zinc-500">← 继承组: {editingGroupLimits.quota_requests === null ? "∞" : formatLimit(editingGroupLimits.quota_requests)}</p>
+                    <p className="text-xs text-[var(--color-foreground-muted)]">← 继承组: {editingGroupLimits.quota_requests === null ? "∞" : formatLimit(editingGroupLimits.quota_requests)}</p>
                   ) : null}
                 </div>
                 <div className="space-y-2">
                   <Label>总 Token 配额</Label>
                   <Input type="number" min={-1} value={form.quota_tokens} onChange={(e) => setForm({ ...form, quota_tokens: e.target.value })} />
                   {form.quota_tokens.trim() === "" && editingGroupLimits ? (
-                    <p className="text-xs text-zinc-500">← 继承组: {editingGroupLimits.quota_tokens === null ? "∞" : formatLimit(editingGroupLimits.quota_tokens)}</p>
+                    <p className="text-xs text-[var(--color-foreground-muted)]">← 继承组: {editingGroupLimits.quota_tokens === null ? "∞" : formatLimit(editingGroupLimits.quota_tokens)}</p>
                   ) : null}
                 </div>
               </div>
-              <div className="mt-3 border-t border-white/10 pt-3">
-                <p className="text-sm font-medium text-zinc-100">周期配额</p>
-                <p className="mb-3 text-xs text-zinc-500">按固定时间间隔重置用量，留空表示继承组设置。</p>
+              <div className="mt-3 border-t border-[var(--color-border)] pt-3">
+                <p className="text-sm font-medium text-[var(--color-foreground)]">周期配额</p>
+                <p className="mb-3 text-xs text-[var(--color-foreground-muted)]">按固定时间间隔重置用量，留空表示继承组设置。</p>
                 <div className="grid gap-3 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label>重置周期</Label>
@@ -835,7 +835,7 @@ export default function AdminUsersPage() {
                       </SelectContent>
                     </Select>
                     {form.quota_period_preset === "" && editingGroupLimits ? (
-                      <p className="text-xs text-zinc-500">← 继承组: {formatPeriodLabel(editingGroupLimits.quota_period)}</p>
+                      <p className="text-xs text-[var(--color-foreground-muted)]">← 继承组: {formatPeriodLabel(editingGroupLimits.quota_period)}</p>
                     ) : null}
                   </div>
                   {form.quota_period_preset === "custom" ? (
@@ -848,37 +848,37 @@ export default function AdminUsersPage() {
                     <Label>周期请求配额</Label>
                     <Input type="number" min={-1} value={form.period_quota_requests} onChange={(e) => setForm({ ...form, period_quota_requests: e.target.value })} placeholder="留空继承组设置" />
                     {form.period_quota_requests.trim() === "" && editingGroupLimits ? (
-                      <p className="text-xs text-zinc-500">← 继承组: {editingGroupLimits.period_quota_requests === null ? "∞" : formatLimit(editingGroupLimits.period_quota_requests)}</p>
+                      <p className="text-xs text-[var(--color-foreground-muted)]">← 继承组: {editingGroupLimits.period_quota_requests === null ? "∞" : formatLimit(editingGroupLimits.period_quota_requests)}</p>
                     ) : null}
                   </div>
                   <div className="space-y-2">
                     <Label>周期 Token 配额</Label>
                     <Input type="number" min={-1} value={form.period_quota_tokens} onChange={(e) => setForm({ ...form, period_quota_tokens: e.target.value })} placeholder="留空继承组设置" />
                     {form.period_quota_tokens.trim() === "" && editingGroupLimits ? (
-                      <p className="text-xs text-zinc-500">← 继承组: {editingGroupLimits.period_quota_tokens === null ? "∞" : formatLimit(editingGroupLimits.period_quota_tokens)}</p>
+                      <p className="text-xs text-[var(--color-foreground-muted)]">← 继承组: {editingGroupLimits.period_quota_tokens === null ? "∞" : formatLimit(editingGroupLimits.period_quota_tokens)}</p>
                     ) : null}
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
-              <p className="text-sm font-medium text-zinc-100">额外可访问模型</p>
-              <p className="text-xs text-zinc-500">这里只展示非公开模型，用于配置额外白名单授权。</p>
+            <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+              <p className="text-sm font-medium text-[var(--color-foreground)]">额外可访问模型</p>
+              <p className="text-xs text-[var(--color-foreground-muted)]">这里只展示非公开模型，用于配置额外白名单授权。</p>
               <div className="grid gap-2 md:grid-cols-2">
                 {aliasOptions.map((item) => (
-                  <label key={item.alias} className="flex items-center gap-3 rounded-lg border border-white/10 px-3 py-3 text-sm">
+                  <label key={item.alias} className="flex items-center gap-3 rounded-lg border border-[var(--color-border)] px-3 py-3 text-sm">
                     <Checkbox
                       checked={form.allowed_model_aliases.includes(item.alias)}
                       onCheckedChange={() => toggleAllowedAlias(item.alias)}
                     />
                     <div className="min-w-0">
-                      <p className="truncate font-mono text-zinc-100">{item.alias}</p>
-                      <p className="text-xs text-zinc-500">{item.is_public === 1 ? "公开模型" : "非公开模型"}</p>
+                      <p className="truncate font-mono text-[var(--color-foreground)]">{item.alias}</p>
+                      <p className="text-xs text-[var(--color-foreground-muted)]">{item.is_public === 1 ? "公开模型" : "非公开模型"}</p>
                     </div>
                   </label>
                 ))}
-                {aliasOptions.length === 0 ? <p className="text-sm text-zinc-500">暂无模型可选</p> : null}
+                {aliasOptions.length === 0 ? <p className="text-sm text-[var(--color-foreground-muted)]">暂无模型可选</p> : null}
               </div>
             </div>
 

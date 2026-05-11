@@ -118,17 +118,17 @@ export default function AdminSettingsPage() {
               />
             </CardHeader>
             <CardContent className="space-y-5">
-              <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-sm font-medium text-zinc-100">允许账号密码登录</p>
-                  <p className="text-xs text-zinc-500">关闭后仅支持 OIDC 登录。请确保 OIDC 已配置且有管理员已绑定。</p>
+                  <p className="text-sm font-medium text-[var(--color-foreground)]">允许账号密码登录</p>
+                  <p className="text-xs text-[var(--color-foreground-muted)]">关闭后仅支持 OIDC 登录。请确保 OIDC 已配置且有管理员已绑定。</p>
                 </div>
                 <Switch checked={passwordLoginEnabled} onCheckedChange={setPasswordLoginEnabled} />
               </div>
-              <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-sm font-medium text-zinc-100">允许账号密码注册</p>
-                  <p className="text-xs text-zinc-500">关闭后仅管理员可创建用户，OIDC 自动注册不受影响。</p>
+                  <p className="text-sm font-medium text-[var(--color-foreground)]">允许账号密码注册</p>
+                  <p className="text-xs text-[var(--color-foreground-muted)]">关闭后仅管理员可创建用户，OIDC 自动注册不受影响。</p>
                 </div>
                 <Switch checked={registrationEnabled} onCheckedChange={setRegistrationEnabled} />
               </div>
@@ -143,17 +143,17 @@ export default function AdminSettingsPage() {
               />
             </CardHeader>
             <CardContent className="space-y-5">
-              <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-sm font-medium text-zinc-100">开启自动切换</p>
-                  <p className="text-xs text-zinc-500">命中 401、429 或 5xx 时尝试其他渠道。</p>
+                  <p className="text-sm font-medium text-[var(--color-foreground)]">开启自动切换</p>
+                  <p className="text-xs text-[var(--color-foreground-muted)]">命中 401、429 或 5xx 时尝试其他渠道。</p>
                 </div>
                 <Switch checked={upstreamRetryEnabled} onCheckedChange={setUpstreamRetryEnabled} />
               </div>
-              <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-sm font-medium text-zinc-100">上游熔断</p>
-                  <p className="text-xs text-zinc-500">连续失败 3 次后暂停该渠道 15 秒，防止雪崩。关闭后所有渠道始终可用。</p>
+                  <p className="text-sm font-medium text-[var(--color-foreground)]">上游熔断</p>
+                  <p className="text-xs text-[var(--color-foreground-muted)]">连续失败 3 次后暂停该渠道 15 秒，防止雪崩。关闭后所有渠道始终可用。</p>
                 </div>
                 <Switch checked={circuitBreakerEnabled} onCheckedChange={setCircuitBreakerEnabled} />
               </div>
@@ -166,7 +166,7 @@ export default function AdminSettingsPage() {
                   value={upstreamRetryMaxAttempts}
                   onChange={(e) => setUpstreamRetryMaxAttempts(Number(e.target.value))}
                 />
-                <p className="text-xs text-zinc-500">默认 3，建议不要超过 5，避免上游回退过慢。</p>
+                <p className="text-xs text-[var(--color-foreground-muted)]">默认 3，建议不要超过 5，避免上游回退过慢。</p>
               </div>
             </CardContent>
           </Card>
@@ -180,14 +180,14 @@ export default function AdminSettingsPage() {
             />
           </CardHeader>
           <CardContent className="space-y-5">
-            <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-sm font-medium text-zinc-100">启用 OIDC 登录</p>
-                <p className="text-xs text-zinc-500">开启后登录页将显示 OIDC 登录按钮。</p>
+                <p className="text-sm font-medium text-[var(--color-foreground)]">启用 OIDC 登录</p>
+                <p className="text-xs text-[var(--color-foreground-muted)]">开启后登录页将显示 OIDC 登录按钮。</p>
               </div>
               <Switch checked={oidcEnabled} onCheckedChange={setOidcEnabled} />
             </div>
-            <div className="space-y-3 rounded-xl border border-white/10 bg-slate-950/50 px-4 py-3">
+            <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-3">
               <div className="space-y-2">
                 <Label>对外服务域名</Label>
                 <Input
@@ -195,12 +195,12 @@ export default function AdminSettingsPage() {
                   value={publicBaseUrl}
                   onChange={(e) => setPublicBaseUrl(e.target.value)}
                 />
-                <p className="text-xs text-zinc-500">实际对外提供服务的协议+域名（不含路径）。用于 OIDC 回调、绑定跳转等所有需要绝对 URL 的场景。默认按当前页面 origin 自动填充。</p>
+                <p className="text-xs text-[var(--color-foreground-muted)]">实际对外提供服务的协议+域名（不含路径）。用于 OIDC 回调、绑定跳转等所有需要绝对 URL 的场景。默认按当前页面 origin 自动填充。</p>
               </div>
               <div className="space-y-2">
                 <Label>回调地址 (Redirect URI)</Label>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 truncate rounded bg-white/5 px-3 py-2 text-sm text-zinc-300">
+                  <code className="flex-1 truncate rounded bg-[var(--color-surface-hover)] px-3 py-2 text-sm text-[var(--color-foreground-secondary)]">
                     {(publicBaseUrl.replace(/\/+$/, "") || "https://your-domain.com") + "/api/auth/oidc/callback"}
                   </code>
                   <Button
@@ -217,7 +217,7 @@ export default function AdminSettingsPage() {
                     复制
                   </Button>
                 </div>
-                <p className="text-xs text-zinc-500">由对外服务域名自动派生，在 OIDC 提供商中配置此地址作为允许的回调 URI。</p>
+                <p className="text-xs text-[var(--color-foreground-muted)]">由对外服务域名自动派生，在 OIDC 提供商中配置此地址作为允许的回调 URI。</p>
               </div>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
@@ -228,7 +228,7 @@ export default function AdminSettingsPage() {
                   value={oidcIssuerUrl}
                   onChange={(e) => setOidcIssuerUrl(e.target.value)}
                 />
-                <p className="text-xs text-zinc-500">OIDC 提供商的 Issuer 地址，需支持 .well-known/openid-configuration</p>
+                <p className="text-xs text-[var(--color-foreground-muted)]">OIDC 提供商的 Issuer 地址，需支持 .well-known/openid-configuration</p>
               </div>
               <div className="space-y-2">
                 <Label>Client ID</Label>
@@ -254,7 +254,7 @@ export default function AdminSettingsPage() {
                   value={oidcScopes}
                   onChange={(e) => setOidcScopes(e.target.value)}
                 />
-                <p className="text-xs text-zinc-500">空格分隔，至少包含 openid</p>
+                <p className="text-xs text-[var(--color-foreground-muted)]">空格分隔，至少包含 openid</p>
               </div>
               <div className="space-y-2">
                 <Label>登录按钮文字</Label>
@@ -271,13 +271,13 @@ export default function AdminSettingsPage() {
                   value={oidcGroupClaim}
                   onChange={(e) => setOidcGroupClaim(e.target.value)}
                 />
-                <p className="text-xs text-zinc-500">此字段已弃用。请在各用户组中直接使用 Claim 表达式配置组映射规则。</p>
+                <p className="text-xs text-[var(--color-foreground-muted)]">此字段已弃用。请在各用户组中直接使用 Claim 表达式配置组映射规则。</p>
               </div>
             </div>
-            <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-sm font-medium text-zinc-100">自动注册</p>
-                <p className="text-xs text-zinc-500">首次 OIDC 登录时自动创建用户。关闭后需先由管理员创建账号并绑定 OIDC。</p>
+                <p className="text-sm font-medium text-[var(--color-foreground)]">自动注册</p>
+                <p className="text-xs text-[var(--color-foreground-muted)]">首次 OIDC 登录时自动创建用户。关闭后需先由管理员创建账号并绑定 OIDC。</p>
               </div>
               <Switch checked={oidcAutoRegister} onCheckedChange={setOidcAutoRegister} />
             </div>
@@ -293,7 +293,7 @@ export default function AdminSettingsPage() {
           </CardHeader>
           <CardContent>
             <textarea
-              className="flex min-h-40 w-full rounded-xl border border-white/10 bg-slate-950/50 px-4 py-3 text-sm text-zinc-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] placeholder:text-zinc-500 focus-visible:border-[rgba(159,232,216,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(159,232,216,0.18)]"
+              className="flex min-h-40 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-3 text-sm text-[var(--color-foreground)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] placeholder:text-[var(--color-foreground-muted)] focus-visible:border-[var(--color-accent)]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:focus-visible:ring-[var(--color-accent)]/20"
               placeholder={"支持 Markdown，例如：\n# 公告标题\n\n公告正文内容..."}
               value={announcementContent}
               onChange={(e) => setAnnouncementContent(e.target.value)}

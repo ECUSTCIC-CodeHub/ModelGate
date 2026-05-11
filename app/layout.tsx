@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/toast";
+import { ThemeScript } from "@/components/providers/theme-provider";
 
 export const metadata: Metadata = {
   title: "ModelGate",
@@ -13,7 +14,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh">
+    <html lang="zh" suppressHydrationWarning>
+      <head>
+        <ThemeScript />
+      </head>
       <body className="antialiased">
         <ToastProvider>{children}</ToastProvider>
       </body>
