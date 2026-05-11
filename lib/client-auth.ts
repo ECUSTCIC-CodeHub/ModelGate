@@ -81,6 +81,30 @@ export async function getOrFetchProfile() {
   return user;
 }
 
+export async function ensureAdmin(router: { push: (url: string) => void }): Promise<CachedProfile | null> {
+  const profile = await getOrFetchProfile();
+  if (!profile) {
+    clearSession();
+    router.push("/login");
+    return null;
+  }
+  if (profile.role !== "admin") {
+    router.push("/dashboard/keys");
+    return null;
+  }
+  return profile;
+}
+
+export async function ensureLoggedIn(router: { push?: (url: string) => void; replace?: (url: string) => void }): Promise<CachedProfile | null> {
+  const profile = await getOrFetchProfile();
+  if (!profile) {
+    clearSession();
+    (router.replace ?? router.push)?.(("/login"));
+    return null;
+  }
+  return profile;
+}
+
 export async function authedFetch(input: string, init?: RequestInit) {
   const session = getSession();
   const headers = new Headers(init?.headers ?? {});

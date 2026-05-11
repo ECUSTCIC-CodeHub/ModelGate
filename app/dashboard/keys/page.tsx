@@ -7,17 +7,7 @@ import { MetricCard } from "@/components/dashboard/metric-card";
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { useAuthProfile } from "@/components/providers/auth-provider";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -33,7 +23,8 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
-import { authedFetch, clearSession, getCachedProfile, getOrFetchProfile } from "@/lib/client-auth";
+import { authedFetch, ensureLoggedIn, getCachedProfile } from "@/lib/client-auth";
+import { formatNumber } from "@/lib/formatters";
 
 type KeyRow = {
     id: number;
@@ -44,15 +35,6 @@ type KeyRow = {
     enabled: number;
     created_at: string;
 };
-
-function formatNumber(value: number | null | undefined) {
-    if (value === null || value === undefined) return "-";
-    const abs = Math.abs(value);
-    if (abs >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`;
-    if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
-    if (abs >= 1_000) return `${(value / 1_000).toFixed(2)}k`;
-    return String(value);
-}
 
 export default function ConsoleKeysPage() {
     const router = useRouter();
@@ -67,12 +49,8 @@ export default function ConsoleKeysPage() {
     const { toast } = useToast();
 
     async function load() {
-        const profile = await getOrFetchProfile();
-        if (!profile) {
-            clearSession();
-            router.replace("/login");
-            return;
-        }
+        const profile = await ensureLoggedIn(router);
+        if (!profile) return;
         setRole(profile.role);
 
         const response = await authedFetch("/api/dashboard/keys");
@@ -89,13 +67,8 @@ export default function ConsoleKeysPage() {
     useEffect(() => {
         let cancelled = false;
         async function init() {
-            const profile = await getOrFetchProfile();
-            if (cancelled) return;
-            if (!profile) {
-                clearSession();
-                router.replace("/login");
-                return;
-            }
+            const profile = await ensureLoggedIn(router);
+            if (cancelled || !profile) return;
             setRole(profile.role);
 
             const response = await authedFetch("/api/dashboard/keys");
@@ -263,23 +236,11 @@ export default function ConsoleKeysPage() {
                                                     <Button size="sm" variant="outline" onClick={() => toggleKey(row.id, row.enabled !== 1)}>
                                                         {row.enabled ? "禁用" : "启用"}
                                                     </Button>
-                                                    <AlertDialog>
-                                                        <AlertDialogTrigger asChild>
-                                                            <Button size="sm" variant="destructive">删除</Button>
-                                                        </AlertDialogTrigger>
-                                                        <AlertDialogContent>
-                                                            <AlertDialogHeader>
-                                                                <AlertDialogTitle>删除这个密钥？</AlertDialogTitle>
-                                                                <AlertDialogDescription>
-                                                                    删除后将无法继续使用该 Key 调用网关，此操作不可撤销。
-                                                                </AlertDialogDescription>
-                                                            </AlertDialogHeader>
-                                                            <AlertDialogFooter>
-                                                                <AlertDialogCancel>取消</AlertDialogCancel>
-                                                                <AlertDialogAction onClick={() => deleteKey(row.id)}>确认删除</AlertDialogAction>
-                                                            </AlertDialogFooter>
-                                                        </AlertDialogContent>
-                                                    </AlertDialog>
+                                                    <ConfirmDialog
+                                                        title="删除这个密钥？"
+                                                        description="删除后将无法继续使用该 Key 调用网关，此操作不可撤销。"
+                                                        onConfirm={() => deleteKey(row.id)}
+                                                    />
                                                 </TableCell>
                                             </TableRow>
                                         ))}

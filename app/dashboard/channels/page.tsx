@@ -6,17 +6,7 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 import { PageToolbar } from "@/components/dashboard/page-toolbar";
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -50,7 +40,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
-import { authedFetch, clearSession, getOrFetchProfile } from "@/lib/client-auth";
+import { authedFetch, ensureAdmin } from "@/lib/client-auth";
 
 type Protocol = "chat_completions" | "responses" | "anthropic_messages" | "embeddings";
 
@@ -204,22 +194,8 @@ export default function AdminChannelsPage() {
   const [upstreamModelOptions, setUpstreamModelOptions] = useState<UpstreamModelOption[]>([]);
   const { toast } = useToast();
 
-  async function ensureAdmin() {
-    const profile = await getOrFetchProfile();
-    if (!profile) {
-      clearSession();
-      router.push("/login");
-      return false;
-    }
-    if (profile.role !== "admin") {
-      router.push("/dashboard/keys");
-      return false;
-    }
-    return true;
-  }
-
   async function load() {
-    if (!(await ensureAdmin())) return;
+    if (!(await ensureAdmin(router))) return;
 
     const response = await authedFetch("/api/dashboard/channels");
     const data = await response.json();
@@ -235,17 +211,8 @@ export default function AdminChannelsPage() {
   useEffect(() => {
     let cancelled = false;
     async function init() {
-      const profile = await getOrFetchProfile();
+      if (!(await ensureAdmin(router))) return;
       if (cancelled) return;
-      if (!profile) {
-        clearSession();
-        router.push("/login");
-        return;
-      }
-      if (profile.role !== "admin") {
-        router.push("/dashboard/keys");
-        return;
-      }
       const response = await authedFetch("/api/dashboard/channels");
       if (cancelled) return;
       const data = await response.json();
@@ -841,21 +808,11 @@ export default function AdminChannelsPage() {
                                 {row.enabled ? "禁用" : "启用"}
                               </Button>
                               <Button size="sm" variant="outline" onClick={() => openCreateModel(row.id)}>新增模型</Button>
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <Button size="sm" variant="destructive">删除</Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>删除渠道 {row.name}？</AlertDialogTitle>
-                                    <AlertDialogDescription>删除渠道后，其下模型映射也将失效，此操作不可撤销。</AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>取消</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => removeChannel(row.id)}>确认删除</AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
+                              <ConfirmDialog
+                                title={`删除渠道 ${row.name}？`}
+                                description="删除渠道后，其下模型映射也将失效，此操作不可撤销。"
+                                onConfirm={() => removeChannel(row.id)}
+                              />
                             </TableCell>
                           </TableRow>
                         ))}
@@ -915,21 +872,11 @@ export default function AdminChannelsPage() {
                               </Button>
                               <Button size="sm" variant="outline" onClick={() => openEditModel(model)}>编辑</Button>
                               <Button size="sm" variant="outline" onClick={() => toggleModel(model)}>{model.enabled ? "禁用" : "启用"}</Button>
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <Button size="sm" variant="destructive">删除</Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>删除模型映射 {model.alias}？</AlertDialogTitle>
-                                    <AlertDialogDescription>删除后客户端将无法再通过该 alias 访问对应模型。</AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>取消</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => removeModel(model.id)}>确认删除</AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
+                              <ConfirmDialog
+                                title={`删除模型映射 ${model.alias}？`}
+                                description="删除后客户端将无法再通过该 alias 访问对应模型。"
+                                onConfirm={() => removeModel(model.id)}
+                              />
                             </TableCell>
                           </TableRow>
                         ))}

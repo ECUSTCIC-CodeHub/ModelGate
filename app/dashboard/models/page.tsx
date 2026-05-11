@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
-import { authedFetch, clearSession, getCachedProfile, getOrFetchProfile } from "@/lib/client-auth";
+import { authedFetch, ensureLoggedIn, getCachedProfile } from "@/lib/client-auth";
 
 type ModelItem = {
   id: string;
@@ -39,13 +39,8 @@ export default function AvailableModelsPage() {
     let cancelled = false;
     async function init() {
       try {
-        const profile = await getOrFetchProfile();
-        if (cancelled) return;
-        if (!profile) {
-          clearSession();
-          router.replace("/login");
-          return;
-        }
+        const profile = await ensureLoggedIn(router);
+        if (cancelled || !profile) return;
         setRole(profile.role as "admin" | "user");
 
         const response = await authedFetch("/api/dashboard/available-models");

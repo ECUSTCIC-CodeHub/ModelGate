@@ -6,32 +6,15 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 import { PageToolbar } from "@/components/dashboard/page-toolbar";
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
+import { PagePagination } from "@/components/dashboard/page-pagination";
+import { AlertDialogAction } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
 import {
   Select,
   SelectContent,
@@ -50,7 +33,8 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
-import { authedFetch, clearSession, getOrFetchProfile } from "@/lib/client-auth";
+import { authedFetch, ensureAdmin } from "@/lib/client-auth";
+import { formatNumber, formatLimit } from "@/lib/formatters";
 
 type UserRow = {
   id: number;
@@ -177,21 +161,6 @@ const initialForm: UserForm = {
   note: "",
 };
 
-function formatNumber(value: number | null | undefined) {
-  if (value === null || value === undefined) return "-";
-  const abs = Math.abs(value);
-  if (abs >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`;
-  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
-  if (abs >= 1_000) return `${(value / 1_000).toFixed(2)}k`;
-  return String(value);
-}
-
-function formatLimit(value: number | null | undefined) {
-  if (value === null || value === undefined) return "-";
-  if (value < 0) return "∞";
-  return formatNumber(value);
-}
-
 export default function AdminUsersPage() {
   const router = useRouter();
   const [rows, setRows] = useState<UserRow[]>([]);
@@ -215,20 +184,6 @@ export default function AdminUsersPage() {
   const pageSize = 20;
   const { toast } = useToast();
 
-  async function ensureAdmin() {
-    const profile = await getOrFetchProfile();
-    if (!profile) {
-      clearSession();
-      router.push("/login");
-      return false;
-    }
-    if (profile.role !== "admin") {
-      router.push("/dashboard/keys");
-      return false;
-    }
-    return true;
-  }
-
   async function load(
     nextPage = page,
     nextKeyword = keyword,
@@ -236,7 +191,7 @@ export default function AdminUsersPage() {
     nextSortDir = sortDir,
     nextGroupFilter = groupFilter,
   ) {
-    if (!(await ensureAdmin())) return;
+    if (!(await ensureAdmin(router))) return;
     const offset = (nextPage - 1) * pageSize;
     const params = new URLSearchParams({
       limit: String(pageSize),
@@ -261,17 +216,8 @@ export default function AdminUsersPage() {
   useEffect(() => {
     let cancelled = false;
     async function init() {
-      const profile = await getOrFetchProfile();
-      if (cancelled) return;
-      if (!profile) {
-        clearSession();
-        router.push("/login");
-        return;
-      }
-      if (profile.role !== "admin") {
-        router.push("/dashboard/keys");
-        return;
-      }
+      const profile = await ensureAdmin(router);
+      if (cancelled || !profile) return;
 
       const [usersRes, modelsRes, groupsRes] = await Promise.all([
         authedFetch(`/api/dashboard/users?${new URLSearchParams({ limit: String(pageSize), offset: "0", sort_by: "created_at", sort_dir: "desc" })}`),
@@ -314,13 +260,6 @@ export default function AdminUsersPage() {
     return () => { cancelled = true; };
   }, [router]);
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const pageWindow = (() => {
-    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
-    if (page <= 3) return [1, 2, 3, 4, 5];
-    if (page >= totalPages - 2) return [totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
-    return [page - 2, page - 1, page, page + 1, page + 2];
-  })();
 
   function onCreateClick() {
     setEditingId(null);
@@ -607,38 +546,21 @@ export default function AdminUsersPage() {
                         </TableCell>
                         <TableCell className="space-x-2 whitespace-nowrap text-right">
                           <Button size="sm" variant="outline" onClick={() => onEditClick(row)}>编辑</Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button size="sm" variant="outline">重置用量</Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>重置用户 {row.username} 的用量？</AlertDialogTitle>
-                                <AlertDialogDescription>选择要重置的用量类型，重置后不可恢复。</AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
-                                <AlertDialogCancel>取消</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => resetUsage(row.id, "period")}>仅周期用量</AlertDialogAction>
-                                <AlertDialogAction onClick={() => resetUsage(row.id, "total")}>仅总用量</AlertDialogAction>
-                                <AlertDialogAction onClick={() => resetUsage(row.id, "all")}>全部重置</AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button size="sm" variant="destructive">删除</Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>删除用户 {row.username}？</AlertDialogTitle>
-                                <AlertDialogDescription>删除后该用户的登录入口会立即失效，此操作不可撤销。</AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>取消</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => remove(row.id)}>确认删除</AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                          <ConfirmDialog
+                            trigger={<Button size="sm" variant="outline">重置用量</Button>}
+                            title={`重置用户 ${row.username} 的用量？`}
+                            description="选择要重置的用量类型，重置后不可恢复。"
+                            actions={<>
+                              <AlertDialogAction onClick={() => resetUsage(row.id, "period")}>仅周期用量</AlertDialogAction>
+                              <AlertDialogAction onClick={() => resetUsage(row.id, "total")}>仅总用量</AlertDialogAction>
+                              <AlertDialogAction onClick={() => resetUsage(row.id, "all")}>全部重置</AlertDialogAction>
+                            </>}
+                          />
+                          <ConfirmDialog
+                            title={`删除用户 ${row.username}？`}
+                            description="删除后该用户的登录入口会立即失效，此操作不可撤销。"
+                            onConfirm={() => remove(row.id)}
+                          />
                         </TableCell>
                       </TableRow>
                     ))}
@@ -649,52 +571,13 @@ export default function AdminUsersPage() {
               <EmptyState title="暂无用户数据" description="当前没有匹配的用户记录，可以尝试调整搜索条件。" action={<Button onClick={onCreateClick}>新增用户</Button>} />
             )}
 
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-[var(--color-foreground-muted)]">共 {formatNumber(total)} 个用户，第 {page} / {totalPages} 页</p>
-              <Pagination className="mx-0 w-auto">
-                <PaginationContent>
-                  <PaginationItem>
-                    <PaginationPrevious onClick={() => page > 1 && void load(page - 1)} disabled={page <= 1} />
-                  </PaginationItem>
-                  {pageWindow[0] > 1 ? (
-                    <>
-                      <PaginationItem>
-                        <PaginationLink onClick={() => void load(1)} isActive={page === 1}>1</PaginationLink>
-                      </PaginationItem>
-                      {pageWindow[0] > 2 ? (
-                        <PaginationItem>
-                          <PaginationEllipsis />
-                        </PaginationItem>
-                      ) : null}
-                    </>
-                  ) : null}
-                  {pageWindow.map((pageNumber) => (
-                    <PaginationItem key={pageNumber}>
-                      <PaginationLink onClick={() => void load(pageNumber)} isActive={pageNumber === page}>
-                        {pageNumber}
-                      </PaginationLink>
-                    </PaginationItem>
-                  ))}
-                  {pageWindow[pageWindow.length - 1] < totalPages ? (
-                    <>
-                      {pageWindow[pageWindow.length - 1] < totalPages - 1 ? (
-                        <PaginationItem>
-                          <PaginationEllipsis />
-                        </PaginationItem>
-                      ) : null}
-                      <PaginationItem>
-                        <PaginationLink onClick={() => void load(totalPages)} isActive={page === totalPages}>
-                          {totalPages}
-                        </PaginationLink>
-                      </PaginationItem>
-                    </>
-                  ) : null}
-                  <PaginationItem>
-                    <PaginationNext onClick={() => page < totalPages && void load(page + 1)} disabled={page >= totalPages} />
-                  </PaginationItem>
-                </PaginationContent>
-              </Pagination>
-            </div>
+            <PagePagination
+              page={page}
+              total={total}
+              pageSize={pageSize}
+              label={`共 ${formatNumber(total)} 个用户`}
+              onPageChange={(p) => void load(p)}
+            />
           </CardContent>
         </Card>
       </div>

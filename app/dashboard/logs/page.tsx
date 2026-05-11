@@ -17,19 +17,11 @@ import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
+import { PagePagination } from "@/components/dashboard/page-pagination";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { authedFetch, clearSession, getCachedProfile, getOrFetchProfile } from "@/lib/client-auth";
+import { authedFetch, getCachedProfile, ensureLoggedIn } from "@/lib/client-auth";
 import { formatNumber, formatTokenCount } from "@/lib/utils";
 
 type LogRow = {
@@ -176,13 +168,9 @@ export default function AdminLogsPage() {
     const requestSeq = ++loadSeqRef.current;
     setLoading(true);
 
-    const profile = await getOrFetchProfile();
+    const profile = await ensureLoggedIn(router);
     if (requestSeq !== loadSeqRef.current) return;
-    if (!profile) {
-      clearSession();
-      router.replace("/login");
-      return;
-    }
+    if (!profile) return;
     const nextRole = profile.role as "admin" | "user";
     setRole(nextRole);
 
@@ -225,13 +213,9 @@ export default function AdminLogsPage() {
       const requestSeq = ++loadSeqRef.current;
       setLoading(true);
 
-      const profile = await getOrFetchProfile();
+      const profile = await ensureLoggedIn(router);
       if (cancelled || requestSeq !== loadSeqRef.current) return;
-      if (!profile) {
-        clearSession();
-        router.replace("/login");
-        return;
-      }
+      if (!profile) return;
       const nextRole = profile.role as "admin" | "user";
       if (cancelled) return;
       setRole(nextRole);
@@ -259,14 +243,6 @@ export default function AdminLogsPage() {
     void init();
     return () => { cancelled = true; };
   }, [router]);
-
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const pageWindow = (() => {
-    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
-    if (page <= 3) return [1, 2, 3, 4, 5];
-    if (page >= totalPages - 2) return [totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
-    return [page - 2, page - 1, page, page + 1, page + 2];
-  })();
 
   const columns = useMemo<Array<ColumnDef<LogRow>>>(() => {
     const cols: Array<ColumnDef<LogRow>> = [];
@@ -493,58 +469,14 @@ export default function AdminLogsPage() {
                 description={loading ? "正在读取当前筛选条件下的请求记录。" : "可以调整筛选条件或等待新请求进入系统。"}
               />
             )}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--color-border)] pt-4">
-              <p className="text-sm text-[var(--color-foreground-muted)]">
-                共 {formatNumber(total)} 条，第 {page} / {totalPages} 页
-              </p>
-              <Pagination className="mx-0 w-auto">
-                <PaginationContent className="flex-wrap gap-1">
-                  <PaginationItem>
-                    <PaginationPrevious disabled={loading || page <= 1} onClick={() => (page > 1 ? void load(page - 1) : undefined)} />
-                  </PaginationItem>
-
-                  {pageWindow[0] > 1 ? (
-                    <>
-                      <PaginationItem className="hidden sm:list-item">
-                        <PaginationLink disabled={loading} onClick={() => void load(1)}>1</PaginationLink>
-                      </PaginationItem>
-                      {pageWindow[0] > 2 ? (
-                        <PaginationItem className="hidden sm:list-item">
-                          <PaginationEllipsis />
-                        </PaginationItem>
-                      ) : null}
-                    </>
-                  ) : null}
-
-                  {pageWindow.map((pageNo) => (
-                    <PaginationItem key={pageNo} className="hidden sm:list-item">
-                      <PaginationLink disabled={loading} isActive={pageNo === page} onClick={() => void load(pageNo)}>
-                        {pageNo}
-                      </PaginationLink>
-                    </PaginationItem>
-                  ))}
-
-                  {pageWindow[pageWindow.length - 1] < totalPages ? (
-                    <>
-                      {pageWindow[pageWindow.length - 1] < totalPages - 1 ? (
-                        <PaginationItem className="hidden sm:list-item">
-                          <PaginationEllipsis />
-                        </PaginationItem>
-                      ) : null}
-                      <PaginationItem className="hidden sm:list-item">
-                        <PaginationLink disabled={loading} onClick={() => void load(totalPages)}>{totalPages}</PaginationLink>
-                      </PaginationItem>
-                    </>
-                  ) : null}
-
-                  <PaginationItem>
-                    <PaginationNext
-                      disabled={loading || page >= totalPages}
-                      onClick={() => (page < totalPages ? void load(page + 1) : undefined)}
-                    />
-                  </PaginationItem>
-                </PaginationContent>
-              </Pagination>
+            <div className="border-t border-[var(--color-border)] pt-4">
+              <PagePagination
+                page={page}
+                total={total}
+                pageSize={pageSize}
+                disabled={loading}
+                onPageChange={(p) => void load(p)}
+              />
             </div>
           </CardContent>
         </Card>

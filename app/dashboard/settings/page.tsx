@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
-import { authedFetch, clearSession, getOrFetchProfile } from "@/lib/client-auth";
+import { authedFetch, ensureAdmin } from "@/lib/client-auth";
 
 export default function AdminSettingsPage() {
   const router = useRouter();
@@ -35,22 +35,8 @@ export default function AdminSettingsPage() {
   const [webhookSecret, setWebhookSecret] = useState("");
   const { toast } = useToast();
 
-  async function ensureAdmin() {
-    const profile = await getOrFetchProfile();
-    if (!profile) {
-      clearSession();
-      router.push("/login");
-      return false;
-    }
-    if (profile.role !== "admin") {
-      router.push("/dashboard/keys");
-      return false;
-    }
-    return true;
-  }
-
   async function load() {
-    if (!(await ensureAdmin())) return;
+    if (!(await ensureAdmin(router))) return;
     const response = await authedFetch("/api/dashboard/settings");
     const data = await response.json();
     if (response.ok) {
@@ -81,17 +67,8 @@ export default function AdminSettingsPage() {
   useEffect(() => {
     let cancelled = false;
     async function init() {
-      const profile = await getOrFetchProfile();
-      if (cancelled) return;
-      if (!profile) {
-        clearSession();
-        router.push("/login");
-        return;
-      }
-      if (profile.role !== "admin") {
-        router.push("/dashboard/keys");
-        return;
-      }
+      const profile = await ensureAdmin(router);
+      if (cancelled || !profile) return;
       const response = await authedFetch("/api/dashboard/settings");
       if (cancelled) return;
       const data = await response.json();

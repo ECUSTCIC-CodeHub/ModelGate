@@ -2,21 +2,11 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { PageToolbar } from "@/components/dashboard/page-toolbar";
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -41,7 +31,8 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
-import { authedFetch, clearSession, getOrFetchProfile } from "@/lib/client-auth";
+import { authedFetch, ensureAdmin } from "@/lib/client-auth";
+import { formatLimit } from "@/lib/formatters";
 import { validateClaimExpr } from "@/lib/claim-expr";
 
 type GroupRow = {
@@ -135,15 +126,6 @@ const initialForm: GroupForm = {
   enabled: true,
 };
 
-function formatLimit(value: number | null | undefined) {
-  if (value === null || value === undefined) return "-";
-  if (value < 0) return "∞";
-  const abs = Math.abs(value);
-  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
-  if (abs >= 1_000) return `${(value / 1_000).toFixed(2)}k`;
-  return String(value);
-}
-
 export default function AdminGroupsPage() {
   const router = useRouter();
   const [rows, setRows] = useState<GroupRow[]>([]);
@@ -153,22 +135,8 @@ export default function AdminGroupsPage() {
   const [aliasOptions, setAliasOptions] = useState<AliasOption[]>([]);
   const { toast } = useToast();
 
-  async function ensureAdmin() {
-    const profile = await getOrFetchProfile();
-    if (!profile) {
-      clearSession();
-      router.push("/login");
-      return false;
-    }
-    if (profile.role !== "admin") {
-      router.push("/dashboard/keys");
-      return false;
-    }
-    return true;
-  }
-
   async function load() {
-    if (!(await ensureAdmin())) return;
+    if (!(await ensureAdmin(router))) return;
     const response = await authedFetch("/api/dashboard/groups?limit=100");
     const data = await response.json();
     if (response.ok) {
@@ -180,17 +148,8 @@ export default function AdminGroupsPage() {
   useEffect(() => {
     let cancelled = false;
     async function init() {
-      const profile = await getOrFetchProfile();
-      if (cancelled) return;
-      if (!profile) {
-        clearSession();
-        router.push("/login");
-        return;
-      }
-      if (profile.role !== "admin") {
-        router.push("/dashboard/keys");
-        return;
-      }
+      const profile = await ensureAdmin(router);
+      if (cancelled || !profile) return;
       const [groupsRes, modelsRes] = await Promise.all([
         authedFetch("/api/dashboard/groups?limit=100"),
         authedFetch("/api/dashboard/models"),
@@ -398,25 +357,15 @@ export default function AdminGroupsPage() {
                         <TableCell className="space-x-2 text-right">
                           <Button size="sm" variant="outline" onClick={() => onEditClick(row)}>编辑</Button>
                           {row.is_default ? null : (
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button size="sm" variant="destructive">删除</Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>删除用户组 {row.name}？</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    {row.user_count > 0
-                                      ? `该组下仍有 ${row.user_count} 个用户，需先移除或转移用户后才能删除。`
-                                      : "删除后不可恢复，此操作不可撤销。"}
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>取消</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => remove(row.id)}>确认删除</AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
+                            <ConfirmDialog
+                              title={`删除用户组 ${row.name}？`}
+                              description={
+                                row.user_count > 0
+                                  ? `该组下仍有 ${row.user_count} 个用户，需先移除或转移用户后才能删除。`
+                                  : "删除后不可恢复，此操作不可撤销。"
+                              }
+                              onConfirm={() => remove(row.id)}
+                            />
                           )}
                         </TableCell>
                       </TableRow>
