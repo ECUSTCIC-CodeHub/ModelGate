@@ -135,8 +135,8 @@
   --color-foreground: var(--color-foreground);
   --color-muted: var(--color-foreground-muted);
 
-  --font-sans: var(--font-rog), "Fira Sans", "Inter", "SF Pro Display", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  --font-mono: var(--font-rog), "Fira Code", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --font-sans: var(--font-misans), "PingFang SC", "Microsoft YaHei", "Inter", "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+  --font-mono: var(--font-misans), "Fira Code", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
 
 /* ========== Base ========== */
@@ -153,8 +153,8 @@ html {
 body {
   min-height: 100vh;
   color: var(--color-foreground);
-  font-family: var(--font-rog), "Fira Sans", "Inter", "SF Pro Display", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  font-weight: 450;
+  font-family: var(--font-misans), "PingFang SC", "Microsoft YaHei", "Inter", "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+  font-weight: 400;
   letter-spacing: -0.005em;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
