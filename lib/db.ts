@@ -260,6 +260,8 @@ CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
   ensureColumn("logs", "output_tps", "output_tps REAL");
   ensureColumn("logs", "route_attempts", "route_attempts INTEGER DEFAULT 1");
   ensureColumn("logs", "attempted_channels", "attempted_channels TEXT");
+  ensureColumn("users", "webhook_role", "webhook_role TEXT DEFAULT ''");
+  ensureColumn("users", "webhook_tags", "webhook_tags TEXT DEFAULT '[]'");
 
   // Migrate oidc_claim_value → oidc_claim_expr
   {

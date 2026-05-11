@@ -28,7 +28,7 @@ type RoleChangeData = {
 
 type TagsChangedData = {
   user_id: string;
-  action: string;
+  action: "set" | "add" | "remove";
   tags: string[];
 };
 
@@ -46,18 +46,19 @@ type WebhookPayload = {
   data: RoleChangeData | TagsChangedData | IdentityChangeData;
 };
 
-function findUserByOidcSubject(subject: string) {
+type UserSnapshot = {
+  id: number;
+  group_id: number | null;
+  webhook_role: string;
+  webhook_tags: string;
+};
+
+function findUser(oidcSubject: string): UserSnapshot | undefined {
   return gatewayDb
     .prepare(
-      "SELECT id, group_id FROM users WHERE oidc_subject = ? AND enabled = 1 AND deleted_at IS NULL",
+      "SELECT id, group_id, webhook_role, webhook_tags FROM users WHERE oidc_subject = ? AND enabled = 1 AND deleted_at IS NULL",
     )
-    .get(subject) as { id: number; group_id: number | null } | undefined;
-}
-
-function updateUserGroup(userId: number, groupId: number | null) {
-  gatewayDb
-    .prepare("UPDATE users SET group_id = ? WHERE id = ?")
-    .run(groupId, userId);
+    .get(oidcSubject) as UserSnapshot | undefined;
 }
 
 function getDefaultGroupId(): number | null {
@@ -69,23 +70,62 @@ function getDefaultGroupId(): number | null {
   return row?.id ?? null;
 }
 
+function resolveAndUpdate(userId: number, role: string, tags: string[]) {
+  const claims: Record<string, unknown> = {};
+  if (role) claims.role = role;
+  if (tags.length) claims.tags = tags;
+
+  const groupId = Object.keys(claims).length
+    ? (resolveGroupFromClaims(claims) ?? getDefaultGroupId())
+    : getDefaultGroupId();
+
+  gatewayDb
+    .prepare("UPDATE users SET webhook_role = ?, webhook_tags = ?, group_id = ? WHERE id = ?")
+    .run(role, JSON.stringify(tags), groupId, userId);
+
+  return groupId;
+}
+
+function parseTags(raw: string): string[] {
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
 function handleRoleChange(data: RoleChangeData): string {
-  const user = findUserByOidcSubject(data.user_id);
+  const user = findUser(data.user_id);
   if (!user) return "用户不存在，已忽略";
 
-  const claims = { role: data.new_role };
-  const groupId = resolveGroupFromClaims(claims) ?? getDefaultGroupId();
-  updateUserGroup(user.id, groupId);
+  const tags = parseTags(user.webhook_tags);
+  const groupId = resolveAndUpdate(user.id, data.new_role, tags);
   return `已将用户分组更新为 ${groupId ?? "默认"}`;
 }
 
 function handleTagsChanged(data: TagsChangedData): string {
-  const user = findUserByOidcSubject(data.user_id);
+  const user = findUser(data.user_id);
   if (!user) return "用户不存在，已忽略";
 
-  const claims = { tags: data.tags };
-  const groupId = resolveGroupFromClaims(claims) ?? getDefaultGroupId();
-  updateUserGroup(user.id, groupId);
+  let tags: string[];
+  const current = parseTags(user.webhook_tags);
+
+  switch (data.action) {
+    case "set":
+      tags = data.tags;
+      break;
+    case "add":
+      tags = [...new Set([...current, ...data.tags])];
+      break;
+    case "remove":
+      tags = current.filter((t) => !data.tags.includes(t));
+      break;
+    default:
+      tags = data.tags;
+  }
+
+  const groupId = resolveAndUpdate(user.id, user.webhook_role, tags);
   return `已将用户分组更新为 ${groupId ?? "默认"}`;
 }
 
