@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/exhaustive-deps */
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
@@ -233,9 +232,31 @@ export default function AdminChannelsPage() {
     setChannels(data.data ?? []);
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
-    void load();
+    let cancelled = false;
+    async function init() {
+      const profile = await getOrFetchProfile();
+      if (cancelled) return;
+      if (!profile) {
+        clearSession();
+        router.push("/login");
+        return;
+      }
+      if (profile.role !== "admin") {
+        router.push("/dashboard/keys");
+        return;
+      }
+      const response = await authedFetch("/api/dashboard/channels");
+      if (cancelled) return;
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data?.error?.message ?? "加载失败");
+        return;
+      }
+      setChannels(data.data ?? []);
+    }
+    void init();
+    return () => { cancelled = true; };
   }, [router]);
 
   function openCreateChannel() {
@@ -551,22 +572,29 @@ export default function AdminChannelsPage() {
         return;
       }
 
-      const results = await Promise.allSettled(
-        draftModels.map((draft) =>
-          authedFetch("/api/dashboard/models", {
-            method: "POST",
-            body: JSON.stringify(draft),
-          }).then(async (response) => {
-            const data = await response.json().catch(() => null);
-            return { ok: response.ok, draft, data };
-          })
-        )
-      );
+      const BATCH_SIZE = 5;
+      const results: PromiseSettledResult<{ ok: boolean; draft: typeof draftModels[number]; data: unknown }>[] = [];
+      for (let i = 0; i < draftModels.length; i += BATCH_SIZE) {
+        const batch = draftModels.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.allSettled(
+          batch.map((draft) =>
+            authedFetch("/api/dashboard/models", {
+              method: "POST",
+              body: JSON.stringify(draft),
+            }).then(async (response) => {
+              const data = await response.json().catch(() => null);
+              return { ok: response.ok, draft, data };
+            })
+          )
+        );
+        results.push(...batchResults);
+      }
 
       let successCount = 0;
       const failures: string[] = [];
       const failedDrafts: ChannelModelDraft[] = [];
-      for (const result of results) {
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i];
         if (result.status === "fulfilled") {
           const { ok, draft, data } = result.value;
           if (ok) {
@@ -585,7 +613,7 @@ export default function AdminChannelsPage() {
             });
           }
         } else {
-          const draft = draftModels[results.indexOf(result)];
+          const draft = draftModels[i];
           failures.push(`${draft.real_model}（请求异常）`);
           failedDrafts.push({
             alias: draft.alias,

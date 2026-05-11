@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
@@ -259,31 +258,60 @@ export default function AdminUsersPage() {
     }
   }
 
-  async function loadAliasOptions() {
-    const response = await authedFetch("/api/dashboard/models");
-    const data = await response.json().catch(() => null);
-    if (!response.ok) return;
+  useEffect(() => {
+    let cancelled = false;
+    async function init() {
+      const profile = await getOrFetchProfile();
+      if (cancelled) return;
+      if (!profile) {
+        clearSession();
+        router.push("/login");
+        return;
+      }
+      if (profile.role !== "admin") {
+        router.push("/dashboard/keys");
+        return;
+      }
 
-    const rows = Array.isArray(data?.data) ? (data.data as AliasOption[]) : [];
-    const unique = new Map<string, AliasOption>();
-    for (const row of rows) {
-      if (row.is_public === 1) continue;
-      if (!unique.has(row.alias)) {
-        unique.set(row.alias, row);
+      const [usersRes, modelsRes, groupsRes] = await Promise.all([
+        authedFetch(`/api/dashboard/users?${new URLSearchParams({ limit: String(pageSize), offset: "0", sort_by: "created_at", sort_dir: "desc" })}`),
+        authedFetch("/api/dashboard/models"),
+        authedFetch("/api/dashboard/groups"),
+      ]);
+      if (cancelled) return;
+
+      const usersData = await usersRes.json();
+      if (cancelled) return;
+      if (usersRes.ok) {
+        setRows(usersData.data ?? []);
+        setTotal(usersData.paging?.total ?? 0);
+        setPage(1);
+        setSortBy((usersData.sorting?.sort_by as UserSortKey) ?? "created_at");
+        setSortDir((usersData.sorting?.sort_dir as "asc" | "desc") ?? "desc");
+      }
+
+      const modelsData = await modelsRes.json().catch(() => null);
+      if (cancelled) return;
+      if (modelsRes.ok) {
+        const modelRows = Array.isArray(modelsData?.data) ? (modelsData.data as AliasOption[]) : [];
+        const unique = new Map<string, AliasOption>();
+        for (const row of modelRows) {
+          if (row.is_public === 1) continue;
+          if (!unique.has(row.alias)) {
+            unique.set(row.alias, row);
+          }
+        }
+        setAliasOptions([...unique.values()].sort((a, b) => a.alias.localeCompare(b.alias)));
+      }
+
+      const groupsData = await groupsRes.json().catch(() => null);
+      if (cancelled) return;
+      if (groupsRes.ok) {
+        setGroupOptions(Array.isArray(groupsData?.data) ? groupsData.data : []);
       }
     }
-    setAliasOptions([...unique.values()].sort((a, b) => a.alias.localeCompare(b.alias)));
-  }
-
-  async function loadGroupOptions() {
-    const response = await authedFetch("/api/dashboard/groups");
-    const data = await response.json().catch(() => null);
-    if (!response.ok) return;
-    setGroupOptions(Array.isArray(data?.data) ? data.data : []);
-  }
-
-  useEffect(() => {
-    void Promise.all([load(1), loadAliasOptions(), loadGroupOptions()]);
+    void init();
+    return () => { cancelled = true; };
   }, [router]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));

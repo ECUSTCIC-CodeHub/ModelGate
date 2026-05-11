@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -80,7 +79,49 @@ export default function AdminSettingsPage() {
   }
 
   useEffect(() => {
-    void load();
+    let cancelled = false;
+    async function init() {
+      const profile = await getOrFetchProfile();
+      if (cancelled) return;
+      if (!profile) {
+        clearSession();
+        router.push("/login");
+        return;
+      }
+      if (profile.role !== "admin") {
+        router.push("/dashboard/keys");
+        return;
+      }
+      const response = await authedFetch("/api/dashboard/settings");
+      if (cancelled) return;
+      const data = await response.json();
+      if (cancelled) return;
+      if (response.ok) {
+        setRegistrationEnabled(data.data.registration_enabled === 1);
+        setPasswordLoginEnabled(data.data.password_login_enabled !== 0);
+        setUpstreamRetryEnabled(data.data.upstream_retry_enabled !== 0);
+        setUpstreamRetryMaxAttempts(Number(data.data.upstream_retry_max_attempts ?? 3));
+        setCircuitBreakerEnabled(data.data.upstream_circuit_breaker_enabled !== 0);
+        setOidcEnabled(data.data.oidc_enabled === 1);
+        setOidcIssuerUrl(data.data.oidc_issuer_url ?? "");
+        setOidcClientId(data.data.oidc_client_id ?? "");
+        setOidcClientSecret(data.data.oidc_client_secret ?? "");
+        setOidcScopes(data.data.oidc_scopes ?? "openid profile email");
+        setOidcAutoRegister(data.data.oidc_auto_register !== 0);
+        setOidcButtonText(data.data.oidc_button_text ?? "OIDC 登录");
+        setOidcGroupClaim(data.data.oidc_group_claim ?? "");
+        const savedBase = data.data.public_base_url ?? "";
+        setPublicBaseUrl(
+          savedBase || (typeof window !== "undefined" ? window.location.origin : ""),
+        );
+        setAnnouncementContent(data.data.announcement_content ?? "");
+        setWallpaperUrl(data.data.wallpaper_url ?? "");
+        setLogoUrl(data.data.logo_url ?? "");
+        setWebhookSecret(data.data.webhook_secret ?? "");
+      }
+    }
+    void init();
+    return () => { cancelled = true; };
   }, [router]);
 
   async function save() {
@@ -110,6 +151,7 @@ export default function AdminSettingsPage() {
     const data = await response.json().catch(() => null);
     if (response.ok) {
       toast({ variant: "success", description: getApiMessage(data, "保存成功。") });
+      void load();
       return;
     }
     toast({ variant: "error", description: getApiMessage(data, "保存失败。") });

@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
@@ -177,21 +176,44 @@ export default function AdminGroupsPage() {
     }
   }
 
-  async function loadAliasOptions() {
-    const response = await authedFetch("/api/dashboard/models");
-    const data = await response.json().catch(() => null);
-    if (!response.ok) return;
-    const items = Array.isArray(data?.data) ? (data.data as AliasOption[]) : [];
-    const unique = new Map<string, AliasOption>();
-    for (const row of items) {
-      if (row.is_public === 1) continue;
-      if (!unique.has(row.alias)) unique.set(row.alias, row);
-    }
-    setAliasOptions([...unique.values()].sort((a, b) => a.alias.localeCompare(b.alias)));
-  }
 
   useEffect(() => {
-    void Promise.all([load(), loadAliasOptions()]);
+    let cancelled = false;
+    async function init() {
+      const profile = await getOrFetchProfile();
+      if (cancelled) return;
+      if (!profile) {
+        clearSession();
+        router.push("/login");
+        return;
+      }
+      if (profile.role !== "admin") {
+        router.push("/dashboard/keys");
+        return;
+      }
+      const [groupsRes, modelsRes] = await Promise.all([
+        authedFetch("/api/dashboard/groups?limit=100"),
+        authedFetch("/api/dashboard/models"),
+      ]);
+      if (cancelled) return;
+      const groupsData = await groupsRes.json();
+      if (groupsRes.ok) {
+        setRows(groupsData.data ?? []);
+      }
+      const modelsData = await modelsRes.json().catch(() => null);
+      if (cancelled) return;
+      if (modelsRes.ok) {
+        const items = Array.isArray(modelsData?.data) ? (modelsData.data as AliasOption[]) : [];
+        const unique = new Map<string, AliasOption>();
+        for (const row of items) {
+          if (row.is_public === 1) continue;
+          if (!unique.has(row.alias)) unique.set(row.alias, row);
+        }
+        setAliasOptions([...unique.values()].sort((a, b) => a.alias.localeCompare(b.alias)));
+      }
+    }
+    void init();
+    return () => { cancelled = true; };
   }, [router]);
 
   function onCreateClick() {

@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -88,8 +87,32 @@ export default function ConsoleKeysPage() {
     }
 
     useEffect(() => {
-        void load();
-    }, [router]);
+        let cancelled = false;
+        async function init() {
+            const profile = await getOrFetchProfile();
+            if (cancelled) return;
+            if (!profile) {
+                clearSession();
+                router.replace("/login");
+                return;
+            }
+            setRole(profile.role);
+
+            const response = await authedFetch("/api/dashboard/keys");
+            if (cancelled) return;
+            const data = await response.json();
+            if (cancelled) return;
+            if (!response.ok) {
+                const message = getApiMessage(data, "加载密钥列表失败。");
+                setError(message);
+                toast({ variant: "error", description: message });
+                return;
+            }
+            setKeys(data.data);
+        }
+        void init();
+        return () => { cancelled = true; };
+    }, [router, toast]);
 
     async function copyKey(value: string) {
         try {

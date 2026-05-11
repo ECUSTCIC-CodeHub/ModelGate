@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 "use client";
 
 import { type ColumnDef } from "@tanstack/react-table";
@@ -221,8 +220,45 @@ export default function AdminLogsPage() {
   }
 
   useEffect(() => {
-    void load(1);
-  }, []);
+    let cancelled = false;
+    async function init() {
+      const requestSeq = ++loadSeqRef.current;
+      setLoading(true);
+
+      const profile = await getOrFetchProfile();
+      if (cancelled || requestSeq !== loadSeqRef.current) return;
+      if (!profile) {
+        clearSession();
+        router.replace("/login");
+        return;
+      }
+      const nextRole = profile.role as "admin" | "user";
+      if (cancelled) return;
+      setRole(nextRole);
+
+      const offset = 0;
+      const params = new URLSearchParams({
+        limit: String(pageSize),
+        offset: String(offset),
+      });
+
+      const response = await authedFetch(`/api/dashboard/logs?${params.toString()}`);
+      if (cancelled || requestSeq !== loadSeqRef.current) return;
+      if (!response.ok) {
+        setLoading(false);
+        return;
+      }
+      const data = await response.json();
+      if (cancelled || requestSeq !== loadSeqRef.current) return;
+      setRows(data.data);
+      setSummary(data.summary);
+      setTotal(data.paging?.total ?? 0);
+      setPage(1);
+      setLoading(false);
+    }
+    void init();
+    return () => { cancelled = true; };
+  }, [router]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const pageWindow = (() => {

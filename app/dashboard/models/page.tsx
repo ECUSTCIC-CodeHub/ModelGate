@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -36,30 +35,37 @@ export default function AvailableModelsPage() {
   const [error, setError] = useState("");
   const { toast } = useToast();
 
-  async function load() {
-    const profile = await getOrFetchProfile();
-    if (!profile) {
-      clearSession();
-      router.replace("/login");
-      return;
-    }
-    setRole(profile.role as "admin" | "user");
-
-    const response = await authedFetch("/api/dashboard/available-models");
-    const data = await response.json().catch(() => null);
-    if (!response.ok) {
-      const message = getApiMessage(data, "加载可用模型失败。");
-      setError(message);
-      toast({ variant: "error", description: message });
-      return;
-    }
-
-    setRows(data?.data ?? []);
-  }
-
   useEffect(() => {
-    void load().finally(() => setLoading(false));
-  }, [router]);
+    let cancelled = false;
+    async function init() {
+      try {
+        const profile = await getOrFetchProfile();
+        if (cancelled) return;
+        if (!profile) {
+          clearSession();
+          router.replace("/login");
+          return;
+        }
+        setRole(profile.role as "admin" | "user");
+
+        const response = await authedFetch("/api/dashboard/available-models");
+        const data = await response.json().catch(() => null);
+        if (cancelled) return;
+        if (!response.ok) {
+          const message = getApiMessage(data, "加载可用模型失败。");
+          setError(message);
+          toast({ variant: "error", description: message });
+          return;
+        }
+
+        setRows(data?.data ?? []);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void init();
+    return () => { cancelled = true; };
+  }, [router, toast]);
 
   function copyText(text: string) {
     void navigator.clipboard.writeText(text).then(() => {
