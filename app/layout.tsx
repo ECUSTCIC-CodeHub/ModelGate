@@ -1,18 +1,7 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/toast";
 import { ThemeScript } from "@/components/providers/theme-script";
-
-const misans = localFont({
-  src: "../font/MiSans-Bold.ttf",
-  variable: "--font-misans",
-  display: "swap",
-  // MiSans-Bold is the only file; use it for every weight so the site is
-  // unified. Range syntax tells next/font to bind this face to weights 100-900.
-  weight: "100 900",
-  style: "normal",
-});
 
 export const metadata: Metadata = {
   title: "ModelGate",
@@ -25,8 +14,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh" suppressHydrationWarning className={misans.variable}>
+    <html lang="zh" suppressHydrationWarning>
       <head>
+        {/* HarmonyOS Sans SC — subset CSS with full unicode-range mapping */}
+        <link rel="stylesheet" href="/fonts/harmony.css" />
         <link
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&display=swap"
