@@ -241,9 +241,17 @@ x-api-key: sk-gw-xxxxx
 
 ### POST /api/webhook
 
-接收外部平台的用户变更回调，根据事件类型自动匹配用户组。
+接收外部平台的用户变更事件推送，HMAC-SHA256 验签后自动根据用户角色/标签匹配用户组。
 
-**认证:** HMAC-SHA256 签名验证（从请求体 `signature` 字段读取）
+**签名验证:**
+
+签名从请求体 `signature` 字段读取，计算方式：
+
+```
+HMAC-SHA256(webhook_secret, id + "." + type + "." + timestamp + JSON(data))
+```
+
+其中 `JSON(data)` 为 `data` 字段的紧凑 JSON 序列化。`timestamp` 允许 5 分钟偏差（防重放）。
 
 **请求体:**
 ```json
@@ -251,22 +259,41 @@ x-api-key: sk-gw-xxxxx
   "id": "361e4176-1ee8-4c34-a209-b90f7110b1be",
   "type": "user.role_change",
   "timestamp": "2026-05-11T06:54:03Z",
+  "app_id": "optional_app_id",
   "signature": "sha256=<HMAC-SHA256 hex>",
-  "data": { "user_id": "311039016986218496", "old_role": "user", "new_role": "certified" }
+  "data": {
+    "user_id": "311039016986218496",
+    "old_role": "user",
+    "new_role": "certified"
+  }
 }
 ```
 
-签名计算方式: 对去除 `signature` 字段后的 JSON 做 HMAC-SHA256，时间戳允许 5 分钟偏差。
+| 字段 | 类型 | 说明 |
+|:---|:---|:---|
+| id | string | 事件唯一 ID（UUID v4），用于幂等去重 |
+| type | string | 事件类型 |
+| timestamp | string | 事件发生时间（ISO 8601） |
+| signature | string | `sha256=<hex>` 格式的 HMAC-SHA256 签名 |
+| app_id | string | 可选，来源应用标识 |
+| data | object | 业务载荷，随事件类型不同 |
 
 **支持的事件类型:**
 
 | type | 说明 | data 字段 |
 |:---|:---|:---|
 | user.role_change | 用户角色变更 | user_id, old_role, new_role |
-| user.tags_changed | 用户标签变更 | user_id, action, tags[] |
-| user.identity_change | 身份信息变更 | user_id, field |
+| user.tags_changed | 用户标签变更 | user_id, action(set/add/remove), tags[] |
+| user.identity_change | 身份信息变更（仅记录） | user_id, field |
 
-**分组匹配逻辑:** 收到 role_change 时以 `{ role: new_role }` 为 claims，收到 tags_changed 时以 `{ tags: [...] }` 为 claims，调用各用户组的 Claim 表达式进行匹配。无匹配时回退到默认组。
+**分组匹配逻辑:**
+
+系统在用户表维护 `webhook_role` 和 `webhook_tags` 快照，每次事件更新快照后用完整的 `{ role, tags }` 作为 claims 调用各用户组的 Claim 表达式进行匹配。无匹配时回退到默认组。
+
+- `role_change`: 更新 role 快照，合并已有 tags，重新匹配
+- `tags_changed`: 按 action 更新 tags 快照（`set` 全量替换 / `add` 合并去重 / `remove` 删除），合并已有 role，重新匹配
+
+Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`、`role == "certified" AND tags contains "VIP"`
 
 **响应 (200):**
 ```json
@@ -275,6 +302,14 @@ x-api-key: sk-gw-xxxxx
   "event_id": "361e4176-1ee8-4c34-a209-b90f7110b1be"
 }
 ```
+
+**错误响应:**
+
+| 状态码 | 说明 |
+|:---|:---|
+| 400 | 请求体格式错误或缺少必要字段 |
+| 403 | 签名验证失败或时间戳过期 |
+| 503 | Webhook 密钥未配置 |
 
 ---
 

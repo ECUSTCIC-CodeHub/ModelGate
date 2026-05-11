@@ -8,16 +8,13 @@ import { getGatewaySettings } from "@/lib/settings";
 
 const MAX_TIMESTAMP_DRIFT = 300;
 
-function verifySignature(payload: string, signature: string, secret: string): boolean {
-  const expected = "sha256=" + createHmac("sha256", secret).update(payload).digest("hex");
-  if (expected.length !== signature.length) return false;
-  return timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
-}
-
-function stripSignatureField(raw: string): string {
-  const obj = JSON.parse(raw);
-  delete obj.signature;
-  return JSON.stringify(obj);
+function verifySignature(secret: string, id: string, type: string, timestamp: string, data: unknown, expected: string): boolean {
+  const mac = createHmac("sha256", secret);
+  mac.update(id + "." + type + "." + timestamp);
+  mac.update(JSON.stringify(data));
+  const computed = "sha256=" + mac.digest("hex");
+  if (computed.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(computed), Buffer.from(expected));
 }
 
 type RoleChangeData = {
@@ -154,8 +151,7 @@ export async function POST(request: Request) {
     return jsonError("请求时间戳过期", 403);
   }
 
-  const unsigned = stripSignatureField(rawBody);
-  if (!verifySignature(unsigned, payload.signature, settings.webhook_secret)) {
+  if (!verifySignature(settings.webhook_secret, payload.id, payload.type, payload.timestamp, payload.data, payload.signature)) {
     return jsonError("签名验证失败", 403);
   }
 
