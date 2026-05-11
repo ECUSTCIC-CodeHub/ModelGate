@@ -37,15 +37,15 @@
   --color-destructive-hover: #b91c1c;
   --color-destructive-foreground: #fef2f2;
 
-  --color-sidebar-bg: rgba(255, 255, 255, 0.55);
-  --color-sidebar-border: rgba(15, 23, 42, 0.1);
+  --color-sidebar-bg: rgba(255, 255, 255, 0.82);
+  --color-sidebar-border: rgba(15, 23, 42, 0.12);
   --color-sidebar-text: #334155;
   --color-sidebar-active-bg: rgba(15, 23, 42, 0.92);
   --color-sidebar-active-text: #f8fafc;
   --color-sidebar-hover: rgba(15, 23, 42, 0.06);
 
-  --color-header-bg: rgba(255, 255, 255, 0.55);
-  --color-header-border: rgba(15, 23, 42, 0.1);
+  --color-header-bg: rgba(255, 255, 255, 0.82);
+  --color-header-border: rgba(15, 23, 42, 0.12);
 
   /* Glass highlight: subtle inner top-light for a liquid sheen */
   --glass-highlight: rgba(255, 255, 255, 0.75);
@@ -103,14 +103,14 @@
   --color-destructive-hover: #ef4444;
   --color-destructive-foreground: #450a0a;
 
-  --color-sidebar-bg: rgba(15, 20, 40, 0.55);
+  --color-sidebar-bg: rgba(15, 20, 40, 0.82);
   --color-sidebar-border: rgba(255, 255, 255, 0.1);
   --color-sidebar-text: #b8c2d6;
   --color-sidebar-active-bg: rgba(255, 255, 255, 0.12);
   --color-sidebar-active-text: #ffffff;
   --color-sidebar-hover: rgba(255, 255, 255, 0.06);
 
-  --color-header-bg: rgba(15, 20, 40, 0.55);
+  --color-header-bg: rgba(15, 20, 40, 0.82);
   --color-header-border: rgba(255, 255, 255, 0.1);
 
   --glass-highlight: rgba(255, 255, 255, 0.14);
@@ -280,6 +280,14 @@ main header,
 .backdrop-blur-lg {
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+/* Sticky chrome (sidebar + page header) needs stronger blur so scrolled
+   content underneath stays legible when it slides behind the glass. */
+aside > div,
+main > section > header {
+  backdrop-filter: blur(32px) saturate(200%);
+  -webkit-backdrop-filter: blur(32px) saturate(200%);
 }
 
 /* ========== Transition Helpers ========== */
