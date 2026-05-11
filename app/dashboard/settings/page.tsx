@@ -33,7 +33,7 @@ export default function AdminSettingsPage() {
   const [announcementContent, setAnnouncementContent] = useState("");
   const [wallpaperUrl, setWallpaperUrl] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
-  const [tdpWebhookSecret, setTdpWebhookSecret] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState("");
   const { toast } = useToast();
 
   async function ensureAdmin() {
@@ -75,7 +75,7 @@ export default function AdminSettingsPage() {
       setAnnouncementContent(data.data.announcement_content ?? "");
       setWallpaperUrl(data.data.wallpaper_url ?? "");
       setLogoUrl(data.data.logo_url ?? "");
-      setTdpWebhookSecret(data.data.tdp_webhook_secret ?? "");
+      setWebhookSecret(data.data.webhook_secret ?? "");
     }
   }
 
@@ -104,7 +104,7 @@ export default function AdminSettingsPage() {
         announcement_content: announcementContent,
         wallpaper_url: wallpaperUrl,
         logo_url: logoUrl,
-        tdp_webhook_secret: tdpWebhookSecret,
+        webhook_secret: webhookSecret,
       }),
     });
     const data = await response.json().catch(() => null);
@@ -296,8 +296,8 @@ export default function AdminSettingsPage() {
         <Card>
           <CardHeader>
             <SectionTitle
-              title="TDP Webhook"
-              description="接收 TDP 平台的用户变更回调，自动根据角色/标签匹配用户组。回调地址需在 TDP 应用中配置。"
+              title="Webhook 回调"
+              description="接收外部平台的用户变更回调，自动根据角色/标签匹配用户组。"
             />
           </CardHeader>
           <CardContent className="space-y-4">
@@ -305,23 +305,23 @@ export default function AdminSettingsPage() {
               <Label>回调密钥</Label>
               <Input
                 type="password"
-                placeholder="TDP 应用的 Webhook Secret"
-                value={tdpWebhookSecret}
-                onChange={(e) => setTdpWebhookSecret(e.target.value)}
+                placeholder="Webhook Secret"
+                value={webhookSecret}
+                onChange={(e) => setWebhookSecret(e.target.value)}
               />
             </div>
             <div className="space-y-2">
               <Label>回调地址</Label>
               <div className="flex items-center gap-2">
                 <code className="flex-1 truncate rounded bg-[var(--color-surface-hover)] px-3 py-2 text-sm text-[var(--color-foreground-secondary)]">
-                  {(publicBaseUrl.replace(/\/+$/, "") || "https://your-domain.com") + "/api/webhook/tdp"}
+                  {(publicBaseUrl.replace(/\/+$/, "") || "https://your-domain.com") + "/api/webhook"}
                 </code>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    const url = (publicBaseUrl.replace(/\/+$/, "") || window.location.origin) + "/api/webhook/tdp";
+                    const url = (publicBaseUrl.replace(/\/+$/, "") || window.location.origin) + "/api/webhook";
                     void navigator.clipboard.writeText(url).then(() => {
                       toast({ variant: "success", description: "已复制到剪贴板" });
                     });

@@ -195,7 +195,7 @@ x-api-key: sk-gw-xxxxx
     "announcement_content": "",
     "wallpaper_url": "",
     "logo_url": "",
-    "tdp_webhook_secret": ""
+    "webhook_secret": ""
   }
 }
 ```
@@ -218,7 +218,7 @@ x-api-key: sk-gw-xxxxx
   "announcement_content": "# 欢迎",
   "wallpaper_url": "https://example.com/api/wallpaper",
   "logo_url": "https://example.com/logo.svg",
-  "tdp_webhook_secret": "your-webhook-secret"
+  "webhook_secret": "your-webhook-secret"
 }
 ```
 
@@ -233,29 +233,34 @@ x-api-key: sk-gw-xxxxx
 | announcement_content | string | 系统公告内容（支持 Markdown，最长 5000 字符） |
 | wallpaper_url | string | 背景壁纸图片地址（留空则不显示壁纸，最长 500 字符） |
 | logo_url | string | 侧栏 Logo 图片地址（留空则不显示 Logo，最长 500 字符） |
-| tdp_webhook_secret | string | TDP Webhook 回调密钥（最长 200 字符） |
+| webhook_secret | string | Webhook 回调密钥（最长 200 字符） |
 
 ---
 
 ## Webhook 回调
 
-### POST /api/webhook/tdp
+### POST /api/webhook
 
-接收 TDP 平台的用户变更回调。根据事件类型自动匹配用户组。
+接收外部平台的用户变更回调，根据事件类型自动匹配用户组。
 
-**认证:** HMAC-SHA256 签名验证（`X-Tdp-Signature` 请求头）
+**认证:** HMAC-SHA256 签名验证（从请求体 `signature` 字段读取）
 
-**请求头:**
+**请求体:**
+```json
+{
+  "id": "361e4176-1ee8-4c34-a209-b90f7110b1be",
+  "type": "user.role_change",
+  "timestamp": "2026-05-11T06:54:03Z",
+  "signature": "sha256=<HMAC-SHA256 hex>",
+  "data": { "user_id": "311039016986218496", "old_role": "user", "new_role": "certified" }
+}
+```
 
-| 请求头 | 说明 |
-|:---|:---|
-| X-Tdp-Event | 事件类型 |
-| X-Tdp-Signature | `sha256=<HMAC-SHA256 hex>` |
-| X-Tdp-Timestamp | Unix 时间戳（允许 5 分钟偏差） |
+签名计算方式: 对去除 `signature` 字段后的 JSON 做 HMAC-SHA256，时间戳允许 5 分钟偏差。
 
 **支持的事件类型:**
 
-| 事件 | 说明 | data 字段 |
+| type | 说明 | data 字段 |
 |:---|:---|:---|
 | user.role_change | 用户角色变更 | user_id, old_role, new_role |
 | user.tags_changed | 用户标签变更 | user_id, action, tags[] |

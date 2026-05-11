@@ -8,10 +8,16 @@ import { getGatewaySettings } from "@/lib/settings";
 
 const MAX_TIMESTAMP_DRIFT = 300;
 
-function verifySignature(body: string, signature: string, secret: string): boolean {
-  const expected = "sha256=" + createHmac("sha256", secret).update(body).digest("hex");
+function verifySignature(payload: string, signature: string, secret: string): boolean {
+  const expected = "sha256=" + createHmac("sha256", secret).update(payload).digest("hex");
   if (expected.length !== signature.length) return false;
   return timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+}
+
+function stripSignatureField(raw: string): string {
+  const obj = JSON.parse(raw);
+  delete obj.signature;
+  return JSON.stringify(obj);
 }
 
 type RoleChangeData = {
@@ -35,16 +41,17 @@ type WebhookPayload = {
   id: string;
   type: string;
   timestamp: string;
-  app_id: string;
+  signature: string;
+  app_id?: string;
   data: RoleChangeData | TagsChangedData | IdentityChangeData;
 };
 
-function findUserByTdpId(tdpUserId: string) {
+function findUserByOidcSubject(subject: string) {
   return gatewayDb
     .prepare(
       "SELECT id, group_id FROM users WHERE oidc_subject = ? AND enabled = 1 AND deleted_at IS NULL",
     )
-    .get(tdpUserId) as { id: number; group_id: number | null } | undefined;
+    .get(subject) as { id: number; group_id: number | null } | undefined;
 }
 
 function updateUserGroup(userId: number, groupId: number | null) {
@@ -63,7 +70,7 @@ function getDefaultGroupId(): number | null {
 }
 
 function handleRoleChange(data: RoleChangeData): string {
-  const user = findUserByTdpId(data.user_id);
+  const user = findUserByOidcSubject(data.user_id);
   if (!user) return "用户不存在，已忽略";
 
   const claims = { role: data.new_role };
@@ -73,7 +80,7 @@ function handleRoleChange(data: RoleChangeData): string {
 }
 
 function handleTagsChanged(data: TagsChangedData): string {
-  const user = findUserByTdpId(data.user_id);
+  const user = findUserByOidcSubject(data.user_id);
   if (!user) return "用户不存在，已忽略";
 
   const claims = { tags: data.tags };
@@ -84,28 +91,11 @@ function handleTagsChanged(data: TagsChangedData): string {
 
 export async function POST(request: Request) {
   const settings = getGatewaySettings();
-  if (!settings.tdp_webhook_secret) {
+  if (!settings.webhook_secret) {
     return jsonError("Webhook 未配置密钥", 503);
   }
 
-  const signature = request.headers.get("x-tdp-signature");
-  const timestamp = request.headers.get("x-tdp-timestamp");
-  const event = request.headers.get("x-tdp-event");
-
-  if (!signature || !timestamp || !event) {
-    return jsonError("缺少必要的请求头", 400);
-  }
-
-  const now = Math.floor(Date.now() / 1000);
-  if (Math.abs(now - Number(timestamp)) > MAX_TIMESTAMP_DRIFT) {
-    return jsonError("请求时间戳过期", 403);
-  }
-
   const rawBody = await request.text();
-
-  if (!verifySignature(rawBody, signature, settings.tdp_webhook_secret)) {
-    return jsonError("签名验证失败", 403);
-  }
 
   let payload: WebhookPayload;
   try {
@@ -114,8 +104,23 @@ export async function POST(request: Request) {
     return jsonError("请求体格式错误", 400);
   }
 
+  if (!payload.signature || !payload.type || !payload.timestamp) {
+    return jsonError("缺少 signature、type 或 timestamp 字段", 400);
+  }
+
+  const ts = Math.floor(new Date(payload.timestamp).getTime() / 1000);
+  const now = Math.floor(Date.now() / 1000);
+  if (Number.isNaN(ts) || Math.abs(now - ts) > MAX_TIMESTAMP_DRIFT) {
+    return jsonError("请求时间戳过期", 403);
+  }
+
+  const unsigned = stripSignatureField(rawBody);
+  if (!verifySignature(unsigned, payload.signature, settings.webhook_secret)) {
+    return jsonError("签名验证失败", 403);
+  }
+
   let result: string;
-  switch (event) {
+  switch (payload.type) {
     case "user.role_change":
       result = handleRoleChange(payload.data as RoleChangeData);
       break;
@@ -126,7 +131,7 @@ export async function POST(request: Request) {
       result = `身份变更通知已接收 (field: ${(payload.data as IdentityChangeData).field})`;
       break;
     default:
-      result = `未知事件类型: ${event}，已忽略`;
+      result = `未知事件类型: ${payload.type}，已忽略`;
   }
 
   return jsonOk({ message: result, event_id: payload.id });
