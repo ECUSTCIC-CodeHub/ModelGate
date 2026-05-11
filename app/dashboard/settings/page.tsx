@@ -33,6 +33,7 @@ export default function AdminSettingsPage() {
   const [announcementContent, setAnnouncementContent] = useState("");
   const [wallpaperUrl, setWallpaperUrl] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
+  const [tdpWebhookSecret, setTdpWebhookSecret] = useState("");
   const { toast } = useToast();
 
   async function ensureAdmin() {
@@ -74,6 +75,7 @@ export default function AdminSettingsPage() {
       setAnnouncementContent(data.data.announcement_content ?? "");
       setWallpaperUrl(data.data.wallpaper_url ?? "");
       setLogoUrl(data.data.logo_url ?? "");
+      setTdpWebhookSecret(data.data.tdp_webhook_secret ?? "");
     }
   }
 
@@ -102,6 +104,7 @@ export default function AdminSettingsPage() {
         announcement_content: announcementContent,
         wallpaper_url: wallpaperUrl,
         logo_url: logoUrl,
+        tdp_webhook_secret: tdpWebhookSecret,
       }),
     });
     const data = await response.json().catch(() => null);
@@ -286,6 +289,51 @@ export default function AdminSettingsPage() {
                 <p className="text-xs text-[var(--color-foreground-muted)]">首次 OIDC 登录时自动创建用户。关闭后需先由管理员创建账号并绑定 OIDC。</p>
               </div>
               <Switch checked={oidcAutoRegister} onCheckedChange={setOidcAutoRegister} />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <SectionTitle
+              title="TDP Webhook"
+              description="接收 TDP 平台的用户变更回调，自动根据角色/标签匹配用户组。回调地址需在 TDP 应用中配置。"
+            />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>回调密钥</Label>
+              <Input
+                type="password"
+                placeholder="TDP 应用的 Webhook Secret"
+                value={tdpWebhookSecret}
+                onChange={(e) => setTdpWebhookSecret(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>回调地址</Label>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 truncate rounded bg-[var(--color-surface-hover)] px-3 py-2 text-sm text-[var(--color-foreground-secondary)]">
+                  {(publicBaseUrl.replace(/\/+$/, "") || "https://your-domain.com") + "/api/webhook/tdp"}
+                </code>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const url = (publicBaseUrl.replace(/\/+$/, "") || window.location.origin) + "/api/webhook/tdp";
+                    void navigator.clipboard.writeText(url).then(() => {
+                      toast({ variant: "success", description: "已复制到剪贴板" });
+                    });
+                  }}
+                >
+                  复制
+                </Button>
+              </div>
+              <p className="text-xs text-[var(--color-foreground-muted)]">
+                支持事件: user.role_change、user.tags_changed、user.identity_change。
+                匹配规则使用各用户组的 Claim 表达式（role、tags 字段）。
+              </p>
             </div>
           </CardContent>
         </Card>

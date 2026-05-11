@@ -194,7 +194,8 @@ x-api-key: sk-gw-xxxxx
     "public_base_url": "",
     "announcement_content": "",
     "wallpaper_url": "",
-    "logo_url": ""
+    "logo_url": "",
+    "tdp_webhook_secret": ""
   }
 }
 ```
@@ -216,7 +217,8 @@ x-api-key: sk-gw-xxxxx
   "public_base_url": "https://your-domain.com",
   "announcement_content": "# 欢迎",
   "wallpaper_url": "https://example.com/api/wallpaper",
-  "logo_url": "https://example.com/logo.svg"
+  "logo_url": "https://example.com/logo.svg",
+  "tdp_webhook_secret": "your-webhook-secret"
 }
 ```
 
@@ -231,6 +233,43 @@ x-api-key: sk-gw-xxxxx
 | announcement_content | string | 系统公告内容（支持 Markdown，最长 5000 字符） |
 | wallpaper_url | string | 背景壁纸图片地址（留空则不显示壁纸，最长 500 字符） |
 | logo_url | string | 侧栏 Logo 图片地址（留空则不显示 Logo，最长 500 字符） |
+| tdp_webhook_secret | string | TDP Webhook 回调密钥（最长 200 字符） |
+
+---
+
+## Webhook 回调
+
+### POST /api/webhook/tdp
+
+接收 TDP 平台的用户变更回调。根据事件类型自动匹配用户组。
+
+**认证:** HMAC-SHA256 签名验证（`X-Tdp-Signature` 请求头）
+
+**请求头:**
+
+| 请求头 | 说明 |
+|:---|:---|
+| X-Tdp-Event | 事件类型 |
+| X-Tdp-Signature | `sha256=<HMAC-SHA256 hex>` |
+| X-Tdp-Timestamp | Unix 时间戳（允许 5 分钟偏差） |
+
+**支持的事件类型:**
+
+| 事件 | 说明 | data 字段 |
+|:---|:---|:---|
+| user.role_change | 用户角色变更 | user_id, old_role, new_role |
+| user.tags_changed | 用户标签变更 | user_id, action, tags[] |
+| user.identity_change | 身份信息变更 | user_id, field |
+
+**分组匹配逻辑:** 收到 role_change 时以 `{ role: new_role }` 为 claims，收到 tags_changed 时以 `{ tags: [...] }` 为 claims，调用各用户组的 Claim 表达式进行匹配。无匹配时回退到默认组。
+
+**响应 (200):**
+```json
+{
+  "message": "已将用户分组更新为 3",
+  "event_id": "361e4176-1ee8-4c34-a209-b90f7110b1be"
+}
+```
 
 ---
 

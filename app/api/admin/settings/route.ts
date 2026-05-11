@@ -23,6 +23,7 @@ const schema = z.object({
   announcement_content: z.string().max(5000).optional(),
   wallpaper_url: z.string().max(500).optional(),
   logo_url: z.string().max(500).optional(),
+  tdp_webhook_secret: z.string().max(200).optional(),
 });
 
 export async function GET(request: Request) {
@@ -33,6 +34,7 @@ export async function GET(request: Request) {
   const masked = {
     ...settings,
     oidc_client_secret: settings.oidc_client_secret ? "••••••••" : "",
+    tdp_webhook_secret: settings.tdp_webhook_secret ? "••••••••" : "",
   };
   return jsonOk({ message: "系统设置获取成功。", data: masked });
 }
@@ -49,6 +51,9 @@ export async function PUT(request: Request) {
   if (input.oidc_client_secret === "••••••••") {
     delete input.oidc_client_secret;
   }
+  if (input.tdp_webhook_secret === "••••••••") {
+    delete input.tdp_webhook_secret;
+  }
 
   const oidcWillBeEnabled = input.oidc_enabled !== undefined
     ? input.oidc_enabled && !!input.oidc_issuer_url && !!input.oidc_client_id
@@ -63,6 +68,10 @@ export async function PUT(request: Request) {
   const updated = getGatewaySettings();
   return jsonOk({
     message: "系统设置更新成功。",
-    data: { ...updated, oidc_client_secret: updated.oidc_client_secret ? "••••••••" : "" },
+    data: {
+      ...updated,
+      oidc_client_secret: updated.oidc_client_secret ? "••••••••" : "",
+      tdp_webhook_secret: updated.tdp_webhook_secret ? "••••••••" : "",
+    },
   });
 }
