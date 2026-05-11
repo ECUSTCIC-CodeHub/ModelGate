@@ -196,46 +196,42 @@ export async function GET(request: Request) {
       return clearStateCookie(redirectWithError(origin, "未找到绑定的账号，且自动注册已关闭"));
     }
 
-    const adminCount = gatewayDb
-      .prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL")
-      .get() as { count: number };
-
-    const role: "admin" | "user" = adminCount.count === 0 ? "admin" : "user";
     const claimGroupId = resolveGroupFromClaims(rawClaims);
-    const defaultGroup = gatewayDb
-      .prepare("SELECT id FROM groups WHERE is_default = 1 AND deleted_at IS NULL")
-      .get() as { id: number } | undefined;
-    const groupId = claimGroupId ?? defaultGroup?.id ?? null;
-
-    let username = deriveUsername(userInfo);
-
-    const existing = gatewayDb
-      .prepare("SELECT id FROM users WHERE username = ?")
-      .get(username) as { id: number } | undefined;
-    if (existing) {
-      username = username + randomBytes(3).toString("hex");
-    }
-
     const placeholderHash = await hashPassword(randomBytes(32).toString("hex"));
 
-    gatewayDb
-      .prepare(
-        `INSERT INTO users (username, password_hash, role, group_id, oidc_issuer, oidc_subject,
-           rpm, qps, tpm, quota_tokens, quota_requests, enabled)
-         VALUES (?, ?, ?, ?, ?, ?, -1, -1, -1, NULL, NULL, 1)`,
-      )
-      .run(
-        username,
-        placeholderHash,
-        role,
-        groupId,
-        issuer,
-        userInfo.sub,
-      );
+    const registerUser = gatewayDb.transaction(() => {
+      const adminCount = gatewayDb
+        .prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL")
+        .get() as { count: number };
+      const role: "admin" | "user" = adminCount.count === 0 ? "admin" : "user";
 
-    user = gatewayDb
-      .prepare("SELECT * FROM users WHERE oidc_issuer = ? AND oidc_subject = ? AND deleted_at IS NULL")
-      .get(issuer, userInfo.sub) as DbUser | undefined;
+      const defaultGroup = gatewayDb
+        .prepare("SELECT id FROM groups WHERE is_default = 1 AND deleted_at IS NULL")
+        .get() as { id: number } | undefined;
+      const groupId = claimGroupId ?? defaultGroup?.id ?? null;
+
+      let username = deriveUsername(userInfo);
+      const existing = gatewayDb
+        .prepare("SELECT id FROM users WHERE username = ?")
+        .get(username) as { id: number } | undefined;
+      if (existing) {
+        username = username + randomBytes(3).toString("hex");
+      }
+
+      gatewayDb
+        .prepare(
+          `INSERT INTO users (username, password_hash, role, group_id, oidc_issuer, oidc_subject,
+             rpm, qps, tpm, quota_tokens, quota_requests, enabled)
+           VALUES (?, ?, ?, ?, ?, ?, -1, -1, -1, NULL, NULL, 1)`,
+        )
+        .run(username, placeholderHash, role, groupId, issuer, userInfo.sub);
+
+      return gatewayDb
+        .prepare("SELECT * FROM users WHERE oidc_issuer = ? AND oidc_subject = ? AND deleted_at IS NULL")
+        .get(issuer, userInfo.sub) as DbUser | undefined;
+    });
+
+    user = registerUser();
 
     if (!user) {
       return clearStateCookie(redirectWithError(origin, "自动注册失败"));

@@ -13,8 +13,10 @@ function verifySignature(secret: string, id: string, type: string, timestamp: st
   mac.update(id + "." + type + "." + timestamp);
   mac.update(JSON.stringify(data));
   const computed = "sha256=" + mac.digest("hex");
-  if (computed.length !== expected.length) return false;
-  return timingSafeEqual(Buffer.from(computed), Buffer.from(expected));
+  const a = Buffer.from(computed);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return timingSafeEqual(a, a) && false;
+  return timingSafeEqual(a, b);
 }
 
 type RoleChangeData = {

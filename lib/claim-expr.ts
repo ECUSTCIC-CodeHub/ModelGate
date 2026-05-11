@@ -1,3 +1,16 @@
+const REGEX_MAX_LENGTH = 512;
+const REGEX_TIMEOUT_MS = 50;
+
+function safeRegexTest(re: RegExp, input: string): boolean {
+  if (input.length > 4096) return false;
+  const start = performance.now();
+  const result = re.test(input);
+  if (performance.now() - start > REGEX_TIMEOUT_MS) {
+    throw new Error("regex timeout");
+  }
+  return result;
+}
+
 type ComparisonNode = {
   type: "comparison";
   path: string;
@@ -140,6 +153,10 @@ class Parser {
       return { type: "comparison", path: ident.value, operator: "exists", value: "" };
     }
     const val = this.expect("STRING") as { type: "STRING"; value: string };
+    if (op.value === "matches") {
+      if (val.value.length > REGEX_MAX_LENGTH) throw new Error(`正则表达式过长（最大 ${REGEX_MAX_LENGTH} 字符）`);
+      try { new RegExp(val.value); } catch { throw new Error(`无效的正则表达式: ${val.value}`); }
+    }
     return { type: "comparison", path: ident.value, operator: op.value, value: val.value };
   }
 }
@@ -201,7 +218,13 @@ export function evaluateClaimExpr(node: ExprNode, claims: Record<string, unknown
         case "matches": {
           let re: RegExp;
           try { re = new RegExp(node.value); } catch { return false; }
-          return values.some((v) => re.test(v));
+          return values.some((v) => {
+            try {
+              return safeRegexTest(re, v);
+            } catch {
+              return false;
+            }
+          });
         }
         default:
           return false;
