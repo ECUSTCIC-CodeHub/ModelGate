@@ -44,6 +44,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
 import { authedFetch, clearCachedProfile, clearSession, getCachedProfile, getOrFetchProfile } from "@/lib/client-auth";
 import { getApiMessage } from "@/lib/api-message";
@@ -230,17 +231,6 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
               </nav>
             </ScrollArea>
 
-            {/* Theme Toggle */}
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="mb-2 flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm text-[var(--color-foreground-muted)] transition-colors duration-200 hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-foreground)]"
-              aria-label="切换主题"
-            >
-              {theme === "dark" ? <Sun className="h-4 w-4 shrink-0" /> : <Moon className="h-4 w-4 shrink-0" />}
-              <span className="flex-1 text-left">{theme === "dark" ? "浅色模式" : "深色模式"}</span>
-            </button>
-
             {profileBrief ? (
               <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-3">
                 <div className="min-w-0">
@@ -355,6 +345,23 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 {right ? <div className="hidden items-center gap-2 sm:flex">{right}</div> : null}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={toggleTheme}
+                        aria-label={theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}
+                      >
+                        {theme === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 <Button variant="outline" size="icon" className="lg:hidden" onClick={() => setMobileNavOpen(true)}>
                   <Menu className="h-4 w-4" />
                   <span className="sr-only">打开菜单</span>
@@ -407,8 +414,8 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                   toggleTheme();
                 }}
               >
-                {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                {theme === "dark" ? "切换浅色模式" : "切换深色模式"}
+                {theme === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+                {theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}
               </Button>
               {profileBrief ? (
                 <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
