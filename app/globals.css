@@ -171,23 +171,26 @@ body {
   background-repeat: no-repeat;
 }
 
-/* Overlay above the wallpaper:
-   - Soft dim layer to keep UI legible through the glass panels.
-   - Keep the original colored glow blobs so the liquid feel is preserved. */
+/* Overlay above the wallpaper.
+   We intentionally avoid a heavy dim layer here so the anime wallpaper stays
+   visible; legibility is carried by the frosted glass panels below. */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: -1;
-  background-color: color-mix(in oklab, var(--color-bg) 55%, transparent);
   background-image: var(--glow-a), var(--glow-b), var(--glow-c);
   background-repeat: no-repeat;
-  filter: saturate(1.05);
+  filter: saturate(1.1);
+  opacity: 0.6;
 }
 
 .dark body::before {
-  background-color: color-mix(in oklab, var(--color-bg) 62%, transparent);
+  /* Slightly darker tint in dark mode so bright wallpapers don't wash out
+     the foreground text in sections that aren't covered by glass panels. */
+  background-color: rgba(6, 9, 18, 0.35);
+  opacity: 0.75;
 }
 
 ::selection {
