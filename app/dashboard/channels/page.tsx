@@ -22,6 +22,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -138,6 +146,12 @@ type ModelForm = {
   enabled: boolean;
 };
 
+type UpstreamModelOption = {
+  id: string;
+  selected: boolean;
+  disabled: boolean;
+};
+
 const initialChannelForm: ChannelForm = {
   name: "",
   base_url: "",
@@ -186,6 +200,9 @@ export default function AdminChannelsPage() {
   const [modelDrawerOpen, setModelDrawerOpen] = useState(false);
   const [modelEditingId, setModelEditingId] = useState<number | null>(null);
   const [modelForm, setModelForm] = useState<ModelForm>(initialModelForm);
+  const [upstreamPickerOpen, setUpstreamPickerOpen] = useState(false);
+  const [upstreamPickerQuery, setUpstreamPickerQuery] = useState("");
+  const [upstreamModelOptions, setUpstreamModelOptions] = useState<UpstreamModelOption[]>([]);
   const { toast } = useToast();
 
   async function ensureAdmin() {
@@ -216,6 +233,7 @@ export default function AdminChannelsPage() {
     setChannels(data.data ?? []);
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     void load();
   }, [router]);
@@ -243,8 +261,8 @@ export default function AdminChannelsPage() {
     setChannelDrawerOpen(true);
   }
 
-  function addChannelModelDraft() {
-    setChannelModels((prev) => [...prev, { ...initialModelDraft, upstream_protocol: channelForm.supported_protocols[0] ?? "chat_completions" }]);
+  function addChannelModelDraft(protocols = channelForm.supported_protocols) {
+    setChannelModels((prev) => [...prev, { ...initialModelDraft, upstream_protocol: protocols[0] ?? "chat_completions" }]);
   }
 
   function removeChannelModelDraft(index: number) {
@@ -255,8 +273,8 @@ export default function AdminChannelsPage() {
     setChannelModels((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   }
 
-  async function probeUpstreamModels() {
-    if (!channelForm.base_url.trim() || !channelForm.api_key.trim()) {
+  async function probeUpstreamModels(baseUrl: string, apiKey: string, existingModels: ModelRow[] = []) {
+    if (!baseUrl.trim() || !apiKey.trim()) {
       toast({ variant: "error", description: "请先填写 Base URL 与 API Key。" });
       return;
     }
@@ -265,8 +283,8 @@ export default function AdminChannelsPage() {
       const response = await authedFetch("/api/dashboard/channels/probe-models", {
         method: "POST",
         body: JSON.stringify({
-          base_url: channelForm.base_url.trim(),
-          api_key: channelForm.api_key.trim(),
+          base_url: baseUrl.trim(),
+          api_key: apiKey.trim(),
         }),
       });
       const data = await response.json().catch(() => null);
@@ -279,25 +297,75 @@ export default function AdminChannelsPage() {
         toast({ variant: "error", description: "上游未返回任何模型。" });
         return;
       }
-      const protocol = channelForm.supported_protocols[0] ?? "chat_completions";
-      setChannelModels((prev) => {
-        const existingAliases = new Set(prev.map((m) => m.alias.trim()).filter(Boolean));
-        const filledFromPrev = prev.filter((m) => m.alias.trim() || m.real_model.trim());
-        const additions = ids
-          .filter((id) => !existingAliases.has(id))
-          .map<ChannelModelDraft>((id) => ({
-            ...initialModelDraft,
-            alias: id,
-            real_model: id,
-            upstream_protocol: protocol,
-          }));
-        const merged = [...filledFromPrev, ...additions];
-        return merged.length > 0 ? merged : [{ ...initialModelDraft, upstream_protocol: protocol }];
-      });
-      toast({ variant: "success", description: `已拉取 ${ids.length} 个模型，可继续编辑别名。` });
+      const existingRealModels = new Set(existingModels.map((model) => model.real_model.trim()).filter(Boolean));
+      const seen = new Set<string>();
+      const options = ids
+        .map((id) => id.trim())
+        .filter((id) => {
+          if (!id || seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        })
+        .map<UpstreamModelOption>((id) => ({
+          id,
+          selected: existingRealModels.has(id),
+          disabled: existingRealModels.has(id),
+        }));
+      setUpstreamModelOptions(options);
+      setUpstreamPickerQuery("");
+      setUpstreamPickerOpen(true);
+      toast({ variant: "success", description: `已拉取 ${options.length} 个模型，请选择要加入草稿的模型。` });
     } finally {
       setProbingModels(false);
     }
+  }
+
+  function toggleUpstreamModel(id: string, selected: boolean) {
+    setUpstreamModelOptions((prev) =>
+      prev.map((item) => (item.id === id && !item.disabled ? { ...item, selected } : item)),
+    );
+  }
+
+  function selectFilteredUpstreamModels(selected: boolean) {
+    const query = upstreamPickerQuery.trim().toLowerCase();
+    setUpstreamModelOptions((prev) =>
+      prev.map((item) => {
+        const visible = !query || item.id.toLowerCase().includes(query);
+        return visible && !item.disabled ? { ...item, selected } : item;
+      }),
+    );
+  }
+
+  function confirmUpstreamModelSelection(protocols = channelForm.supported_protocols) {
+    const selectedIds = upstreamModelOptions.filter((item) => item.selected && !item.disabled).map((item) => item.id);
+    if (selectedIds.length === 0) {
+      toast({ variant: "error", description: "请选择至少一个要加入草稿的上游模型。" });
+      return;
+    }
+
+    const protocol = protocols[0] ?? "chat_completions";
+    const currentDraftRealModels = new Set(channelModels.map((model) => model.real_model.trim()).filter(Boolean));
+    const selectedNewIds = selectedIds.filter((id) => !currentDraftRealModels.has(id));
+    if (selectedNewIds.length === 0) {
+      toast({ variant: "error", description: "所选模型已在当前草稿中。" });
+      return;
+    }
+    setChannelModels((prev) => {
+      const filledFromPrev = prev.filter((model) => model.alias.trim() || model.real_model.trim());
+      const existingRealModels = new Set(filledFromPrev.map((model) => model.real_model.trim()).filter(Boolean));
+      const additions = selectedNewIds
+        .filter((id) => !existingRealModels.has(id))
+        .map<ChannelModelDraft>((id) => ({
+          ...initialModelDraft,
+          alias: id,
+          real_model: id,
+          upstream_protocol: protocol,
+        }));
+      const merged = [...filledFromPrev, ...additions];
+      return merged.length > 0 ? merged : [{ ...initialModelDraft, upstream_protocol: protocol }];
+    });
+    setUpstreamPickerOpen(false);
+    toast({ variant: "success", description: `已加入 ${selectedNewIds.length} 个模型草稿。` });
   }
 
   async function submitChannel(event: FormEvent) {
@@ -440,6 +508,7 @@ export default function AdminChannelsPage() {
       channel_id: channelId,
       upstream_protocol: supportedProtocols[0] ?? "chat_completions",
     });
+    setChannelModels([{ ...initialModelDraft, upstream_protocol: supportedProtocols[0] ?? "chat_completions" }]);
     setModelDrawerOpen(true);
   }
 
@@ -463,18 +532,87 @@ export default function AdminChannelsPage() {
     event.preventDefault();
 
     if (modelEditingId === null) {
-      const response = await authedFetch("/api/dashboard/models", {
-        method: "POST",
-        body: JSON.stringify(modelForm),
-      });
-      const data = await response.json().catch(() => null);
-      if (response.ok) {
-        toast({ variant: "success", description: getApiMessage(data, "创建模型成功。") });
+      const draftModels = channelModels
+        .map((item) => ({
+          alias: item.alias.trim(),
+          real_model: item.real_model.trim(),
+          channel_id: modelForm.channel_id,
+          upstream_protocol: item.upstream_protocol,
+          is_public: item.is_public,
+          weight: item.weight,
+          token_multiplier: item.token_multiplier,
+          request_multiplier: item.request_multiplier,
+          enabled: item.enabled,
+        }))
+        .filter((item) => item.alias && item.real_model);
+
+      if (draftModels.length === 0) {
+        toast({ variant: "error", description: "请至少填写一个模型草稿。" });
+        return;
+      }
+
+      const results = await Promise.allSettled(
+        draftModels.map((draft) =>
+          authedFetch("/api/dashboard/models", {
+            method: "POST",
+            body: JSON.stringify(draft),
+          }).then(async (response) => {
+            const data = await response.json().catch(() => null);
+            return { ok: response.ok, draft, data };
+          })
+        )
+      );
+
+      let successCount = 0;
+      const failures: string[] = [];
+      const failedDrafts: ChannelModelDraft[] = [];
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          const { ok, draft, data } = result.value;
+          if (ok) {
+            successCount += 1;
+          } else {
+            failures.push(`${draft.real_model}（${getApiMessage(data, "创建失败")}）`);
+            failedDrafts.push({
+              alias: draft.alias,
+              real_model: draft.real_model,
+              upstream_protocol: draft.upstream_protocol,
+              is_public: draft.is_public,
+              weight: draft.weight,
+              token_multiplier: draft.token_multiplier,
+              request_multiplier: draft.request_multiplier,
+              enabled: draft.enabled,
+            });
+          }
+        } else {
+          const draft = draftModels[results.indexOf(result)];
+          failures.push(`${draft.real_model}（请求异常）`);
+          failedDrafts.push({
+            alias: draft.alias,
+            real_model: draft.real_model,
+            upstream_protocol: draft.upstream_protocol,
+            is_public: draft.is_public,
+            weight: draft.weight,
+            token_multiplier: draft.token_multiplier,
+            request_multiplier: draft.request_multiplier,
+            enabled: draft.enabled,
+          });
+        }
+      }
+
+      if (failures.length === 0) {
+        toast({ variant: "success", description: `已创建 ${successCount} 个模型。` });
         setModelDrawerOpen(false);
         await load();
         return;
       }
-      toast({ variant: "error", description: getApiMessage(data, "创建模型失败。") });
+      toast({
+        variant: successCount > 0 ? "info" : "error",
+        description: `已创建 ${successCount} 个模型，${failures.length} 个失败：${failures.slice(0, 3).join("；")}${failures.length > 3 ? " 等" : ""}。`,
+        durationMs: 6000,
+      });
+      setChannelModels(failedDrafts.length > 0 ? failedDrafts : [{ ...initialModelDraft, upstream_protocol: selectedChannelProtocols[0] ?? "chat_completions" }]);
+      if (successCount > 0) await load();
       return;
     }
 
@@ -523,7 +661,90 @@ export default function AdminChannelsPage() {
       channel_name: channel.name,
     })),
   );
-  const selectedChannelProtocols = parseSupportedProtocols(channels.find((item) => item.id === modelForm.channel_id)?.supported_protocols);
+  const selectedChannel = channels.find((item) => item.id === modelForm.channel_id);
+  const selectedChannelProtocols = parseSupportedProtocols(selectedChannel?.supported_protocols);
+  const upstreamQuery = upstreamPickerQuery.trim().toLowerCase();
+  const filteredUpstreamModelOptions = upstreamModelOptions.filter((item) => !upstreamQuery || item.id.toLowerCase().includes(upstreamQuery));
+  const selectedUpstreamCount = upstreamModelOptions.filter((item) => item.selected && !item.disabled).length;
+  const existingUpstreamCount = upstreamModelOptions.filter((item) => item.disabled).length;
+  const activeDraftProtocols = modelDrawerOpen && modelEditingId === null ? selectedChannelProtocols : channelForm.supported_protocols;
+
+  function renderModelDraftCard(options: {
+    title: string;
+    description: string;
+    protocols: Protocol[];
+    onProbe: () => void;
+    probeDisabled?: boolean;
+  }) {
+    return (
+      <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-medium text-[var(--color-foreground)]">{options.title}</p>
+            <p className="text-xs text-[var(--color-foreground-muted)]">{options.description}</p>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={probingModels || options.probeDisabled}
+              onClick={options.onProbe}
+            >
+              {probingModels ? "拉取中…" : "从上游拉取"}
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => addChannelModelDraft(options.protocols)}>添加模型</Button>
+          </div>
+        </div>
+        <div className="space-y-3">
+          {channelModels.map((item, index) => (
+            <div key={index} className="grid gap-3 rounded-lg border border-[var(--color-border)] p-3 md:grid-cols-2">
+              <Input placeholder="别名" value={item.alias} onChange={(e) => updateChannelModelDraft(index, { alias: e.target.value })} />
+              <Input placeholder="真实模型" value={item.real_model} onChange={(e) => updateChannelModelDraft(index, { real_model: e.target.value })} />
+              <div className="grid gap-2 md:grid-cols-3">
+                <Input type="number" min={1} placeholder="权重" value={item.weight} onChange={(e) => updateChannelModelDraft(index, { weight: Number(e.target.value) || 1 })} />
+                <Input type="number" min={0} step={0.1} placeholder="Token倍率" value={item.token_multiplier} onChange={(e) => updateChannelModelDraft(index, { token_multiplier: Number(e.target.value) || 1 })} />
+                <Input type="number" min={0} step={0.1} placeholder="请求倍率" value={item.request_multiplier} onChange={(e) => updateChannelModelDraft(index, { request_multiplier: Number(e.target.value) || 1 })} />
+              </div>
+              <Select value={item.upstream_protocol} onValueChange={(value: Protocol) => updateChannelModelDraft(index, { upstream_protocol: value })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {options.protocols.map((protocol) => (
+                    <SelectItem key={protocol} value={protocol}>{protocolLabel(protocol)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Select value={item.is_public ? "1" : "0"} onValueChange={(value) => updateChannelModelDraft(index, { is_public: value === "1" })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">公开模型</SelectItem>
+                    <SelectItem value="0">白名单模型</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={item.enabled ? "1" : "0"} onValueChange={(value) => updateChannelModelDraft(index, { enabled: value === "1" })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">启用</SelectItem>
+                    <SelectItem value="0">禁用</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="md:col-span-2">
+                <Button type="button" variant="destructive" size="sm" onClick={() => removeChannelModelDraft(index)}>删除该草稿</Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <DashboardShell
@@ -764,72 +985,12 @@ export default function AdminChannelsPage() {
             </div>
 
             {channelEditingId === null ? (
-              <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-medium text-[var(--color-foreground)]">初始模型列表</p>
-                    <p className="text-xs text-[var(--color-foreground-muted)]">别名就是客户端调用时传入的 model，支持 * 作为兜底模型。</p>
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={probingModels}
-                      onClick={() => void probeUpstreamModels()}
-                    >
-                      {probingModels ? "拉取中…" : "从上游拉取"}
-                    </Button>
-                    <Button type="button" variant="outline" size="sm" onClick={addChannelModelDraft}>添加模型</Button>
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  {channelModels.map((item, index) => (
-                    <div key={index} className="grid gap-3 rounded-lg border border-[var(--color-border)] p-3 md:grid-cols-2">
-                      <Input placeholder="别名" value={item.alias} onChange={(e) => updateChannelModelDraft(index, { alias: e.target.value })} />
-                      <Input placeholder="真实模型" value={item.real_model} onChange={(e) => updateChannelModelDraft(index, { real_model: e.target.value })} />
-                      <div className="grid gap-2 md:grid-cols-3">
-                        <Input type="number" min={1} placeholder="权重" value={item.weight} onChange={(e) => updateChannelModelDraft(index, { weight: Number(e.target.value) || 1 })} />
-                        <Input type="number" min={0} step={0.1} placeholder="Token倍率" value={item.token_multiplier} onChange={(e) => updateChannelModelDraft(index, { token_multiplier: Number(e.target.value) || 1 })} />
-                        <Input type="number" min={0} step={0.1} placeholder="请求倍率" value={item.request_multiplier} onChange={(e) => updateChannelModelDraft(index, { request_multiplier: Number(e.target.value) || 1 })} />
-                      </div>
-                      <Select value={item.upstream_protocol} onValueChange={(value: Protocol) => updateChannelModelDraft(index, { upstream_protocol: value })}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {channelForm.supported_protocols.map((protocol) => (
-                            <SelectItem key={protocol} value={protocol}>{protocolLabel(protocol)}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <Select value={item.is_public ? "1" : "0"} onValueChange={(value) => updateChannelModelDraft(index, { is_public: value === "1" })}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="1">公开模型</SelectItem>
-                            <SelectItem value="0">白名单模型</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Select value={item.enabled ? "1" : "0"} onValueChange={(value) => updateChannelModelDraft(index, { enabled: value === "1" })}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="1">启用</SelectItem>
-                            <SelectItem value="0">禁用</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="md:col-span-2">
-                        <Button type="button" variant="destructive" size="sm" onClick={() => removeChannelModelDraft(index)}>删除该草稿</Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              renderModelDraftCard({
+                title: "初始模型列表",
+                description: "别名就是客户端调用时传入的 model，支持 * 作为兜底模型。",
+                protocols: channelForm.supported_protocols,
+                onProbe: () => void probeUpstreamModels(channelForm.base_url, channelForm.api_key),
+              })
             ) : null}
 
             <SheetFooter>
@@ -847,82 +1008,122 @@ export default function AdminChannelsPage() {
             <SheetDescription>配置 alias、真实模型、所属渠道、公开性与启用状态。</SheetDescription>
           </SheetHeader>
           <form onSubmit={submitModel} className="mt-4 space-y-4 overflow-y-auto pr-1">
-            <p className="text-xs text-[var(--color-foreground-muted)]">别名就是客户端请求时传入的 model，也支持 * 作为兜底模型。</p>
-            <div className="space-y-2">
-              <Label>别名</Label>
-              <Input value={modelForm.alias} onChange={(e) => setModelForm({ ...modelForm, alias: e.target.value })} />
-            </div>
-            <div className="space-y-2">
-              <Label>真实模型</Label>
-              <Input value={modelForm.real_model} onChange={(e) => setModelForm({ ...modelForm, real_model: e.target.value })} />
-            </div>
-            <div className="space-y-2">
-              <Label>所属渠道</Label>
-              <Select
-                value={String(modelForm.channel_id)}
-                onValueChange={(value) => {
-                  const channelId = Number(value);
-                  const channel = channels.find((item) => item.id === channelId);
-                  const protocols = parseSupportedProtocols(channel?.supported_protocols);
-                  setModelForm({
-                    ...modelForm,
-                    channel_id: channelId,
-                    upstream_protocol: protocols.includes(modelForm.upstream_protocol) ? modelForm.upstream_protocol : protocols[0],
-                  });
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {channels.map((item) => (
-                    <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>上游协议</Label>
-              <Select value={modelForm.upstream_protocol} onValueChange={(value: Protocol) => setModelForm({ ...modelForm, upstream_protocol: value })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {selectedChannelProtocols.map((protocol) => (
-                    <SelectItem key={protocol} value={protocol}>{protocolLabel(protocol)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="space-y-2">
-                <Label>权重</Label>
-                <Input type="number" min={1} value={modelForm.weight} onChange={(e) => setModelForm({ ...modelForm, weight: Number(e.target.value) || 1 })} />
-              </div>
-              <div className="space-y-2">
-                <Label>Token 倍率</Label>
-                <Input type="number" min={0} step={0.1} value={modelForm.token_multiplier} onChange={(e) => setModelForm({ ...modelForm, token_multiplier: Number(e.target.value) || 1 })} />
-              </div>
-              <div className="space-y-2">
-                <Label>请求倍率</Label>
-                <Input type="number" min={0} step={0.1} value={modelForm.request_multiplier} onChange={(e) => setModelForm({ ...modelForm, request_multiplier: Number(e.target.value) || 1 })} />
-              </div>
-            </div>
-            <p className="text-xs text-[var(--color-foreground-muted)]">倍率用于计费扣量，如 Token 倍率 2 则实际扣除 Token = 使用量 × 2。默认均为 1。</p>
-            <div className="flex items-center justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
-              <div>
-                <p className="text-sm font-medium text-[var(--color-foreground)]">公开模型</p>
-                <p className="text-xs text-[var(--color-foreground-muted)]">关闭后仅被授权用户可以访问该 alias。</p>
-              </div>
-              <Checkbox checked={modelForm.is_public} onCheckedChange={(checked) => setModelForm({ ...modelForm, is_public: checked === true })} />
-            </div>
-            <div className="flex items-center justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
-              <div>
-                <p className="text-sm font-medium text-[var(--color-foreground)]">启用状态</p>
-                <p className="text-xs text-[var(--color-foreground-muted)]">关闭后该模型映射不会被路由命中。</p>
-              </div>
-              <Checkbox checked={modelForm.enabled} onCheckedChange={(checked) => setModelForm({ ...modelForm, enabled: checked === true })} />
-            </div>
+            {modelEditingId === null ? (
+              <>
+                <div className="space-y-2">
+                  <Label>所属渠道</Label>
+                  <Select
+                    value={String(modelForm.channel_id)}
+                    onValueChange={(value) => {
+                      const channelId = Number(value);
+                      const channel = channels.find((item) => item.id === channelId);
+                      const protocols = parseSupportedProtocols(channel?.supported_protocols);
+                      setModelForm({
+                        ...modelForm,
+                        channel_id: channelId,
+                        upstream_protocol: protocols[0] ?? "chat_completions",
+                      });
+                      setChannelModels([{ ...initialModelDraft, upstream_protocol: protocols[0] ?? "chat_completions" }]);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {channels.map((item) => (
+                        <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {renderModelDraftCard({
+                  title: "上游渠道模型列表",
+                  description: "先从上游选择要加入的模型，再按需调整 alias、倍率和可见性。",
+                  protocols: selectedChannelProtocols,
+                  onProbe: () => void probeUpstreamModels(selectedChannel?.base_url ?? "", selectedChannel?.api_key ?? "", selectedChannel?.models ?? []),
+                  probeDisabled: !selectedChannel,
+                })}
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-[var(--color-foreground-muted)]">别名就是客户端请求时传入的 model，也支持 * 作为兜底模型。</p>
+                <div className="space-y-2">
+                  <Label>别名</Label>
+                  <Input value={modelForm.alias} onChange={(e) => setModelForm({ ...modelForm, alias: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>真实模型</Label>
+                  <Input value={modelForm.real_model} onChange={(e) => setModelForm({ ...modelForm, real_model: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>所属渠道</Label>
+                  <Select
+                    value={String(modelForm.channel_id)}
+                    onValueChange={(value) => {
+                      const channelId = Number(value);
+                      const channel = channels.find((item) => item.id === channelId);
+                      const protocols = parseSupportedProtocols(channel?.supported_protocols);
+                      setModelForm({
+                        ...modelForm,
+                        channel_id: channelId,
+                        upstream_protocol: protocols.includes(modelForm.upstream_protocol) ? modelForm.upstream_protocol : protocols[0],
+                      });
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {channels.map((item) => (
+                        <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>上游协议</Label>
+                  <Select value={modelForm.upstream_protocol} onValueChange={(value: Protocol) => setModelForm({ ...modelForm, upstream_protocol: value })}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {selectedChannelProtocols.map((protocol) => (
+                        <SelectItem key={protocol} value={protocol}>{protocolLabel(protocol)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>权重</Label>
+                    <Input type="number" min={1} value={modelForm.weight} onChange={(e) => setModelForm({ ...modelForm, weight: Number(e.target.value) || 1 })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Token 倍率</Label>
+                    <Input type="number" min={0} step={0.1} value={modelForm.token_multiplier} onChange={(e) => setModelForm({ ...modelForm, token_multiplier: Number(e.target.value) || 1 })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>请求倍率</Label>
+                    <Input type="number" min={0} step={0.1} value={modelForm.request_multiplier} onChange={(e) => setModelForm({ ...modelForm, request_multiplier: Number(e.target.value) || 1 })} />
+                  </div>
+                </div>
+                <p className="text-xs text-[var(--color-foreground-muted)]">倍率用于计费扣量，如 Token 倍率 2 则实际扣除 Token = 使用量 × 2。默认均为 1。</p>
+                <div className="flex items-center justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+                  <div>
+                    <p className="text-sm font-medium text-[var(--color-foreground)]">公开模型</p>
+                    <p className="text-xs text-[var(--color-foreground-muted)]">关闭后仅被授权用户可以访问该 alias。</p>
+                  </div>
+                  <Checkbox checked={modelForm.is_public} onCheckedChange={(checked) => setModelForm({ ...modelForm, is_public: checked === true })} />
+                </div>
+                <div className="flex items-center justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+                  <div>
+                    <p className="text-sm font-medium text-[var(--color-foreground)]">启用状态</p>
+                    <p className="text-xs text-[var(--color-foreground-muted)]">关闭后该模型映射不会被路由命中。</p>
+                  </div>
+                  <Checkbox checked={modelForm.enabled} onCheckedChange={(checked) => setModelForm({ ...modelForm, enabled: checked === true })} />
+                </div>
+              </>
+            )}
             <SheetFooter>
               <Button type="button" variant="outline" onClick={() => setModelDrawerOpen(false)}>取消</Button>
               <Button type="submit">{modelEditingId === null ? "创建" : "保存"}</Button>
@@ -930,6 +1131,57 @@ export default function AdminChannelsPage() {
           </form>
         </SheetContent>
       </Sheet>
+
+      <Dialog open={upstreamPickerOpen} onOpenChange={setUpstreamPickerOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>选择上游模型</DialogTitle>
+            <DialogDescription>已存在于当前渠道的模型会默认勾选并锁定，确认后仅把新选中的模型加入草稿。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input
+              placeholder="搜索模型 ID"
+              value={upstreamPickerQuery}
+              onChange={(event) => setUpstreamPickerQuery(event.target.value)}
+            />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-[var(--color-foreground-muted)]">
+                已选择 {selectedUpstreamCount} 个新模型，{existingUpstreamCount} 个已存在。
+              </p>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => selectFilteredUpstreamModels(true)}>全选当前筛选</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => selectFilteredUpstreamModels(false)}>清空当前筛选</Button>
+              </div>
+            </div>
+            <div className="max-h-[420px] overflow-y-auto rounded-xl border border-[var(--color-border)]">
+              {filteredUpstreamModelOptions.length > 0 ? (
+                filteredUpstreamModelOptions.map((item) => (
+                  <label
+                    key={item.id}
+                    className={`flex items-center justify-between gap-3 border-b border-[var(--color-border)] px-3 py-2 last:border-b-0 ${item.disabled ? "cursor-not-allowed bg-[var(--color-surface-hover)] opacity-60" : "cursor-pointer"}`}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-mono text-sm text-[var(--color-foreground)]">{item.id}</p>
+                      {item.disabled ? <p className="text-xs text-[var(--color-foreground-muted)]">已存在于当前渠道</p> : null}
+                    </div>
+                    <Checkbox
+                      checked={item.selected}
+                      disabled={item.disabled}
+                      onCheckedChange={(checked) => toggleUpstreamModel(item.id, checked === true)}
+                    />
+                  </label>
+                ))
+              ) : (
+                <p className="px-3 py-8 text-center text-sm text-[var(--color-foreground-muted)]">没有匹配的上游模型。</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setUpstreamPickerOpen(false)}>取消</Button>
+            <Button type="button" onClick={() => confirmUpstreamModelSelection(activeDraftProtocols)}>加入草稿</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardShell>
   );
 }
