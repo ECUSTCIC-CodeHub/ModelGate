@@ -7,6 +7,7 @@ import { getServerProfileFromCookieStore } from "@/lib/auth";
 import { getAuthStatus } from "@/lib/auth-status";
 import { type DbUser } from "@/lib/db";
 import { getEffectiveLimits } from "@/lib/effective-limits";
+import { getGatewaySettings } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -36,10 +37,11 @@ export default async function DashboardLayout({
   };
 
   const authStatus = getAuthStatus();
+  const { logo_url } = getGatewaySettings();
 
   return (
     <ThemeProvider>
-      <AuthProvider initialProfile={enrichedProfile} oidcEnabled={authStatus.oidc_enabled}>
+      <AuthProvider initialProfile={enrichedProfile} oidcEnabled={authStatus.oidc_enabled} logoUrl={logo_url}>
         {children}
         <AnnouncementDialog />
       </AuthProvider>

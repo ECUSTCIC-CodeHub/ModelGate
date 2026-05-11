@@ -31,6 +31,8 @@ export default function AdminSettingsPage() {
   const [oidcGroupClaim, setOidcGroupClaim] = useState("");
   const [publicBaseUrl, setPublicBaseUrl] = useState("");
   const [announcementContent, setAnnouncementContent] = useState("");
+  const [wallpaperUrl, setWallpaperUrl] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
   const { toast } = useToast();
 
   async function ensureAdmin() {
@@ -70,6 +72,8 @@ export default function AdminSettingsPage() {
         savedBase || (typeof window !== "undefined" ? window.location.origin : ""),
       );
       setAnnouncementContent(data.data.announcement_content ?? "");
+      setWallpaperUrl(data.data.wallpaper_url ?? "");
+      setLogoUrl(data.data.logo_url ?? "");
     }
   }
 
@@ -96,6 +100,8 @@ export default function AdminSettingsPage() {
         oidc_group_claim: oidcGroupClaim,
         public_base_url: publicBaseUrl,
         announcement_content: announcementContent,
+        wallpaper_url: wallpaperUrl,
+        logo_url: logoUrl,
       }),
     });
     const data = await response.json().catch(() => null);
@@ -293,12 +299,41 @@ export default function AdminSettingsPage() {
           </CardHeader>
           <CardContent>
             <textarea
-              className="flex min-h-40 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-3 text-sm text-[var(--color-foreground)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] placeholder:text-[var(--color-foreground-muted)] focus-visible:border-[var(--color-accent)]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:focus-visible:ring-[var(--color-accent)]/20"
+              className="flex min-h-40 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-3 text-sm text-[var(--color-foreground)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] placeholder:text-[var(--color-foreground-muted)] focus-visible:border-[var(--color-accent)]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/20"
               placeholder={"支持 Markdown，例如：\n# 公告标题\n\n公告正文内容..."}
               value={announcementContent}
               onChange={(e) => setAnnouncementContent(e.target.value)}
               maxLength={5000}
             />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <SectionTitle
+              title="外观定制"
+              description="自定义侧栏 Logo 和全站背景壁纸。留空则不显示对应元素。"
+            />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Logo 地址</Label>
+              <Input
+                placeholder="https://example.com/logo.svg"
+                value={logoUrl}
+                onChange={(e) => setLogoUrl(e.target.value)}
+              />
+              <p className="text-xs text-[var(--color-foreground-muted)]">侧栏及移动端导航左上角展示的 Logo 图片地址。留空则不显示 Logo。</p>
+            </div>
+            <div className="space-y-2">
+              <Label>壁纸地址</Label>
+              <Input
+                placeholder="https://example.com/api/wallpaper"
+                value={wallpaperUrl}
+                onChange={(e) => setWallpaperUrl(e.target.value)}
+              />
+              <p className="text-xs text-[var(--color-foreground-muted)]">全站背景壁纸图片地址。支持返回图片的任意 URL（含 302 跳转）。</p>
+            </div>
           </CardContent>
         </Card>
 

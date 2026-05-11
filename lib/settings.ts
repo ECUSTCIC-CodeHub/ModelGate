@@ -22,6 +22,8 @@ export type GatewaySettings = {
   oidc_group_claim: string;
   public_base_url: string;
   announcement_content: string;
+  wallpaper_url: string;
+  logo_url: string;
 };
 
 function positiveInt(value: string | null | undefined, fallback: number) {
@@ -50,6 +52,8 @@ const GATEWAY_KEYS = [
   "upstream_circuit_breaker_enabled",
   ...OIDC_KEYS,
   "announcement_content",
+  "wallpaper_url",
+  "logo_url",
 ] as const;
 
 export function getGatewaySettings(): GatewaySettings {
@@ -79,6 +83,8 @@ export function getGatewaySettings(): GatewaySettings {
     oidc_group_claim: map.get("oidc_group_claim") ?? "",
     public_base_url: map.get("public_base_url") ?? "",
     announcement_content: map.get("announcement_content") ?? "",
+    wallpaper_url: map.get("wallpaper_url") ?? "",
+    logo_url: map.get("logo_url") ?? "",
   };
 }
 
@@ -98,6 +104,8 @@ export function setGatewaySettings(input: {
   oidc_group_claim?: string;
   public_base_url?: string;
   announcement_content?: string;
+  wallpaper_url?: string;
+  logo_url?: string;
 }) {
   const values: Record<string, string> = {
     registration_enabled: input.registration_enabled ? "1" : "0",
@@ -117,6 +125,8 @@ export function setGatewaySettings(input: {
   if (input.oidc_group_claim !== undefined) values.oidc_group_claim = input.oidc_group_claim.trim();
   if (input.public_base_url !== undefined) values.public_base_url = input.public_base_url.trim().replace(/\/+$/, "");
   if (input.announcement_content !== undefined) values.announcement_content = input.announcement_content;
+  if (input.wallpaper_url !== undefined) values.wallpaper_url = input.wallpaper_url.trim();
+  if (input.logo_url !== undefined) values.logo_url = input.logo_url.trim();
 
   const upsert = gatewayDb.prepare(
     `INSERT INTO settings (key, value, updated_at)

@@ -21,6 +21,8 @@ const schema = z.object({
   oidc_group_claim: z.string().optional(),
   public_base_url: z.string().optional(),
   announcement_content: z.string().max(5000).optional(),
+  wallpaper_url: z.string().max(500).optional(),
+  logo_url: z.string().max(500).optional(),
 });
 
 export async function GET(request: Request) {

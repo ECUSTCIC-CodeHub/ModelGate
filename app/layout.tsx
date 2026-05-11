@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/toast";
 import { ThemeScript } from "@/components/providers/theme-script";
+import { getGatewaySettings } from "@/lib/settings";
 
 export const metadata: Metadata = {
   title: "ModelGate",
@@ -13,6 +14,8 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const { wallpaper_url } = getGatewaySettings();
+
   return (
     <html lang="zh" suppressHydrationWarning>
       <head>
@@ -25,17 +28,16 @@ export default function RootLayout({
         <ThemeScript />
       </head>
       <body className="antialiased">
-        {/* Anime wallpaper background layer (LoliAPI ACG, adaptive).
-            Rendered as an <img> so browsers follow the cross-origin 302
-            redirect reliably. Falls back to the body background color. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="https://www.loliapi.com/acg/"
-          alt=""
-          aria-hidden="true"
-          referrerPolicy="no-referrer"
-          className="anime-bg"
-        />
+        {wallpaper_url && (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={wallpaper_url}
+            alt=""
+            aria-hidden="true"
+            referrerPolicy="no-referrer"
+            className="anime-bg"
+          />
+        )}
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>

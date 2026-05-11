@@ -451,7 +451,7 @@ export default function AdminGroupsPage() {
                 <div className="space-y-2 md:col-span-2">
                   <Label>OIDC Claim 表达式</Label>
                   <textarea
-                    className="flex w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm font-mono placeholder:text-[var(--color-foreground-muted)] focus:outline-none focus:ring-1 focus:ring-text-[var(--color-foreground-subtle)] disabled:opacity-50"
+                    className="flex w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm font-mono placeholder:text-[var(--color-foreground-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--color-foreground-subtle)] disabled:opacity-50"
                     rows={3}
                     value={form.oidc_claim_expr}
                     onChange={(e) => setForm({ ...form, oidc_claim_expr: e.target.value })}

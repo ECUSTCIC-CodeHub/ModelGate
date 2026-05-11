@@ -192,7 +192,9 @@ x-api-key: sk-gw-xxxxx
     "upstream_retry_max_attempts": 3,
     "upstream_circuit_breaker_enabled": 1,
     "public_base_url": "",
-    "announcement_content": ""
+    "announcement_content": "",
+    "wallpaper_url": "",
+    "logo_url": ""
   }
 }
 ```
@@ -212,7 +214,9 @@ x-api-key: sk-gw-xxxxx
   "upstream_retry_max_attempts": 3,
   "upstream_circuit_breaker_enabled": true,
   "public_base_url": "https://your-domain.com",
-  "announcement_content": "# 欢迎"
+  "announcement_content": "# 欢迎",
+  "wallpaper_url": "https://example.com/api/wallpaper",
+  "logo_url": "https://example.com/logo.svg"
 }
 ```
 
@@ -225,6 +229,8 @@ x-api-key: sk-gw-xxxxx
 | upstream_circuit_breaker_enabled | boolean | 是否开启上游熔断 |
 | public_base_url | string | 对外服务域名 |
 | announcement_content | string | 系统公告内容（支持 Markdown，最长 5000 字符） |
+| wallpaper_url | string | 背景壁纸图片地址（留空则不显示壁纸，最长 500 字符） |
+| logo_url | string | 侧栏 Logo 图片地址（留空则不显示 Logo，最长 500 字符） |
 
 ---
 
