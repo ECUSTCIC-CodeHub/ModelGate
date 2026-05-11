@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
@@ -201,9 +202,19 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
         <aside className="hidden w-60 shrink-0 lg:block">
           <div className="sticky top-4 flex h-[calc(100vh-2rem)] flex-col rounded-xl border border-[var(--color-sidebar-border)] bg-[var(--color-sidebar-bg)] p-4 shadow-[var(--shadow-md)]">
             <div className="space-y-4">
-              <div className="px-1 py-2">
-                <p className="font-mono text-sm font-semibold text-[var(--color-foreground)]">ModelGate</p>
-                <p className="mt-0.5 text-xs text-[var(--color-foreground-muted)]">模型网关管理控制台</p>
+              <div className="flex items-center gap-3 px-1 py-2">
+                <Image
+                  src="/logo/TDP.svg"
+                  alt="TDP Logo"
+                  width={36}
+                  height={36}
+                  priority
+                  className="shrink-0"
+                />
+                <div className="min-w-0">
+                  <p className="font-mono text-sm font-semibold text-[var(--color-foreground)]">ModelGate</p>
+                  <p className="mt-0.5 text-xs text-[var(--color-foreground-muted)]">模型网关管理控制台</p>
+                </div>
               </div>
               <Separator />
             </div>
@@ -378,8 +389,19 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
         <SheetContent side="left" className="w-[320px] p-0">
           <SheetHeader className="border-b border-[var(--color-border)] px-5 py-4">
-            <SheetTitle>后台导航</SheetTitle>
-            <SheetDescription>快速切换页面与管理账号。</SheetDescription>
+            <div className="flex items-center gap-3">
+              <Image
+                src="/logo/TDP.svg"
+                alt="TDP Logo"
+                width={32}
+                height={32}
+                className="shrink-0"
+              />
+              <div className="min-w-0">
+                <SheetTitle>后台导航</SheetTitle>
+                <SheetDescription>快速切换页面与管理账号。</SheetDescription>
+              </div>
+            </div>
           </SheetHeader>
           <div className="flex h-full flex-col">
             <ScrollArea className="flex-1 px-4 py-4">
