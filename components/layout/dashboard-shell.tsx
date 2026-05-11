@@ -473,16 +473,18 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
               {oidcAvailable ? (
                 profileBrief?.oidc_subject ? (
                   <>
-                    <Button variant="outline" className="w-full" onClick={() => { setMobileNavOpen(false); onOidcSync(); }}>
+                    <Button variant="outline" className="w-full justify-between" onClick={() => { setMobileNavOpen(false); onOidcSync(); }}>
                       同步 OIDC
+                      <span className="text-[10px] text-[var(--color-accent)]">已绑定</span>
                     </Button>
                     <Button variant="outline" className="w-full" onClick={() => { setMobileNavOpen(false); onOidcUnbind(); }}>
                       解绑 OIDC
                     </Button>
                   </>
                 ) : (
-                  <Button variant="outline" className="w-full" onClick={() => { setMobileNavOpen(false); onOidcBind(); }}>
+                  <Button variant="outline" className="w-full justify-between" onClick={() => { setMobileNavOpen(false); onOidcBind(); }}>
                     绑定 OIDC
+                    <span className="text-[10px] text-[var(--color-foreground-subtle)]">未绑定</span>
                   </Button>
                 )
               ) : null}
