@@ -346,7 +346,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
 
         {/* Main Content */}
         <section className="flex min-w-0 flex-1 flex-col gap-4">
-          <header className="sticky top-4 z-20 rounded-xl border border-[var(--color-header-border)] bg-[var(--color-header-bg)] px-4 py-3 shadow-[var(--shadow-md)] lg:px-6 lg:py-4">
+          <header className="sticky top-4 z-20 rounded-xl border border-[var(--color-header-border)] bg-[var(--color-header-bg)] px-4 py-3 shadow-[var(--shadow-md)] lg:px-6 lg:py-4 lg:backdrop-blur-sm">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="hidden items-center gap-1.5 text-xs text-[var(--color-foreground-muted)] lg:flex">
