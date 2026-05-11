@@ -25,6 +25,17 @@ export default function RootLayout({
         <ThemeScript />
       </head>
       <body className="antialiased">
+        {/* Anime wallpaper background layer (LoliAPI ACG, adaptive).
+            Rendered as an <img> so browsers follow the cross-origin 302
+            redirect reliably. Falls back to the body background color. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="https://www.loliapi.com/acg/"
+          alt=""
+          aria-hidden="true"
+          referrerPolicy="no-referrer"
+          className="anime-bg"
+        />
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>

@@ -160,15 +160,24 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  /* Anime wallpaper from loliapi.com/acg (double-sided adaptive).
-     The upstream endpoint issues a 302 redirect to a real image URL,
-     which browsers happily follow when used as a CSS background. */
+  /* Base color — visible if the anime wallpaper (an <img> in the DOM)
+     fails to load; otherwise the wallpaper covers it. */
   background-color: var(--color-bg);
-  background-image: url("https://www.loliapi.com/acg/");
-  background-size: cover;
-  background-position: center center;
-  background-attachment: fixed;
-  background-repeat: no-repeat;
+}
+
+/* Fixed anime wallpaper layer rendered as an <img> in layout.tsx.
+   Using an <img> instead of CSS url() avoids some browsers refusing to
+   follow cross-origin 302 redirects for CSS background images. */
+.anime-bg {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+  object-position: center;
+  z-index: -2;
+  pointer-events: none;
+  user-select: none;
 }
 
 /* Overlay above the wallpaper.
