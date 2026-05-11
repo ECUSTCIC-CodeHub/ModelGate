@@ -157,7 +157,7 @@ function addUsage(userId: number, keyId: number, tokens: number, requests = 1, t
   tx();
 }
 
-const RETRYABLE_UPSTREAM_STATUS = new Set([401, 429, 500, 502, 503, 504]);
+const RETRYABLE_UPSTREAM_STATUS = new Set([429, 500, 502, 503, 504]);
 
 function shouldRetryUpstreamStatus(status: number) {
   return RETRYABLE_UPSTREAM_STATUS.has(status);
@@ -458,6 +458,14 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
           try {
             const acquireResult = await acquirePromise;
             clearInterval(keepAliveTimer);
+
+            if (!acquireResult.ok) {
+              controller.enqueue(toSseDataBlock(buildErrorResponseBody("渠道排队超时", 503, inboundProtocol, "queue_timeout", "503")));
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              controller.close();
+              return;
+            }
+
             const lease = acquireResult.lease;
 
             try {
@@ -643,6 +651,13 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
         try {
           const acquireResult = await acquirePromise;
           clearInterval(keepAliveTimer);
+
+          if (!acquireResult.ok) {
+            controller.enqueue(encoder.encode(buildErrorResponseBody("渠道排队超时", 503, inboundProtocol, "queue_timeout", "503")));
+            controller.close();
+            return;
+          }
+
           const lease = acquireResult.lease;
 
           try {
@@ -945,8 +960,8 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
       status: upstream.status,
       headers: {
         "content-type": inboundProtocol === "responses" ? "text/event-stream" : "text/event-stream",
-        "cache-control": upstream.headers.get("cache-control") ?? "no-cache",
-        connection: upstream.headers.get("connection") ?? "keep-alive",
+        "cache-control": "no-cache, no-store",
+        connection: "keep-alive",
       },
     }));
   }

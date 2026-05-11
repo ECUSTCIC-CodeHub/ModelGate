@@ -28,9 +28,11 @@ type LeaseResult =
 
 type AcquireResult =
   | { ok: true; lease: ChannelLease; queued: boolean }
-  | { ok: false; reason: "circuit_open" };
+  | { ok: false; reason: "circuit_open" | "queue_full" | "queue_timeout" };
 
 const HARD_CONCURRENCY_LIMIT = 64;
+const MAX_QUEUE_SIZE = 256;
+const QUEUE_TIMEOUT_MS = 30_000;
 const HALF_OPEN_MAX_PROBES = 1;
 const CIRCUIT_FAILURE_THRESHOLD = 3;
 const CIRCUIT_OPEN_MS = 15_000;
@@ -172,20 +174,41 @@ export function acquireChannel(channelId: number, maxConcurrency: number, signal
     return grantLease(channelId, state, false);
   }
 
+  if (state.queue.length >= MAX_QUEUE_SIZE) {
+    return { ok: false, reason: "queue_full" };
+  }
+
   return new Promise<AcquireResult>((resolve, reject) => {
+    let settled = false;
     const waiter: QueueWaiter = {
-      resolve: (lease) => resolve({ ok: true, lease, queued: true }),
+      resolve: (lease) => {
+        settled = true;
+        clearTimeout(timer);
+        resolve({ ok: true, lease, queued: true });
+      },
       reject,
       signal,
     };
 
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      state.queue = state.queue.filter((item) => item !== waiter);
+      if (waiter.onAbort && signal) signal.removeEventListener("abort", waiter.onAbort);
+      resolve({ ok: false, reason: "queue_timeout" });
+    }, QUEUE_TIMEOUT_MS);
+
     if (signal) {
       if (signal.aborted) {
+        clearTimeout(timer);
         resolve({ ok: false, reason: "circuit_open" });
         return;
       }
 
       waiter.onAbort = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
         state.queue = state.queue.filter((item) => item !== waiter);
         reject(new Error("Request aborted while waiting for channel queue."));
       };

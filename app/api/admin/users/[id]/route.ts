@@ -72,6 +72,19 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
   if (!existing) return jsonError("用户不存在", 404);
 
+  const willDisableAdmin =
+    existing.role === "admin" &&
+    existing.enabled === 1 &&
+    (parsed.data.enabled === false || parsed.data.role === "user");
+  if (willDisableAdmin) {
+    const adminCount = gatewayDb
+      .prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND enabled = 1 AND deleted_at IS NULL")
+      .get() as { count: number };
+    if (adminCount.count <= 1) {
+      return jsonError("不能禁用或降级最后一个启用的管理员", 400);
+    }
+  }
+
   if (parsed.data.username !== undefined && parsed.data.username !== existing.username) {
     const duplicated = gatewayDb
       .prepare("SELECT id FROM users WHERE username = ? AND id != ?")
