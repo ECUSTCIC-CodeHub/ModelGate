@@ -14,30 +14,6 @@ const ThemeContext = createContext<ThemeProviderState>({
   toggle: () => {},
 });
 
-export function ThemeScript() {
-  // Apply theme before hydration to prevent flash
-  return (
-    <script
-      dangerouslySetInnerHTML={{
-        __html: `
-          (function() {
-            try {
-              var stored = localStorage.getItem('theme');
-              var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-              var theme = stored || (prefersDark ? 'dark' : 'light');
-              if (theme === 'light') {
-                document.documentElement.classList.remove('dark');
-              } else {
-                document.documentElement.classList.add('dark');
-              }
-            } catch(e) {}
-          })();
-        `,
-      }}
-    />
-  );
-}
-
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>("dark");
   const [mounted, setMounted] = useState(false);

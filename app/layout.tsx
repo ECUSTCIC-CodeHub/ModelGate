@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/toast";
-import { ThemeScript } from "@/components/providers/theme-provider";
+import { ThemeScript } from "@/components/providers/theme-script";
 
 export const metadata: Metadata = {
   title: "ModelGate",
