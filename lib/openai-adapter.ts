@@ -325,8 +325,9 @@ export function mergeResponsesInputHistory(body: JsonRecord, previousInput: unkn
   const history = Array.isArray(previousInput) ? previousInput : [];
   if (history.length === 0) return body;
 
+  const { previous_response_id: _, ...rest } = body;
   return {
-    ...body,
+    ...rest,
     input: [
       ...history,
       ...(Array.isArray(body.input) ? body.input : [body.input]),
@@ -1852,34 +1853,78 @@ function createChatToResponsesStream(upstream: ReadableStream<Uint8Array>): Stre
   let totalTokens = 0;
   let finalResponseText = "";
 
-  const buildToolCallOutput = (toolCall: ToolCallState) => ({
+  const buildToolCallOutput = (toolCall: ToolCallState, status: "completed" | "incomplete" = "completed") => ({
     id: toolCall.id,
     type: "function_call",
     call_id: toolCall.id,
     name: toolCall.name,
     arguments: toolCall.arguments,
-    status: "completed",
+    status,
   });
 
-  const buildCompletedOutput = () => (reasoningStarted || completionText || toolCalls.size > 0)
+  const buildCompletedOutput = (status: "completed" | "incomplete" = "completed") => (reasoningStarted || completionText || toolCalls.size > 0)
     ? [
         ...(reasoningStarted ? [{
           id: reasoningItemId,
           type: "reasoning",
           summary: [],
           content: [{ type: "reasoning_text", text: reasoningText }],
-          status: "completed",
+          status,
         }] : []),
         ...(completionText ? [{
           id: outputMessageId,
           type: "message",
           role: "assistant",
-          status: "completed",
+          status,
           content: [{ type: "output_text", text: completionText, annotations: [] }],
         }] : []),
-        ...[...toolCalls.values()].map(buildToolCallOutput),
+        ...[...toolCalls.values()].map((tc) => buildToolCallOutput(tc, status)),
       ]
     : [];
+
+  const emitToolCallDoneEvents = (
+    controller: ReadableStreamDefaultController<Uint8Array>,
+    status: "completed" | "incomplete" = "completed",
+  ) => {
+    for (const toolCall of toolCalls.values()) {
+      controller.enqueue(encoder.encode(toSseBlock("response.function_call_arguments.done", {
+        type: "response.function_call_arguments.done",
+        response_id: responseId,
+        item_id: toolCall.id,
+        output_index: toolCall.index + 1,
+        arguments: toolCall.arguments,
+      })));
+      controller.enqueue(encoder.encode(toSseBlock("response.output_item.done", {
+        type: "response.output_item.done",
+        response_id: responseId,
+        output_index: toolCall.index + 1,
+        item: buildToolCallOutput(toolCall, status),
+      })));
+    }
+  };
+
+  const emitCompletedResponse = (
+    controller: ReadableStreamDefaultController<Uint8Array>,
+    status: "completed" | "incomplete" = "completed",
+  ) => {
+    const completed = {
+      type: "response.completed",
+      response: {
+        id: responseId,
+        object: "response",
+        status,
+        output: buildCompletedOutput(status),
+        output_text: completionText,
+        usage: {
+          input_tokens: promptTokens,
+          output_tokens: completionTokens,
+          total_tokens: totalTokens,
+        },
+      },
+    };
+    finalResponseText = JSON.stringify(completed.response);
+    controller.enqueue(encoder.encode(toSseBlock("response.completed", completed)));
+  };
 
   const emitStart = (controller: ReadableStreamDefaultController<Uint8Array>, model: string | null, created: number) => {
     if (started) return;
@@ -2089,60 +2134,18 @@ function createChatToResponsesStream(upstream: ReadableStream<Uint8Array>): Stre
                 content_index: 0,
                 text: completionText,
               })));
-              for (const toolCall of toolCalls.values()) {
-                controller.enqueue(encoder.encode(toSseBlock("response.function_call_arguments.done", {
-                  type: "response.function_call_arguments.done",
-                  response_id: responseId,
-                  item_id: toolCall.id,
-                  output_index: toolCall.index + 1,
-                  arguments: toolCall.arguments,
-                })));
-                controller.enqueue(encoder.encode(toSseBlock("response.output_item.done", {
-                  type: "response.output_item.done",
-                  response_id: responseId,
-                  output_index: toolCall.index + 1,
-                  item: buildToolCallOutput(toolCall),
-                })));
-              }
-              const completed = {
-                type: "response.completed",
-                response: {
-                  id: responseId,
-                  object: "response",
-                  status: "completed",
-                  output: buildCompletedOutput(),
-                  output_text: completionText,
-                  usage: {
-                    input_tokens: promptTokens,
-                    output_tokens: completionTokens,
-                    total_tokens: totalTokens,
-                  },
-                },
-              };
-              finalResponseText = JSON.stringify(completed.response);
-              controller.enqueue(encoder.encode(toSseBlock("response.completed", completed)));
+              emitToolCallDoneEvents(controller, "completed");
+              emitCompletedResponse(controller, "completed");
             }
           }
         }
 
         if (!emittedDone) {
-          const completed = {
-            type: "response.completed",
-            response: {
-              id: responseId,
-              object: "response",
-              status: "completed",
-              output: buildCompletedOutput(),
-              output_text: completionText,
-              usage: {
-                input_tokens: promptTokens,
-                output_tokens: completionTokens,
-                total_tokens: totalTokens,
-              },
-            },
-          };
-          finalResponseText = JSON.stringify(completed.response);
-          controller.enqueue(encoder.encode(toSseBlock("response.completed", completed)));
+          // Stream ended without finish_reason — emit incomplete done events for started tool calls
+          if (toolCalls.size > 0) {
+            emitToolCallDoneEvents(controller, "incomplete");
+          }
+          emitCompletedResponse(controller, "incomplete");
         }
 
         controller.close();
