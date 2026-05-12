@@ -160,12 +160,7 @@ function normalizedPartsToResponseContent(parts: NormalizedContentPart[], role =
       return [{ type: textType, text: part.text }];
     }
     if (part.type === "thinking") {
-      return [{
-        type: "reasoning",
-        id: `rs_${crypto.randomUUID().replace(/-/g, "")}`,
-        summary: [],
-        content: [{ type: "reasoning_text", text: part.thinking }],
-      }];
+      return [];
     }
     if (part.type === "image") {
       return [{ type: "input_image", image_url: part.image_url, detail: part.detail ?? undefined }];
@@ -761,15 +756,6 @@ export function adaptRequestBody(
       model: realModel,
       input: normalizeChatMessages(body.messages).flatMap((message) => {
         const items: JsonRecord[] = [];
-        const reasoningText = extractThinkingText(message.content);
-        if (reasoningText) {
-          items.push({
-            type: "reasoning",
-            id: `rs_${crypto.randomUUID().replace(/-/g, "")}`,
-            summary: [],
-            content: [{ type: "reasoning_text", text: reasoningText }],
-          });
-        }
         if (message.role !== "tool" && (message.content.length > 0 || message.role !== "assistant")) {
           items.push({
             type: "message",
