@@ -14,6 +14,7 @@ import {
   extractCompletionTextFromBody,
   getStreamFlag,
   getUsageFromBody,
+  mergeResponsesInputHistory,
 } from "@/lib/openai-adapter";
 import { fetchUpstreamRequest } from "@/lib/proxy";
 import { checkUserRateLimit } from "@/lib/ratelimit";
@@ -210,6 +211,58 @@ function buildErrorResponseBody(message: string, status: number, inboundProtocol
 const QUEUE_KEEPALIVE_INTERVAL_MS = 1_000;
 const encoder = new TextEncoder();
 
+const RESPONSES_INPUT_STORE_LIMIT = 512;
+const responsesInputStore = new Map<string, unknown[]>();
+
+function asRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function getResponsesInputItems(input: unknown) {
+  return Array.isArray(input) ? input : [input];
+}
+
+function getStoredResponsesInput(scope: string, body: Record<string, unknown>) {
+  if (typeof body.previous_response_id !== "string") return undefined;
+  return responsesInputStore.get(`${scope}:${body.previous_response_id}`);
+}
+
+function buildResponsesInputForStore(body: Record<string, unknown>, responseText: string, outboundProtocol: GatewayProtocol) {
+  if (outboundProtocol !== "chat_completions") return null;
+  const items = [
+    ...getResponsesInputItems(body.input),
+    ...getResponsesOutputItems(responseText),
+  ].filter((item) => item !== undefined && item !== null);
+  return items.length > 0 ? items : null;
+}
+
+function getResponsesOutputItems(responseText: string) {
+  try {
+    const parsed = JSON.parse(responseText) as Record<string, unknown>;
+    return getResponsesInputItems(parsed.output).filter((item) => Boolean(item));
+  } catch {
+    console.warn("[responsesInputStore] Failed to parse response text as JSON; output items will be empty, tool-call history may be lost for previous_response_id lookups");
+    return [];
+  }
+}
+
+function rememberResponsesInput(scope: string, responseText: string, items: unknown[] | null) {
+  if (!items) return;
+  let response: Record<string, unknown> | null = null;
+  try {
+    response = asRecord(JSON.parse(responseText));
+  } catch {
+    return;
+  }
+  if (typeof response?.id !== "string") return;
+  responsesInputStore.set(`${scope}:${response.id}`, items);
+  while (responsesInputStore.size > RESPONSES_INPUT_STORE_LIMIT) {
+    const oldest = responsesInputStore.keys().next().value;
+    if (!oldest) break;
+    responsesInputStore.delete(oldest);
+  }
+}
+
 function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
   return typeof value === "object" && value !== null && "then" in value;
 }
@@ -278,6 +331,8 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
     return jsonError("缺少模型参数 model", 400);
   }
 
+  const responsesInputScope = String(auth.user.id);
+  const previousResponsesInput = inboundProtocol === "responses" ? getStoredResponsesInput(responsesInputScope, body) : undefined;
   const estimatedTokens = estimateRequestTokensForProtocol(body, inboundProtocol);
   const resolved = resolveAccessibleModelAlias(auth.user, alias);
   if (!resolved.ok) {
@@ -331,6 +386,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
         ok: true;
         route: RoutedModel;
         upstream: Response;
+        requestBody: Record<string, unknown>;
         lease: ChannelLease;
         attemptedChannels: number[];
         attemptedChannelNames: string[];
@@ -388,7 +444,10 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
       const lease = leaseResult.lease;
 
       try {
-        const upstreamBody = adaptRequestBody(body, inboundProtocol, route.model.upstream_protocol, route.model.real_model);
+        const requestBody = route.model.upstream_protocol === inboundProtocol
+          ? body
+          : mergeResponsesInputHistory(body, previousResponsesInput);
+        const upstreamBody = adaptRequestBody(requestBody, inboundProtocol, route.model.upstream_protocol, route.model.real_model);
         const upstream = await fetchUpstreamRequest(route, upstreamBody, route.model.upstream_protocol);
         if (shouldRetryUpstreamStatus(upstream.status) && attempt < maxRouteAttempts) {
           lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
@@ -398,6 +457,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
           ok: true,
           route,
           upstream,
+          requestBody,
           lease,
           attemptedChannels: [...attemptedChannels],
           attemptedChannelNames: [...attemptedChannelNames],
@@ -448,7 +508,10 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
   if ("queued" in picked && picked.queued) {
     const { route, acquirePromise, attemptedChannels, attemptedChannelNames } = picked;
     const localPromptTokens = countPromptTokensForProtocol(body, inboundProtocol, route.model.real_model);
-    const upstreamBody = adaptRequestBody(body, inboundProtocol, route.model.upstream_protocol, route.model.real_model);
+    const requestBody = route.model.upstream_protocol === inboundProtocol
+      ? body
+      : mergeResponsesInputHistory(body, previousResponsesInput);
+    const upstreamBody = adaptRequestBody(requestBody, inboundProtocol, route.model.upstream_protocol, route.model.real_model);
 
     if (stream) {
       const queuedStream = new ReadableStream<Uint8Array>({
@@ -508,6 +571,9 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
               if (!upstream.body) {
                 const rawText = await upstream.text().catch(() => "");
                 const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol);
+                const responsesStoreInput = inboundProtocol === "responses"
+                  ? buildResponsesInputForStore(requestBody, adaptedText, route.model.upstream_protocol)
+                  : null;
                 const usage = getUsageFromBody(rawText, route.model.upstream_protocol);
                 const completionText = extractCompletionTextFromBody(rawText, route.model.upstream_protocol);
                 const completionTokens = usage?.completion_tokens ?? Math.max(0, countTextTokens(completionText, route.model.real_model));
@@ -539,6 +605,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
                   error_message: null,
       client_ip: clientIp,
                 });
+                rememberResponsesInput(responsesInputScope, adaptedText, responsesStoreInput);
 
                 controller.enqueue(toSseDataBlock(adaptedText));
                 controller.enqueue(encoder.encode("data: [DONE]\n\n"));
@@ -565,6 +632,10 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
 
                 if (success) {
                   addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier);
+                  if (inboundProtocol === "responses" && transformed.responseText) {
+                    const responseText = transformed.responseText();
+                    rememberResponsesInput(responsesInputScope, responseText, buildResponsesInputForStore(requestBody, responseText, route.model.upstream_protocol));
+                  }
                 }
                 insertChatLog({
                   user_id: auth.user.id,
@@ -695,6 +766,9 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
             }
 
             const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol);
+            const responsesStoreInput = inboundProtocol === "responses"
+              ? buildResponsesInputForStore(requestBody, adaptedText, route.model.upstream_protocol)
+              : null;
             const usage = getUsageFromBody(rawText, route.model.upstream_protocol);
             const completionText = extractCompletionTextFromBody(rawText, route.model.upstream_protocol);
             const localCompletionTokens = usage?.completion_tokens ?? Math.max(0, countTextTokens(completionText, route.model.real_model));
@@ -725,6 +799,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
               error_message: null,
       client_ip: clientIp,
             });
+            rememberResponsesInput(responsesInputScope, adaptedText, responsesStoreInput);
 
             controller.enqueue(encoder.encode(adaptedText));
             controller.close();
@@ -777,7 +852,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
     }));
   }
 
-  const { route, upstream, lease, attemptedChannels, attemptedChannelNames } = picked;
+  const { route, upstream, requestBody, lease, attemptedChannels, attemptedChannelNames } = picked;
   const localPromptTokens = countPromptTokensForProtocol(body, inboundProtocol, route.model.real_model);
 
   if (stream) {
@@ -852,6 +927,9 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
         }));
       }
       const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol);
+      const responsesStoreInput = inboundProtocol === "responses"
+        ? buildResponsesInputForStore(requestBody, adaptedText, route.model.upstream_protocol)
+        : null;
       const usage = getUsageFromBody(rawText, route.model.upstream_protocol);
       const completionText = extractCompletionTextFromBody(rawText, route.model.upstream_protocol);
       const completionTokens = usage?.completion_tokens ?? Math.max(0, countTextTokens(completionText, route.model.real_model));
@@ -883,6 +961,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
         error_message: null,
       client_ip: clientIp,
       });
+      rememberResponsesInput(responsesInputScope, adaptedText, responsesStoreInput);
       return withQuotaHeaders(new Response(adaptedText, {
         status: upstream.status,
         headers: {
@@ -911,6 +990,10 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
 
       if (success) {
         addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier);
+        if (inboundProtocol === "responses" && transformed.responseText) {
+          const responseText = transformed.responseText();
+          rememberResponsesInput(responsesInputScope, responseText, buildResponsesInputForStore(requestBody, responseText, route.model.upstream_protocol));
+        }
       }
       insertChatLog({
         user_id: auth.user.id,
@@ -1000,6 +1083,9 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
     }));
   }
   const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol);
+  const responsesStoreInput = inboundProtocol === "responses"
+    ? buildResponsesInputForStore(requestBody, adaptedText, route.model.upstream_protocol)
+    : null;
   const usage = getUsageFromBody(rawText, route.model.upstream_protocol);
   const completionText = extractCompletionTextFromBody(rawText, route.model.upstream_protocol);
   const localCompletionTokens = usage?.completion_tokens ?? Math.max(0, countTextTokens(completionText, route.model.real_model));
@@ -1031,6 +1117,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
     error_message: null,
       client_ip: clientIp,
   });
+  rememberResponsesInput(responsesInputScope, adaptedText, responsesStoreInput);
 
   return withQuotaHeaders(new Response(adaptedText, {
     status: upstream.status,
