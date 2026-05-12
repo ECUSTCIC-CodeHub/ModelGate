@@ -770,7 +770,7 @@ export function adaptRequestBody(
             content: [{ type: "reasoning_text", text: reasoningText }],
           });
         }
-        if (message.content.length > 0 || message.role !== "assistant") {
+        if (message.role !== "tool" && (message.content.length > 0 || message.role !== "assistant")) {
           items.push({
             type: "message",
             role: message.role,
