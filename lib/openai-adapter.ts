@@ -2235,6 +2235,7 @@ function createResponsesToChatStream(upstream: ReadableStream<Uint8Array>): Stre
                   arguments: typeof item.arguments === "string" ? item.arguments : "",
                 };
                 toolCalls.set(callId, callState);
+                if (typeof item.id === "string") toolCalls.set(item.id, callState);
                 emitChatChunk(controller, {
                   tool_calls: [{
                     index: callState.index,
@@ -2266,6 +2267,29 @@ function createResponsesToChatStream(upstream: ReadableStream<Uint8Array>): Stre
                     },
                   }],
                 });
+              }
+              continue;
+            }
+
+            if (event.event === "response.function_call_arguments.done" && typeof payload?.arguments === "string") {
+              const itemId = typeof payload.item_id === "string" ? payload.item_id : "";
+              const existing = toolCalls.get(itemId);
+              if (existing) {
+                const delta = payload.arguments.slice(existing.arguments.length);
+                existing.arguments = payload.arguments;
+                if (delta) {
+                  emitChatChunk(controller, {
+                    tool_calls: [{
+                      index: existing.index,
+                      id: existing.id,
+                      type: "function",
+                      function: {
+                        name: existing.name,
+                        arguments: delta,
+                      },
+                    }],
+                  });
+                }
               }
               continue;
             }
