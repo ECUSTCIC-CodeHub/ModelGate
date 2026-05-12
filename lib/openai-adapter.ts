@@ -153,10 +153,11 @@ function normalizedPartsToChatContent(parts: NormalizedContentPart[]) {
   return normalized;
 }
 
-function normalizedPartsToResponseContent(parts: NormalizedContentPart[]) {
+function normalizedPartsToResponseContent(parts: NormalizedContentPart[], role = "user") {
+  const textType = role === "assistant" ? "output_text" : "input_text";
   const normalized = parts.flatMap((part) => {
     if (part.type === "text") {
-      return [{ type: "input_text", text: part.text }];
+      return [{ type: textType, text: part.text }];
     }
     if (part.type === "thinking") {
       return [{
@@ -175,7 +176,7 @@ function normalizedPartsToResponseContent(parts: NormalizedContentPart[]) {
     return [];
   });
 
-  return normalized.length > 0 ? normalized : [{ type: "input_text", text: "" }];
+  return normalized.length > 0 ? normalized : [{ type: textType, text: "" }];
 }
 
 function normalizedPartsToAnthropicContent(parts: NormalizedContentPart[]) {
@@ -773,7 +774,7 @@ export function adaptRequestBody(
           items.push({
             type: "message",
             role: message.role,
-            content: normalizedPartsToResponseContent(message.content),
+            content: normalizedPartsToResponseContent(message.content, message.role),
           });
         }
 
