@@ -320,6 +320,20 @@ function normalizeResponsesInput(input: unknown, instructions?: string): Normali
   return normalized;
 }
 
+export function mergeResponsesInputHistory(body: JsonRecord, previousInput: unknown) {
+  if (body.previous_response_id === undefined) return body;
+  const history = Array.isArray(previousInput) ? previousInput : [];
+  if (history.length === 0) return body;
+
+  return {
+    ...body,
+    input: [
+      ...history,
+      ...(Array.isArray(body.input) ? body.input : [body.input]),
+    ],
+  };
+}
+
 function normalizeAnthropicMessages(messages: unknown, system?: unknown): NormalizedMessage[] {
   const normalized: NormalizedMessage[] = [];
 
@@ -1372,6 +1386,7 @@ type StreamTransformResult = {
   stream: ReadableStream<Uint8Array>;
   completionText: () => string;
   firstTokenAt: () => number | null;
+  responseText?: () => string;
 };
 
 export function createTransformedStream(
@@ -1835,6 +1850,36 @@ function createChatToResponsesStream(upstream: ReadableStream<Uint8Array>): Stre
   let promptTokens = 0;
   let completionTokens = 0;
   let totalTokens = 0;
+  let finalResponseText = "";
+
+  const buildToolCallOutput = (toolCall: ToolCallState) => ({
+    id: toolCall.id,
+    type: "function_call",
+    call_id: toolCall.id,
+    name: toolCall.name,
+    arguments: toolCall.arguments,
+    status: "completed",
+  });
+
+  const buildCompletedOutput = () => (reasoningStarted || completionText || toolCalls.size > 0)
+    ? [
+        ...(reasoningStarted ? [{
+          id: reasoningItemId,
+          type: "reasoning",
+          summary: [],
+          content: [{ type: "reasoning_text", text: reasoningText }],
+          status: "completed",
+        }] : []),
+        ...(completionText ? [{
+          id: outputMessageId,
+          type: "message",
+          role: "assistant",
+          status: "completed",
+          content: [{ type: "output_text", text: completionText, annotations: [] }],
+        }] : []),
+        ...[...toolCalls.values()].map(buildToolCallOutput),
+      ]
+    : [];
 
   const emitStart = (controller: ReadableStreamDefaultController<Uint8Array>, model: string | null, created: number) => {
     if (started) return;
@@ -1973,7 +2018,7 @@ function createChatToResponsesStream(upstream: ReadableStream<Uint8Array>): Stre
                   index: toolCall.index,
                   id: toolCall.id || `call_${crypto.randomUUID().replace(/-/g, "")}`,
                   name: toolCall.name,
-                  arguments: toolCall.arguments,
+                  arguments: "",
                 };
                 toolCalls.set(toolCall.index, state);
                 controller.enqueue(encoder.encode(toSseBlock("response.output_item.added", {
@@ -1985,22 +2030,25 @@ function createChatToResponsesStream(upstream: ReadableStream<Uint8Array>): Stre
                     id: state.id,
                     call_id: state.id,
                     name: state.name,
-                    arguments: state.arguments,
+                    arguments: "",
                     status: "in_progress",
                   },
                 })));
               } else {
-                existing.arguments += toolCall.arguments;
                 if (toolCall.name) existing.name = toolCall.name;
               }
 
-              controller.enqueue(encoder.encode(toSseBlock("response.function_call_arguments.delta", {
-                type: "response.function_call_arguments.delta",
-                response_id: responseId,
-                item_id: toolCalls.get(toolCall.index)?.id ?? "",
-                output_index: toolCall.index + 1,
-                delta: toolCall.arguments,
-              })));
+              const state = toolCalls.get(toolCall.index);
+              if (state && toolCall.arguments) {
+                state.arguments += toolCall.arguments;
+                controller.enqueue(encoder.encode(toSseBlock("response.function_call_arguments.delta", {
+                  type: "response.function_call_arguments.delta",
+                  response_id: responseId,
+                  item_id: state.id,
+                  output_index: toolCall.index + 1,
+                  delta: toolCall.arguments,
+                })));
+              }
             }
 
             if (parsed.usage) {
@@ -2041,30 +2089,28 @@ function createChatToResponsesStream(upstream: ReadableStream<Uint8Array>): Stre
                 content_index: 0,
                 text: completionText,
               })));
-              controller.enqueue(encoder.encode(toSseBlock("response.completed", {
+              for (const toolCall of toolCalls.values()) {
+                controller.enqueue(encoder.encode(toSseBlock("response.function_call_arguments.done", {
+                  type: "response.function_call_arguments.done",
+                  response_id: responseId,
+                  item_id: toolCall.id,
+                  output_index: toolCall.index + 1,
+                  arguments: toolCall.arguments,
+                })));
+                controller.enqueue(encoder.encode(toSseBlock("response.output_item.done", {
+                  type: "response.output_item.done",
+                  response_id: responseId,
+                  output_index: toolCall.index + 1,
+                  item: buildToolCallOutput(toolCall),
+                })));
+              }
+              const completed = {
                 type: "response.completed",
                 response: {
                   id: responseId,
                   object: "response",
                   status: "completed",
-                  output: (reasoningStarted || completionText)
-                    ? [
-                        ...(reasoningStarted ? [{
-                          id: reasoningItemId,
-                          type: "reasoning",
-                          summary: [],
-                          content: [{ type: "reasoning_text", text: reasoningText }],
-                          status: "completed",
-                        }] : []),
-                        ...(completionText ? [{
-                        id: outputMessageId,
-                        type: "message",
-                        role: "assistant",
-                        status: "completed",
-                        content: [{ type: "output_text", text: completionText, annotations: [] }],
-                      }] : []),
-                      ]
-                    : [],
+                  output: buildCompletedOutput(),
                   output_text: completionText,
                   usage: {
                     input_tokens: promptTokens,
@@ -2072,36 +2118,21 @@ function createChatToResponsesStream(upstream: ReadableStream<Uint8Array>): Stre
                     total_tokens: totalTokens,
                   },
                 },
-              })));
+              };
+              finalResponseText = JSON.stringify(completed.response);
+              controller.enqueue(encoder.encode(toSseBlock("response.completed", completed)));
             }
           }
         }
 
         if (!emittedDone) {
-          controller.enqueue(encoder.encode(toSseBlock("response.completed", {
+          const completed = {
             type: "response.completed",
             response: {
               id: responseId,
               object: "response",
               status: "completed",
-              output: (reasoningStarted || completionText)
-                ? [
-                    ...(reasoningStarted ? [{
-                      id: reasoningItemId,
-                      type: "reasoning",
-                      summary: [],
-                      content: [{ type: "reasoning_text", text: reasoningText }],
-                      status: "completed",
-                    }] : []),
-                    ...(completionText ? [{
-                    id: outputMessageId,
-                    type: "message",
-                    role: "assistant",
-                    status: "completed",
-                    content: [{ type: "output_text", text: completionText, annotations: [] }],
-                  }] : []),
-                  ]
-                : [],
+              output: buildCompletedOutput(),
               output_text: completionText,
               usage: {
                 input_tokens: promptTokens,
@@ -2109,7 +2140,9 @@ function createChatToResponsesStream(upstream: ReadableStream<Uint8Array>): Stre
                 total_tokens: totalTokens,
               },
             },
-          })));
+          };
+          finalResponseText = JSON.stringify(completed.response);
+          controller.enqueue(encoder.encode(toSseBlock("response.completed", completed)));
         }
 
         controller.close();
@@ -2123,6 +2156,7 @@ function createChatToResponsesStream(upstream: ReadableStream<Uint8Array>): Stre
     stream,
     completionText: () => `${reasoningText}${completionText}`,
     firstTokenAt: () => firstTokenAt,
+    responseText: () => finalResponseText,
   };
 }
 
