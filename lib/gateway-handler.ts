@@ -241,6 +241,7 @@ function getResponsesOutputItems(responseText: string) {
     const parsed = JSON.parse(responseText) as Record<string, unknown>;
     return getResponsesInputItems(parsed.output).filter((item) => Boolean(item));
   } catch {
+    console.warn("[responsesInputStore] Failed to parse response text as JSON; output items will be empty, tool-call history may be lost for previous_response_id lookups");
     return [];
   }
 }
