@@ -2275,7 +2275,9 @@ function createResponsesToChatStream(upstream: ReadableStream<Uint8Array>): Stre
               const itemId = typeof payload.item_id === "string" ? payload.item_id : "";
               const existing = toolCalls.get(itemId);
               if (existing) {
-                const delta = payload.arguments.slice(existing.arguments.length);
+                const delta = payload.arguments.startsWith(existing.arguments)
+                  ? payload.arguments.slice(existing.arguments.length)
+                  : payload.arguments;
                 existing.arguments = payload.arguments;
                 if (delta) {
                   emitChatChunk(controller, {
