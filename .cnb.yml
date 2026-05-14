@@ -22,13 +22,27 @@
     - name: auto-tag
       image: cnbcool/git-auto-tag:latest
       settings:
+        dryRun: true
         blockWhenFail: false
         branch: $CNB_BRANCH
         repoUrlHttps: $CNB_REPO_URL_HTTPS
       exports:
         tag: NEW_TAG
-    - name: show tag
-      script: echo $NEW_TAG
+    - name: push tag
+      script: |
+        if [ -z "$NEW_TAG" ]; then
+          echo "No new tag to create"
+          exit 0
+        fi
+        echo "Creating tag: $NEW_TAG"
+        # Delete conflicting local tag if exists (fetched by auto-tag)
+        git tag -d "$NEW_TAG" 2>/dev/null || true
+        # Delete conflicting remote tag if exists (orphaned tag scenario)
+        git push origin ":refs/tags/$NEW_TAG" 2>/dev/null || true
+        # Create and push the new tag
+        git tag -a "$NEW_TAG" -m "Release $NEW_TAG"
+        git push origin "$NEW_TAG"
+        echo "Successfully pushed tag: $NEW_TAG"
 
 main:
   push:
