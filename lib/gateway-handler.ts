@@ -272,6 +272,8 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
   }
 
   const body = rawBody as Record<string, unknown>;
+  const thinkingRecord = body.thinking && typeof body.thinking === "object" ? (body.thinking as Record<string, unknown>) : null;
+  const responseOptions = { thinkingEnabled: thinkingRecord?.type === "enabled" };
   const alias = body.model;
   if (typeof alias !== "string" || alias.length === 0) {
     logRejected(400, "缺少模型参数 model", null);
@@ -507,7 +509,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
 
               if (!upstream.body) {
                 const rawText = await upstream.text().catch(() => "");
-                const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol);
+                const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol, responseOptions);
                 const usage = getUsageFromBody(rawText, route.model.upstream_protocol);
                 const completionText = extractCompletionTextFromBody(rawText, route.model.upstream_protocol);
                 const completionTokens = usage?.completion_tokens ?? Math.max(0, countTextTokens(completionText, route.model.real_model));
@@ -546,7 +548,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
                 return;
               }
 
-              const transformed = createTransformedStream(upstream.body, route.model.upstream_protocol, inboundProtocol);
+              const transformed = createTransformedStream(upstream.body, route.model.upstream_protocol, inboundProtocol, responseOptions);
               let finalized = false;
               const finalize = () => {
                 if (finalized) return;
@@ -694,7 +696,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
               return;
             }
 
-            const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol);
+            const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol, responseOptions);
             const usage = getUsageFromBody(rawText, route.model.upstream_protocol);
             const completionText = extractCompletionTextFromBody(rawText, route.model.upstream_protocol);
             const localCompletionTokens = usage?.completion_tokens ?? Math.max(0, countTextTokens(completionText, route.model.real_model));
@@ -851,7 +853,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
           },
         }));
       }
-      const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol);
+      const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol, responseOptions);
       const usage = getUsageFromBody(rawText, route.model.upstream_protocol);
       const completionText = extractCompletionTextFromBody(rawText, route.model.upstream_protocol);
       const completionTokens = usage?.completion_tokens ?? Math.max(0, countTextTokens(completionText, route.model.real_model));
@@ -891,7 +893,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
       }));
     }
 
-    const transformed = createTransformedStream(upstream.body, route.model.upstream_protocol, inboundProtocol);
+    const transformed = createTransformedStream(upstream.body, route.model.upstream_protocol, inboundProtocol, responseOptions);
     const streamOut = transformed.stream;
     let finalized = false;
     const finalize = () => {
@@ -999,7 +1001,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
       },
     }));
   }
-  const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol);
+  const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol, responseOptions);
   const usage = getUsageFromBody(rawText, route.model.upstream_protocol);
   const completionText = extractCompletionTextFromBody(rawText, route.model.upstream_protocol);
   const localCompletionTokens = usage?.completion_tokens ?? Math.max(0, countTextTokens(completionText, route.model.real_model));

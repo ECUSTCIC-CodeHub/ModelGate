@@ -857,7 +857,8 @@ export function adaptRequestBody(
 
   if (body.temperature !== undefined) next.temperature = body.temperature;
   if (body.top_p !== undefined) next.top_p = body.top_p;
-  if (body.max_output_tokens !== undefined) next.max_tokens = body.max_output_tokens;
+  const requestMaxTokens = body.max_output_tokens ?? (inboundProtocol === "anthropic_messages" ? body.max_tokens : undefined);
+  if (requestMaxTokens !== undefined) next.max_tokens = requestMaxTokens;
   if (body.tools !== undefined) next.tools = responsesToolsToChatTools(body.tools);
   if (body.tool_choice !== undefined) next.tool_choice = responsesToolChoiceToChat(body.tool_choice);
   if (body.parallel_tool_calls !== undefined) next.parallel_tool_calls = body.parallel_tool_calls;
@@ -868,6 +869,9 @@ export function adaptRequestBody(
   }
   if (inboundProtocol === "anthropic_messages" && body.tool_choice !== undefined) {
     next.tool_choice = anthropicToolChoiceToChat(body.tool_choice);
+  }
+  if (inboundProtocol === "anthropic_messages" && body.stop_sequences !== undefined) {
+    next.stop = body.stop_sequences;
   }
 
   const responseFormat = responsesTextFormatToChat(body.text);
@@ -1060,7 +1064,8 @@ export function getUsageFromBody(text: string, protocol: GatewayProtocol) {
   }
 }
 
-export function adaptResponseBody(text: string, outboundProtocol: GatewayProtocol, inboundProtocol: GatewayProtocol) {
+export function adaptResponseBody(text: string, outboundProtocol: GatewayProtocol, inboundProtocol: GatewayProtocol, options?: { thinkingEnabled?: boolean }) {
+  const thinkingEnabled = options?.thinkingEnabled ?? false;
   if (inboundProtocol === "embeddings" || outboundProtocol === "embeddings") {
     if (inboundProtocol !== outboundProtocol) {
       throw new Error("Embeddings protocol only supports passthrough responses");
@@ -1086,13 +1091,13 @@ export function adaptResponseBody(text: string, outboundProtocol: GatewayProtoco
         ? message.reasoning_content
         : "";
 
-    if (reasoningText) {
+    if (thinkingEnabled && reasoningText) {
       content.push({ type: "thinking", thinking: reasoningText });
     }
 
     const textContent = extractChatMessageText(message);
-    if (textContent) {
-      content.push({ type: "text", text: textContent });
+    if (textContent || (content.length === 0 && toolCalls.length === 0)) {
+      content.push({ type: "text", text: textContent || "" });
     }
     for (const toolCall of toolCalls) {
       let input: unknown = {};
@@ -1126,50 +1131,46 @@ export function adaptResponseBody(text: string, outboundProtocol: GatewayProtoco
 
   if (outboundProtocol === "anthropic_messages") {
     if (inboundProtocol === "chat_completions") {
-      const choices = asArray(parsed.choices);
-      const firstChoice = asRecord(choices[0]);
-      const message = asRecord(firstChoice?.message);
-      const toolCalls = extractChatToolCalls(message);
-      const content = [];
-      const reasoningText = typeof message?.reasoning === "string"
-        ? message.reasoning
-        : typeof message?.reasoning_content === "string"
-          ? message.reasoning_content
-          : "";
-
-      if (reasoningText) {
-        content.push({ type: "thinking", thinking: reasoningText });
-      }
-      const textContent = extractChatMessageText(message);
-      if (textContent) {
-        content.push({ type: "text", text: textContent });
-      }
-      for (const toolCall of toolCalls) {
-        let input: unknown = {};
-        try {
-          input = JSON.parse(toolCall.function.arguments || "{}");
-        } catch {
-          input = { raw: toolCall.function.arguments };
-        }
-        content.push({
-          type: "tool_use",
-          id: toolCall.id ?? `toolu_${crypto.randomUUID().replace(/-/g, "")}`,
-          name: toolCall.function.name,
-          input,
-        });
-      }
+      const anthropicContent = asArray(parsed.content).map((item) => asRecord(item)).filter((item): item is JsonRecord => Boolean(item));
+      const reasoningText = anthropicContent
+        .filter((item) => item.type === "thinking")
+        .map((item) => (typeof item.thinking === "string" ? item.thinking : ""))
+        .join("");
+      const textContent = anthropicContent
+        .filter((item) => item.type === "text")
+        .map((item) => (typeof item.text === "string" ? item.text : ""))
+        .join("");
+      const toolCalls = anthropicContent
+        .filter((item) => item.type === "tool_use")
+        .map((item) => ({
+          id: typeof item.id === "string" ? item.id : `call_${crypto.randomUUID().replace(/-/g, "")}`,
+          type: "function" as const,
+          function: {
+            name: typeof item.name === "string" ? item.name : "",
+            arguments: JSON.stringify(asRecord(item.input) ?? item.input ?? {}),
+          },
+        }));
       const usage = asRecord(parsed.usage);
+      const stopReason = typeof parsed.stop_reason === "string" ? parsed.stop_reason : "";
       return JSON.stringify({
-        id: typeof parsed.id === "string" ? parsed.id : `msg_${crypto.randomUUID().replace(/-/g, "")}`,
-        type: "message",
-        role: "assistant",
+        id: typeof parsed.id === "string" ? parsed.id : `chatcmpl_${crypto.randomUUID().replace(/-/g, "")}`,
+        object: "chat.completion",
+        created: Math.floor(Date.now() / 1000),
         model: typeof parsed.model === "string" ? parsed.model : null,
-        content,
-        stop_reason: toolCalls.length > 0 ? "tool_use" : "end_turn",
-        stop_sequence: null,
+        choices: [{
+          index: 0,
+          message: {
+            role: "assistant",
+            content: textContent || null,
+            reasoning: reasoningText || undefined,
+            tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+          },
+          finish_reason: stopReason === "tool_use" || toolCalls.length > 0 ? "tool_calls" : "stop",
+        }],
         usage: {
-          input_tokens: Number(usage?.prompt_tokens ?? 0),
-          output_tokens: Number(usage?.completion_tokens ?? 0),
+          prompt_tokens: Number(usage?.input_tokens ?? 0),
+          completion_tokens: Number(usage?.output_tokens ?? 0),
+          total_tokens: Number(usage?.input_tokens ?? 0) + Number(usage?.output_tokens ?? 0),
         },
       });
     }
@@ -1238,8 +1239,10 @@ export function adaptResponseBody(text: string, outboundProtocol: GatewayProtoco
     const usage = asRecord(parsed.usage);
     const message = extractResponsesMessage(parsed.output);
     const content = [];
-    if (message.reasoning) content.push({ type: "thinking", thinking: message.reasoning });
-    if (message.text) content.push({ type: "text", text: message.text });
+    if (thinkingEnabled && message.reasoning) content.push({ type: "thinking", thinking: message.reasoning });
+    if (message.text || (content.length === 0 && message.toolCalls.length === 0)) {
+      content.push({ type: "text", text: message.text || "" });
+    }
     for (const toolCall of message.toolCalls) {
       let input: unknown = {};
       try {
@@ -1391,19 +1394,22 @@ export function createTransformedStream(
   upstream: ReadableStream<Uint8Array>,
   outboundProtocol: GatewayProtocol,
   inboundProtocol: GatewayProtocol,
+  options?: { thinkingEnabled?: boolean },
 ) : StreamTransformResult {
   if (outboundProtocol === inboundProtocol) {
     return createPassthroughStream(upstream, outboundProtocol);
   }
 
+  const thinkingEnabled = options?.thinkingEnabled ?? false;
+
   return outboundProtocol === "chat_completions"
     ? inboundProtocol === "responses"
       ? createChatToResponsesStream(upstream)
-      : createChatToAnthropicStream(upstream)
+      : createChatToAnthropicStream(upstream, thinkingEnabled)
     : outboundProtocol === "responses"
       ? inboundProtocol === "chat_completions"
         ? createResponsesToChatStream(upstream)
-        : createResponsesToAnthropicStream(upstream)
+        : createResponsesToAnthropicStream(upstream, thinkingEnabled)
       : inboundProtocol === "chat_completions"
         ? createAnthropicToChatStream(upstream)
         : createAnthropicToResponsesStream(upstream);
@@ -1670,7 +1676,7 @@ function createAnthropicToResponsesStream(upstream: ReadableStream<Uint8Array>):
   return createChatToResponsesStream(chat.stream);
 }
 
-function createChatToAnthropicStream(upstream: ReadableStream<Uint8Array>): StreamTransformResult {
+function createChatToAnthropicStream(upstream: ReadableStream<Uint8Array>, thinkingEnabled = false): StreamTransformResult {
   const reader = upstream.getReader();
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -1738,19 +1744,21 @@ function createChatToAnthropicStream(upstream: ReadableStream<Uint8Array>): Stre
             if (parsed.reasoning) {
               markFirstToken();
               reasoningText += parsed.reasoning;
-              if (!thinkingStarted) {
-                thinkingStarted = true;
-                emit(controller, "content_block_start", {
-                  type: "content_block_start",
+              if (thinkingEnabled) {
+                if (!thinkingStarted) {
+                  thinkingStarted = true;
+                  emit(controller, "content_block_start", {
+                    type: "content_block_start",
+                    index: 0,
+                    content_block: { type: "thinking", thinking: "" },
+                  });
+                }
+                emit(controller, "content_block_delta", {
+                  type: "content_block_delta",
                   index: 0,
-                  content_block: { type: "thinking", thinking: "" },
+                  delta: { type: "thinking_delta", thinking: parsed.reasoning },
                 });
               }
-              emit(controller, "content_block_delta", {
-                type: "content_block_delta",
-                index: 0,
-                delta: { type: "thinking_delta", thinking: parsed.reasoning },
-              });
             }
 
             if (parsed.content) {
@@ -1822,9 +1830,9 @@ function createChatToAnthropicStream(upstream: ReadableStream<Uint8Array>): Stre
   return { stream, completionText: () => `${reasoningText}${completionText}`, firstTokenAt: () => firstTokenAt };
 }
 
-function createResponsesToAnthropicStream(upstream: ReadableStream<Uint8Array>): StreamTransformResult {
+function createResponsesToAnthropicStream(upstream: ReadableStream<Uint8Array>, thinkingEnabled = false): StreamTransformResult {
   const chat = createResponsesToChatStream(upstream);
-  return createChatToAnthropicStream(chat.stream);
+  return createChatToAnthropicStream(chat.stream, thinkingEnabled);
 }
 
 function createChatToResponsesStream(upstream: ReadableStream<Uint8Array>): StreamTransformResult {
