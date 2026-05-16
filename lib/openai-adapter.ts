@@ -153,18 +153,14 @@ function normalizedPartsToChatContent(parts: NormalizedContentPart[]) {
   return normalized;
 }
 
-function normalizedPartsToResponseContent(parts: NormalizedContentPart[]) {
+function normalizedPartsToResponseContent(parts: NormalizedContentPart[], role = "user") {
+  const textType = role === "assistant" ? "output_text" : "input_text";
   const normalized = parts.flatMap((part) => {
     if (part.type === "text") {
-      return [{ type: "input_text", text: part.text }];
+      return [{ type: textType, text: part.text }];
     }
     if (part.type === "thinking") {
-      return [{
-        type: "reasoning",
-        id: `rs_${crypto.randomUUID().replace(/-/g, "")}`,
-        summary: [],
-        content: [{ type: "reasoning_text", text: part.thinking }],
-      }];
+      return [];
     }
     if (part.type === "image") {
       return [{ type: "input_image", image_url: part.image_url, detail: part.detail ?? undefined }];
@@ -175,7 +171,7 @@ function normalizedPartsToResponseContent(parts: NormalizedContentPart[]) {
     return [];
   });
 
-  return normalized.length > 0 ? normalized : [{ type: "input_text", text: "" }];
+  return normalized.length > 0 ? normalized : [{ type: textType, text: "" }];
 }
 
 function normalizedPartsToAnthropicContent(parts: NormalizedContentPart[]) {
@@ -760,20 +756,11 @@ export function adaptRequestBody(
       model: realModel,
       input: normalizeChatMessages(body.messages).flatMap((message) => {
         const items: JsonRecord[] = [];
-        const reasoningText = extractThinkingText(message.content);
-        if (reasoningText) {
-          items.push({
-            type: "reasoning",
-            id: `rs_${crypto.randomUUID().replace(/-/g, "")}`,
-            summary: [],
-            content: [{ type: "reasoning_text", text: reasoningText }],
-          });
-        }
-        if (message.content.length > 0 || message.role !== "assistant") {
+        if (message.role !== "tool" && (message.content.length > 0 || message.role !== "assistant")) {
           items.push({
             type: "message",
             role: message.role,
-            content: normalizedPartsToResponseContent(message.content),
+            content: normalizedPartsToResponseContent(message.content, message.role),
           });
         }
 
@@ -2256,6 +2243,7 @@ function createResponsesToChatStream(upstream: ReadableStream<Uint8Array>): Stre
                   arguments: typeof item.arguments === "string" ? item.arguments : "",
                 };
                 toolCalls.set(callId, callState);
+                if (typeof item.id === "string") toolCalls.set(item.id, callState);
                 emitChatChunk(controller, {
                   tool_calls: [{
                     index: callState.index,
@@ -2287,6 +2275,31 @@ function createResponsesToChatStream(upstream: ReadableStream<Uint8Array>): Stre
                     },
                   }],
                 });
+              }
+              continue;
+            }
+
+            if (event.event === "response.function_call_arguments.done" && typeof payload?.arguments === "string") {
+              const itemId = typeof payload.item_id === "string" ? payload.item_id : "";
+              const existing = toolCalls.get(itemId);
+              if (existing) {
+                const delta = payload.arguments.startsWith(existing.arguments)
+                  ? payload.arguments.slice(existing.arguments.length)
+                  : payload.arguments;
+                existing.arguments = payload.arguments;
+                if (delta) {
+                  emitChatChunk(controller, {
+                    tool_calls: [{
+                      index: existing.index,
+                      id: existing.id,
+                      type: "function",
+                      function: {
+                        name: existing.name,
+                        arguments: delta,
+                      },
+                    }],
+                  });
+                }
               }
               continue;
             }
