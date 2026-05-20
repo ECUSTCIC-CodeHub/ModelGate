@@ -43,7 +43,7 @@ export function RegisterForm({ status }: { status: AuthStatus }) {
       setSession({ accessToken: data.access_token, refreshToken: data.refresh_token });
       if (data.user) setCachedProfile(data.user);
       toast({ variant: "success", description: getApiMessage(data, "注册成功。") });
-      router.push(data.user.role === "admin" ? "/dashboard" : "/dashboard/keys");
+      window.location.href = data.user.role === "admin" ? "/dashboard" : "/dashboard/keys";
     } finally {
       setLoading(false);
     }

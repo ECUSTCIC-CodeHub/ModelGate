@@ -46,7 +46,7 @@ export function LoginForm({ status }: { status: AuthStatus }) {
 
       setSession({ accessToken: data.access_token, refreshToken: data.refresh_token });
       if (data.user) setCachedProfile(data.user);
-      router.push(data.user.role === "admin" ? "/dashboard" : "/dashboard/keys");
+      window.location.href = data.user.role === "admin" ? "/dashboard" : "/dashboard/keys";
     } finally {
       setLoading(false);
     }

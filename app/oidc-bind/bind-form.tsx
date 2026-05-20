@@ -10,11 +10,11 @@ import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
 import { setCachedProfile, setSession } from "@/lib/client-auth";
 
-function handleSuccess(router: ReturnType<typeof useRouter>, data: Record<string, unknown>) {
+function handleSuccess(_router: ReturnType<typeof useRouter>, data: Record<string, unknown>) {
   setSession({ accessToken: data.access_token as string, refreshToken: data.refresh_token as string });
   if (data.user) setCachedProfile(data.user as Parameters<typeof setCachedProfile>[0]);
   const role = (data.user as Record<string, unknown>)?.role;
-  router.push(role === "admin" ? "/dashboard" : "/dashboard/keys");
+  window.location.href = role === "admin" ? "/dashboard" : "/dashboard/keys";
 }
 
 export function BindForm() {
