@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +9,7 @@ import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
 import { setCachedProfile, setSession } from "@/lib/client-auth";
 
-function handleSuccess(_router: ReturnType<typeof useRouter>, data: Record<string, unknown>) {
+function handleSuccess(data: Record<string, unknown>) {
   setSession({ accessToken: data.access_token as string, refreshToken: data.refresh_token as string });
   if (data.user) setCachedProfile(data.user as Parameters<typeof setCachedProfile>[0]);
   const role = (data.user as Record<string, unknown>)?.role;
@@ -18,7 +17,6 @@ function handleSuccess(_router: ReturnType<typeof useRouter>, data: Record<strin
 }
 
 export function BindForm() {
-  const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loadingLink, setLoadingLink] = useState(false);
@@ -39,7 +37,7 @@ export function BindForm() {
         toast({ variant: "error", description: getApiMessage(data, "绑定失败。") });
         return;
       }
-      handleSuccess(router, data);
+      handleSuccess(data);
     } finally {
       setLoadingLink(false);
     }
@@ -58,7 +56,7 @@ export function BindForm() {
         toast({ variant: "error", description: getApiMessage(data, "创建失败。") });
         return;
       }
-      handleSuccess(router, data);
+      handleSuccess(data);
     } finally {
       setLoadingCreate(false);
     }
