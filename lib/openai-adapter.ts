@@ -177,7 +177,7 @@ function normalizedPartsToResponseContent(parts: NormalizedContentPart[], role =
 function normalizedPartsToAnthropicContent(parts: NormalizedContentPart[]) {
   const normalized = parts.flatMap((part) => {
     if (part.type === "text") {
-      return [{ type: "text", text: part.text }];
+      return part.text ? [{ type: "text", text: part.text }] : [];
     }
     if (part.type === "thinking") {
       return part.redacted
@@ -199,7 +199,7 @@ function normalizedPartsToAnthropicContent(parts: NormalizedContentPart[]) {
     return [];
   });
 
-  return normalized.length > 0 ? normalized : [{ type: "text", text: "" }];
+  return normalized;
 }
 
 function normalizeChatMessages(messages: unknown): NormalizedMessage[] {
@@ -719,6 +719,10 @@ export function adaptRequestBody(
             name: toolCall.name ?? "",
             input: parsedInput,
           });
+        }
+
+        if (content.length === 0) {
+          return [];
         }
 
         return [{

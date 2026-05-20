@@ -25,6 +25,7 @@ export type GatewaySettings = {
   wallpaper_url: string;
   logo_url: string;
   webhook_secret: string;
+  cors_enabled: number;
 };
 
 function positiveInt(value: string | null | undefined, fallback: number) {
@@ -56,6 +57,7 @@ const GATEWAY_KEYS = [
   "wallpaper_url",
   "logo_url",
   "webhook_secret",
+  "cors_enabled",
 ] as const;
 
 export function getGatewaySettings(): GatewaySettings {
@@ -88,6 +90,7 @@ export function getGatewaySettings(): GatewaySettings {
     wallpaper_url: map.get("wallpaper_url") ?? "",
     logo_url: map.get("logo_url") ?? "",
     webhook_secret: map.get("webhook_secret") ?? "",
+    cors_enabled: map.get("cors_enabled") === "1" ? 1 : 0,
   };
 }
 
@@ -110,6 +113,7 @@ export function setGatewaySettings(input: {
   wallpaper_url?: string;
   logo_url?: string;
   webhook_secret?: string;
+  cors_enabled?: boolean;
 }) {
   const values: Record<string, string> = {
     registration_enabled: input.registration_enabled ? "1" : "0",
@@ -132,6 +136,7 @@ export function setGatewaySettings(input: {
   if (input.wallpaper_url !== undefined) values.wallpaper_url = input.wallpaper_url.trim();
   if (input.logo_url !== undefined) values.logo_url = input.logo_url.trim();
   if (input.webhook_secret !== undefined) values.webhook_secret = input.webhook_secret.trim();
+  if (input.cors_enabled !== undefined) values.cors_enabled = input.cors_enabled ? "1" : "0";
 
   const upsert = gatewayDb.prepare(
     `INSERT INTO settings (key, value, updated_at)

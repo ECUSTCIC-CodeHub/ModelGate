@@ -33,6 +33,7 @@ export default function AdminSettingsPage() {
   const [wallpaperUrl, setWallpaperUrl] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
+  const [corsEnabled, setCorsEnabled] = useState(false);
   const { toast } = useToast();
 
   async function load() {
@@ -61,6 +62,7 @@ export default function AdminSettingsPage() {
       setWallpaperUrl(data.data.wallpaper_url ?? "");
       setLogoUrl(data.data.logo_url ?? "");
       setWebhookSecret(data.data.webhook_secret ?? "");
+      setCorsEnabled(data.data.cors_enabled === 1);
     }
   }
 
@@ -95,6 +97,7 @@ export default function AdminSettingsPage() {
         setWallpaperUrl(data.data.wallpaper_url ?? "");
         setLogoUrl(data.data.logo_url ?? "");
         setWebhookSecret(data.data.webhook_secret ?? "");
+        setCorsEnabled(data.data.cors_enabled === 1);
       }
     }
     void init();
@@ -123,6 +126,7 @@ export default function AdminSettingsPage() {
         wallpaper_url: wallpaperUrl,
         logo_url: logoUrl,
         webhook_secret: webhookSecret,
+        cors_enabled: corsEnabled,
       }),
     });
     const data = await response.json().catch(() => null);
@@ -308,6 +312,24 @@ export default function AdminSettingsPage() {
                 <p className="text-xs text-[var(--color-foreground-muted)]">首次 OIDC 登录时自动创建用户。关闭后需先由管理员创建账号并绑定 OIDC。</p>
               </div>
               <Switch checked={oidcAutoRegister} onCheckedChange={setOidcAutoRegister} />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <SectionTitle
+              title="跨域访问 (CORS)"
+              description="允许浏览器端从任意来源调用网关 API。开启后将对所有 /api/v1/* 接口返回 Access-Control-Allow-Origin: *。"
+            />
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-medium text-[var(--color-foreground)]">允许所有来源跨域</p>
+                <p className="text-xs text-[var(--color-foreground-muted)]">关闭时浏览器跨域请求会被拦截。仅在需要从前端直连网关时开启。</p>
+              </div>
+              <Switch checked={corsEnabled} onCheckedChange={setCorsEnabled} />
             </div>
           </CardContent>
         </Card>

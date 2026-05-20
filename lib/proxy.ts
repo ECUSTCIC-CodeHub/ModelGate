@@ -24,14 +24,21 @@ function buildUpstreamUrl(baseUrl: string, protocol: GatewayProtocol) {
   return `${normalizeProviderBaseUrl(baseUrl)}/${PROTOCOL_PATH[protocol]}`;
 }
 
-function buildUpstreamHeaders(route: RoutedModel, protocol: GatewayProtocol): Record<string, string> {
+function buildUpstreamHeaders(
+  route: RoutedModel,
+  protocol: GatewayProtocol,
+  inboundHeaders?: Headers,
+): Record<string, string> {
   if (protocol === "anthropic_messages") {
-    return {
+    const headers: Record<string, string> = {
       "content-type": "application/json",
       "x-api-key": route.channel.api_key,
       authorization: `Bearer ${route.channel.api_key}`,
-      "anthropic-version": "2023-06-01",
+      "anthropic-version": inboundHeaders?.get("anthropic-version") || "2023-06-01",
     };
+    const beta = inboundHeaders?.get("anthropic-beta");
+    if (beta) headers["anthropic-beta"] = beta;
+    return headers;
   }
 
   return {
@@ -51,13 +58,14 @@ export async function fetchUpstreamRequest(
   route: RoutedModel,
   requestBody: Record<string, unknown>,
   protocol: GatewayProtocol,
+  inboundHeaders?: Headers,
 ) {
   const { controller, timeout } = createTimeoutController(route.channel.timeout);
 
   try {
     return await fetch(buildUpstreamUrl(route.channel.base_url, protocol), {
       method: "POST",
-      headers: buildUpstreamHeaders(route, protocol),
+      headers: buildUpstreamHeaders(route, protocol, inboundHeaders),
       body: JSON.stringify(requestBody),
       signal: controller.signal,
     });

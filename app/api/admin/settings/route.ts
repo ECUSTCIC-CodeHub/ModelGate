@@ -24,6 +24,7 @@ const schema = z.object({
   wallpaper_url: z.string().max(500).optional(),
   logo_url: z.string().max(500).optional(),
   webhook_secret: z.string().max(200).optional(),
+  cors_enabled: z.boolean().optional(),
 });
 
 export async function GET(request: Request) {

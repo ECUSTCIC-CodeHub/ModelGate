@@ -195,7 +195,8 @@ x-api-key: sk-gw-xxxxx
     "announcement_content": "",
     "wallpaper_url": "",
     "logo_url": "",
-    "webhook_secret": ""
+    "webhook_secret": "",
+    "cors_enabled": 0
   }
 }
 ```
@@ -218,7 +219,8 @@ x-api-key: sk-gw-xxxxx
   "announcement_content": "# 欢迎",
   "wallpaper_url": "https://example.com/api/wallpaper",
   "logo_url": "https://example.com/logo.svg",
-  "webhook_secret": "your-webhook-secret"
+  "webhook_secret": "your-webhook-secret",
+  "cors_enabled": false
 }
 ```
 
@@ -234,6 +236,7 @@ x-api-key: sk-gw-xxxxx
 | wallpaper_url | string | 背景壁纸图片地址（留空则不显示壁纸，最长 500 字符） |
 | logo_url | string | 侧栏 Logo 图片地址（留空则不显示 Logo，最长 500 字符） |
 | webhook_secret | string | Webhook 回调密钥（最长 200 字符） |
+| cors_enabled | boolean | 是否允许所有来源跨域访问网关 API（开启后 `/api/v1/*` 返回 `Access-Control-Allow-Origin: *` 并响应 OPTIONS 预检） |
 
 ---
 
@@ -1006,6 +1009,8 @@ email matches ".*@company\\.com"
 
 所有网关端点通过 API Key 认证。
 
+**CORS:** 默认关闭。管理员在系统设置中开启 `cors_enabled` 后，所有 `/api/v1/*` 端点会返回 `Access-Control-Allow-Origin: *` 并响应 `OPTIONS` 预检请求，允许浏览器从任意来源跨域调用。
+
 ### POST /api/v1/chat/completions
 
 OpenAI Chat Completions 兼容端点。
@@ -1049,6 +1054,12 @@ Anthropic Messages 兼容端点。
   ]
 }
 ```
+
+**上游为 Anthropic 协议（透传）时:**
+
+- 同时发送 `x-api-key` 与 `Authorization: Bearer <api_key>`，兼容原生 Anthropic（认 `x-api-key`）及第三方 Claude 兼容代理（部分仅认 `Authorization`）
+- 客户端的 `anthropic-version` 头透传给上游，未提供时默认 `2023-06-01`
+- 客户端的 `anthropic-beta` 头透传给上游（prompt caching、扩展思考等特性所需）
 
 ---
 

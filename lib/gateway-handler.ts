@@ -391,7 +391,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
 
       try {
         const upstreamBody = adaptRequestBody(body, inboundProtocol, route.model.upstream_protocol, route.model.real_model);
-        const upstream = await fetchUpstreamRequest(route, upstreamBody, route.model.upstream_protocol);
+        const upstream = await fetchUpstreamRequest(route, upstreamBody, route.model.upstream_protocol, request.headers);
         if (shouldRetryUpstreamStatus(upstream.status) && attempt < maxRouteAttempts) {
           lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
           continue;
@@ -471,7 +471,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
             const lease = acquireResult.lease;
 
             try {
-              const upstream = await fetchUpstreamRequest(route, upstreamBody, route.model.upstream_protocol);
+              const upstream = await fetchUpstreamRequest(route, upstreamBody, route.model.upstream_protocol, request.headers);
 
               if (upstream.status >= 400) {
                 const text = await upstream.text().catch(() => "");
@@ -663,7 +663,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
           const lease = acquireResult.lease;
 
           try {
-            const upstream = await fetchUpstreamRequest(route, upstreamBody, route.model.upstream_protocol);
+            const upstream = await fetchUpstreamRequest(route, upstreamBody, route.model.upstream_protocol, request.headers);
             const rawText = await upstream.text().catch(() => "");
 
             if (upstream.status >= 400) {
