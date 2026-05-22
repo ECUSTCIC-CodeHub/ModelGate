@@ -850,19 +850,16 @@ export function adaptRequestBody(
   if (body.top_p !== undefined) next.top_p = body.top_p;
   const requestMaxTokens = body.max_output_tokens ?? (inboundProtocol === "anthropic_messages" ? body.max_tokens : undefined);
   if (requestMaxTokens !== undefined) next.max_tokens = requestMaxTokens;
-  if (body.tools !== undefined) next.tools = responsesToolsToChatTools(body.tools);
-  if (body.tool_choice !== undefined) next.tool_choice = responsesToolChoiceToChat(body.tool_choice);
   if (body.parallel_tool_calls !== undefined) next.parallel_tool_calls = body.parallel_tool_calls;
   if (body.user !== undefined) next.user = body.user;
   if (body.metadata !== undefined) next.metadata = body.metadata;
-  if (inboundProtocol === "anthropic_messages" && body.tools !== undefined) {
-    next.tools = anthropicToolsToChatTools(body.tools);
-  }
-  if (inboundProtocol === "anthropic_messages" && body.tool_choice !== undefined) {
-    next.tool_choice = anthropicToolChoiceToChat(body.tool_choice);
-  }
-  if (inboundProtocol === "anthropic_messages" && body.stop_sequences !== undefined) {
-    next.stop = body.stop_sequences;
+  if (inboundProtocol === "anthropic_messages") {
+    if (body.tools !== undefined) next.tools = anthropicToolsToChatTools(body.tools);
+    if (body.tool_choice !== undefined) next.tool_choice = anthropicToolChoiceToChat(body.tool_choice);
+    if (body.stop_sequences !== undefined) next.stop = body.stop_sequences;
+  } else {
+    if (body.tools !== undefined) next.tools = responsesToolsToChatTools(body.tools);
+    if (body.tool_choice !== undefined) next.tool_choice = responsesToolChoiceToChat(body.tool_choice);
   }
 
   const responseFormat = responsesTextFormatToChat(body.text);
