@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { hashPassword } from "@/lib/auth";
-import { gatewayDb } from "@/lib/db";
+import { gatewayDb, type DbUser } from "@/lib/db";
 import { ensureAdmin } from "@/lib/guards";
 import { jsonError, jsonOk } from "@/lib/http";
 import { getEffectiveLimits, getUserGroup } from "@/lib/effective-limits";
@@ -86,7 +86,7 @@ export async function GET(request: Request) {
        ORDER BY ${orderColumn} ${sortDir}, u.id DESC
        LIMIT ? OFFSET ?`,
     )
-    .all(...whereArgs, limit, offset) as Array<Record<string, unknown> & { allowed_model_aliases: string }>;
+    .all(...whereArgs, limit, offset) as Array<DbUser & { group_name: string | null; allowed_model_aliases: string }>;
 
   const totalWhereParts = ["deleted_at IS NULL"];
   const totalWhereArgs: Array<string | number> = [];
@@ -110,7 +110,7 @@ export async function GET(request: Request) {
     data: rows.map((row) => {
       const r = row as Record<string, unknown>;
       const group = getUserGroup((r.group_id as number | null) ?? null);
-      const effective = getEffectiveLimits(r as any);
+      const effective = getEffectiveLimits(r);
       return {
         ...r,
         allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases),

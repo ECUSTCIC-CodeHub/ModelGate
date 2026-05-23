@@ -1,7 +1,7 @@
 import { checkApiKeyAuth } from "@/lib/api-key-auth";
 import { acquireChannel, type ChannelLease } from "@/lib/channel-runtime";
 import { insertChatLog } from "@/lib/chat-log";
-import { gatewayDb } from "@/lib/db";
+import { gatewayDb, type DbUser } from "@/lib/db";
 import { getEffectiveLimits } from "@/lib/effective-limits";
 import { jsonError } from "@/lib/http";
 import { resolveAccessibleModelAlias } from "@/lib/model-access";
@@ -93,7 +93,7 @@ function checkQuota(userId: number, estimatedTokens: number): { ok: false; reaso
     return { ok: false, reason: "用户不存在" };
   }
 
-  const limits = getEffectiveLimits(user as any);
+  const limits = getEffectiveLimits(user as DbUser);
 
   const quota: QuotaInfo = {
     remaining_requests: limits.quota_requests !== null ? Math.max(0, limits.quota_requests - user.used_requests) : null,

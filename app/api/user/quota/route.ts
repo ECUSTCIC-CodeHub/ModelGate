@@ -33,7 +33,7 @@ export async function GET(request: Request) {
   const now = new Date();
   let periodUsedTokens = user.period_used_tokens;
   let periodUsedRequests = user.period_used_requests;
-  let periodResetAt = user.period_reset_at;
+  const periodResetAt = user.period_reset_at;
 
   if (limits.quota_period && periodResetAt && new Date(periodResetAt) <= now) {
     periodUsedTokens = 0;
