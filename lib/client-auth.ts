@@ -68,6 +68,11 @@ export function clearSession() {
   localStorage.removeItem(PROFILE_KEY);
 }
 
+async function clearExpiredSession() {
+  clearSession();
+  await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" }).catch(() => undefined);
+}
+
 export async function getOrFetchProfile() {
   const cached = getCachedProfile();
   if (cached) return cached;
@@ -127,7 +132,7 @@ export async function authedFetch(input: string, init?: RequestInit) {
   });
 
   if (!refresh.ok) {
-    clearSession();
+    await clearExpiredSession();
     return response;
   }
 

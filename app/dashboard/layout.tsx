@@ -20,7 +20,7 @@ export default async function DashboardLayout({
   const profile = getServerProfileFromCookieStore(cookieStore);
 
   if (!profile) {
-    redirect("/login");
+    redirect("/api/auth/logout?next=/login");
   }
 
   const effective = getEffectiveLimits(profile as DbUser);
