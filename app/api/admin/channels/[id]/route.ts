@@ -32,18 +32,26 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     ? (existing as { supported_protocols: string }).supported_protocols
     : stringifySupportedProtocols(normalizeSupportedProtocols(parsed.data.supported_protocols));
   const nextProtocolList = parseSupportedProtocols(nextProtocols);
+  const nextEnabled =
+    parsed.data.enabled === undefined
+      ? (existing as { enabled: number }).enabled
+      : parsed.data.enabled
+        ? 1
+        : 0;
 
-  const placeholders = nextProtocolList.map(() => "?").join(", ");
-  const incompatibleModel = gatewayDb
-    .prepare(
-      `SELECT id
-       FROM models
-       WHERE channel_id = ? AND deleted_at IS NULL AND enabled = 1 AND upstream_protocol NOT IN (${placeholders})
-       LIMIT 1`,
-    )
-    .get(id, ...nextProtocolList) as { id: number } | undefined;
-  if (incompatibleModel) {
-    return jsonError("该渠道下存在使用未被保留协议的启用模型", 400);
+  if (nextEnabled === 1) {
+    const placeholders = nextProtocolList.map(() => "?").join(", ");
+    const incompatibleModel = gatewayDb
+      .prepare(
+        `SELECT id
+         FROM models
+         WHERE channel_id = ? AND deleted_at IS NULL AND enabled = 1 AND upstream_protocol NOT IN (${placeholders})
+         LIMIT 1`,
+      )
+      .get(id, ...nextProtocolList) as { id: number } | undefined;
+    if (incompatibleModel) {
+      return jsonError("该渠道下存在使用未被保留协议的启用模型", 400);
+    }
   }
 
   const merged = {
@@ -53,34 +61,41 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       parsed.data.supported_protocols === undefined
         ? (existing as { supported_protocols: string }).supported_protocols
         : nextProtocols,
-    enabled:
-      parsed.data.enabled === undefined
-        ? (existing as { enabled: number }).enabled
-        : parsed.data.enabled
-          ? 1
-          : 0,
+    enabled: nextEnabled,
   };
 
-  gatewayDb
-    .prepare(
-      `UPDATE channels
-       SET name = ?, base_url = ?, api_key = ?, supported_protocols = ?, enabled = ?, weight = ?, max_concurrency = ?, timeout = ?
-       WHERE id = ?`,
-    )
-    .run(
-      (merged as { name: string }).name,
-      (merged as { base_url: string }).base_url,
-      (merged as { api_key: string }).api_key,
-      (merged as { supported_protocols: string }).supported_protocols,
-      (merged as { enabled: number }).enabled,
-      (merged as { weight: number }).weight,
-      (merged as { max_concurrency: number }).max_concurrency,
-      (merged as { timeout: number }).timeout,
-      id,
-    );
+  const tx = gatewayDb.transaction(() => {
+    gatewayDb
+      .prepare(
+        `UPDATE channels
+         SET name = ?, base_url = ?, api_key = ?, supported_protocols = ?, enabled = ?, weight = ?, max_concurrency = ?, timeout = ?
+         WHERE id = ?`,
+      )
+      .run(
+        (merged as { name: string }).name,
+        (merged as { base_url: string }).base_url,
+        (merged as { api_key: string }).api_key,
+        (merged as { supported_protocols: string }).supported_protocols,
+        (merged as { enabled: number }).enabled,
+        (merged as { weight: number }).weight,
+        (merged as { max_concurrency: number }).max_concurrency,
+        (merged as { timeout: number }).timeout,
+        id,
+      );
+
+    if (nextEnabled === 0) {
+      gatewayDb
+        .prepare("UPDATE models SET enabled = 0 WHERE channel_id = ? AND deleted_at IS NULL")
+        .run(id);
+    }
+  });
+  tx();
 
   const row = gatewayDb.prepare("SELECT * FROM channels WHERE id = ? AND deleted_at IS NULL").get(id);
-  return jsonOk({ message: "渠道更新成功。", data: row });
+  return jsonOk({
+    message: nextEnabled === 0 ? "渠道已禁用，关联模型已同步禁用。" : "渠道更新成功。",
+    data: row,
+  });
 }
 
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {

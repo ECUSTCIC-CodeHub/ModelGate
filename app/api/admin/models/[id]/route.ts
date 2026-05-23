@@ -61,40 +61,36 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     | undefined;
   if (!existing) return jsonError("模型不存在", 404);
 
-  if (parsed.data.channel_id !== undefined) {
-    const channel = gatewayDb
-      .prepare("SELECT id, supported_protocols FROM channels WHERE id = ?")
-      .get(parsed.data.channel_id) as { id: number; supported_protocols: string } | undefined;
-    if (!channel) return jsonError("渠道不存在", 404);
-    const protocol = parsed.data.upstream_protocol ?? existing.upstream_protocol;
-    if (!supportsProtocol(channel.supported_protocols, protocol)) {
-      return jsonError("所选渠道不支持该上游协议", 400);
-    }
-  } else if (parsed.data.upstream_protocol !== undefined) {
-    const channel = gatewayDb
-      .prepare("SELECT supported_protocols FROM channels WHERE id = ?")
-      .get(existing.channel_id) as { supported_protocols: string } | undefined;
-    if (!channel || !supportsProtocol(channel.supported_protocols, parsed.data.upstream_protocol)) {
-      return jsonError("所选渠道不支持该上游协议", 400);
-    }
+  const targetChannelId = parsed.data.channel_id ?? existing.channel_id;
+  const targetProtocol = parsed.data.upstream_protocol ?? existing.upstream_protocol;
+  const targetEnabled =
+    parsed.data.enabled === undefined
+      ? existing.enabled
+      : parsed.data.enabled
+        ? 1
+        : 0;
+  const channel = gatewayDb
+    .prepare("SELECT id, supported_protocols, enabled FROM channels WHERE id = ? AND deleted_at IS NULL")
+    .get(targetChannelId) as { id: number; supported_protocols: string; enabled: number } | undefined;
+  if (!channel) return jsonError("渠道不存在", 404);
+  if (!supportsProtocol(channel.supported_protocols, targetProtocol)) {
+    return jsonError("所选渠道不支持该上游协议", 400);
+  }
+  if (targetEnabled === 1 && channel.enabled !== 1) {
+    return jsonError("禁用渠道下不能启用模型", 400);
   }
 
   const merged = {
     ...existing,
     ...parsed.data,
-    upstream_protocol: parsed.data.upstream_protocol ?? existing.upstream_protocol,
+    upstream_protocol: targetProtocol,
     is_public:
       parsed.data.is_public === undefined
         ? existing.is_public
         : parsed.data.is_public
           ? 1
           : 0,
-    enabled:
-      parsed.data.enabled === undefined
-        ? existing.enabled
-        : parsed.data.enabled
-          ? 1
-          : 0,
+    enabled: targetEnabled,
   };
 
   gatewayDb

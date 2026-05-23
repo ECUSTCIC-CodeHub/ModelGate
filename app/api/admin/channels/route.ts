@@ -81,6 +81,7 @@ export async function POST(request: Request) {
   }
 
   const tx = gatewayDb.transaction(() => {
+    const channelEnabled = parsed.data.enabled === false ? 0 : 1;
     const result = gatewayDb
       .prepare(
         `INSERT INTO channels (name, base_url, api_key, supported_protocols, enabled, weight, max_concurrency, timeout)
@@ -91,7 +92,7 @@ export async function POST(request: Request) {
         parsed.data.base_url,
         parsed.data.api_key,
         stringifySupportedProtocols(supportedProtocols),
-        parsed.data.enabled === false ? 0 : 1,
+        channelEnabled,
         parsed.data.weight ?? 1,
         parsed.data.max_concurrency ?? 64,
         parsed.data.timeout ?? 60,
@@ -111,7 +112,7 @@ export async function POST(request: Request) {
           channelId,
           upstreamProtocol,
           model.is_public === false ? 0 : 1,
-          model.enabled === false ? 0 : 1,
+          channelEnabled === 1 && model.enabled !== false ? 1 : 0,
           model.weight ?? 1,
         );
     }

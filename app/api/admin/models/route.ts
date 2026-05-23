@@ -44,12 +44,16 @@ export async function POST(request: Request) {
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
   const channel = gatewayDb
-    .prepare("SELECT id, supported_protocols FROM channels WHERE id = ?")
-    .get(parsed.data.channel_id) as { id: number; supported_protocols: string } | undefined;
+    .prepare("SELECT id, supported_protocols, enabled FROM channels WHERE id = ? AND deleted_at IS NULL")
+    .get(parsed.data.channel_id) as { id: number; supported_protocols: string; enabled: number } | undefined;
   if (!channel) return jsonError("渠道不存在", 404);
   const upstreamProtocol = parsed.data.upstream_protocol ?? "chat_completions";
   if (!supportsProtocol(channel.supported_protocols, upstreamProtocol)) {
     return jsonError("所选渠道不支持该上游协议", 400);
+  }
+  const modelEnabled = parsed.data.enabled === false ? 0 : 1;
+  if (modelEnabled === 1 && channel.enabled !== 1) {
+    return jsonError("禁用渠道下不能启用模型", 400);
   }
 
   const result = gatewayDb
@@ -63,7 +67,7 @@ export async function POST(request: Request) {
       parsed.data.channel_id,
       upstreamProtocol,
       parsed.data.is_public === false ? 0 : 1,
-      parsed.data.enabled === false ? 0 : 1,
+      modelEnabled,
       parsed.data.weight ?? 1,
       parsed.data.token_multiplier ?? 1,
       parsed.data.request_multiplier ?? 1,

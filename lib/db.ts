@@ -263,6 +263,18 @@ CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
   ensureColumn("users", "webhook_role", "webhook_role TEXT DEFAULT ''");
   ensureColumn("users", "webhook_tags", "webhook_tags TEXT DEFAULT '[]'");
 
+  db.exec(`
+  UPDATE models
+  SET enabled = 0
+  WHERE enabled = 1
+    AND deleted_at IS NULL
+    AND channel_id IN (
+      SELECT id
+      FROM channels
+      WHERE enabled = 0 OR deleted_at IS NOT NULL
+    )
+  `);
+
   // Migrate oidc_claim_value → oidc_claim_expr
   {
     const migrated = db.prepare("SELECT value FROM settings WHERE key = 'oidc_claim_expr_migrated'").get() as { value: string } | undefined;
