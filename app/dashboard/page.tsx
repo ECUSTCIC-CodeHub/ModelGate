@@ -295,7 +295,7 @@ export default function DashboardHomePage() {
                       {formatNumber(quota.total.remaining_requests)} <span className="text-sm font-normal text-[var(--color-foreground-muted)]">剩余</span>
                     </p>
                     <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-surface-hover)]">
-                      <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, quota.total.quota_requests > 0 ? ((quota.total.remaining_requests ?? 0) / quota.total.quota_requests) * 100 : 0))}%` }} />
+                      <div className="h-full rounded-full bg-[var(--color-accent)] transition-all" style={{ width: `${Math.max(0, Math.min(100, quota.total.quota_requests > 0 ? ((quota.total.remaining_requests ?? 0) / quota.total.quota_requests) * 100 : 0))}%` }} />
                     </div>
                     <p className="text-xs text-[var(--color-foreground-muted)]">{formatNumber(quota.total.used_requests)} / {formatNumber(quota.total.quota_requests)} 已使用</p>
                   </div>
@@ -307,7 +307,7 @@ export default function DashboardHomePage() {
                       {formatTokenCount(quota.total.remaining_tokens)} <span className="text-sm font-normal text-[var(--color-foreground-muted)]">剩余</span>
                     </p>
                     <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-surface-hover)]">
-                      <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, quota.total.quota_tokens > 0 ? ((quota.total.remaining_tokens ?? 0) / quota.total.quota_tokens) * 100 : 0))}%` }} />
+                      <div className="h-full rounded-full bg-[var(--color-accent)] transition-all" style={{ width: `${Math.max(0, Math.min(100, quota.total.quota_tokens > 0 ? ((quota.total.remaining_tokens ?? 0) / quota.total.quota_tokens) * 100 : 0))}%` }} />
                     </div>
                     <p className="text-xs text-[var(--color-foreground-muted)]">{formatTokenCount(quota.total.used_tokens)} / {formatTokenCount(quota.total.quota_tokens)} 已使用</p>
                   </div>
@@ -319,7 +319,7 @@ export default function DashboardHomePage() {
                       {formatNumber(quota.period.remaining_requests)} <span className="text-sm font-normal text-[var(--color-foreground-muted)]">剩余</span>
                     </p>
                     <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-surface-hover)]">
-                      <div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, quota.period.quota_requests! > 0 ? ((quota.period.remaining_requests ?? 0) / quota.period.quota_requests!) * 100 : 0))}%` }} />
+                      <div className="h-full rounded-full bg-[var(--color-accent)] transition-all" style={{ width: `${Math.max(0, Math.min(100, quota.period.quota_requests! > 0 ? ((quota.period.remaining_requests ?? 0) / quota.period.quota_requests!) * 100 : 0))}%` }} />
                     </div>
                     <p className="text-xs text-[var(--color-foreground-muted)]">
                       {formatNumber(quota.period.used_requests)} / {formatNumber(quota.period.quota_requests)} 已使用
@@ -334,7 +334,7 @@ export default function DashboardHomePage() {
                       {formatTokenCount(quota.period.remaining_tokens)} <span className="text-sm font-normal text-[var(--color-foreground-muted)]">剩余</span>
                     </p>
                     <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-surface-hover)]">
-                      <div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, quota.period.quota_tokens! > 0 ? ((quota.period.remaining_tokens ?? 0) / quota.period.quota_tokens!) * 100 : 0))}%` }} />
+                      <div className="h-full rounded-full bg-[var(--color-accent)] transition-all" style={{ width: `${Math.max(0, Math.min(100, quota.period.quota_tokens! > 0 ? ((quota.period.remaining_tokens ?? 0) / quota.period.quota_tokens!) * 100 : 0))}%` }} />
                     </div>
                     <p className="text-xs text-[var(--color-foreground-muted)]">
                       {formatTokenCount(quota.period.used_tokens)} / {formatTokenCount(quota.period.quota_tokens)} 已使用

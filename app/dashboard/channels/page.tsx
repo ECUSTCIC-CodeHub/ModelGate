@@ -831,7 +831,7 @@ export default function AdminChannelsPage() {
                 </PageToolbar>
                 {allModels.length > 0 ? (
                   <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-                    <Table className="min-w-[1020px]">
+                    <Table className="min-w-[1080px]">
                       <TableHeader>
                         <TableRow>
                           <TableHead>序号</TableHead>
@@ -839,44 +839,44 @@ export default function AdminChannelsPage() {
                           <TableHead>真实模型</TableHead>
                           <TableHead>所属渠道</TableHead>
                           <TableHead>状态</TableHead>
-                          <TableHead>上游协议</TableHead>
                           <TableHead>可见性</TableHead>
                           <TableHead>权重</TableHead>
-                          <TableHead>Token 倍率</TableHead>
-                          <TableHead>请求倍率</TableHead>
-                          <TableHead className="text-right">操作</TableHead>
+                          <TableHead>倍率</TableHead>
+                          <TableHead className="min-w-72 text-right">操作</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {allModels.map((model, modelIndex) => (
                           <TableRow key={model.id}>
                             <TableCell>{modelIndex + 1}</TableCell>
-                            <TableCell className="font-mono">{model.alias}</TableCell>
-                            <TableCell>{model.real_model}</TableCell>
-                            <TableCell>{model.channel_name}</TableCell>
+                            <TableCell className="max-w-72 truncate font-mono">{model.alias}</TableCell>
+                            <TableCell className="max-w-72 truncate">{model.real_model}</TableCell>
+                            <TableCell className="whitespace-nowrap">{model.channel_name}</TableCell>
                             <TableCell>
                               <Badge variant={model.enabled ? "default" : "secondary"}>{model.enabled ? "启用" : "禁用"}</Badge>
                             </TableCell>
                             <TableCell>
-                              <Badge variant="outline">{shortProtocolLabel(model.upstream_protocol)}</Badge>
-                            </TableCell>
-                            <TableCell>
                               <Badge variant={model.is_public ? "default" : "secondary"}>{model.is_public ? "公开" : "白名单"}</Badge>
                             </TableCell>
-                            <TableCell>{model.weight}</TableCell>
-                            <TableCell>{model.token_multiplier ?? 1}x</TableCell>
-                            <TableCell>{model.request_multiplier ?? 1}x</TableCell>
-                            <TableCell className="space-x-2 text-right">
-                              <Button size="sm" variant="outline" onClick={() => testModel(model)} disabled={testingModelId === model.id}>
-                                {testingModelId === model.id ? "测试中..." : "测试"}
-                              </Button>
-                              <Button size="sm" variant="outline" onClick={() => openEditModel(model)}>编辑</Button>
-                              <Button size="sm" variant="outline" onClick={() => toggleModel(model)}>{model.enabled ? "禁用" : "启用"}</Button>
-                              <ConfirmDialog
-                                title={`删除模型映射 ${model.alias}？`}
-                                description="删除后客户端将无法再通过该 alias 访问对应模型。"
-                                onConfirm={() => removeModel(model.id)}
-                              />
+                            <TableCell className="whitespace-nowrap">{model.weight}</TableCell>
+                            <TableCell className="whitespace-nowrap">
+                              <span className="font-mono text-xs text-[var(--color-foreground-secondary)]">
+                                T {model.token_multiplier ?? 1}x / R {model.request_multiplier ?? 1}x
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex flex-nowrap justify-end gap-2">
+                                <Button size="sm" variant="outline" onClick={() => testModel(model)} disabled={testingModelId === model.id}>
+                                  {testingModelId === model.id ? "测试中..." : "测试"}
+                                </Button>
+                                <Button size="sm" variant="outline" onClick={() => openEditModel(model)}>编辑</Button>
+                                <Button size="sm" variant="outline" onClick={() => toggleModel(model)}>{model.enabled ? "禁用" : "启用"}</Button>
+                                <ConfirmDialog
+                                  title={`删除模型映射 ${model.alias}？`}
+                                  description="删除后客户端将无法再通过该 alias 访问对应模型。"
+                                  onConfirm={() => removeModel(model.id)}
+                                />
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
