@@ -6,6 +6,8 @@
   "packageManager": "pnpm@10.24.0",
   "scripts": {
     "dev": "next dev",
+    "dev:full": "MODELGATE_EDITION=full NEXT_PUBLIC_MODELGATE_EDITION=full next dev",
+    "dev:lite": "MODELGATE_EDITION=lite NEXT_PUBLIC_MODELGATE_EDITION=lite next dev",
     "build": "next build",
     "build:full": "MODELGATE_EDITION=full NEXT_PUBLIC_MODELGATE_EDITION=full next build",
     "build:lite": "MODELGATE_EDITION=lite NEXT_PUBLIC_MODELGATE_EDITION=lite next build",

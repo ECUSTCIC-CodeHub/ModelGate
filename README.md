@@ -47,12 +47,14 @@ pnpm dev
 默认构建为完整版，包含 OIDC、周期配额、系统公告等完整功能：
 
 ```bash
+npm run dev:full
 npm run build
 ```
 
 精简版在构建时关闭 OIDC、周期配额、系统公告，相关页面不渲染，相关 API 功能不可用或忽略对应字段：
 
 ```bash
+npm run dev:lite
 npm run build:lite
 ```
 
