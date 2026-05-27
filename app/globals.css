@@ -5,65 +5,65 @@
 
 /* ========== Design Tokens ========== */
 :root {
-  --color-bg: #0d1224;
-  --color-bg-alt: #101832;
-  --color-surface: rgba(20, 26, 48, 0.56);
-  --color-surface-hover: rgba(31, 39, 68, 0.72);
-  --color-surface-elevated: rgba(22, 29, 55, 0.78);
+  --color-bg: #eef2ff;
+  --color-bg-alt: #e0e7ff;
+  --color-surface: rgba(255, 255, 255, 0.68);
+  --color-surface-hover: rgba(255, 255, 255, 0.84);
+  --color-surface-elevated: rgba(255, 255, 255, 0.92);
 
-  --color-foreground: #f8fafc;
-  --color-foreground-secondary: #e2e8f0;
-  --color-foreground-muted: #b8c2d6;
-  --color-foreground-subtle: #8a95af;
+  --color-foreground: #111827;
+  --color-foreground-secondary: #263149;
+  --color-foreground-muted: #536179;
+  --color-foreground-subtle: #728096;
 
-  --color-border: rgba(255, 255, 255, 0.12);
-  --color-border-hover: rgba(255, 255, 255, 0.2);
-  --color-border-strong: rgba(255, 255, 255, 0.28);
+  --color-border: rgba(67, 56, 202, 0.14);
+  --color-border-hover: rgba(67, 56, 202, 0.24);
+  --color-border-strong: rgba(67, 56, 202, 0.34);
 
-  --color-primary: #f8fafc;
-  --color-primary-hover: #e2e8f0;
-  --color-primary-foreground: #0d1224;
+  --color-primary: #111827;
+  --color-primary-hover: #020617;
+  --color-primary-foreground: #ffffff;
   --color-primary-ring: rgba(99, 102, 241, 0.26);
 
   --color-accent: #6366f1;
-  --color-accent-hover: #818cf8;
-  --color-accent-foreground: #f8fafc;
+  --color-accent-hover: #4f46e5;
+  --color-accent-foreground: #ffffff;
   --color-accent-muted: rgba(99, 102, 241, 0.18);
 
   --color-destructive: #dc2626;
   --color-destructive-hover: #b91c1c;
   --color-destructive-foreground: #fef2f2;
 
-  --color-sidebar-bg: rgba(15, 20, 40, 0.74);
-  --color-sidebar-border: rgba(255, 255, 255, 0.11);
-  --color-sidebar-text: #b8c2d6;
+  --color-sidebar-bg: rgba(255, 255, 255, 0.78);
+  --color-sidebar-border: rgba(67, 56, 202, 0.14);
+  --color-sidebar-text: #475569;
   --color-sidebar-active-bg: #6366f1;
   --color-sidebar-active-text: #ffffff;
   --color-sidebar-hover: rgba(99, 102, 241, 0.14);
 
-  --color-header-bg: rgba(15, 20, 40, 0.74);
-  --color-header-border: rgba(255, 255, 255, 0.11);
+  --color-header-bg: rgba(255, 255, 255, 0.78);
+  --color-header-border: rgba(67, 56, 202, 0.14);
 
-  --glass-highlight: rgba(255, 255, 255, 0.16);
-  --glass-shadow: rgba(0, 0, 0, 0.42);
-  --glass-blur: 22px;
-  --glass-saturate: 180%;
+  --glass-highlight: rgba(255, 255, 255, 0.75);
+  --glass-shadow: rgba(30, 41, 59, 0.12);
+  --glass-blur: 20px;
+  --glass-saturate: 170%;
 
-  --glow-a: linear-gradient(135deg, rgba(99, 102, 241, 0.24), transparent 42%, rgba(79, 70, 229, 0.1));
-  --glow-b: repeating-linear-gradient(90deg, transparent 0 39px, rgba(255, 255, 255, 0.035) 39px 40px);
-  --glow-c: linear-gradient(180deg, rgba(13, 18, 36, 0.34), rgba(13, 18, 36, 0.88));
+  --glow-a: linear-gradient(135deg, rgba(99, 102, 241, 0.18), transparent 42%, rgba(129, 140, 248, 0.12));
+  --glow-b: repeating-linear-gradient(90deg, transparent 0 39px, rgba(67, 56, 202, 0.035) 39px 40px);
+  --glow-c: linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(238, 242, 255, 0.88));
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  --shadow-xl: 0 28px 64px rgba(0, 0, 0, 0.68), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-sm: 0 1px 2px rgba(30, 41, 59, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.58);
+  --shadow-md: 0 8px 24px rgba(30, 41, 59, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  --shadow-lg: 0 18px 44px rgba(30, 41, 59, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  --shadow-xl: 0 26px 62px rgba(30, 41, 59, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.5);
 
   --radius-sm: 0.5rem;
   --radius: 0.5rem;
   --radius-lg: 0.5rem;
   --radius-xl: 0.75rem;
 
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 .dark {
@@ -164,8 +164,15 @@ body {
   object-fit: cover;
   object-position: center;
   z-index: -2;
+  opacity: 0.16;
+  filter: saturate(0.9) contrast(0.9);
   pointer-events: none;
   user-select: none;
+}
+
+.dark .anime-bg {
+  opacity: 1;
+  filter: none;
 }
 
 body::before {
@@ -176,8 +183,9 @@ body::before {
   z-index: -1;
   background-image: var(--glow-a), var(--glow-b), var(--glow-c);
   background-repeat: no-repeat;
+  background-color: rgba(238, 242, 255, 0.78);
   filter: saturate(1.1);
-  opacity: 0.82;
+  opacity: 0.96;
 }
 
 .dark body::before {
