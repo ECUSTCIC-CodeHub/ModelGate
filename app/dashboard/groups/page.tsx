@@ -2,12 +2,9 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
-import { EmptyState } from "@/components/dashboard/empty-state";
 import { PageToolbar } from "@/components/dashboard/page-toolbar";
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -28,104 +25,20 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/shared/api-message";
 import { authedFetch, ensureAdmin } from "@/lib/auth/client-auth";
 import { modelGateFeatures } from "@/lib/core/features";
-import { formatLimit } from "@/lib/shared/formatters";
 import { validateClaimExpr } from "@/lib/shared/claim-expr";
-
-type GroupRow = {
-  id: number;
-  name: string;
-  description: string | null;
-  qps: number;
-  rpm: number;
-  tpm: number;
-  quota_requests: number | null;
-  quota_tokens: number | null;
-  quota_period: number | null;
-  period_quota_tokens: number | null;
-  period_quota_requests: number | null;
-  allowed_model_aliases: string[];
-  oidc_claim_expr: string | null;
-  oidc_claim_priority: number;
-  is_default: number;
-  enabled: number;
-  user_count: number;
-};
-
-type AliasOption = {
-  id: number;
-  alias: string;
-  is_public: number;
-};
-
-const PERIOD_PRESETS = [
-  { label: "不限制", value: "" },
-  { label: "每小时", value: "3600" },
-  { label: "每日", value: "86400" },
-  { label: "每周", value: "604800" },
-  { label: "每月", value: "2592000" },
-  { label: "自定义", value: "custom" },
-] as const;
-
-function periodToPreset(v: number | null): string {
-  if (v === null || v <= 0) return "";
-  if (v === 3600) return "3600";
-  if (v === 86400) return "86400";
-  if (v === 604800) return "604800";
-  if (v === 2592000) return "2592000";
-  return "custom";
-}
-
-function formatPeriodLabel(v: number | null): string {
-  if (v === null || v <= 0) return "-";
-  const preset = PERIOD_PRESETS.find((p) => p.value === String(v));
-  if (preset) return preset.label;
-  if (v >= 86400) return `每 ${Math.round(v / 86400)} 天`;
-  if (v >= 3600) return `每 ${Math.round(v / 3600)} 小时`;
-  return `每 ${v} 秒`;
-}
-
-type GroupForm = {
-  name: string;
-  description: string;
-  qps: number;
-  rpm: number;
-  tpm: number;
-  quota_requests: string;
-  quota_tokens: string;
-  quota_period_preset: string;
-  quota_period_custom: string;
-  period_quota_tokens: string;
-  period_quota_requests: string;
-  allowed_model_aliases: string[];
-  oidc_claim_expr: string;
-  oidc_claim_priority: string;
-  is_default: boolean;
-  enabled: boolean;
-};
-
-const initialForm: GroupForm = {
-  name: "",
-  description: "",
-  qps: -1,
-  rpm: -1,
-  tpm: -1,
-  quota_requests: "",
-  quota_tokens: "",
-  quota_period_preset: "",
-  quota_period_custom: "",
-  period_quota_tokens: "",
-  period_quota_requests: "",
-  allowed_model_aliases: [],
-  oidc_claim_expr: "",
-  oidc_claim_priority: "0",
-  is_default: false,
-  enabled: true,
-};
+import { GroupTable } from "./group-table";
+import {
+  PERIOD_PRESETS,
+  initialForm,
+  periodToPreset,
+  type AliasOption,
+  type GroupForm,
+  type GroupRow,
+} from "./group-model";
 
 export default function AdminGroupsPage() {
   const router = useRouter();
@@ -307,84 +220,13 @@ export default function AdminGroupsPage() {
               <Button onClick={onCreateClick}>新增用户组</Button>
             </PageToolbar>
 
-            {rows.length > 0 ? (
-              <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-                <Table className="min-w-[900px]">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>组名</TableHead>
-                      <TableHead>描述</TableHead>
-                      <TableHead>状态</TableHead>
-                      <TableHead>默认</TableHead>
-                      <TableHead>用户数</TableHead>
-                      <TableHead>限速 (RPM/QPS/TPM)</TableHead>
-                      <TableHead>请求配额</TableHead>
-                      <TableHead>Token 配额</TableHead>
-                      {periodQuotaEnabled ? <TableHead>周期配额</TableHead> : null}
-                      <TableHead>模型白名单</TableHead>
-                      <TableHead className="text-right">操作</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {rows.map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell className="font-medium">{row.name}</TableCell>
-                        <TableCell className="max-w-48">
-                          <span className="block truncate text-[var(--color-foreground-secondary)]" title={row.description ?? ""}>
-                            {row.description?.trim() || "-"}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={row.enabled ? "default" : "secondary"}>{row.enabled ? "启用" : "禁用"}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          {row.is_default ? <Badge variant="default">默认</Badge> : "-"}
-                        </TableCell>
-                        <TableCell>{row.user_count}</TableCell>
-                        <TableCell>{formatLimit(row.rpm)}/{formatLimit(row.qps)}/{formatLimit(row.tpm)}</TableCell>
-                        <TableCell>{row.quota_requests === null ? "∞" : formatLimit(row.quota_requests)}</TableCell>
-                        <TableCell>{row.quota_tokens === null ? "∞" : formatLimit(row.quota_tokens)}</TableCell>
-                        {periodQuotaEnabled ? (
-                        <TableCell>
-                          {row.quota_period ? (
-                            <div className="space-y-0.5 text-sm">
-                              <p className="font-medium text-[var(--color-foreground)]">{formatPeriodLabel(row.quota_period)}</p>
-                              <p className="text-xs text-[var(--color-foreground-muted)]">
-                                请求 {row.period_quota_requests === null ? "∞" : formatLimit(row.period_quota_requests)}
-                                {" / "}
-                                Token {row.period_quota_tokens === null ? "∞" : formatLimit(row.period_quota_tokens)}
-                              </p>
-                            </div>
-                          ) : "-"}
-                        </TableCell>
-                        ) : null}
-                        <TableCell className="max-w-48">
-                          <span className="block truncate text-[var(--color-foreground-secondary)]">
-                            {row.allowed_model_aliases.length > 0 ? row.allowed_model_aliases.join(", ") : "-"}
-                          </span>
-                        </TableCell>
-                        <TableCell className="space-x-2 text-right">
-                          <Button size="sm" variant="outline" onClick={() => onEditClick(row)}>编辑</Button>
-                          {row.is_default ? null : (
-                            <ConfirmDialog
-                              title={`删除用户组 ${row.name}？`}
-                              description={
-                                row.user_count > 0
-                                  ? `该组下仍有 ${row.user_count} 个用户，需先移除或转移用户后才能删除。`
-                                  : "删除后不可恢复，此操作不可撤销。"
-                              }
-                              onConfirm={() => remove(row.id)}
-                            />
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            ) : (
-              <EmptyState title="暂无用户组" description="创建用户组来批量管理用户的限流和模型访问权限。" action={<Button onClick={onCreateClick}>新增用户组</Button>} />
-            )}
+            <GroupTable
+              rows={rows}
+              periodQuotaEnabled={periodQuotaEnabled}
+              onCreate={onCreateClick}
+              onEdit={onEditClick}
+              onRemove={(id) => void remove(id)}
+            />
           </CardContent>
         </Card>
       </div>
