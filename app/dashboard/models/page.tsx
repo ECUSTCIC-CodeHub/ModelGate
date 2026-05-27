@@ -138,7 +138,7 @@ export default function AvailableModelsPage() {
             />
           </CardHeader>
           <CardContent className="space-y-4">
-            {error ? <p className="text-sm text-red-400">{error}</p> : null}
+            {error ? <p className="text-sm text-[var(--color-destructive)]">{error}</p> : null}
             {rows.length > 0 ? (
               <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
                 <Table className="min-w-[460px]">

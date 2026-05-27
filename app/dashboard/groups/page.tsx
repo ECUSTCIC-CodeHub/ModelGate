@@ -434,7 +434,7 @@ export default function AdminGroupsPage() {
                       const result = validateClaimExpr(form.oidc_claim_expr);
                       return result.valid
                         ? <p className="text-xs text-[var(--color-accent)]">&#10003; 表达式语法正确</p>
-                        : <p className="text-xs text-red-400">&#10007; {result.error}</p>;
+                        : <p className="text-xs text-[var(--color-destructive)]">&#10007; {result.error}</p>;
                     })()
                   ) : (
                     <p className="text-xs text-[var(--color-foreground-muted)]">

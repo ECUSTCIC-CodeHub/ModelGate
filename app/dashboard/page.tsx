@@ -329,25 +329,25 @@ export default function DashboardHomePage() {
                     data={summary?.hourly_tokens ?? []}
                     margin={{ top: 8, right: 12, left: 8, bottom: 0 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-chart-grid)" />
                     <XAxis
                       dataKey="hour"
                       tickLine={false}
                       axisLine={false}
                       minTickGap={20}
-                      tick={{ fill: "#94a3b8", fontSize: 11 }}
+                      tick={{ fill: "var(--color-chart-tick)", fontSize: 11 }}
                       tickFormatter={(value: string) => value.slice(11, 16)}
                     />
                     <YAxis
                       tickLine={false}
                       axisLine={false}
                       width={56}
-                      tick={{ fill: "#94a3b8", fontSize: 11 }}
+                      tick={{ fill: "var(--color-chart-tick)", fontSize: 11 }}
                       tickFormatter={(value: number) => formatTokenCount(value)}
                     />
                     <Tooltip
-                      cursor={{ fill: "rgba(99,102,241,0.12)", stroke: "rgba(99,102,241,0.28)", strokeWidth: 1 }}
-                      contentStyle={{ background: "rgba(8, 15, 29, 0.94)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }}
+                      cursor={{ fill: "var(--color-chart-cursor-fill)", stroke: "var(--color-chart-cursor-stroke)", strokeWidth: 1 }}
+                      contentStyle={{ background: "var(--color-chart-tooltip-bg)", border: "1px solid var(--color-chart-tooltip-border)", borderRadius: 12 }}
                       labelFormatter={(label) => String(label).replace("T", " ")}
                       formatter={(value) => {
                         const normalizedValue = Array.isArray(value) ? value[0] : value;
@@ -355,7 +355,7 @@ export default function DashboardHomePage() {
                         return [formatTokenCount(Number.isFinite(tokenValue) ? tokenValue : 0), "Token"] as const;
                       }}
                     />
-                    <Bar dataKey="tokens" fill="#6366f1" radius={[8, 8, 0, 0]} />
+                    <Bar dataKey="tokens" fill="var(--color-chart-bar)" radius={[8, 8, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (

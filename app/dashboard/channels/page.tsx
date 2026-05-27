@@ -748,7 +748,7 @@ export default function AdminChannelsPage() {
       subtitle="统一管理上游渠道、模型映射、状态、权重与测试动作。"
     >
       <div className="space-y-4 pb-6">
-        {error ? <p className="text-sm text-red-400">{error}</p> : null}
+        {error ? <p className="text-sm text-[var(--color-destructive)]">{error}</p> : null}
         <Card>
           <CardHeader>
             <SectionTitle title="渠道与模型配置" description="在渠道标签页管理上游 API 接入，在模型标签页配置 alias 与真实模型映射。" />

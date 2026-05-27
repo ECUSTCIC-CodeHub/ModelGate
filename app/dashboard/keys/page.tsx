@@ -184,7 +184,7 @@ export default function ConsoleKeysPage() {
                         />
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        {error ? <p className="text-sm text-red-400">{error}</p> : null}
+                        {error ? <p className="text-sm text-[var(--color-destructive)]">{error}</p> : null}
                         {keys.length > 0 ? (
                             <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
                                 <Table className="min-w-[820px]">
@@ -219,7 +219,7 @@ export default function ConsoleKeysPage() {
                                                         />
                                                     ) : (
                                                         <span
-                                                            className="cursor-pointer text-sm text-[var(--color-foreground-secondary)] hover:text-white"
+                                                            className="cursor-pointer text-sm text-[var(--color-foreground-secondary)] hover:text-[var(--color-accent)]"
                                                             onClick={() => { setEditingNameId(row.id); setEditingNameValue(row.name || ""); }}
                                                         >
                                                             {row.name || <span className="text-[var(--color-foreground-subtle)]">点击添加备注</span>}

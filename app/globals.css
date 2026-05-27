@@ -33,6 +33,8 @@
   --color-destructive: #dc2626;
   --color-destructive-hover: #b91c1c;
   --color-destructive-foreground: #fef2f2;
+  --color-destructive-muted: rgba(220, 38, 38, 0.1);
+  --color-destructive-border: rgba(220, 38, 38, 0.3);
 
   --color-sidebar-bg: rgba(255, 255, 255, 0.78);
   --color-sidebar-border: rgba(67, 56, 202, 0.14);
@@ -43,6 +45,15 @@
 
   --color-header-bg: rgba(255, 255, 255, 0.78);
   --color-header-border: rgba(67, 56, 202, 0.14);
+  --color-switch-thumb: #ffffff;
+
+  --color-chart-grid: rgba(67, 56, 202, 0.12);
+  --color-chart-tick: #64748b;
+  --color-chart-cursor-fill: rgba(99, 102, 241, 0.14);
+  --color-chart-cursor-stroke: rgba(99, 102, 241, 0.3);
+  --color-chart-tooltip-bg: rgba(255, 255, 255, 0.96);
+  --color-chart-tooltip-border: rgba(67, 56, 202, 0.16);
+  --color-chart-bar: #6366f1;
 
   --glass-highlight: rgba(255, 255, 255, 0.75);
   --glass-shadow: rgba(30, 41, 59, 0.12);
@@ -57,6 +68,7 @@
   --shadow-md: 0 8px 24px rgba(30, 41, 59, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.55);
   --shadow-lg: 0 18px 44px rgba(30, 41, 59, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.5);
   --shadow-xl: 0 26px 62px rgba(30, 41, 59, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  --shadow-inner-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.46);
 
   --radius-sm: 0.5rem;
   --radius: 0.5rem;
@@ -95,6 +107,8 @@
   --color-destructive: #f87171;
   --color-destructive-hover: #ef4444;
   --color-destructive-foreground: #450a0a;
+  --color-destructive-muted: rgba(248, 113, 113, 0.1);
+  --color-destructive-border: rgba(248, 113, 113, 0.3);
 
   --color-sidebar-bg: rgba(15, 20, 40, 0.82);
   --color-sidebar-border: rgba(255, 255, 255, 0.1);
@@ -105,6 +119,15 @@
 
   --color-header-bg: rgba(15, 20, 40, 0.82);
   --color-header-border: rgba(255, 255, 255, 0.1);
+  --color-switch-thumb: #ffffff;
+
+  --color-chart-grid: rgba(255, 255, 255, 0.08);
+  --color-chart-tick: #94a3b8;
+  --color-chart-cursor-fill: rgba(99, 102, 241, 0.12);
+  --color-chart-cursor-stroke: rgba(99, 102, 241, 0.28);
+  --color-chart-tooltip-bg: rgba(8, 15, 29, 0.94);
+  --color-chart-tooltip-border: rgba(255, 255, 255, 0.1);
+  --color-chart-bar: #6366f1;
 
   --glass-highlight: rgba(255, 255, 255, 0.14);
   --glass-shadow: rgba(0, 0, 0, 0.45);
@@ -119,6 +142,7 @@
   --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.38);
   --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.46);
   --shadow-xl: 0 24px 58px rgba(0, 0, 0, 0.52);
+  --shadow-inner-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 
   color-scheme: dark;
 }

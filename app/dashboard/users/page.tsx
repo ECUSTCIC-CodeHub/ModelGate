@@ -659,7 +659,7 @@ export default function AdminUsersPage() {
                 <div className="space-y-2 md:col-span-2">
                   <Label>管理员备注</Label>
                   <textarea
-                    className="flex min-h-24 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-3 text-sm text-[var(--color-foreground)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] placeholder:text-[var(--color-foreground-muted)] focus-visible:border-[var(--color-accent)]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/20"
+                    className="flex min-h-24 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-3 text-sm text-[var(--color-foreground)] shadow-[var(--shadow-inner-highlight)] placeholder:text-[var(--color-foreground-muted)] focus-visible:border-[var(--color-accent)]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/20"
                     placeholder="仅管理员可见，可记录来源、用途、客户信息等"
                     value={form.note}
                     onChange={(e) => setForm({ ...form, note: e.target.value })}

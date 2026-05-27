@@ -63,7 +63,7 @@ export function LoginForm({ status }: { status: AuthStatus }) {
           <p className="text-sm text-[var(--color-foreground-muted)]">登录管理控制台</p>
         </div>
         {oidcError ? (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          <div className="rounded-xl border border-[var(--color-destructive-border)] bg-[var(--color-destructive-muted)] px-4 py-3 text-sm text-[var(--color-destructive)]">
             {oidcError}
           </div>
         ) : null}

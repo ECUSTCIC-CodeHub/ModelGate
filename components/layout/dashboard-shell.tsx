@@ -332,7 +332,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                   <button
                     type="button"
                     onClick={onLogout}
-                    className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm text-rose-500 transition-colors duration-150 hover:bg-red-500/10 hover:text-rose-400"
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm text-[var(--color-destructive)] transition-colors duration-150 hover:bg-[var(--color-destructive-muted)] hover:text-[var(--color-destructive-hover)]"
                   >
                     <LogOut className="h-4 w-4 shrink-0" />
                     <span className="flex-1 text-left">退出登录</span>

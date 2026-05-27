@@ -14,7 +14,7 @@ const Switch = ({ className, ...props }: React.ComponentProps<typeof SwitchPrimi
   >
     <SwitchPrimitives.Thumb
       className={cn(
-        "pointer-events-none block h-5 w-5 rounded-full bg-white shadow-[var(--shadow-md)] ring-0 transition-transform data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0",
+        "pointer-events-none block h-5 w-5 rounded-full bg-[var(--color-switch-thumb)] shadow-[var(--shadow-md)] ring-0 transition-transform data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0",
       )}
     />
   </SwitchPrimitives.Root>
