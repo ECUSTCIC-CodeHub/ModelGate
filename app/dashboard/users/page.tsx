@@ -2,14 +2,10 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { EmptyState } from "@/components/dashboard/empty-state";
 import { PageToolbar } from "@/components/dashboard/page-toolbar";
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { PagePagination } from "@/components/dashboard/page-pagination";
-import { AlertDialogAction } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -30,137 +26,23 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/shared/api-message";
 import { authedFetch, ensureAdmin } from "@/lib/auth/client-auth";
 import { modelGateFeatures } from "@/lib/core/features";
 import { formatNumber, formatLimit } from "@/lib/shared/formatters";
-
-type UserRow = {
-  id: number;
-  username: string;
-  note: string | null;
-  role: "admin" | "user";
-  group_id: number | null;
-  group_name: string | null;
-  enabled: number;
-  rpm: number;
-  qps: number;
-  tpm: number;
-  quota_tokens: number | null;
-  quota_requests: number | null;
-  quota_period: number | null;
-  period_quota_tokens: number | null;
-  period_quota_requests: number | null;
-  period_used_tokens: number;
-  period_used_requests: number;
-  period_reset_at: string | null;
-  used_tokens: number;
-  used_requests: number;
-  allowed_model_aliases: string[];
-  oidc_issuer: string | null;
-  oidc_subject: string | null;
-  group_rpm: number | null;
-  group_qps: number | null;
-  group_tpm: number | null;
-  group_quota_requests: number | null;
-  group_quota_tokens: number | null;
-  group_quota_period: number | null;
-  group_period_quota_tokens: number | null;
-  group_period_quota_requests: number | null;
-  effective_rpm: number;
-  effective_qps: number;
-  effective_tpm: number;
-  effective_quota_requests: number | null;
-  effective_quota_tokens: number | null;
-  effective_quota_period: number | null;
-  effective_period_quota_tokens: number | null;
-  effective_period_quota_requests: number | null;
-};
-
-type AliasOption = {
-  id: number;
-  alias: string;
-  is_public: number;
-};
-
-type GroupOption = {
-  id: number;
-  name: string;
-  is_default: number;
-};
-
-type UserSortKey = "created_at" | "used_requests" | "used_tokens" | "username";
-
-const PERIOD_PRESETS = [
-  { label: "不限制（继承组）", value: "" },
-  { label: "每小时", value: "3600" },
-  { label: "每日", value: "86400" },
-  { label: "每周", value: "604800" },
-  { label: "每月", value: "2592000" },
-  { label: "自定义", value: "custom" },
-] as const;
-
-function periodToPreset(v: number | null): string {
-  if (v === null || v <= 0) return "";
-  if (v === 3600) return "3600";
-  if (v === 86400) return "86400";
-  if (v === 604800) return "604800";
-  if (v === 2592000) return "2592000";
-  return "custom";
-}
-
-function formatPeriodLabel(v: number | null): string {
-  if (v === null || v <= 0) return "-";
-  if (v === 3600) return "每小时";
-  if (v === 86400) return "每日";
-  if (v === 604800) return "每周";
-  if (v === 2592000) return "每月";
-  if (v >= 86400) return `每 ${Math.round(v / 86400)} 天`;
-  if (v >= 3600) return `每 ${Math.round(v / 3600)} 小时`;
-  return `每 ${v} 秒`;
-}
-
-type UserForm = {
-  username: string;
-  password: string;
-  new_password: string;
-  role: "admin" | "user";
-  group_id: string;
-  enabled: boolean;
-  rpm: number;
-  qps: number;
-  tpm: number;
-  quota_tokens: string;
-  quota_requests: string;
-  quota_period_preset: string;
-  quota_period_custom: string;
-  period_quota_tokens: string;
-  period_quota_requests: string;
-  allowed_model_aliases: string[];
-  note: string;
-};
-
-const initialForm: UserForm = {
-  username: "",
-  password: "",
-  new_password: "",
-  role: "user",
-  group_id: "",
-  enabled: true,
-  rpm: -1,
-  qps: -1,
-  tpm: -1,
-  quota_tokens: "",
-  quota_requests: "",
-  quota_period_preset: "",
-  quota_period_custom: "",
-  period_quota_tokens: "",
-  period_quota_requests: "",
-  allowed_model_aliases: [],
-  note: "",
-};
+import { UserTable } from "./user-table";
+import {
+  PERIOD_PRESETS,
+  formatPeriodLabel,
+  initialForm,
+  periodToPreset,
+  type AliasOption,
+  type GroupOption,
+  type UserForm,
+  type UserRow,
+  type UserSortKey,
+} from "./user-model";
 
 export default function AdminUsersPage() {
   const router = useRouter();
@@ -469,124 +351,15 @@ export default function AdminUsersPage() {
               <Button onClick={onCreateClick}>新增用户</Button>
             </PageToolbar>
 
-            {rows.length > 0 ? (
-              <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-                <Table className={periodQuotaEnabled ? "min-w-[1620px] table-fixed" : "min-w-[1440px] table-fixed"}>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[180px]">用户名</TableHead>
-                      <TableHead className="w-[180px]">标签</TableHead>
-                      <TableHead className="w-[120px]">用户组</TableHead>
-                      <TableHead className="w-[220px]">备注</TableHead>
-                      <TableHead className="w-[180px]">限速 RPM/QPS/TPM</TableHead>
-                      <TableHead className="w-[150px]">累计 请求/Token</TableHead>
-                      <TableHead className="w-[150px]">配额 请求/Token</TableHead>
-                      {periodQuotaEnabled ? <TableHead className="w-[180px]">周期配额</TableHead> : null}
-                      <TableHead className="w-[260px] text-right">操作</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {rows.map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell className="font-medium text-[var(--color-foreground)]">
-                          <span className="block truncate" title={row.username}>{row.username}</span>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            <Badge variant={row.role === "admin" ? "default" : "secondary"}>
-                              {row.role === "admin" ? "管理员" : "普通用户"}
-                            </Badge>
-                            <Badge variant={row.enabled ? "default" : "secondary"}>
-                              {row.enabled ? "启用" : "禁用"}
-                            </Badge>
-                            {oidcFeatureEnabled && row.oidc_subject ? (
-                              <Badge variant="outline" title={`${row.oidc_issuer}\n${row.oidc_subject}`}>OIDC</Badge>
-                            ) : null}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <span className="block truncate text-sm text-[var(--color-foreground-secondary)]" title={row.group_name ?? ""}>
-                            {row.group_name ?? "-"}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <span className="block truncate text-sm text-[var(--color-foreground-secondary)]" title={row.note ?? ""}>
-                            {row.note?.trim() || "-"}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <span
-                            className="block truncate font-mono text-sm"
-                            title={`生效: ${formatLimit(row.effective_rpm)}/${formatLimit(row.effective_qps)}/${formatLimit(row.effective_tpm)}\n用户: ${formatLimit(row.rpm)}/${formatLimit(row.qps)}/${formatLimit(row.tpm)}`}
-                          >
-                            {formatLimit(row.effective_rpm)}/{formatLimit(row.effective_qps)}/{formatLimit(row.effective_tpm)}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <span className="block truncate font-mono text-sm" title="请求 / Token">
-                            {formatNumber(row.used_requests)} / {formatNumber(row.used_tokens)}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <span className="block truncate font-mono text-sm" title="请求 / Token">
-                            {row.effective_quota_requests === null ? "∞" : formatNumber(row.effective_quota_requests)}
-                            {" / "}
-                            {row.effective_quota_tokens === null ? "∞" : formatNumber(row.effective_quota_tokens)}
-                          </span>
-                        </TableCell>
-                        {periodQuotaEnabled ? (
-                        <TableCell>
-                          {row.effective_quota_period ? (
-                            <div className="space-y-0.5 text-sm">
-                              <p className="font-medium text-[var(--color-foreground)]">{formatPeriodLabel(row.effective_quota_period)}</p>
-                              <p className="text-xs text-[var(--color-foreground-muted)]">
-                                请求 {row.effective_period_quota_requests === null ? "∞" : formatLimit(row.effective_period_quota_requests)}
-                                {" / "}
-                                Token {row.effective_period_quota_tokens === null ? "∞" : formatLimit(row.effective_period_quota_tokens)}
-                              </p>
-                              <p className="text-xs text-[var(--color-foreground-muted)]">
-                                已用 {formatNumber(row.period_used_requests)} / {formatNumber(row.period_used_tokens)}
-                              </p>
-                            </div>
-                          ) : <span className="text-sm text-[var(--color-foreground-muted)]">-</span>}
-                        </TableCell>
-                        ) : null}
-                        <TableCell className="space-x-2 whitespace-nowrap text-right">
-                          <Button size="sm" variant="outline" onClick={() => onEditClick(row)}>编辑</Button>
-                          {periodQuotaEnabled ? (
-                            <ConfirmDialog
-                              trigger={<Button size="sm" variant="outline">重置用量</Button>}
-                              title={`重置用户 ${row.username} 的用量？`}
-                              description="选择要重置的用量类型，重置后不可恢复。"
-                              actions={<>
-                                <AlertDialogAction onClick={() => resetUsage(row.id, "period")}>仅周期用量</AlertDialogAction>
-                                <AlertDialogAction onClick={() => resetUsage(row.id, "total")}>仅总用量</AlertDialogAction>
-                                <AlertDialogAction onClick={() => resetUsage(row.id, "all")}>全部重置</AlertDialogAction>
-                              </>}
-                            />
-                          ) : (
-                            <ConfirmDialog
-                              trigger={<Button size="sm" variant="outline">重置用量</Button>}
-                              title={`重置用户 ${row.username} 的总用量？`}
-                              description="重置后不可恢复。"
-                              confirmText="确认重置"
-                              onConfirm={() => resetUsage(row.id, "total")}
-                            />
-                          )}
-                          <ConfirmDialog
-                            title={`删除用户 ${row.username}？`}
-                            description="删除后该用户的登录入口会立即失效，此操作不可撤销。"
-                            onConfirm={() => remove(row.id)}
-                          />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            ) : (
-              <EmptyState title="暂无用户数据" description="当前没有匹配的用户记录，可以尝试调整搜索条件。" action={<Button onClick={onCreateClick}>新增用户</Button>} />
-            )}
+            <UserTable
+              rows={rows}
+              oidcFeatureEnabled={oidcFeatureEnabled}
+              periodQuotaEnabled={periodQuotaEnabled}
+              onCreate={onCreateClick}
+              onEdit={onEditClick}
+              onResetUsage={(id, type) => void resetUsage(id, type)}
+              onRemove={(id) => void remove(id)}
+            />
 
             <PagePagination
               page={page}
