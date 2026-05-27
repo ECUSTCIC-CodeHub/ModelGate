@@ -15,6 +15,7 @@ export type IntermediateStreamEvent =
   | { type: "start"; id?: string; model?: string | null; created?: number; usage?: StreamUsage | null }
   | { type: "text_delta"; text: string }
   | { type: "reasoning_delta"; text: string }
+  | { type: "reasoning_signature"; signature: string }
   | { type: "tool_call_start"; index: number; id: string; name: string; arguments?: string }
   | { type: "tool_call_delta"; index: number; id?: string; name?: string; arguments: string }
   | { type: "usage"; usage: StreamUsage }

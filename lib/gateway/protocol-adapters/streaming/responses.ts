@@ -1,10 +1,32 @@
-import { asRecord, type JsonRecord } from "@/lib/gateway/normalized-message";
-import { createChatToAnthropicStream } from "@/lib/gateway/protocol-adapters/streaming/chat-completions";
-import { toSseBlock, type StreamTransformResult, type ToolCallState } from "@/lib/gateway/protocol-adapters/streaming/common";
+import { asArray, asRecord, type JsonRecord } from "@/lib/gateway/normalized-message";
+import {
+  toSseBlock,
+  type IntermediateStreamEvent,
+  type IntermediateStreamResult,
+  type StreamUsage,
+} from "@/lib/gateway/protocol-adapters/streaming/common";
 
 type ResponsesSseEvent = {
   event: string;
   data: JsonRecord | string;
+};
+
+type ResponsesToolState = {
+  index: number;
+  itemId: string;
+  callId: string;
+  name: string;
+  arguments: string;
+};
+
+type EncodedToolState = {
+  index: number;
+  itemId: string;
+  callId: string;
+  name: string;
+  arguments: string;
+  outputIndex: number;
+  done: boolean;
 };
 
 export function parseResponsesSseEvent(event: string, data: string): ResponsesSseEvent {
@@ -29,48 +51,119 @@ export function trackResponsesStreamEvent(eventName: string, data: string) {
   return null;
 }
 
-export function createResponsesToAnthropicStream(upstream: ReadableStream<Uint8Array>, thinkingEnabled = false): StreamTransformResult {
-  const chat = createResponsesToChatStream(upstream);
-  return createChatToAnthropicStream(chat.stream, thinkingEnabled);
+function createdToUnix(value: unknown) {
+  const created = typeof value === "string"
+    ? Math.floor(new Date(value).getTime() / 1000)
+    : Number(value);
+  return Number.isFinite(created) ? created : Math.floor(Date.now() / 1000);
 }
 
-export function createResponsesToChatStream(upstream: ReadableStream<Uint8Array>): StreamTransformResult {
+function usageFromResponses(value: unknown): StreamUsage | null {
+  const usage = asRecord(value);
+  if (!usage) return null;
+  const promptTokens = Number(usage.input_tokens ?? 0);
+  const completionTokens = Number(usage.output_tokens ?? 0);
+  return {
+    prompt_tokens: promptTokens,
+    completion_tokens: completionTokens,
+    total_tokens: Number(usage.total_tokens ?? promptTokens + completionTokens),
+  };
+}
+
+function responseUsage(usage: StreamUsage | null) {
+  return usage
+    ? {
+        input_tokens: usage.prompt_tokens,
+        output_tokens: usage.completion_tokens,
+        total_tokens: usage.total_tokens,
+      }
+    : undefined;
+}
+
+export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): IntermediateStreamResult {
   const reader = upstream.getReader();
   const decoder = new TextDecoder();
-  const encoder = new TextEncoder();
   let buffer = "";
+  let responseId = `resp_${crypto.randomUUID().replace(/-/g, "")}`;
+  let model: string | null = null;
+  let created = Math.floor(Date.now() / 1000);
+  let usage: StreamUsage | null = null;
   let completionText = "";
   let reasoningText = "";
   let firstTokenAt: number | null = null;
+  let started = false;
+  let finished = false;
+  let finishReason: string | null = null;
+  const toolsByItemId = new Map<string, ResponsesToolState>();
+  const toolsByIndex = new Map<number, ResponsesToolState>();
+
   const markFirstToken = () => {
     if (firstTokenAt === null) firstTokenAt = Date.now();
   };
-  let responseId = `chatcmpl_${crypto.randomUUID().replace(/-/g, "")}`;
-  let model: string | null = null;
-  let created = Math.floor(Date.now() / 1000);
-  let finished = false;
-  let finishReason = "stop";
-  const toolCalls = new Map<string, ToolCallState>();
-  let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null = null;
 
-  const emitChatChunk = (controller: ReadableStreamDefaultController<Uint8Array>, delta: JsonRecord, reason: string | null = null) => {
-    controller.enqueue(encoder.encode(toSseBlock(null, {
-      id: responseId,
-      object: "chat.completion.chunk",
-      created,
-      model,
-      choices: [
-        {
-          index: 0,
-          delta,
-          finish_reason: reason,
-        },
-      ],
-      ...(usage ? { usage } : {}),
-    })));
+  const updateResponseMetadata = (response: JsonRecord | null) => {
+    if (!response) return;
+    if (typeof response.id === "string") responseId = response.id;
+    if (typeof response.model === "string") model = response.model;
+    if (response.created_at !== undefined || response.created !== undefined) {
+      created = createdToUnix(response.created_at ?? response.created);
+    }
+    usage = usageFromResponses(response.usage) ?? usage;
+    const output = asArray(response.output).map((item) => asRecord(item)).filter((item): item is JsonRecord => Boolean(item));
+    if (output.some((item) => item.type === "function_call")) {
+      finishReason = "tool_calls";
+    }
   };
 
-  const stream = new ReadableStream<Uint8Array>({
+  const rememberTool = (item: JsonRecord | null, itemId: string, outputIndex: number) => {
+    const existing = toolsByItemId.get(itemId);
+    if (existing) return existing;
+
+    const callId = typeof item?.call_id === "string"
+      ? item.call_id
+      : typeof item?.id === "string"
+        ? item.id
+        : itemId || `call_${crypto.randomUUID().replace(/-/g, "")}`;
+    const state: ResponsesToolState = {
+      index: outputIndex,
+      itemId: typeof item?.id === "string" ? item.id : itemId || callId,
+      callId,
+      name: typeof item?.name === "string" ? item.name : "",
+      arguments: typeof item?.arguments === "string" ? item.arguments : "",
+    };
+    toolsByItemId.set(state.itemId, state);
+    toolsByItemId.set(state.callId, state);
+    toolsByIndex.set(state.index, state);
+    finishReason = "tool_calls";
+    return state;
+  };
+
+  const emitMissingToolArguments = (
+    controller: ReadableStreamDefaultController<IntermediateStreamEvent>,
+    state: ResponsesToolState,
+    finalArguments: string,
+  ) => {
+    const delta = finalArguments.startsWith(state.arguments)
+      ? finalArguments.slice(state.arguments.length)
+      : finalArguments;
+    state.arguments = finalArguments;
+    if (!delta) return;
+    controller.enqueue({
+      type: "tool_call_delta",
+      index: state.index,
+      id: state.callId,
+      name: state.name,
+      arguments: delta,
+    });
+  };
+
+  const emitStart = (controller: ReadableStreamDefaultController<IntermediateStreamEvent>) => {
+    if (started) return;
+    started = true;
+    controller.enqueue({ type: "start", id: responseId, model, created, usage });
+  };
+
+  const stream = new ReadableStream<IntermediateStreamEvent>({
     async start(controller) {
       try {
         while (true) {
@@ -102,131 +195,100 @@ export function createResponsesToChatStream(upstream: ReadableStream<Uint8Array>
             const event = parseResponsesSseEvent(eventName, data);
             const payload = asRecord(event.data);
             const response = asRecord(payload?.response);
+            updateResponseMetadata(response);
 
-            if (response) {
-              if (typeof response.id === "string") responseId = response.id;
-              if (typeof response.model === "string") model = response.model;
-              const createdRaw = response.created_at ?? response.created;
-              const nextCreated = typeof createdRaw === "string"
-                ? Math.floor(new Date(createdRaw).getTime() / 1000)
-                : Number(createdRaw);
-              if (Number.isFinite(nextCreated)) created = nextCreated;
+            if (event.event === "response.created" || event.event === "response.in_progress") {
+              emitStart(controller);
+              continue;
             }
 
             if (event.event === "response.output_text.delta" && typeof payload?.delta === "string") {
+              emitStart(controller);
               markFirstToken();
               completionText += payload.delta;
-              emitChatChunk(controller, { content: payload.delta });
+              controller.enqueue({ type: "text_delta", text: payload.delta });
               continue;
             }
 
             if (event.event === "response.reasoning_text.delta" && typeof payload?.delta === "string") {
+              emitStart(controller);
               markFirstToken();
               reasoningText += payload.delta;
-              emitChatChunk(controller, { reasoning: payload.delta });
+              controller.enqueue({ type: "reasoning_delta", text: payload.delta });
               continue;
             }
 
             if (event.event === "response.output_item.added") {
               const item = asRecord(payload?.item);
               if (item?.type === "function_call") {
-                finishReason = "tool_calls";
-                const callId = typeof item.call_id === "string"
-                  ? item.call_id
-                  : typeof item.id === "string"
-                    ? item.id
-                    : `call_${crypto.randomUUID().replace(/-/g, "")}`;
-                const callState: ToolCallState = {
-                  index: Number(payload?.output_index ?? toolCalls.size),
-                  id: callId,
-                  name: typeof item.name === "string" ? item.name : "",
-                  arguments: typeof item.arguments === "string" ? item.arguments : "",
-                };
-                toolCalls.set(callId, callState);
-                if (typeof item.id === "string") toolCalls.set(item.id, callState);
-                emitChatChunk(controller, {
-                  tool_calls: [{
-                    index: callState.index,
-                    id: callState.id,
-                    type: "function",
-                    function: {
-                      name: callState.name,
-                      arguments: callState.arguments,
-                    },
-                  }],
+                emitStart(controller);
+                const outputIndex = Number(payload?.output_index ?? toolsByIndex.size);
+                const itemId = typeof item.id === "string" ? item.id : typeof payload?.item_id === "string" ? payload.item_id : "";
+                const tool = rememberTool(item, itemId, outputIndex);
+                controller.enqueue({
+                  type: "tool_call_start",
+                  index: tool.index,
+                  id: tool.callId,
+                  name: tool.name,
+                  arguments: tool.arguments || undefined,
                 });
               }
               continue;
             }
 
             if (event.event === "response.function_call_arguments.delta" && typeof payload?.delta === "string") {
+              emitStart(controller);
               const itemId = typeof payload.item_id === "string" ? payload.item_id : "";
-              const existing = toolCalls.get(itemId);
-              if (existing) {
-                existing.arguments += payload.delta;
-                emitChatChunk(controller, {
-                  tool_calls: [{
-                    index: existing.index,
-                    id: existing.id,
-                    type: "function",
-                    function: {
-                      name: existing.name,
-                      arguments: payload.delta,
-                    },
-                  }],
-                });
-              }
+              const outputIndex = Number(payload.output_index ?? toolsByIndex.size);
+              const tool = toolsByItemId.get(itemId) ?? rememberTool(null, itemId, outputIndex);
+              tool.arguments += payload.delta;
+              controller.enqueue({
+                type: "tool_call_delta",
+                index: tool.index,
+                id: tool.callId,
+                name: tool.name,
+                arguments: payload.delta,
+              });
               continue;
             }
 
             if (event.event === "response.function_call_arguments.done" && typeof payload?.arguments === "string") {
+              emitStart(controller);
               const itemId = typeof payload.item_id === "string" ? payload.item_id : "";
-              const existing = toolCalls.get(itemId);
-              if (existing) {
-                const delta = payload.arguments.startsWith(existing.arguments)
-                  ? payload.arguments.slice(existing.arguments.length)
-                  : payload.arguments;
-                existing.arguments = payload.arguments;
-                if (delta) {
-                  emitChatChunk(controller, {
-                    tool_calls: [{
-                      index: existing.index,
-                      id: existing.id,
-                      type: "function",
-                      function: {
-                        name: existing.name,
-                        arguments: delta,
-                      },
-                    }],
-                  });
+              const outputIndex = Number(payload.output_index ?? toolsByIndex.size);
+              const tool = toolsByItemId.get(itemId) ?? rememberTool(null, itemId, outputIndex);
+              emitMissingToolArguments(controller, tool, payload.arguments);
+              continue;
+            }
+
+            if (event.event === "response.output_item.done") {
+              const item = asRecord(payload?.item);
+              if (item?.type === "function_call") {
+                emitStart(controller);
+                const outputIndex = Number(payload?.output_index ?? toolsByIndex.size);
+                const itemId = typeof item.id === "string" ? item.id : typeof payload?.item_id === "string" ? payload.item_id : "";
+                const tool = toolsByItemId.get(itemId) ?? rememberTool(item, itemId, outputIndex);
+                if (typeof item.arguments === "string") {
+                  emitMissingToolArguments(controller, tool, item.arguments);
                 }
               }
               continue;
             }
 
             if (event.event === "response.completed") {
-              const completedUsage = asRecord(response?.usage);
-              usage = completedUsage
-                ? {
-                    prompt_tokens: Number(completedUsage.input_tokens ?? 0),
-                    completion_tokens: Number(completedUsage.output_tokens ?? 0),
-                    total_tokens: Number(completedUsage.total_tokens ?? 0),
-                  }
-                : usage;
+              emitStart(controller);
+              if (usage) controller.enqueue({ type: "usage", usage });
               if (!finished) {
                 finished = true;
-                emitChatChunk(controller, {}, finishReason);
-                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                controller.enqueue({ type: "finish", reason: finishReason ?? "stop" });
               }
             }
           }
         }
 
-        if (!finished) {
-          emitChatChunk(controller, {}, finishReason);
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        if (started && !finished) {
+          controller.enqueue({ type: "finish", reason: finishReason ?? "stop" });
         }
-
         controller.close();
       } catch (error) {
         controller.error(error);
@@ -239,4 +301,334 @@ export function createResponsesToChatStream(upstream: ReadableStream<Uint8Array>
     completionText: () => `${reasoningText}${completionText}`,
     firstTokenAt: () => firstTokenAt,
   };
+}
+
+export function encodeResponsesStream(events: ReadableStream<IntermediateStreamEvent>) {
+  const reader = events.getReader();
+  const encoder = new TextEncoder();
+  let responseId = `resp_${crypto.randomUUID().replace(/-/g, "")}`;
+  let model: string | null = null;
+  let created = Math.floor(Date.now() / 1000);
+  let usage: StreamUsage | null = null;
+  let started = false;
+  let finished = false;
+  let nextOutputIndex = 0;
+  let reasoningStarted = false;
+  let reasoningDone = false;
+  let reasoningText = "";
+  let reasoningOutputIndex = 0;
+  const reasoningItemId = `rs_${crypto.randomUUID().replace(/-/g, "")}`;
+  let textStarted = false;
+  let textDone = false;
+  let text = "";
+  let textOutputIndex = 0;
+  const outputMessageId = `msg_${crypto.randomUUID().replace(/-/g, "")}`;
+  const tools = new Map<number, EncodedToolState>();
+
+  const emit = (controller: ReadableStreamDefaultController<Uint8Array>, event: string, payload: unknown) => {
+    controller.enqueue(encoder.encode(toSseBlock(event, payload)));
+  };
+
+  const responseBase = (status: "in_progress" | "completed") => ({
+    id: responseId,
+    object: "response",
+    created_at: created,
+    model,
+    status,
+  });
+
+  const ensureStarted = (controller: ReadableStreamDefaultController<Uint8Array>) => {
+    if (started) return;
+    started = true;
+    emit(controller, "response.created", {
+      type: "response.created",
+      response: {
+        ...responseBase("in_progress"),
+        output: [],
+      },
+    });
+    emit(controller, "response.in_progress", {
+      type: "response.in_progress",
+      response: {
+        ...responseBase("in_progress"),
+        output: [],
+      },
+    });
+  };
+
+  const ensureReasoning = (controller: ReadableStreamDefaultController<Uint8Array>) => {
+    if (reasoningStarted) return;
+    ensureStarted(controller);
+    reasoningStarted = true;
+    reasoningOutputIndex = nextOutputIndex;
+    nextOutputIndex += 1;
+    emit(controller, "response.output_item.added", {
+      type: "response.output_item.added",
+      response_id: responseId,
+      output_index: reasoningOutputIndex,
+      item: {
+        id: reasoningItemId,
+        type: "reasoning",
+        summary: [],
+        content: [],
+        status: "in_progress",
+      },
+    });
+  };
+
+  const ensureText = (controller: ReadableStreamDefaultController<Uint8Array>) => {
+    if (textStarted) return;
+    ensureStarted(controller);
+    textStarted = true;
+    textOutputIndex = nextOutputIndex;
+    nextOutputIndex += 1;
+    emit(controller, "response.output_item.added", {
+      type: "response.output_item.added",
+      response_id: responseId,
+      output_index: textOutputIndex,
+      item: {
+        id: outputMessageId,
+        type: "message",
+        role: "assistant",
+        status: "in_progress",
+        content: [],
+      },
+    });
+    emit(controller, "response.content_part.added", {
+      type: "response.content_part.added",
+      response_id: responseId,
+      item_id: outputMessageId,
+      output_index: textOutputIndex,
+      content_index: 0,
+      part: {
+        type: "output_text",
+        text: "",
+        annotations: [],
+      },
+    });
+  };
+
+  const ensureTool = (controller: ReadableStreamDefaultController<Uint8Array>, value: Extract<IntermediateStreamEvent, { type: "tool_call_start" | "tool_call_delta" }>) => {
+    const existing = tools.get(value.index);
+    if (existing) return existing;
+    ensureStarted(controller);
+    const callId = value.id ?? `call_${crypto.randomUUID().replace(/-/g, "")}`;
+    const tool: EncodedToolState = {
+      index: value.index,
+      itemId: `fc_${crypto.randomUUID().replace(/-/g, "")}`,
+      callId,
+      name: value.name ?? "",
+      arguments: value.type === "tool_call_start" ? value.arguments ?? "" : "",
+      outputIndex: nextOutputIndex,
+      done: false,
+    };
+    nextOutputIndex += 1;
+    tools.set(value.index, tool);
+    emit(controller, "response.output_item.added", {
+      type: "response.output_item.added",
+      response_id: responseId,
+      output_index: tool.outputIndex,
+      item: {
+        type: "function_call",
+        id: tool.itemId,
+        call_id: tool.callId,
+        name: tool.name,
+        arguments: tool.arguments,
+        status: "in_progress",
+      },
+    });
+    return tool;
+  };
+
+  const doneReasoning = (controller: ReadableStreamDefaultController<Uint8Array>) => {
+    if (!reasoningStarted || reasoningDone) return;
+    reasoningDone = true;
+    emit(controller, "response.reasoning_text.done", {
+      type: "response.reasoning_text.done",
+      response_id: responseId,
+      item_id: reasoningItemId,
+      output_index: reasoningOutputIndex,
+      content_index: 0,
+      text: reasoningText,
+    });
+    emit(controller, "response.output_item.done", {
+      type: "response.output_item.done",
+      response_id: responseId,
+      output_index: reasoningOutputIndex,
+      item: reasoningOutputItem(),
+    });
+  };
+
+  const doneText = (controller: ReadableStreamDefaultController<Uint8Array>) => {
+    if (!textStarted || textDone) return;
+    textDone = true;
+    emit(controller, "response.output_text.done", {
+      type: "response.output_text.done",
+      response_id: responseId,
+      item_id: outputMessageId,
+      output_index: textOutputIndex,
+      content_index: 0,
+      text,
+    });
+    emit(controller, "response.output_item.done", {
+      type: "response.output_item.done",
+      response_id: responseId,
+      output_index: textOutputIndex,
+      item: textOutputItem(),
+    });
+  };
+
+  const doneTool = (controller: ReadableStreamDefaultController<Uint8Array>, tool: EncodedToolState) => {
+    if (tool.done) return;
+    tool.done = true;
+    emit(controller, "response.function_call_arguments.done", {
+      type: "response.function_call_arguments.done",
+      response_id: responseId,
+      item_id: tool.itemId,
+      output_index: tool.outputIndex,
+      arguments: tool.arguments,
+    });
+    emit(controller, "response.output_item.done", {
+      type: "response.output_item.done",
+      response_id: responseId,
+      output_index: tool.outputIndex,
+      item: toolOutputItem(tool),
+    });
+  };
+
+  const reasoningOutputItem = () => ({
+    id: reasoningItemId,
+    type: "reasoning",
+    summary: [],
+    content: [{ type: "reasoning_text", text: reasoningText }],
+    status: "completed",
+  });
+
+  const textOutputItem = () => ({
+    id: outputMessageId,
+    type: "message",
+    role: "assistant",
+    status: "completed",
+    content: text ? [{ type: "output_text", text, annotations: [] }] : [],
+  });
+
+  const toolOutputItem = (tool: EncodedToolState) => ({
+    type: "function_call",
+    id: tool.itemId,
+    call_id: tool.callId,
+    name: tool.name,
+    arguments: tool.arguments,
+    status: "completed",
+  });
+
+  const emitDone = (controller: ReadableStreamDefaultController<Uint8Array>) => {
+    if (finished) return;
+    finished = true;
+    ensureStarted(controller);
+    doneReasoning(controller);
+    doneText(controller);
+    for (const tool of [...tools.values()].sort((a, b) => a.outputIndex - b.outputIndex)) {
+      doneTool(controller, tool);
+    }
+
+    const output = [
+      ...(reasoningStarted ? [reasoningOutputItem()] : []),
+      ...(textStarted || tools.size === 0 ? [textOutputItem()] : []),
+      ...[...tools.values()].sort((a, b) => a.outputIndex - b.outputIndex).map((tool) => toolOutputItem(tool)),
+    ];
+    emit(controller, "response.completed", {
+      type: "response.completed",
+      response: {
+        ...responseBase("completed"),
+        output,
+        output_text: text,
+        usage: responseUsage(usage),
+      },
+    });
+  };
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          if (value.type === "start") {
+            if (value.id) responseId = value.id;
+            if (value.model !== undefined) model = value.model;
+            if (value.created) created = value.created;
+            if (value.usage) usage = value.usage;
+            ensureStarted(controller);
+            continue;
+          }
+
+          if (value.type === "usage") {
+            usage = value.usage;
+            continue;
+          }
+
+          if (value.type === "reasoning_delta") {
+            ensureReasoning(controller);
+            reasoningText += value.text;
+            emit(controller, "response.reasoning_text.delta", {
+              type: "response.reasoning_text.delta",
+              response_id: responseId,
+              item_id: reasoningItemId,
+              output_index: reasoningOutputIndex,
+              content_index: 0,
+              delta: value.text,
+            });
+            continue;
+          }
+
+          if (value.type === "reasoning_signature") {
+            continue;
+          }
+
+          if (value.type === "text_delta") {
+            ensureText(controller);
+            text += value.text;
+            emit(controller, "response.output_text.delta", {
+              type: "response.output_text.delta",
+              response_id: responseId,
+              item_id: outputMessageId,
+              output_index: textOutputIndex,
+              content_index: 0,
+              delta: value.text,
+            });
+            continue;
+          }
+
+          if (value.type === "tool_call_start") {
+            ensureTool(controller, value);
+            continue;
+          }
+
+          if (value.type === "tool_call_delta") {
+            const tool = ensureTool(controller, value);
+            if (value.name) tool.name = value.name;
+            tool.arguments += value.arguments;
+            emit(controller, "response.function_call_arguments.delta", {
+              type: "response.function_call_arguments.delta",
+              response_id: responseId,
+              item_id: tool.itemId,
+              output_index: tool.outputIndex,
+              delta: value.arguments,
+            });
+            continue;
+          }
+
+          if (value.type === "finish") {
+            emitDone(controller);
+          }
+        }
+
+        emitDone(controller);
+        controller.close();
+      } catch (error) {
+        controller.error(error);
+      }
+    },
+  });
 }
