@@ -1,5 +1,4 @@
 import { checkApiKeyAuth } from "@/lib/auth/api-key-auth";
-import { acquireChannel, type ChannelLease } from "@/lib/gateway/channel-runtime";
 import { insertChatLog } from "@/lib/gateway/chat-log";
 import { jsonError } from "@/lib/core/http";
 import { resolveAccessibleModelAlias } from "@/lib/gateway/model-access";
@@ -11,15 +10,12 @@ import { checkUserRateLimit } from "@/lib/gateway/ratelimit";
 import { selectModelRoute, type RoutedModel } from "@/lib/gateway/router";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { countTextTokens } from "@/lib/gateway/tokenizer";
-import { buildErrorResponseBody, parseUpstreamError, shouldRetryUpstreamStatus } from "@/lib/gateway/upstream-error";
+import { buildErrorResponseBody, parseUpstreamError } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
+import { requestUpstreamWithFallback } from "@/lib/gateway/upstream-routing";
 
 const QUEUE_KEEPALIVE_INTERVAL_MS = 1_000;
 const encoder = new TextEncoder();
-
-function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
-  return typeof value === "object" && value !== null && "then" in value;
-}
 
 function createQueueKeepAliveTimer(controller: ReadableStreamDefaultController<Uint8Array>, stream: boolean) {
   return setInterval(() => {
@@ -156,97 +152,15 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   const createTransformedStreamForRoute = (upstreamBody: ReadableStream<Uint8Array>, route: RoutedModel) =>
     createTransformedStream(upstreamBody, getRouteAdapter(route), inboundAdapter, responseOptions);
 
-  const requestUpstreamWithFallback = async (): Promise<
-    | {
-        ok: true;
-        route: RoutedModel;
-        upstream: Response;
-        lease: ChannelLease;
-        attemptedChannels: number[];
-        attemptedChannelNames: string[];
-      }
-    | {
-        ok: true;
-        queued: true;
-        route: RoutedModel;
-        acquirePromise: Promise<{ ok: true; lease: ChannelLease; queued: boolean }>;
-        attemptedChannels: number[];
-        attemptedChannelNames: string[];
-      }
-    | {
-        ok: false;
-        route: RoutedModel | null;
-        attemptedChannels: number[];
-        attemptedChannelNames: string[];
-      }
-  > => {
-    const attemptedChannels = new Set<number>();
-    const attemptedChannelNames: string[] = [];
-    let attempt = 0;
-    let lastNetworkRoute: RoutedModel | null = null;
-
-    while (attempt < maxRouteAttempts) {
-      const route = selectModelRoute(resolvedAlias, {
-        excludeChannelIds: [...attemptedChannels],
-        protocol: inboundProtocol,
-      });
-
-      if (!route) {
-        break;
-      }
-
-      lastNetworkRoute = route;
-      attempt += 1;
-      attemptedChannels.add(route.channel.id);
-      attemptedChannelNames.push(route.channel.name);
-
-      const leaseResult = acquireChannel(route.channel.id, route.channel.max_concurrency, request.signal);
-      if (isPromiseLike(leaseResult)) {
-        return {
-          ok: true,
-          queued: true,
-          route,
-          acquirePromise: leaseResult as Promise<{ ok: true; lease: ChannelLease; queued: boolean }>,
-          attemptedChannels: [...attemptedChannels],
-          attemptedChannelNames: [...attemptedChannelNames],
-        };
-      }
-
-      if (!leaseResult.ok) {
-        continue;
-      }
-      const lease = leaseResult.lease;
-
-      try {
-        const upstreamBody = adaptRequestBodyForRoute(route);
-        const upstream = await fetchUpstreamRequest(route, upstreamBody, route.model.upstream_protocol, request.headers);
-        if (shouldRetryUpstreamStatus(upstream.status) && attempt < maxRouteAttempts) {
-          lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
-          continue;
-        }
-        return {
-          ok: true,
-          route,
-          upstream,
-          lease,
-          attemptedChannels: [...attemptedChannels],
-          attemptedChannelNames: [...attemptedChannelNames],
-        };
-      } catch {
-        lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
-        if (attempt >= maxRouteAttempts) break;
-      }
-    }
-
-    return {
-      ok: false,
-      route: lastNetworkRoute,
-      attemptedChannels: [...attemptedChannels],
-      attemptedChannelNames: [...attemptedChannelNames],
-    };
-  };
-
-  const picked = await requestUpstreamWithFallback();
+  const picked = await requestUpstreamWithFallback({
+    resolvedAlias,
+    inboundProtocol,
+    maxRouteAttempts,
+    requestSignal: request.signal,
+    inboundHeaders: request.headers,
+    startedAt,
+    buildRequestBody: adaptRequestBodyForRoute,
+  });
   if (!picked.ok) {
     insertChatLog({
       user_id: auth.user.id,
