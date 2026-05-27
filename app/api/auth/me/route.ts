@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
-import { ensureWebUser } from "@/lib/guards";
-import { jsonOk } from "@/lib/http";
+import { ensureWebUser } from "@/lib/auth/guards";
+import { jsonOk } from "@/lib/core/http";
 
 export async function GET(request: Request) {
   const guard = ensureWebUser(request);

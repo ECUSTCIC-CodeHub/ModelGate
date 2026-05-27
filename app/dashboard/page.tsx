@@ -24,8 +24,8 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
-import { authedFetch, clearSession, getCachedProfile, getOrFetchProfile } from "@/lib/client-auth";
-import { formatNumber, formatTokenCount } from "@/lib/utils";
+import { authedFetch, clearSession, getCachedProfile, getOrFetchProfile } from "@/lib/auth/client-auth";
+import { formatNumber, formatTokenCount } from "@/lib/shared/utils";
 
 type Role = "admin" | "user";
 

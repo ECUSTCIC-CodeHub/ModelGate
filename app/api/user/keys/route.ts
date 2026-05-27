@@ -1,10 +1,10 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { gatewayDb } from "@/lib/db";
-import { ensureUser } from "@/lib/guards";
-import { jsonError, jsonOk } from "@/lib/http";
-import { generateGatewayKey } from "@/lib/keys";
+import { gatewayDb } from "@/lib/core/db";
+import { ensureUser } from "@/lib/auth/guards";
+import { jsonError, jsonOk } from "@/lib/core/http";
+import { generateGatewayKey } from "@/lib/auth/keys";
 
 const createSchema = z.object({
   name: z.string().max(64).optional(),

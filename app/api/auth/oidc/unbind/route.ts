@@ -1,9 +1,9 @@
 export const dynamic = "force-dynamic";
 
-import { gatewayDb } from "@/lib/db";
-import { featureUnavailableMessage, modelGateFeatures } from "@/lib/features";
-import { ensureWebUser } from "@/lib/guards";
-import { jsonError, jsonOk } from "@/lib/http";
+import { gatewayDb } from "@/lib/core/db";
+import { featureUnavailableMessage, modelGateFeatures } from "@/lib/core/features";
+import { ensureWebUser } from "@/lib/auth/guards";
+import { jsonError, jsonOk } from "@/lib/core/http";
 
 export async function POST(request: Request) {
   if (!modelGateFeatures.oidc) {

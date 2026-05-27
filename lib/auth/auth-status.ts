@@ -1,6 +1,6 @@
-import { getGatewaySettings } from "@/lib/settings";
-import { getOidcConfig } from "@/lib/oidc";
-import { modelGateFeatures } from "@/lib/features";
+import { getGatewaySettings } from "@/lib/core/settings";
+import { getOidcConfig } from "@/lib/auth/oidc";
+import { modelGateFeatures } from "@/lib/core/features";
 
 export type AuthStatus = {
   oidc_enabled: boolean;

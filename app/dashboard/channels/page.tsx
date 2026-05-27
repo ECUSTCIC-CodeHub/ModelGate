@@ -39,8 +39,8 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
-import { getApiMessage } from "@/lib/api-message";
-import { authedFetch, ensureAdmin } from "@/lib/client-auth";
+import { getApiMessage } from "@/lib/shared/api-message";
+import { authedFetch, ensureAdmin } from "@/lib/auth/client-auth";
 
 type Protocol = "chat_completions" | "responses" | "anthropic_messages" | "embeddings";
 

@@ -1,5 +1,5 @@
-import { gatewayDb, type DbUser } from "@/lib/db";
-import { getUserGroup } from "@/lib/effective-limits";
+import { gatewayDb, type DbUser } from "@/lib/core/db";
+import { getUserGroup } from "@/lib/gateway/effective-limits";
 
 export function parseAllowedModelAliases(raw: string | null | undefined) {
   if (!raw) return [];

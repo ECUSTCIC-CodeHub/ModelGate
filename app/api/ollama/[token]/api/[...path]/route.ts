@@ -1,13 +1,13 @@
 export const dynamic = "force-dynamic";
 
-import { applyCorsHeaders, handleCorsPreflight } from "@/lib/cors";
-import { jsonError } from "@/lib/http";
+import { applyCorsHeaders, handleCorsPreflight } from "@/lib/core/cors";
+import { jsonError } from "@/lib/core/http";
 import {
   handleOllamaChatRequest,
   handleOllamaShowRequest,
   handleOllamaTagsRequest,
   handleOllamaVersionRequest,
-} from "@/lib/ollama-handler";
+} from "@/lib/gateway/ollama-handler";
 
 type RouteContext = {
   params: Promise<{

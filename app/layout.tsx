@@ -3,7 +3,7 @@ import "../public/fonts/harmony.css";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/toast";
 import { ThemeScript } from "@/components/providers/theme-script";
-import { getGatewaySettings } from "@/lib/settings";
+import { getGatewaySettings } from "@/lib/core/settings";
 
 export const metadata: Metadata = {
   title: "ModelGate",

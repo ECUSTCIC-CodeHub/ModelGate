@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
-import { applyCorsHeaders, handleCorsPreflight } from "@/lib/cors";
-import { handleGatewayProtocolRequest } from "@/lib/gateway-handler";
+import { applyCorsHeaders, handleCorsPreflight } from "@/lib/core/cors";
+import { handleGatewayProtocolRequest } from "@/lib/gateway/gateway-handler";
 
 type RouteContext = {
   params: Promise<{ token: string }>;

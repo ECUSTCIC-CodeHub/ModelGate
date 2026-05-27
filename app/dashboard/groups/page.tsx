@@ -30,11 +30,11 @@ import {
 } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
-import { getApiMessage } from "@/lib/api-message";
-import { authedFetch, ensureAdmin } from "@/lib/client-auth";
-import { modelGateFeatures } from "@/lib/features";
-import { formatLimit } from "@/lib/formatters";
-import { validateClaimExpr } from "@/lib/claim-expr";
+import { getApiMessage } from "@/lib/shared/api-message";
+import { authedFetch, ensureAdmin } from "@/lib/auth/client-auth";
+import { modelGateFeatures } from "@/lib/core/features";
+import { formatLimit } from "@/lib/shared/formatters";
+import { validateClaimExpr } from "@/lib/shared/claim-expr";
 
 type GroupRow = {
   id: number;

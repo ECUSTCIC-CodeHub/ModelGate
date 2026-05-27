@@ -1,9 +1,9 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { gatewayDb } from "@/lib/db";
-import { ensureUser } from "@/lib/guards";
-import { jsonError, jsonOk } from "@/lib/http";
+import { gatewayDb } from "@/lib/core/db";
+import { ensureUser } from "@/lib/auth/guards";
+import { jsonError, jsonOk } from "@/lib/core/http";
 import { softDeleteKey } from "@/lib/services/soft-delete-service";
 
 const updateSchema = z.object({

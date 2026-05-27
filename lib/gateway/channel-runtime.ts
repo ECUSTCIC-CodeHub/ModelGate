@@ -1,4 +1,4 @@
-import { getGatewaySettings } from "@/lib/settings";
+import { getGatewaySettings } from "@/lib/core/settings";
 
 function isCircuitBreakerEnabled(): boolean {
   return getGatewaySettings().upstream_circuit_breaker_enabled === 1;

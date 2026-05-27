@@ -10,13 +10,13 @@ import {
   sanitizeUser,
   verifyOidcPendingToken,
   OIDC_PENDING_COOKIE_NAME,
-} from "@/lib/auth";
-import { gatewayDb, type DbUser } from "@/lib/db";
-import { featureUnavailableMessage, modelGateFeatures } from "@/lib/features";
-import { jsonError, jsonOk } from "@/lib/http";
-import { checkLoginRateLimit } from "@/lib/login-ratelimit";
-import { deriveUsername, resolveGroupFromClaims } from "@/lib/oidc";
-import { USERNAME_SCHEMA } from "@/lib/username";
+} from "@/lib/auth/auth";
+import { gatewayDb, type DbUser } from "@/lib/core/db";
+import { featureUnavailableMessage, modelGateFeatures } from "@/lib/core/features";
+import { jsonError, jsonOk } from "@/lib/core/http";
+import { checkLoginRateLimit } from "@/lib/auth/login-ratelimit";
+import { deriveUsername, resolveGroupFromClaims } from "@/lib/auth/oidc";
+import { USERNAME_SCHEMA } from "@/lib/auth/username";
 import { randomBytes } from "node:crypto";
 
 const linkSchema = z.object({

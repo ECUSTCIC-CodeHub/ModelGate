@@ -1,7 +1,7 @@
-import { jsonError } from "@/lib/http";
-import type { DbChannel, DbModel } from "@/lib/db";
-import type { RoutedModel } from "@/lib/router";
-import type { GatewayProtocol } from "@/lib/protocols";
+import { jsonError } from "@/lib/core/http";
+import type { DbChannel, DbModel } from "@/lib/core/db";
+import type { RoutedModel } from "@/lib/gateway/router";
+import type { GatewayProtocol } from "@/lib/gateway/protocols";
 
 function normalizeProviderBaseUrl(baseUrl: string) {
   const normalized = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;

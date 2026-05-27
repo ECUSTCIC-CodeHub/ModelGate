@@ -1,12 +1,12 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { gatewayDb } from "@/lib/db";
-import { validateClaimExpr } from "@/lib/claim-expr";
-import { modelGateFeatures } from "@/lib/features";
-import { ensureAdmin } from "@/lib/guards";
-import { jsonError, jsonOk } from "@/lib/http";
-import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/model-access";
+import { gatewayDb } from "@/lib/core/db";
+import { validateClaimExpr } from "@/lib/shared/claim-expr";
+import { modelGateFeatures } from "@/lib/core/features";
+import { ensureAdmin } from "@/lib/auth/guards";
+import { jsonError, jsonOk } from "@/lib/core/http";
+import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
 
 const updateSchema = z.object({
   name: z.string().min(1).max(64).optional(),

@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { jsonError } from "@/lib/http";
+import { jsonError } from "@/lib/core/http";
 
 function notFound() {
   return jsonError("API 接口不存在", 404, {

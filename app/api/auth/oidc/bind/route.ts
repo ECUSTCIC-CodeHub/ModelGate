@@ -1,9 +1,9 @@
 export const dynamic = "force-dynamic";
 
-import { ensureWebUser } from "@/lib/guards";
-import { featureUnavailableMessage, modelGateFeatures } from "@/lib/features";
-import { jsonError } from "@/lib/http";
-import { getPublicOrigin } from "@/lib/oidc";
+import { ensureWebUser } from "@/lib/auth/guards";
+import { featureUnavailableMessage, modelGateFeatures } from "@/lib/core/features";
+import { jsonError } from "@/lib/core/http";
+import { getPublicOrigin } from "@/lib/auth/oidc";
 
 export async function GET(request: Request) {
   if (!modelGateFeatures.oidc) {

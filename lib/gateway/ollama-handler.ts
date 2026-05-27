@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { handleGatewayProtocolRequest } from "@/lib/gateway-handler";
-import { checkApiKeyAuth } from "@/lib/api-key-auth";
-import { listAccessibleModels } from "@/lib/model-access";
+import { handleGatewayProtocolRequest } from "@/lib/gateway/gateway-handler";
+import { checkApiKeyAuth } from "@/lib/auth/api-key-auth";
+import { listAccessibleModels } from "@/lib/gateway/model-access";
 import {
   adaptChatCompletionToOllama,
   adaptChatCompletionToOllamaStreamText,
@@ -9,7 +9,7 @@ import {
   createChatCompletionToOllamaStream,
   isOllamaStreamRequested,
   ollamaErrorBody,
-} from "@/lib/ollama-adapter";
+} from "@/lib/gateway/ollama-adapter";
 
 type JsonRecord = Record<string, unknown>;
 

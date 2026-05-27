@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { gatewayDb, type DbKey, type DbUser } from "@/lib/db";
+import { gatewayDb, type DbKey, type DbUser } from "@/lib/core/db";
 
 export const AUTH_DISABLED = process.env.AUTH_DISABLED === "1" || process.env.AUTH_DISABLED === "true";
 

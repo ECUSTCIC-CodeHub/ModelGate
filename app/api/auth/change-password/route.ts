@@ -1,11 +1,11 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { comparePassword, hashPassword } from "@/lib/auth";
-import { gatewayDb, type DbUser } from "@/lib/db";
-import { ensureWebUser } from "@/lib/guards";
-import { jsonError, jsonOk } from "@/lib/http";
-import { friendlyCredentialPayloadError } from "@/lib/validation";
+import { comparePassword, hashPassword } from "@/lib/auth/auth";
+import { gatewayDb, type DbUser } from "@/lib/core/db";
+import { ensureWebUser } from "@/lib/auth/guards";
+import { jsonError, jsonOk } from "@/lib/core/http";
+import { friendlyCredentialPayloadError } from "@/lib/auth/validation";
 
 const schema = z.object({
   current_password: z.string().min(1),

@@ -1,6 +1,6 @@
-import { gatewayDb, type DbChannel, type DbModel } from "@/lib/db";
-import { scoreChannel } from "@/lib/channel-runtime";
-import type { GatewayProtocol } from "@/lib/protocols";
+import { gatewayDb, type DbChannel, type DbModel } from "@/lib/core/db";
+import { scoreChannel } from "@/lib/gateway/channel-runtime";
+import type { GatewayProtocol } from "@/lib/gateway/protocols";
 
 export type RoutedModel = {
   model: DbModel;

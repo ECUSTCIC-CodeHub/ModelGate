@@ -1,9 +1,9 @@
 export const dynamic = "force-dynamic";
 
-import { gatewayDb, type DbUser } from "@/lib/db";
-import { getEffectiveLimits } from "@/lib/effective-limits";
-import { ensureUser } from "@/lib/guards";
-import { jsonOk } from "@/lib/http";
+import { gatewayDb, type DbUser } from "@/lib/core/db";
+import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
+import { ensureUser } from "@/lib/auth/guards";
+import { jsonOk } from "@/lib/core/http";
 
 function formatPeriodLabel(seconds: number): string {
   if (seconds === 3600) return "每小时";

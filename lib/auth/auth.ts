@@ -2,9 +2,9 @@ import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { NextResponse } from "next/server";
-import { gatewayDb, type DbUser } from "@/lib/db";
-import { parseBearerToken } from "@/lib/http";
-import { AUTH_DISABLED, getNoAuthContext } from "@/lib/no-auth";
+import { gatewayDb, type DbUser } from "@/lib/core/db";
+import { parseBearerToken } from "@/lib/core/http";
+import { AUTH_DISABLED, getNoAuthContext } from "@/lib/auth/no-auth";
 
 declare global {
   var __jwtAccessSecret__: string | undefined;

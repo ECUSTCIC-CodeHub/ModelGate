@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
-import { clearAuthCookies } from "@/lib/auth";
-import { jsonOk } from "@/lib/http";
+import { clearAuthCookies } from "@/lib/auth/auth";
+import { jsonOk } from "@/lib/core/http";
 import { NextResponse } from "next/server";
 
 export async function POST() {

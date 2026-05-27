@@ -10,9 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
-import { getApiMessage } from "@/lib/api-message";
-import { authedFetch, ensureAdmin } from "@/lib/client-auth";
-import { modelGateFeatures } from "@/lib/features";
+import { getApiMessage } from "@/lib/shared/api-message";
+import { authedFetch, ensureAdmin } from "@/lib/auth/client-auth";
+import { modelGateFeatures } from "@/lib/core/features";
 
 export default function AdminSettingsPage() {
   const router = useRouter();

@@ -1,13 +1,13 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { gatewayDb, type DbUser } from "@/lib/db";
-import { applyAuthCookies, hashPassword, issueAuthTokens, sanitizeUser } from "@/lib/auth";
-import { jsonError, jsonOk } from "@/lib/http";
-import { checkLoginRateLimit } from "@/lib/login-ratelimit";
-import { getGatewaySettings } from "@/lib/settings";
-import { USERNAME_SCHEMA } from "@/lib/username";
-import { friendlyCredentialPayloadError } from "@/lib/validation";
+import { gatewayDb, type DbUser } from "@/lib/core/db";
+import { applyAuthCookies, hashPassword, issueAuthTokens, sanitizeUser } from "@/lib/auth/auth";
+import { jsonError, jsonOk } from "@/lib/core/http";
+import { checkLoginRateLimit } from "@/lib/auth/login-ratelimit";
+import { getGatewaySettings } from "@/lib/core/settings";
+import { USERNAME_SCHEMA } from "@/lib/auth/username";
+import { friendlyCredentialPayloadError } from "@/lib/auth/validation";
 
 const schema = z.object({
   username: USERNAME_SCHEMA,

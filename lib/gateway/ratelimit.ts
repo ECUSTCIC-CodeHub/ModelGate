@@ -1,5 +1,5 @@
-import type { DbUser } from "@/lib/db";
-import { getEffectiveLimits } from "@/lib/effective-limits";
+import type { DbUser } from "@/lib/core/db";
+import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
 
 type Bucket = {
   tokens: number;

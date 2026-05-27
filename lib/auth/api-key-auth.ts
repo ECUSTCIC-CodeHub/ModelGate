@@ -1,6 +1,6 @@
-import { gatewayDb, type DbKey, type DbUser } from "@/lib/db";
-import { parseBearerToken } from "@/lib/http";
-import { AUTH_DISABLED, getNoAuthContext } from "@/lib/no-auth";
+import { gatewayDb, type DbKey, type DbUser } from "@/lib/core/db";
+import { parseBearerToken } from "@/lib/core/http";
+import { AUTH_DISABLED, getNoAuthContext } from "@/lib/auth/no-auth";
 
 export type ApiKeyContext = {
   key: DbKey;

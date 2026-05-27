@@ -1,9 +1,9 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { applyAuthCookies, clearAuthCookies, getRefreshTokenFromRequest, issueAuthTokens, verifyRefreshToken } from "@/lib/auth";
-import { gatewayDb, type DbUser } from "@/lib/db";
-import { jsonError, jsonOk } from "@/lib/http";
+import { applyAuthCookies, clearAuthCookies, getRefreshTokenFromRequest, issueAuthTokens, verifyRefreshToken } from "@/lib/auth/auth";
+import { gatewayDb, type DbUser } from "@/lib/core/db";
+import { jsonError, jsonOk } from "@/lib/core/http";
 
 const schema = z.object({
   refresh_token: z.string().min(1).optional(),

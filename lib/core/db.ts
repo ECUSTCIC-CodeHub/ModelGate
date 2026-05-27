@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import type BetterSqlite3 from "better-sqlite3";
-import type { GatewayProtocol } from "@/lib/protocols";
+import type { GatewayProtocol } from "@/lib/gateway/protocols";
 
 const dataDir = path.join(process.cwd(), "data");
 const dbPath = path.join(dataDir, "gateway.db");

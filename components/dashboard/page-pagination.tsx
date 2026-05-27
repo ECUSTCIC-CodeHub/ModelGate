@@ -9,7 +9,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { formatNumber } from "@/lib/formatters";
+import { formatNumber } from "@/lib/shared/formatters";
 
 function computePageWindow(page: number, totalPages: number): number[] {
   if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);

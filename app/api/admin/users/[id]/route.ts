@@ -1,14 +1,14 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { hashPassword } from "@/lib/auth";
-import { gatewayDb } from "@/lib/db";
-import { featureUnavailableMessage, modelGateFeatures } from "@/lib/features";
-import { ensureAdmin } from "@/lib/guards";
-import { jsonError, jsonOk } from "@/lib/http";
-import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/model-access";
+import { hashPassword } from "@/lib/auth/auth";
+import { gatewayDb } from "@/lib/core/db";
+import { featureUnavailableMessage, modelGateFeatures } from "@/lib/core/features";
+import { ensureAdmin } from "@/lib/auth/guards";
+import { jsonError, jsonOk } from "@/lib/core/http";
+import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
 import { softDeleteUser } from "@/lib/services/soft-delete-service";
-import { USERNAME_SCHEMA } from "@/lib/username";
+import { USERNAME_SCHEMA } from "@/lib/auth/username";
 
 const updateSchema = z.object({
   username: USERNAME_SCHEMA.optional(),

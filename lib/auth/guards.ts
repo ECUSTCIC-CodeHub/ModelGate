@@ -1,6 +1,6 @@
-import { type AuthContext, requireRole, requireWebAuth, sanitizeUser } from "@/lib/auth";
-import { checkApiKeyAuth } from "@/lib/api-key-auth";
-import { jsonError } from "@/lib/http";
+import { type AuthContext, requireRole, requireWebAuth, sanitizeUser } from "@/lib/auth/auth";
+import { checkApiKeyAuth } from "@/lib/auth/api-key-auth";
+import { jsonError } from "@/lib/core/http";
 
 function resolveAuth(request: Request): AuthContext | null {
   const webAuth = requireWebAuth(request);

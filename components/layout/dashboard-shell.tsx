@@ -47,10 +47,10 @@ import {
 } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
-import { authedFetch, clearCachedProfile, clearSession, getCachedProfile, getOrFetchProfile } from "@/lib/client-auth";
-import { getApiMessage } from "@/lib/api-message";
-import { modelGateFeatures } from "@/lib/features";
-import { cn } from "@/lib/utils";
+import { authedFetch, clearCachedProfile, clearSession, getCachedProfile, getOrFetchProfile } from "@/lib/auth/client-auth";
+import { getApiMessage } from "@/lib/shared/api-message";
+import { modelGateFeatures } from "@/lib/core/features";
+import { cn } from "@/lib/shared/utils";
 
 type Role = "admin" | "user";
 

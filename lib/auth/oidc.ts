@@ -1,7 +1,7 @@
 import { randomBytes, createHash } from "node:crypto";
-import { gatewayDb } from "@/lib/db";
-import { parseClaimExpr, evaluateClaimExpr } from "@/lib/claim-expr";
-import { getGatewaySettings } from "@/lib/settings";
+import { gatewayDb } from "@/lib/core/db";
+import { parseClaimExpr, evaluateClaimExpr } from "@/lib/shared/claim-expr";
+import { getGatewaySettings } from "@/lib/core/settings";
 
 export type OidcDiscovery = {
   issuer: string;

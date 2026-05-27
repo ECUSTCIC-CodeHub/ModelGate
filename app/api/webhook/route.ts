@@ -1,10 +1,10 @@
 export const dynamic = "force-dynamic";
 
 import { createHmac, timingSafeEqual } from "crypto";
-import { gatewayDb } from "@/lib/db";
-import { jsonError, jsonOk } from "@/lib/http";
-import { resolveGroupFromClaims } from "@/lib/oidc";
-import { getGatewaySettings } from "@/lib/settings";
+import { gatewayDb } from "@/lib/core/db";
+import { jsonError, jsonOk } from "@/lib/core/http";
+import { resolveGroupFromClaims } from "@/lib/auth/oidc";
+import { getGatewaySettings } from "@/lib/core/settings";
 
 const MAX_TIMESTAMP_DRIFT = 300;
 

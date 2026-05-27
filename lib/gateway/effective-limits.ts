@@ -1,5 +1,5 @@
-import { gatewayDb, type DbGroup, type DbUser } from "@/lib/db";
-import { modelGateFeatures } from "@/lib/features";
+import { gatewayDb, type DbGroup, type DbUser } from "@/lib/core/db";
+import { modelGateFeatures } from "@/lib/core/features";
 
 export type EffectiveLimits = {
   qps: number;

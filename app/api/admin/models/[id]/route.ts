@@ -1,10 +1,10 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { gatewayDb } from "@/lib/db";
-import { ensureAdmin } from "@/lib/guards";
-import { jsonError, jsonOk } from "@/lib/http";
-import { GATEWAY_PROTOCOLS, type GatewayProtocol, supportsProtocol } from "@/lib/protocols";
+import { gatewayDb } from "@/lib/core/db";
+import { ensureAdmin } from "@/lib/auth/guards";
+import { jsonError, jsonOk } from "@/lib/core/http";
+import { GATEWAY_PROTOCOLS, type GatewayProtocol, supportsProtocol } from "@/lib/gateway/protocols";
 import { softDeleteModel } from "@/lib/services/soft-delete-service";
 
 const updateSchema = z.object({

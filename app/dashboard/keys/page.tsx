@@ -22,9 +22,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
-import { getApiMessage } from "@/lib/api-message";
-import { authedFetch, ensureLoggedIn, getCachedProfile } from "@/lib/client-auth";
-import { formatNumber } from "@/lib/formatters";
+import { getApiMessage } from "@/lib/shared/api-message";
+import { authedFetch, ensureLoggedIn, getCachedProfile } from "@/lib/auth/client-auth";
+import { formatNumber } from "@/lib/shared/formatters";
 
 type KeyRow = {
     id: number;

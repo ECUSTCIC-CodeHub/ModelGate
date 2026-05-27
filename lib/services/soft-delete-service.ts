@@ -1,4 +1,4 @@
-import { gatewayDb } from "@/lib/db";
+import { gatewayDb } from "@/lib/core/db";
 
 export function softDeleteUser(userId: string) {
   const tx = gatewayDb.transaction(() => {

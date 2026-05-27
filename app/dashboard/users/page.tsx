@@ -32,10 +32,10 @@ import {
 } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
-import { getApiMessage } from "@/lib/api-message";
-import { authedFetch, ensureAdmin } from "@/lib/client-auth";
-import { modelGateFeatures } from "@/lib/features";
-import { formatNumber, formatLimit } from "@/lib/formatters";
+import { getApiMessage } from "@/lib/shared/api-message";
+import { authedFetch, ensureAdmin } from "@/lib/auth/client-auth";
+import { modelGateFeatures } from "@/lib/core/features";
+import { formatNumber, formatLimit } from "@/lib/shared/formatters";
 
 type UserRow = {
   id: number;

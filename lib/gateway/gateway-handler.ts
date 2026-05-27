@@ -1,11 +1,11 @@
-import { checkApiKeyAuth } from "@/lib/api-key-auth";
-import { acquireChannel, type ChannelLease } from "@/lib/channel-runtime";
-import { insertChatLog } from "@/lib/chat-log";
-import { gatewayDb, type DbUser } from "@/lib/db";
-import { getEffectiveLimits } from "@/lib/effective-limits";
-import { modelGateFeatures } from "@/lib/features";
-import { jsonError } from "@/lib/http";
-import { resolveAccessibleModelAlias } from "@/lib/model-access";
+import { checkApiKeyAuth } from "@/lib/auth/api-key-auth";
+import { acquireChannel, type ChannelLease } from "@/lib/gateway/channel-runtime";
+import { insertChatLog } from "@/lib/gateway/chat-log";
+import { gatewayDb, type DbUser } from "@/lib/core/db";
+import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
+import { modelGateFeatures } from "@/lib/core/features";
+import { jsonError } from "@/lib/core/http";
+import { resolveAccessibleModelAlias } from "@/lib/gateway/model-access";
 import {
   adaptRequestBody,
   adaptResponseBody,
@@ -15,13 +15,13 @@ import {
   extractCompletionTextFromBody,
   getStreamFlag,
   getUsageFromBody,
-} from "@/lib/openai-adapter";
-import { fetchUpstreamRequest } from "@/lib/proxy";
-import { checkUserRateLimit } from "@/lib/ratelimit";
-import { selectModelRoute, type RoutedModel } from "@/lib/router";
-import { getGatewaySettings } from "@/lib/settings";
-import { countTextTokens } from "@/lib/tokenizer";
-import type { GatewayProtocol } from "@/lib/protocols";
+} from "@/lib/gateway/openai-adapter";
+import { fetchUpstreamRequest } from "@/lib/gateway/proxy";
+import { checkUserRateLimit } from "@/lib/gateway/ratelimit";
+import { selectModelRoute, type RoutedModel } from "@/lib/gateway/router";
+import { getGatewaySettings } from "@/lib/core/settings";
+import { countTextTokens } from "@/lib/gateway/tokenizer";
+import type { GatewayProtocol } from "@/lib/gateway/protocols";
 
 function appendQuotaHeaders(headers: Record<string, string>, quota: QuotaInfo) {
   if (quota.remaining_requests !== null) {

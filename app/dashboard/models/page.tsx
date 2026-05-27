@@ -11,8 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
-import { getApiMessage } from "@/lib/api-message";
-import { authedFetch, ensureLoggedIn, getCachedProfile } from "@/lib/client-auth";
+import { getApiMessage } from "@/lib/shared/api-message";
+import { authedFetch, ensureLoggedIn, getCachedProfile } from "@/lib/auth/client-auth";
 
 type ModelItem = {
   id: string;

@@ -20,9 +20,9 @@ import { Input } from "@/components/ui/input";
 import { PagePagination } from "@/components/dashboard/page-pagination";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
-import { authedFetch, getCachedProfile, ensureLoggedIn } from "@/lib/client-auth";
-import { formatNumber, formatTokenCount } from "@/lib/utils";
+import { cn } from "@/lib/shared/utils";
+import { authedFetch, getCachedProfile, ensureLoggedIn } from "@/lib/auth/client-auth";
+import { formatNumber, formatTokenCount } from "@/lib/shared/utils";
 
 type LogRow = {
   id: number;

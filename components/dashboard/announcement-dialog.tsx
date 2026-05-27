@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { authedFetch } from "@/lib/client-auth";
+import { authedFetch } from "@/lib/auth/client-auth";
 
 const DISMISSED_KEY = "announcement_dismissed_hash";
 

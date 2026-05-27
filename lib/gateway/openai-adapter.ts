@@ -1,5 +1,5 @@
-import { countTextTokens } from "@/lib/tokenizer";
-import type { GatewayProtocol } from "@/lib/protocols";
+import { countTextTokens } from "@/lib/gateway/tokenizer";
+import type { GatewayProtocol } from "@/lib/gateway/protocols";
 
 type JsonRecord = Record<string, unknown>;
 

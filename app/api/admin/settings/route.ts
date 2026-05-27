@@ -1,10 +1,10 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { modelGateFeatures } from "@/lib/features";
-import { ensureAdmin } from "@/lib/guards";
-import { jsonError, jsonOk } from "@/lib/http";
-import { getGatewaySettings, setGatewaySettings } from "@/lib/settings";
+import { modelGateFeatures } from "@/lib/core/features";
+import { ensureAdmin } from "@/lib/auth/guards";
+import { jsonError, jsonOk } from "@/lib/core/http";
+import { getGatewaySettings, setGatewaySettings } from "@/lib/core/settings";
 
 const schema = z.object({
   registration_enabled: z.boolean(),

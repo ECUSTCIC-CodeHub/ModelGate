@@ -1,8 +1,8 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { jsonError } from "@/lib/http";
-import { featureUnavailableMessage, modelGateFeatures } from "@/lib/features";
+import { jsonError } from "@/lib/core/http";
+import { featureUnavailableMessage, modelGateFeatures } from "@/lib/core/features";
 import {
   getOidcConfig,
   fetchDiscovery,
@@ -10,7 +10,7 @@ import {
   generateNonce,
   buildAuthorizationUrl,
   resolveRedirectUri,
-} from "@/lib/oidc";
+} from "@/lib/auth/oidc";
 
 export async function GET(request: Request) {
   if (!modelGateFeatures.oidc) {

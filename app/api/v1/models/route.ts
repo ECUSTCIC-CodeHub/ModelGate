@@ -1,9 +1,9 @@
 export const dynamic = "force-dynamic";
 
-import { checkApiKeyAuth } from "@/lib/api-key-auth";
-import { applyCorsHeaders, handleCorsPreflight } from "@/lib/cors";
-import { jsonError, jsonOk } from "@/lib/http";
-import { listAccessibleModelAliases } from "@/lib/model-access";
+import { checkApiKeyAuth } from "@/lib/auth/api-key-auth";
+import { applyCorsHeaders, handleCorsPreflight } from "@/lib/core/cors";
+import { jsonError, jsonOk } from "@/lib/core/http";
+import { listAccessibleModelAliases } from "@/lib/gateway/model-access";
 
 export async function GET(request: Request) {
   const auth = checkApiKeyAuth(request);

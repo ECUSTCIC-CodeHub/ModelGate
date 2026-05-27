@@ -1,15 +1,15 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { hashPassword } from "@/lib/auth";
-import { gatewayDb, type DbUser } from "@/lib/db";
-import { ensureAdmin } from "@/lib/guards";
-import { jsonError, jsonOk } from "@/lib/http";
-import { getEffectiveLimits, getUserGroup } from "@/lib/effective-limits";
-import { modelGateFeatures } from "@/lib/features";
-import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/model-access";
-import { USERNAME_SCHEMA } from "@/lib/username";
-import { friendlyCredentialPayloadError } from "@/lib/validation";
+import { hashPassword } from "@/lib/auth/auth";
+import { gatewayDb, type DbUser } from "@/lib/core/db";
+import { ensureAdmin } from "@/lib/auth/guards";
+import { jsonError, jsonOk } from "@/lib/core/http";
+import { getEffectiveLimits, getUserGroup } from "@/lib/gateway/effective-limits";
+import { modelGateFeatures } from "@/lib/core/features";
+import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
+import { USERNAME_SCHEMA } from "@/lib/auth/username";
+import { friendlyCredentialPayloadError } from "@/lib/auth/validation";
 
 const createSchema = z.object({
   username: USERNAME_SCHEMA,

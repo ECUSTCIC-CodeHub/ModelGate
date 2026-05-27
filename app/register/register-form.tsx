@@ -8,9 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/components/ui/toast";
-import { getApiMessage } from "@/lib/api-message";
-import type { AuthStatus } from "@/lib/auth-status";
-import { setCachedProfile, setSession } from "@/lib/client-auth";
+import { getApiMessage } from "@/lib/shared/api-message";
+import type { AuthStatus } from "@/lib/auth/auth-status";
+import { setCachedProfile, setSession } from "@/lib/auth/client-auth";
 
 export function RegisterForm({ status }: { status: AuthStatus }) {
   const [username, setUsername] = useState("");

@@ -1,4 +1,4 @@
-import { gatewayDb } from "@/lib/db";
+import { gatewayDb } from "@/lib/core/db";
 
 const DEFAULTS = {
   registration_enabled: 1,

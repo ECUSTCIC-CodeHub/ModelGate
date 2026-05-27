@@ -1,11 +1,11 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { applyAuthCookies, comparePassword, issueAuthTokens, sanitizeUser } from "@/lib/auth";
-import { gatewayDb, type DbUser } from "@/lib/db";
-import { jsonError, jsonOk } from "@/lib/http";
-import { checkLoginRateLimit } from "@/lib/login-ratelimit";
-import { getGatewaySettings } from "@/lib/settings";
+import { applyAuthCookies, comparePassword, issueAuthTokens, sanitizeUser } from "@/lib/auth/auth";
+import { gatewayDb, type DbUser } from "@/lib/core/db";
+import { jsonError, jsonOk } from "@/lib/core/http";
+import { checkLoginRateLimit } from "@/lib/auth/login-ratelimit";
+import { getGatewaySettings } from "@/lib/core/settings";
 
 const schema = z.object({
   username: z.string().min(1),

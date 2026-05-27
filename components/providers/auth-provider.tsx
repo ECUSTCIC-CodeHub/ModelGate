@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, ReactNode, useContext, useEffect } from "react";
-import { CachedProfile, setCachedProfile } from "@/lib/client-auth";
+import { CachedProfile, setCachedProfile } from "@/lib/auth/client-auth";
 
 type AuthContextValue = {
   profile: CachedProfile | null;

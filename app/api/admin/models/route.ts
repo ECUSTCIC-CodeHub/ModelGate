@@ -1,10 +1,10 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { gatewayDb } from "@/lib/db";
-import { ensureAdmin } from "@/lib/guards";
-import { jsonError, jsonOk } from "@/lib/http";
-import { GATEWAY_PROTOCOLS, supportsProtocol } from "@/lib/protocols";
+import { gatewayDb } from "@/lib/core/db";
+import { ensureAdmin } from "@/lib/auth/guards";
+import { jsonError, jsonOk } from "@/lib/core/http";
+import { GATEWAY_PROTOCOLS, supportsProtocol } from "@/lib/gateway/protocols";
 
 const createSchema = z.object({
   alias: z.string().min(1),

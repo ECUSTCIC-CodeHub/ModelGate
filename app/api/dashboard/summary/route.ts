@@ -1,8 +1,8 @@
 export const dynamic = "force-dynamic";
 
-import { gatewayDb } from "@/lib/db";
-import { ensureWebUser } from "@/lib/guards";
-import { jsonOk } from "@/lib/http";
+import { gatewayDb } from "@/lib/core/db";
+import { ensureWebUser } from "@/lib/auth/guards";
+import { jsonOk } from "@/lib/core/http";
 
 function estimateConcurrency(rows: Array<{ end_ms: number; latency_ms: number }>) {
   const now = Date.now();

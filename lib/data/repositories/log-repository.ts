@@ -1,4 +1,4 @@
-import { gatewayDb } from "@/lib/db";
+import { gatewayDb } from "@/lib/core/db";
 
 export type CreateLogInput = {
   user_id: number;

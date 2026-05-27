@@ -1,4 +1,4 @@
-import { getGatewaySettings } from "@/lib/settings";
+import { getGatewaySettings } from "@/lib/core/settings";
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",

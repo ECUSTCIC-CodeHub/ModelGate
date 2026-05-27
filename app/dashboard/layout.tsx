@@ -1,12 +1,12 @@
 import { AnnouncementDialog } from "@/components/dashboard/announcement-dialog";
 import { AuthProvider } from "@/components/providers/auth-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
-import { getServerProfileFromCookieStore } from "@/lib/auth";
-import { getAuthStatus } from "@/lib/auth-status";
-import { type DbUser } from "@/lib/db";
-import { getEffectiveLimits } from "@/lib/effective-limits";
-import { modelGateFeatures } from "@/lib/features";
-import { getGatewaySettings } from "@/lib/settings";
+import { getServerProfileFromCookieStore } from "@/lib/auth/auth";
+import { getAuthStatus } from "@/lib/auth/auth-status";
+import { type DbUser } from "@/lib/core/db";
+import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
+import { modelGateFeatures } from "@/lib/core/features";
+import { getGatewaySettings } from "@/lib/core/settings";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
