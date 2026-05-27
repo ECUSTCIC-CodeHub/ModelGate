@@ -81,7 +81,7 @@ export async function GET(request: Request) {
          l.model_alias, l.real_model, l.stream, l.status_code,
          l.estimated_tokens, l.prompt_tokens, l.completion_tokens, l.total_tokens,
          l.latency_ms, l.first_token_latency_ms, l.output_tps, l.route_attempts, l.attempted_channels,
-         l.error_message, l.client_ip, l.created_at
+         l.error_message, l.client_ip, l.user_agent, l.created_at
        FROM logs l
        LEFT JOIN users u ON u.id = l.user_id
        LEFT JOIN channels c ON c.id = l.channel_id

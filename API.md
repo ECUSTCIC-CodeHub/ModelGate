@@ -900,6 +900,7 @@ email matches ".*@company\\.com"
       "attempted_channels": "openai-main",
       "error_message": null,
       "client_ip": "1.2.3.4",
+      "user_agent": "OpenAI/JS 6.39.0",
       "created_at": "2026-05-08 12:00:00"
     }
   ],
@@ -907,7 +908,7 @@ email matches ".*@company\\.com"
 }
 ```
 
-> 普通用户不会看到 `username`、`channel_name`、`route_attempts`、`attempted_channels` 字段。
+> `user_agent` 记录客户端请求携带的 User-Agent，最长保留 500 字符。普通用户不会看到 `username`、`channel_name`、`route_attempts`、`attempted_channels` 字段。
 
 ---
 

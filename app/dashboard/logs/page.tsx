@@ -42,6 +42,7 @@ type LogRow = {
   route_attempts: number | null;
   attempted_channels: string | null;
   client_ip: string | null;
+  user_agent: string | null;
   created_at: string;
 };
 
@@ -263,19 +264,28 @@ export default function AdminLogsPage() {
         header: "用户",
         cell: ({ row }) => {
           const ip = row.original.client_ip;
+          const userAgent = row.original.user_agent;
           return (
-            <span className="whitespace-nowrap">
-              {row.original.username}{ip ? <span className="text-[var(--color-foreground-muted)]"> ({ip})</span> : null}
-            </span>
+            <div className="max-w-56 leading-tight">
+              <div className="truncate whitespace-nowrap">{row.original.username}</div>
+              <div className="truncate whitespace-nowrap text-xs text-[var(--color-foreground-muted)]" title={userAgent ?? undefined}>
+                {ip ?? "-"}{userAgent ? ` · ${userAgent}` : ""}
+              </div>
+            </div>
           );
         },
       });
     } else {
       cols.push({
         accessorKey: "client_ip",
-        header: "IP",
+        header: "客户端",
         cell: ({ row }) => (
-          <span className="font-mono text-xs text-[var(--color-foreground-muted)]">{row.original.client_ip ?? "-"}</span>
+          <div className="max-w-56 leading-tight">
+            <div className="font-mono text-xs text-[var(--color-foreground-muted)]">{row.original.client_ip ?? "-"}</div>
+            <div className="truncate text-xs text-[var(--color-foreground-muted)]" title={row.original.user_agent ?? undefined}>
+              {row.original.user_agent ?? "-"}
+            </div>
+          </div>
         ),
       });
     }

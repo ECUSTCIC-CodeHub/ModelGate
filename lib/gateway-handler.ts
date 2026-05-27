@@ -225,11 +225,18 @@ function toSseDataBlock(payload: string) {
   return encoder.encode(`data: ${compact}\n\n`);
 }
 
+function normalizeUserAgent(value: string | null) {
+  if (!value) return null;
+  const normalized = value.replace(/[\u0000-\u001F\u007F]+/g, " ").trim();
+  return normalized.length > 0 ? normalized.slice(0, 500) : null;
+}
+
 export async function handleGatewayProtocolRequest(request: Request, inboundProtocol: GatewayProtocol) {
   const startedAt = Date.now();
   const clientIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
     || request.headers.get("x-real-ip")
     || null;
+  const clientUserAgent = normalizeUserAgent(request.headers.get("user-agent"));
   const authResult = checkApiKeyAuth(request);
   if (!authResult.ok) {
     return jsonError(authResult.reason === "missing" ? "认证失败，未提供 API Key。" : "认证失败，API Key 无效或已禁用。", 401, {
@@ -256,6 +263,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
       latency_ms: Date.now() - startedAt,
       error_message: message,
       client_ip: clientIp,
+      user_agent: clientUserAgent,
     });
   };
 
@@ -439,6 +447,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
       attempted_channels: picked.attemptedChannelNames.join(" -> "),
       error_message: "上游请求失败",
       client_ip: clientIp,
+      user_agent: clientUserAgent,
     });
     return withQuotaHeaders(jsonError("上游请求失败", 502, {
       type: "upstream_error",
@@ -496,6 +505,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
                   attempted_channels: attemptedChannelNames.join(" -> "),
                   error_message: upstreamError.message,
       client_ip: clientIp,
+      user_agent: clientUserAgent,
                 });
 
                 const errorBody = route.model.upstream_protocol === inboundProtocol
@@ -540,6 +550,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
                   attempted_channels: attemptedChannelNames.join(" -> "),
                   error_message: null,
       client_ip: clientIp,
+      user_agent: clientUserAgent,
                 });
 
                 controller.enqueue(toSseDataBlock(adaptedText));
@@ -587,6 +598,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
                   attempted_channels: attemptedChannelNames.join(" -> "),
                   error_message: success ? null : `上游流式请求失败: ${upstream.status}`,
       client_ip: clientIp,
+      user_agent: clientUserAgent,
                 });
               };
 
@@ -624,6 +636,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
                 attempted_channels: attemptedChannelNames.join(" -> "),
                 error_message: "上游请求失败",
       client_ip: clientIp,
+      user_agent: clientUserAgent,
               });
               controller.enqueue(toSseDataBlock(buildErrorResponseBody("上游请求失败", 502, inboundProtocol, "upstream_error", "502")));
               controller.enqueue(encoder.encode("data: [DONE]\n\n"));
@@ -687,6 +700,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
                 attempted_channels: attemptedChannelNames.join(" -> "),
                 error_message: upstreamError.message,
       client_ip: clientIp,
+      user_agent: clientUserAgent,
               });
               const errorBody = route.model.upstream_protocol === inboundProtocol
                 ? rawText
@@ -726,6 +740,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
               attempted_channels: attemptedChannelNames.join(" -> "),
               error_message: null,
       client_ip: clientIp,
+      user_agent: clientUserAgent,
             });
 
             controller.enqueue(encoder.encode(adaptedText));
@@ -750,6 +765,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
               attempted_channels: attemptedChannelNames.join(" -> "),
               error_message: "上游请求失败",
       client_ip: clientIp,
+      user_agent: clientUserAgent,
             });
             controller.enqueue(encoder.encode(buildErrorResponseBody("上游请求失败", 502, inboundProtocol, "upstream_error", "502")));
             controller.close();
@@ -806,6 +822,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
         attempted_channels: attemptedChannelNames.join(" -> "),
         error_message: upstreamError.message,
       client_ip: clientIp,
+      user_agent: clientUserAgent,
       });
       const errorBody = route.model.upstream_protocol === inboundProtocol
         ? text
@@ -842,6 +859,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
           attempted_channels: attemptedChannelNames.join(" -> "),
           error_message: upstreamError.message,
       client_ip: clientIp,
+      user_agent: clientUserAgent,
         });
         const errorBody = route.model.upstream_protocol === inboundProtocol
           ? rawText
@@ -884,6 +902,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
         attempted_channels: attemptedChannelNames.join(" -> "),
         error_message: null,
       client_ip: clientIp,
+      user_agent: clientUserAgent,
       });
       return withQuotaHeaders(new Response(adaptedText, {
         status: upstream.status,
@@ -933,6 +952,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
         attempted_channels: attemptedChannelNames.join(" -> "),
         error_message: success ? null : `上游流式请求失败: ${upstream.status}`,
       client_ip: clientIp,
+      user_agent: clientUserAgent,
       });
     };
 
@@ -990,6 +1010,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
       attempted_channels: attemptedChannelNames.join(" -> "),
       error_message: upstreamError.message,
       client_ip: clientIp,
+      user_agent: clientUserAgent,
     });
     const errorBody = route.model.upstream_protocol === inboundProtocol
       ? rawText
@@ -1032,6 +1053,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
     attempted_channels: attemptedChannelNames.join(" -> "),
     error_message: null,
       client_ip: clientIp,
+      user_agent: clientUserAgent,
   });
 
   return withQuotaHeaders(new Response(adaptedText, {

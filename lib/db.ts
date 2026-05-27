@@ -265,6 +265,7 @@ CREATE INDEX IF NOT EXISTS idx_logs_key_id ON logs(key_id);
   ensureColumn("logs", "output_tps", "output_tps REAL");
   ensureColumn("logs", "route_attempts", "route_attempts INTEGER DEFAULT 1");
   ensureColumn("logs", "attempted_channels", "attempted_channels TEXT");
+  ensureColumn("logs", "user_agent", "user_agent TEXT");
   ensureColumn("users", "webhook_role", "webhook_role TEXT DEFAULT ''");
   ensureColumn("users", "webhook_tags", "webhook_tags TEXT DEFAULT '[]'");
 
