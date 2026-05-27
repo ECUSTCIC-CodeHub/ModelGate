@@ -16,6 +16,19 @@
           --cache-to type=registry,ref=${IMAGE}:latest-cache-arm64,mode=max \
           -t ${IMAGE}:latest -t ${IMAGE}:${CNB_BRANCH} \
           --platform linux/amd64,linux/arm64 --push .
+    - name: deploy
+      imports:
+        - https://cnb.cool/tdp/secret/-/blob/main/official.yaml
+      image: docker.cnb.cool/bring/tools/isrvddeploy
+      settings:
+        api_url: $API_URL
+        api_token: $API_TOKEN
+        container: modelgw
+        service_name: modelgw
+        registry: $CNB_DOCKER_REGISTRY
+        image: $CNB_REPO_SLUG_LOWERCASE
+        tag: $tag_name
+        image_prune: true
 
 .push: &push
   stages:
@@ -33,6 +46,16 @@
 main:
   push:
     - *push
+  "crontab: 0 */1 * * *":
+    - stages:
+        - name: sync upstream
+          image: cnbcool/git-sync:latest
+          settings:
+            source: https://cnb.cool/Bring/Tools/ModelGate
+            target: $CNB_REPO_URL_HTTPS
+            branch: main
+            sync_mode: rebase
+            push_tags: true
 
 $:
   vscode:
