@@ -108,11 +108,10 @@ export async function GET(request: Request) {
 
   return jsonOk({
     data: rows.map((row) => {
-      const r = row as Record<string, unknown>;
-      const group = getUserGroup((r.group_id as number | null) ?? null);
-      const effective = getEffectiveLimits(r);
+      const group = getUserGroup(row.group_id ?? null);
+      const effective = getEffectiveLimits(row);
       return {
-        ...r,
+        ...row,
         allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases),
         group_rpm: group?.rpm ?? null,
         group_qps: group?.qps ?? null,

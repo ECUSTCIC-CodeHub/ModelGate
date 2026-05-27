@@ -943,9 +943,6 @@ email matches ".*@company\\.com"
     ],
     "top_channels": [
       { "channel_name": "openai-main", "request_count": 500, "total_tokens": 100000 }
-    ],
-    "recent_logs": [
-      { "id": 1, "model_name": "gpt-4", "status_code": 200, "total_tokens": 150, "latency_ms": 500, "created_at": "..." }
     ]
   }
 }
@@ -964,7 +961,6 @@ email matches ".*@company\\.com"
 | hourly_tokens | 最近 24 小时 Token 趋势 |
 | top_models | Top 5 模型（按请求量） |
 | top_channels | Top 5 渠道（按请求量） |
-| recent_logs | 最近 8 条请求记录 |
 
 ---
 
@@ -1010,6 +1006,8 @@ email matches ".*@company\\.com"
 所有网关端点通过 API Key 认证。
 
 **CORS:** 默认关闭。管理员在系统设置中开启 `cors_enabled` 后，所有 `/api/v1/*` 端点会返回 `Access-Control-Allow-Origin: *` 并响应 `OPTIONS` 预检请求，允许浏览器从任意来源跨域调用。
+
+**User-Agent 透传:** 客户端请求包含 `User-Agent` 时，网关会原样透传给上游渠道；未提供时 OpenAI 协议默认使用 `OpenAI/JS 6.39.0`，Anthropic Messages 协议默认使用 Claude Code UA `claude-cli/2.1.148`。可通过环境变量 `CLAUDE_CODE_USER_AGENT` 覆盖默认 Claude Code UA。
 
 ### POST /api/v1/chat/completions
 

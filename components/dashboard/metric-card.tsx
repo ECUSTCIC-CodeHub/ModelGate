@@ -17,7 +17,7 @@ export function MetricCard({ label, value, hint, icon: Icon, className }: Metric
         <div className="flex min-w-0 items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-mono break-words text-[var(--color-foreground-muted)] lg:text-sm">{label}</p>
-            <p className="mt-2 break-words text-xl font-semibold tracking-tight text-[var(--color-foreground)] lg:text-2xl font-mono">
+            <p className="mt-2 break-words font-mono text-xl font-semibold text-[var(--color-foreground)] lg:text-2xl">
               {value}
             </p>
             {hint ? <p className="mt-1 hidden break-words text-xs text-[var(--color-foreground-muted)] lg:block">{hint}</p> : null}

@@ -4,12 +4,12 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "cursor-pointer inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-all duration-200 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/40 focus-visible:ring-offset-1 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:size-4",
+  "cursor-pointer inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors duration-150 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/35 focus-visible:ring-offset-1 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:size-4",
   {
     variants: {
       variant: {
         default:
-          "bg-[var(--color-accent)] text-[var(--color-accent-foreground)] hover:bg-[var(--color-accent-hover)] shadow-sm hover:shadow-md active:scale-[0.98]",
+          "bg-[var(--color-accent)] text-[var(--color-accent-foreground)] hover:bg-[var(--color-accent-hover)] shadow-sm",
         secondary:
           "bg-[var(--color-surface-hover)] text-[var(--color-foreground)] hover:bg-[var(--color-border)] border border-[var(--color-border)]",
         outline:
@@ -17,13 +17,13 @@ const buttonVariants = cva(
         ghost:
           "text-[var(--color-foreground-muted)] shadow-none hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-foreground)]",
         destructive:
-          "bg-[var(--color-destructive)] text-white hover:bg-[var(--color-destructive-hover)] shadow-sm hover:shadow-md active:scale-[0.98]",
+          "bg-[var(--color-destructive)] text-white hover:bg-[var(--color-destructive-hover)] shadow-sm",
       },
       size: {
         default: "h-10 px-4 py-2",
         sm: "h-8 px-3 text-xs rounded-md",
-        lg: "h-11 px-8 rounded-xl",
-        icon: "h-10 w-10 rounded-lg",
+        lg: "h-11 px-8 rounded-md",
+        icon: "h-10 w-10 rounded-md",
       },
     },
     defaultVariants: {

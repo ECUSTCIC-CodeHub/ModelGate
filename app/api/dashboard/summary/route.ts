@@ -153,22 +153,6 @@ export async function GET(request: Request) {
     )
     .all(...whereArgs);
 
-  const recentLogs = gatewayDb
-    .prepare(
-      `SELECT
-         id,
-         COALESCE(model_alias, real_model, '-') AS model_name,
-         status_code,
-         total_tokens,
-         latency_ms,
-         created_at
-       FROM logs
-       ${whereSql}
-       ORDER BY id DESC
-       LIMIT 8`,
-    )
-    .all(...whereArgs);
-
   const concurrencyRows = gatewayDb
     .prepare(
       `SELECT
@@ -205,7 +189,6 @@ export async function GET(request: Request) {
       hourly_tokens: hourlyTokens,
       top_models: topModels,
       top_channels: topChannels,
-      recent_logs: recentLogs,
     },
   });
 }

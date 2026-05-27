@@ -6,6 +6,8 @@ const DEFAULTS = {
   upstream_retry_max_attempts: 3,
 } as const;
 
+const GATEWAY_SETTINGS_CACHE_TTL_MS = 1_000;
+
 export type GatewaySettings = {
   registration_enabled: number;
   password_login_enabled: number;
@@ -27,6 +29,8 @@ export type GatewaySettings = {
   webhook_secret: string;
   cors_enabled: number;
 };
+
+let cachedGatewaySettings: { value: GatewaySettings; expiresAt: number } | null = null;
 
 function positiveInt(value: string | null | undefined, fallback: number) {
   const num = Number(value);
@@ -60,11 +64,12 @@ const GATEWAY_KEYS = [
   "cors_enabled",
 ] as const;
 
-export function getGatewaySettings(): GatewaySettings {
-  const placeholders = GATEWAY_KEYS.map(() => "?").join(", ");
-  const rows = gatewayDb
-    .prepare(`SELECT key, value FROM settings WHERE key IN (${placeholders})`)
-    .all(...GATEWAY_KEYS) as Array<{ key: string; value: string }>;
+const settingsSelect = gatewayDb.prepare(
+  `SELECT key, value FROM settings WHERE key IN (${GATEWAY_KEYS.map(() => "?").join(", ")})`,
+);
+
+function readGatewaySettingsFromDb(): GatewaySettings {
+  const rows = settingsSelect.all(...GATEWAY_KEYS) as Array<{ key: string; value: string }>;
 
   const map = new Map(rows.map((row) => [row.key, row.value]));
 
@@ -92,6 +97,17 @@ export function getGatewaySettings(): GatewaySettings {
     webhook_secret: map.get("webhook_secret") ?? "",
     cors_enabled: map.get("cors_enabled") === "1" ? 1 : 0,
   };
+}
+
+export function getGatewaySettings(): GatewaySettings {
+  const now = Date.now();
+  if (cachedGatewaySettings && cachedGatewaySettings.expiresAt > now) {
+    return cachedGatewaySettings.value;
+  }
+
+  const value = readGatewaySettingsFromDb();
+  cachedGatewaySettings = { value, expiresAt: now + GATEWAY_SETTINGS_CACHE_TTL_MS };
+  return value;
 }
 
 export function setGatewaySettings(input: {
@@ -153,4 +169,5 @@ export function setGatewaySettings(input: {
   });
 
   tx();
+  cachedGatewaySettings = null;
 }

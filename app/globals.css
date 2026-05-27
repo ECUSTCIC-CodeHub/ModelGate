@@ -5,81 +5,12 @@
 
 /* ========== Design Tokens ========== */
 :root {
-  /* Light mode — frosted glass on a soft sky gradient */
-  --color-bg: #e9eef7;
-  --color-bg-alt: #f3f6fc;
-  --color-surface: rgba(255, 255, 255, 0.62);
-  --color-surface-hover: rgba(255, 255, 255, 0.78);
-  --color-surface-elevated: rgba(255, 255, 255, 0.72);
+  --color-bg: #0d1224;
+  --color-bg-alt: #101832;
+  --color-surface: rgba(20, 26, 48, 0.56);
+  --color-surface-hover: rgba(31, 39, 68, 0.72);
+  --color-surface-elevated: rgba(22, 29, 55, 0.78);
 
-  /* Higher-contrast text for readability on frosted panels */
-  --color-foreground: #0b1220;
-  --color-foreground-secondary: #1f2a44;
-  --color-foreground-muted: #475467;
-  --color-foreground-subtle: #667085;
-
-  /* Hairline borders that read as glass edges */
-  --color-border: rgba(15, 23, 42, 0.12);
-  --color-border-hover: rgba(15, 23, 42, 0.2);
-  --color-border-strong: rgba(15, 23, 42, 0.3);
-
-  --color-primary: #0f172a;
-  --color-primary-hover: #050c1c;
-  --color-primary-foreground: #ffffff;
-  --color-primary-ring: rgba(15, 23, 42, 0.25);
-
-  --color-accent: #4f46e5;
-  --color-accent-hover: #4338ca;
-  --color-accent-foreground: #eef2ff;
-  --color-accent-muted: rgba(99, 102, 241, 0.16);
-
-  --color-destructive: #dc2626;
-  --color-destructive-hover: #b91c1c;
-  --color-destructive-foreground: #fef2f2;
-
-  --color-sidebar-bg: rgba(255, 255, 255, 0.82);
-  --color-sidebar-border: rgba(15, 23, 42, 0.12);
-  --color-sidebar-text: #334155;
-  --color-sidebar-active-bg: rgba(15, 23, 42, 0.92);
-  --color-sidebar-active-text: #f8fafc;
-  --color-sidebar-hover: rgba(15, 23, 42, 0.06);
-
-  --color-header-bg: rgba(255, 255, 255, 0.82);
-  --color-header-border: rgba(15, 23, 42, 0.12);
-
-  /* Glass highlight: subtle inner top-light for a liquid sheen */
-  --glass-highlight: rgba(255, 255, 255, 0.75);
-  --glass-shadow: rgba(15, 23, 42, 0.08);
-  --glass-blur: 22px;
-  --glass-saturate: 180%;
-
-  /* Background glow layers (visible through translucent panels) */
-  --glow-a: radial-gradient(60% 60% at 12% 8%, color-mix(in srgb, var(--color-accent) 24%, transparent), transparent 60%);
-  --glow-b: radial-gradient(55% 55% at 92% 18%, color-mix(in srgb, var(--color-primary) 12%, transparent), transparent 60%);
-  --glow-c: radial-gradient(70% 70% at 50% 105%, color-mix(in srgb, var(--color-accent) 14%, transparent), transparent 60%);
-
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.6);
-  --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.55);
-  --shadow-lg: 0 20px 48px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.5);
-  --shadow-xl: 0 28px 64px rgba(15, 23, 42, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.5);
-
-  --radius-sm: 0.5rem;
-  --radius: 0.85rem;
-  --radius-lg: 1.1rem;
-  --radius-xl: 1.4rem;
-
-  color-scheme: light;
-}
-
-.dark {
-  /* Dark mode — deep blue-violet base with glowing accents */
-  --color-bg: #060912;
-  --color-bg-alt: #0b1022;
-  --color-surface: rgba(20, 26, 48, 0.55);
-  --color-surface-hover: rgba(30, 38, 66, 0.7);
-  --color-surface-elevated: rgba(20, 26, 48, 0.72);
-
-  /* Brighter foreground for frosted dark panels */
   --color-foreground: #f8fafc;
   --color-foreground-secondary: #e2e8f0;
   --color-foreground-muted: #b8c2d6;
@@ -91,12 +22,74 @@
 
   --color-primary: #f8fafc;
   --color-primary-hover: #e2e8f0;
-  --color-primary-foreground: #0b1022;
-  --color-primary-ring: rgba(248, 250, 252, 0.22);
+  --color-primary-foreground: #0d1224;
+  --color-primary-ring: rgba(99, 102, 241, 0.26);
 
   --color-accent: #6366f1;
   --color-accent-hover: #818cf8;
-  --color-accent-foreground: #eef2ff;
+  --color-accent-foreground: #f8fafc;
+  --color-accent-muted: rgba(99, 102, 241, 0.18);
+
+  --color-destructive: #dc2626;
+  --color-destructive-hover: #b91c1c;
+  --color-destructive-foreground: #fef2f2;
+
+  --color-sidebar-bg: rgba(15, 20, 40, 0.74);
+  --color-sidebar-border: rgba(255, 255, 255, 0.11);
+  --color-sidebar-text: #b8c2d6;
+  --color-sidebar-active-bg: #6366f1;
+  --color-sidebar-active-text: #ffffff;
+  --color-sidebar-hover: rgba(99, 102, 241, 0.14);
+
+  --color-header-bg: rgba(15, 20, 40, 0.74);
+  --color-header-border: rgba(255, 255, 255, 0.11);
+
+  --glass-highlight: rgba(255, 255, 255, 0.16);
+  --glass-shadow: rgba(0, 0, 0, 0.42);
+  --glass-blur: 22px;
+  --glass-saturate: 180%;
+
+  --glow-a: linear-gradient(135deg, rgba(99, 102, 241, 0.24), transparent 42%, rgba(79, 70, 229, 0.1));
+  --glow-b: repeating-linear-gradient(90deg, transparent 0 39px, rgba(255, 255, 255, 0.035) 39px 40px);
+  --glow-c: linear-gradient(180deg, rgba(13, 18, 36, 0.34), rgba(13, 18, 36, 0.88));
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-xl: 0 28px 64px rgba(0, 0, 0, 0.68), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+
+  --radius-sm: 0.5rem;
+  --radius: 0.5rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+
+  color-scheme: dark;
+}
+
+.dark {
+  --color-bg: #0d1224;
+  --color-bg-alt: #0f1730;
+  --color-surface: rgba(20, 26, 48, 0.55);
+  --color-surface-hover: rgba(30, 38, 66, 0.7);
+  --color-surface-elevated: rgba(20, 26, 48, 0.72);
+
+  --color-foreground: #f8fafc;
+  --color-foreground-secondary: #e2e8f0;
+  --color-foreground-muted: #b8c2d6;
+  --color-foreground-subtle: #8a95af;
+
+  --color-border: rgba(255, 255, 255, 0.12);
+  --color-border-hover: rgba(255, 255, 255, 0.2);
+  --color-border-strong: rgba(255, 255, 255, 0.28);
+
+  --color-primary: #f8fafc;
+  --color-primary-hover: #e2e8f0;
+  --color-primary-foreground: #0d1224;
+  --color-primary-ring: rgba(99, 102, 241, 0.26);
+
+  --color-accent: #6366f1;
+  --color-accent-hover: #818cf8;
+  --color-accent-foreground: #f8fafc;
   --color-accent-muted: rgba(99, 102, 241, 0.18);
 
   --color-destructive: #f87171;
@@ -106,9 +99,9 @@
   --color-sidebar-bg: rgba(15, 20, 40, 0.82);
   --color-sidebar-border: rgba(255, 255, 255, 0.1);
   --color-sidebar-text: #b8c2d6;
-  --color-sidebar-active-bg: rgba(255, 255, 255, 0.12);
+  --color-sidebar-active-bg: #6366f1;
   --color-sidebar-active-text: #ffffff;
-  --color-sidebar-hover: rgba(255, 255, 255, 0.06);
+  --color-sidebar-hover: rgba(99, 102, 241, 0.14);
 
   --color-header-bg: rgba(15, 20, 40, 0.82);
   --color-header-border: rgba(255, 255, 255, 0.1);
@@ -118,14 +111,14 @@
   --glass-blur: 24px;
   --glass-saturate: 170%;
 
-  --glow-a: radial-gradient(60% 60% at 12% 8%, color-mix(in srgb, var(--color-accent) 24%, transparent), transparent 60%);
-  --glow-b: radial-gradient(55% 55% at 92% 18%, color-mix(in srgb, var(--color-primary) 12%, transparent), transparent 60%);
-  --glow-c: radial-gradient(70% 70% at 50% 105%, color-mix(in srgb, var(--color-accent) 14%, transparent), transparent 60%);
+  --glow-a: linear-gradient(135deg, rgba(99, 102, 241, 0.24), transparent 42%, rgba(79, 70, 229, 0.1));
+  --glow-b: repeating-linear-gradient(90deg, transparent 0 39px, rgba(255, 255, 255, 0.035) 39px 40px);
+  --glow-c: linear-gradient(180deg, rgba(13, 18, 36, 0.36), rgba(13, 18, 36, 0.9));
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  --shadow-xl: 0 28px 64px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32);
+  --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.38);
+  --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.46);
+  --shadow-xl: 0 24px 58px rgba(0, 0, 0, 0.52);
 
   color-scheme: dark;
 }
@@ -135,8 +128,8 @@
   --color-foreground: var(--color-foreground);
   --color-muted: var(--color-foreground-muted);
 
-  --font-sans: "HarmonyOSHans-Regular", "PingFang SC", "Microsoft YaHei", "Inter", "SF Pro Display", "Segoe UI", system-ui, sans-serif;
-  --font-mono: "HarmonyOSHans-Regular", "Fira Code", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --font-sans: "HarmonyOSHans-Regular", "PingFang SC", "Microsoft YaHei", "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, "HarmonyOSHans-Regular", monospace;
 }
 
 /* ========== Base ========== */
@@ -155,19 +148,14 @@ body {
   color: var(--color-foreground);
   font-family: "HarmonyOSHans-Regular", "PingFang SC", "Microsoft YaHei", "Inter", "SF Pro Display", "Segoe UI", system-ui, sans-serif;
   font-weight: 400;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  /* Base color — visible if the anime wallpaper (an <img> in the DOM)
-     fails to load; otherwise the wallpaper covers it. */
   background-color: var(--color-bg);
 }
 
-/* Fixed anime wallpaper layer rendered as an <img> in layout.tsx.
-   Using an <img> instead of CSS url() avoids some browsers refusing to
-   follow cross-origin 302 redirects for CSS background images. */
 .anime-bg {
   position: fixed;
   inset: 0;
@@ -180,9 +168,6 @@ body {
   user-select: none;
 }
 
-/* Overlay above the wallpaper.
-   We intentionally avoid a heavy dim layer here so the anime wallpaper stays
-   visible; legibility is carried by the frosted glass panels below. */
 body::before {
   content: "";
   position: fixed;
@@ -192,14 +177,12 @@ body::before {
   background-image: var(--glow-a), var(--glow-b), var(--glow-c);
   background-repeat: no-repeat;
   filter: saturate(1.1);
-  opacity: 0.6;
+  opacity: 0.82;
 }
 
 .dark body::before {
-  /* Slightly darker tint in dark mode so bright wallpapers don't wash out
-     the foreground text in sections that aren't covered by glass panels. */
-  background-color: rgba(6, 9, 18, 0.35);
-  opacity: 0.75;
+  background-color: rgba(13, 18, 36, 0.42);
+  opacity: 0.9;
 }
 
 ::selection {
@@ -236,6 +219,11 @@ body::before {
   border-radius: var(--radius-sm);
 }
 
+.chart-surface :is(.recharts-wrapper, .recharts-surface):focus,
+.chart-surface :is(.recharts-wrapper, .recharts-surface):focus-visible {
+  outline: none;
+}
+
 /* ========== Liquid Glass Utilities ========== */
 /*
   Usage: add `.glass` / `.glass-strong` / `.glass-subtle` to any panel.
@@ -248,7 +236,7 @@ body::before {
 .glass-strong {
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-sm);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   position: relative;
@@ -267,7 +255,6 @@ body::before {
   box-shadow: var(--shadow-lg);
 }
 
-/* Top inner highlight — the signature liquid glass sheen */
 .glass::before,
 .glass-subtle::before,
 .glass-strong::before {
@@ -287,20 +274,14 @@ body::before {
   z-index: 0;
 }
 
-/* Apply frosted blur to the existing surface-based components */
+/* Apply frosted blur to existing surface-based components. */
 aside > div,
 main header,
-[role="dialog"],
-.backdrop-blur,
-.backdrop-blur-sm,
-.backdrop-blur-md,
-.backdrop-blur-lg {
+[role="dialog"] {
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
-/* Sticky chrome (sidebar + page header) needs stronger blur so scrolled
-   content underneath stays legible when it slides behind the glass. */
 aside > div,
 main > section > header {
   backdrop-filter: blur(32px) saturate(200%);
@@ -329,12 +310,12 @@ main > section > header {
 .markdown-body h1,
 .markdown-body h2,
 .markdown-body h3 {
-  font-family: "Fira Code", "SFMono-Regular", Consolas, monospace;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   color: var(--color-foreground);
   margin-top: 1.25em;
   margin-bottom: 0.5em;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 .markdown-body h1 { font-size: 1.5em; }
 .markdown-body h2 { font-size: 1.25em; }
@@ -352,7 +333,7 @@ main > section > header {
   padding: 0.15em 0.4em;
   border-radius: 0.25em;
   font-size: 0.875em;
-  font-family: "Fira Code", monospace;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
 .markdown-body pre {
   background: var(--color-surface-hover);

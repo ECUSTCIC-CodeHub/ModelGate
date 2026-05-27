@@ -83,12 +83,12 @@ type ProfileBrief = {
 const adminMenus = [
   { href: "/dashboard", label: "首页概览", icon: LayoutGrid },
   { href: "/dashboard/logs", label: "请求日志", icon: Sparkles },
+  { href: "/dashboard/keys", label: "密钥管理", icon: KeyRound },
+  { href: "/dashboard/models", label: "接入指南", icon: Shield },
   { href: "/dashboard/channels", label: "渠道管理", icon: Waypoints },
   { href: "/dashboard/users", label: "用户管理", icon: UserCog },
   { href: "/dashboard/groups", label: "用户组管理", icon: Users },
   { href: "/dashboard/settings", label: "系统设置", icon: Settings2 },
-  { href: "/dashboard/keys", label: "密钥管理", icon: KeyRound },
-  { href: "/dashboard/models", label: "接入指南", icon: Shield },
 ];
 
 const userMenus = [
@@ -198,10 +198,9 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
 
   return (
     <main className="min-h-screen text-[var(--color-foreground)]">
-      <div className="flex min-h-screen gap-4 px-3 py-4 lg:gap-6 lg:px-6">
-        {/* Sidebar */}
-        <aside className="hidden w-60 shrink-0 lg:block">
-          <div className="sticky top-4 flex h-[calc(100vh-2rem)] flex-col rounded-xl border border-[var(--color-sidebar-border)] bg-[var(--color-sidebar-bg)] p-4 shadow-[var(--shadow-md)]">
+      <div className="flex min-h-screen gap-3 px-3 py-3 lg:gap-5 lg:px-5">
+        <aside className="hidden w-64 shrink-0 lg:block">
+          <div className="sticky top-3 flex h-[calc(100vh-1.5rem)] flex-col rounded-lg border border-[var(--color-sidebar-border)] bg-[var(--color-sidebar-bg)] p-3 shadow-[var(--shadow-sm)]">
             <div className="space-y-4">
               <div className="flex items-center gap-3 px-1 py-2">
                 {logoUrl && (
@@ -230,9 +229,9 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                       key={item.href}
                       href={item.href}
                       className={cn(
-                        "flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-200",
+                        "flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors duration-150",
                         active
-                          ? "bg-[var(--color-sidebar-active-bg)] text-[var(--color-sidebar-active-text)] shadow-sm"
+                          ? "bg-[var(--color-sidebar-active-bg)] text-[var(--color-sidebar-active-text)]"
                           : "text-[var(--color-sidebar-text)] hover:bg-[var(--color-sidebar-hover)] hover:text-[var(--color-foreground)]",
                       )}
                     >
@@ -246,11 +245,11 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
             </ScrollArea>
 
             {profileBrief ? (
-              <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-3">
+              <div className="space-y-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-3">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-[var(--color-foreground)]">{profileBrief.username}</p>
                 </div>
-                <div className="space-y-1.5 rounded-lg bg-[var(--color-bg)]/30 px-3 py-2 tabular-nums">
+                <div className="space-y-1.5 rounded-md bg-[var(--color-bg)]/55 px-3 py-2 tabular-nums">
                   {([
                     ["RPM", formatLimit(profileBrief.rpm)],
                     ["QPS", formatLimit(profileBrief.qps)],
@@ -292,7 +291,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                   <button
                     type="button"
                     onClick={() => setPasswordDrawerOpen(true)}
-                    className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm text-[var(--color-foreground-muted)] transition-colors duration-200 hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-foreground)]"
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm text-[var(--color-foreground-muted)] transition-colors duration-150 hover:bg-[var(--color-bg)]/60 hover:text-[var(--color-foreground)]"
                   >
                     <LockKeyhole className="h-4 w-4 shrink-0" />
                     <span className="flex-1 text-left">修改密码</span>
@@ -303,7 +302,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                         <button
                           type="button"
                           onClick={onOidcSync}
-                          className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm text-[var(--color-foreground-muted)] transition-colors duration-200 hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-foreground)]"
+                          className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm text-[var(--color-foreground-muted)] transition-colors duration-150 hover:bg-[var(--color-bg)]/60 hover:text-[var(--color-foreground)]"
                         >
                           <RefreshCw className="h-4 w-4 shrink-0" />
                           <span className="flex-1 text-left">同步 OIDC</span>
@@ -312,7 +311,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                         <button
                           type="button"
                           onClick={onOidcUnbind}
-                          className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm text-[var(--color-foreground-muted)] transition-colors duration-200 hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-foreground)]"
+                          className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm text-[var(--color-foreground-muted)] transition-colors duration-150 hover:bg-[var(--color-bg)]/60 hover:text-[var(--color-foreground)]"
                         >
                           <Link2Off className="h-4 w-4 shrink-0" />
                           <span className="flex-1 text-left">解绑 OIDC</span>
@@ -322,7 +321,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                       <button
                         type="button"
                         onClick={onOidcBind}
-                        className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm text-[var(--color-foreground-muted)] transition-colors duration-200 hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-foreground)]"
+                        className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm text-[var(--color-foreground-muted)] transition-colors duration-150 hover:bg-[var(--color-bg)]/60 hover:text-[var(--color-foreground)]"
                       >
                         <Link2 className="h-4 w-4 shrink-0" />
                         <span className="flex-1 text-left">绑定 OIDC</span>
@@ -333,7 +332,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                   <button
                     type="button"
                     onClick={onLogout}
-                    className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm transition-colors duration-200 hover:bg-red-500/10 text-rose-500 hover:text-rose-400"
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm text-rose-500 transition-colors duration-150 hover:bg-red-500/10 hover:text-rose-400"
                   >
                     <LogOut className="h-4 w-4 shrink-0" />
                     <span className="flex-1 text-left">退出登录</span>
@@ -344,9 +343,8 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
           </div>
         </aside>
 
-        {/* Main Content */}
         <section className="flex min-w-0 flex-1 flex-col gap-4">
-          <header className="sticky top-4 z-20 rounded-xl border border-[var(--color-header-border)] bg-[var(--color-header-bg)] px-4 py-3 shadow-[var(--shadow-md)] lg:px-6 lg:py-4 lg:backdrop-blur-sm">
+          <header className="sticky top-3 z-20 rounded-lg border border-[var(--color-header-border)] bg-[var(--color-header-bg)] px-4 py-3 shadow-[var(--shadow-sm)] lg:px-5 lg:py-4 lg:backdrop-blur-sm">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="hidden items-center gap-1.5 text-xs text-[var(--color-foreground-muted)] lg:flex">
@@ -354,7 +352,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                   <span>/</span>
                   <span className="truncate text-[var(--color-foreground-secondary)]">{title}</span>
                 </div>
-                <h1 className="font-mono text-lg font-semibold tracking-tight text-[var(--color-foreground)] lg:mt-1 lg:text-2xl">{title}</h1>
+                <h1 className="font-mono text-lg font-semibold text-[var(--color-foreground)] lg:mt-1 lg:text-2xl">{title}</h1>
                 {subtitle ? <p className="mt-1 hidden max-w-3xl text-sm text-[var(--color-foreground-muted)] lg:block">{subtitle}</p> : null}
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -419,7 +417,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                       href={item.href}
                       onClick={onNavigateMobile}
                       className={cn(
-                        "flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-200",
+                        "flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors duration-150",
                         active
                           ? "bg-[var(--color-sidebar-active-bg)] text-[var(--color-sidebar-active-text)]"
                           : "text-[var(--color-foreground-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-foreground)]",
@@ -445,7 +443,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                 {theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}
               </Button>
               {profileBrief ? (
-                <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+                <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
                   <p className="truncate text-sm font-semibold text-[var(--color-foreground)]">{profileBrief.username}</p>
                   <p className="mt-1 text-xs text-[var(--color-foreground-muted)]">RPM {formatLimit(profileBrief.rpm)} / QPS {formatLimit(profileBrief.qps)} / TPM {formatLimit(profileBrief.tpm)}</p>
                   {profileBrief.quota_requests !== null || profileBrief.quota_tokens !== null ? (

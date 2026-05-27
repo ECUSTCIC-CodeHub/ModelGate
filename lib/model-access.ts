@@ -28,17 +28,39 @@ export function getEffectiveAllowedAliases(user: Pick<DbUser, "group_id" | "allo
   return [...new Set([...userAliases, ...groupAliases])];
 }
 
+const modelPublicByAliasStmt = gatewayDb.prepare(
+  `SELECT is_public
+   FROM models
+   WHERE alias = ? AND enabled = 1 AND deleted_at IS NULL
+   LIMIT 1`,
+);
+
+const enabledModelAliasStmt = gatewayDb.prepare(
+  `SELECT 1
+   FROM models m
+   JOIN channels c ON c.id = m.channel_id
+   WHERE m.alias = ?
+     AND m.enabled = 1
+     AND c.enabled = 1
+     AND m.deleted_at IS NULL
+   LIMIT 1`,
+);
+
+const accessibleModelAliasesStmt = gatewayDb.prepare(
+  `SELECT DISTINCT m.alias, m.is_public
+   FROM models m
+   JOIN channels c ON c.id = m.channel_id
+   WHERE m.enabled = 1
+     AND c.enabled = 1
+     AND m.deleted_at IS NULL
+     AND m.alias != '*'
+   ORDER BY m.alias ASC`,
+);
+
 export function canUserAccessModelAlias(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">, alias: string) {
   if (user.role === "admin") return true;
 
-  const model = gatewayDb
-    .prepare(
-      `SELECT is_public
-       FROM models
-       WHERE alias = ? AND enabled = 1 AND deleted_at IS NULL
-       LIMIT 1`,
-    )
-    .get(alias) as { is_public: number } | undefined;
+  const model = modelPublicByAliasStmt.get(alias) as { is_public: number } | undefined;
 
   if (!model) return false;
   if (model.is_public === 1) return true;
@@ -47,18 +69,7 @@ export function canUserAccessModelAlias(user: Pick<DbUser, "role" | "group_id" |
 }
 
 export function hasEnabledModelAlias(alias: string) {
-  const row = gatewayDb
-    .prepare(
-      `SELECT 1
-       FROM models m
-       JOIN channels c ON c.id = m.channel_id
-       WHERE m.alias = ?
-         AND m.enabled = 1
-         AND c.enabled = 1
-         AND m.deleted_at IS NULL
-       LIMIT 1`,
-    )
-    .get(alias) as { 1: number } | undefined;
+  const row = enabledModelAliasStmt.get(alias) as { 1: number } | undefined;
 
   return Boolean(row);
 }
@@ -81,18 +92,7 @@ export function resolveAccessibleModelAlias(
 }
 
 export function listAccessibleModelAliases(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">) {
-  const rows = gatewayDb
-    .prepare(
-      `SELECT DISTINCT m.alias, m.is_public
-       FROM models m
-       JOIN channels c ON c.id = m.channel_id
-       WHERE m.enabled = 1
-         AND c.enabled = 1
-         AND m.deleted_at IS NULL
-         AND m.alias != '*'
-       ORDER BY m.alias ASC`,
-    )
-    .all() as Array<{ alias: string; is_public: number }>;
+  const rows = accessibleModelAliasesStmt.all() as Array<{ alias: string; is_public: number }>;
 
   if (user.role === "admin") {
     return rows.map((row) => row.alias);

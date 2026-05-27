@@ -29,11 +29,11 @@ function pickPeriod(userVal: number | null, groupVal: number | null): number | n
   return null;
 }
 
+const groupByIdStmt = gatewayDb.prepare("SELECT * FROM groups WHERE id = ? AND enabled = 1 AND deleted_at IS NULL");
+
 export function getUserGroup(groupId: number | null): DbGroup | null {
   if (groupId === null) return null;
-  const group = gatewayDb
-    .prepare("SELECT * FROM groups WHERE id = ? AND enabled = 1 AND deleted_at IS NULL")
-    .get(groupId) as DbGroup | undefined;
+  const group = groupByIdStmt.get(groupId) as DbGroup | undefined;
   return group ?? null;
 }
 

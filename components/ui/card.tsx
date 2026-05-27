@@ -5,7 +5,7 @@ export function Card({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       className={cn(
-        "glass rounded-xl text-[var(--color-foreground)] transition-all duration-200 hover:shadow-[var(--shadow-lg)]",
+        "glass rounded-lg text-[var(--color-foreground)] transition-colors duration-200",
         className,
       )}
       {...props}
@@ -20,7 +20,7 @@ export function CardHeader({ className, ...props }: React.ComponentProps<"div">)
 export function CardTitle({ className, ...props }: React.ComponentProps<"h3">) {
   return (
     <h3
-      className={cn("font-mono text-base font-semibold leading-none tracking-tight text-[var(--color-foreground)]", className)}
+      className={cn("font-mono text-base font-semibold leading-none text-[var(--color-foreground)]", className)}
       {...props}
     />
   );

@@ -21,7 +21,6 @@ import { MetricCard } from "@/components/dashboard/metric-card";
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { useAuthProfile } from "@/components/providers/auth-provider";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
@@ -73,7 +72,6 @@ type Summary = {
   hourly_tokens: Array<{ hour: string; tokens: number }>;
   top_models: Array<{ model_name: string; request_count: number; total_tokens: number }>;
   top_channels: Array<{ channel_name: string; request_count: number; total_tokens: number }>;
-  recent_logs: Array<{ id: number; model_name: string; status_code: number; total_tokens: number; latency_ms: number; created_at: string }>;
 };
 
 function formatDuration(ms: number | null | undefined) {
@@ -148,38 +146,6 @@ export default function DashboardHomePage() {
     [],
   );
 
-  const recentLogColumns = useMemo<Array<ColumnDef<{ id: number; model_name: string; status_code: number; total_tokens: number; latency_ms: number; created_at: string }>>>(
-    () => [
-      { id: "serial", header: "序号", cell: ({ row }) => row.index + 1 },
-      { accessorKey: "model_name", header: "模型" },
-      {
-        accessorKey: "status_code",
-        header: "状态",
-        cell: ({ row }) => (
-          <Badge variant={row.original.status_code >= 400 ? "secondary" : "default"}>
-            {row.original.status_code}
-          </Badge>
-        ),
-      },
-      {
-        accessorKey: "total_tokens",
-        header: "Token",
-        cell: ({ row }) => <span title={formatNumber(row.original.total_tokens)}>{formatTokenCount(row.original.total_tokens)}</span>,
-      },
-      {
-        accessorKey: "latency_ms",
-        header: "用时",
-        cell: ({ row }) => formatDuration(row.original.latency_ms),
-      },
-      {
-        accessorKey: "created_at",
-        header: "时间",
-        cell: ({ row }) => new Date(row.original.created_at).toLocaleString(),
-      },
-    ],
-    [],
-  );
-
   const hasQuota = quota && quota.period !== null;
 
   const isAdmin = role === "admin";
@@ -238,7 +204,7 @@ export default function DashboardHomePage() {
     <DashboardShell
       role={role}
       title="首页概览"
-      subtitle="查看实时请求量、成功率、Token 消耗与最近请求表现。"
+      subtitle="查看实时请求量、成功率与 Token 消耗表现。"
       right={(
         <>
           <Button variant="outline" onClick={() => router.push("/dashboard/logs")}>查看日志</Button>
@@ -355,10 +321,14 @@ export default function DashboardHomePage() {
                 description="按小时聚合，适合观察请求高峰和成本变化。"
               />
             </CardHeader>
-            <CardContent className="h-56 lg:h-72">
+            <CardContent className="chart-surface h-56 lg:h-72">
               {chartReady ? (
                 <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                  <BarChart data={summary?.hourly_tokens ?? []} margin={{ top: 8, right: 12, left: 8, bottom: 0 }}>
+                  <BarChart
+                    accessibilityLayer={false}
+                    data={summary?.hourly_tokens ?? []}
+                    margin={{ top: 8, right: 12, left: 8, bottom: 0 }}
+                  >
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
                     <XAxis
                       dataKey="hour"
@@ -376,6 +346,7 @@ export default function DashboardHomePage() {
                       tickFormatter={(value: number) => formatTokenCount(value)}
                     />
                     <Tooltip
+                      cursor={{ fill: "rgba(99,102,241,0.12)", stroke: "rgba(99,102,241,0.28)", strokeWidth: 1 }}
                       contentStyle={{ background: "rgba(8, 15, 29, 0.94)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }}
                       labelFormatter={(label) => String(label).replace("T", " ")}
                       formatter={(value) => {
@@ -384,7 +355,7 @@ export default function DashboardHomePage() {
                         return [formatTokenCount(Number.isFinite(tokenValue) ? tokenValue : 0), "Token"] as const;
                       }}
                     />
-                    <Bar dataKey="tokens" fill="#e2e8f0" radius={[8, 8, 0, 0]} />
+                    <Bar dataKey="tokens" fill="#6366f1" radius={[8, 8, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
@@ -464,20 +435,6 @@ export default function DashboardHomePage() {
           </Card>
         </div>
 
-        <Card>
-          <CardHeader>
-            <SectionTitle title="最近请求" description="最新 8 条请求记录，用于快速查看异常状态和耗时。" />
-          </CardHeader>
-          <CardContent>
-            {(summary?.recent_logs?.length ?? 0) > 0 ? (
-              <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-                <DataTable columns={recentLogColumns} data={summary?.recent_logs ?? []} tableClassName="min-w-[820px]" />
-              </div>
-            ) : (
-              <EmptyState title="暂无请求数据" description="当前还没有最近请求记录。" />
-            )}
-          </CardContent>
-        </Card>
       </div>
     </DashboardShell>
   );

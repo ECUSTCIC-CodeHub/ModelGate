@@ -10,7 +10,7 @@ export function PageToolbar({ children, className }: PageToolbarProps) {
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4 md:flex-row md:items-center md:justify-between",
+        "flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4 md:flex-row md:items-center md:justify-between",
         className,
       )}
     >

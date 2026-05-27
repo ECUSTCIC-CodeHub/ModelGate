@@ -148,10 +148,15 @@ CREATE TABLE IF NOT EXISTS logs (
 
 CREATE INDEX IF NOT EXISTS idx_keys_key ON keys(key);
 CREATE INDEX IF NOT EXISTS idx_models_alias_enabled ON models(alias, enabled);
+CREATE INDEX IF NOT EXISTS idx_models_channel_id ON models(channel_id);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_logs_user_created_at ON logs(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_logs_user_id_id ON logs(user_id, id);
+CREATE INDEX IF NOT EXISTS idx_logs_channel_created_at ON logs(channel_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_logs_key_id ON logs(key_id);
 `);
 
   const userColumns = db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
@@ -262,6 +267,11 @@ CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
   ensureColumn("logs", "attempted_channels", "attempted_channels TEXT");
   ensureColumn("users", "webhook_role", "webhook_role TEXT DEFAULT ''");
   ensureColumn("users", "webhook_tags", "webhook_tags TEXT DEFAULT '[]'");
+
+  db.exec(`
+CREATE INDEX IF NOT EXISTS idx_models_alias_enabled_deleted ON models(alias, enabled, deleted_at, channel_id);
+CREATE INDEX IF NOT EXISTS idx_channels_enabled_deleted ON channels(enabled, deleted_at);
+`);
 
   db.exec(`
   UPDATE models

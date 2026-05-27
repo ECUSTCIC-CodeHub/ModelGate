@@ -20,8 +20,17 @@ const PROTOCOL_PATH: Record<GatewayProtocol, string> = {
   embeddings: "embeddings",
 };
 
+const OPENAI_NODE_SDK_USER_AGENT = "OpenAI/JS 6.39.0";
+const CLAUDE_CODE_USER_AGENT = process.env.CLAUDE_CODE_USER_AGENT || "claude-cli/2.1.148";
+
 function buildUpstreamUrl(baseUrl: string, protocol: GatewayProtocol) {
   return `${normalizeProviderBaseUrl(baseUrl)}/${PROTOCOL_PATH[protocol]}`;
+}
+
+function resolveUpstreamUserAgent(protocol: GatewayProtocol, inboundHeaders?: Headers) {
+  const inboundUserAgent = inboundHeaders?.get("user-agent");
+  if (inboundUserAgent && inboundUserAgent.length > 0) return inboundUserAgent;
+  return protocol === "anthropic_messages" ? CLAUDE_CODE_USER_AGENT : OPENAI_NODE_SDK_USER_AGENT;
 }
 
 function buildUpstreamHeaders(
@@ -29,9 +38,12 @@ function buildUpstreamHeaders(
   protocol: GatewayProtocol,
   inboundHeaders?: Headers,
 ): Record<string, string> {
+  const userAgent = resolveUpstreamUserAgent(protocol, inboundHeaders);
+
   if (protocol === "anthropic_messages") {
     const headers: Record<string, string> = {
       "content-type": "application/json",
+      "user-agent": userAgent,
       "x-api-key": route.channel.api_key,
       authorization: `Bearer ${route.channel.api_key}`,
       "anthropic-version": inboundHeaders?.get("anthropic-version") || "2023-06-01",
@@ -43,6 +55,7 @@ function buildUpstreamHeaders(
 
   return {
     "content-type": "application/json",
+    "user-agent": userAgent,
     authorization: `Bearer ${route.channel.api_key}`,
   };
 }
@@ -89,12 +102,14 @@ export async function testUpstreamModel(target: {
         protocol === "anthropic_messages"
           ? {
               "content-type": "application/json",
+              "user-agent": resolveUpstreamUserAgent(protocol),
               "x-api-key": target.channel.api_key,
               authorization: `Bearer ${target.channel.api_key}`,
               "anthropic-version": "2023-06-01",
             }
           : {
               "content-type": "application/json",
+              "user-agent": resolveUpstreamUserAgent(protocol),
               authorization: `Bearer ${target.channel.api_key}`,
             },
       body: JSON.stringify(
