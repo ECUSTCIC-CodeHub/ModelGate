@@ -5,6 +5,27 @@ export type ToolCallState = {
   arguments: string;
 };
 
+export type StreamUsage = {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+};
+
+export type IntermediateStreamEvent =
+  | { type: "start"; id?: string; model?: string | null; created?: number; usage?: StreamUsage | null }
+  | { type: "text_delta"; text: string }
+  | { type: "reasoning_delta"; text: string }
+  | { type: "tool_call_start"; index: number; id: string; name: string; arguments?: string }
+  | { type: "tool_call_delta"; index: number; id?: string; name?: string; arguments: string }
+  | { type: "usage"; usage: StreamUsage }
+  | { type: "finish"; reason: string | null };
+
+export type IntermediateStreamResult = {
+  stream: ReadableStream<IntermediateStreamEvent>;
+  completionText: () => string;
+  firstTokenAt: () => number | null;
+};
+
 export function toSseBlock(event: string | null, data: unknown) {
   const lines: string[] = [];
   if (event) lines.push(`event: ${event}`);
