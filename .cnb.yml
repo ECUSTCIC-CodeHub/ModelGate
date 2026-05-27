@@ -10,10 +10,10 @@
     - name: docker build & push
       script: |
         docker buildx build \
-          --cache-from type=registry,ref=${IMAGE}:cache-amd64 \
-          --cache-from type=registry,ref=${IMAGE}:cache-arm64 \
-          --cache-to type=registry,ref=${IMAGE}:cache-amd64,mode=max \
-          --cache-to type=registry,ref=${IMAGE}:cache-arm64,mode=max \
+          --cache-from type=registry,ref=${IMAGE}:latest-cache-amd64 \
+          --cache-from type=registry,ref=${IMAGE}:latest-cache-arm64 \
+          --cache-to type=registry,ref=${IMAGE}:latest-cache-amd64,mode=max \
+          --cache-to type=registry,ref=${IMAGE}:latest-cache-arm64,mode=max \
           -t ${IMAGE}:latest -t ${IMAGE}:${CNB_BRANCH} \
           --platform linux/amd64,linux/arm64 --push .
 
