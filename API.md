@@ -1037,6 +1037,47 @@ X-Quota-Limit-Tokens-Remaining: 49543211
 
 ---
 
+### POST /api/chat
+
+Ollama Chat 兼容接口，仅支持对话端点。请求会复用 ModelGate 的 API Key 鉴权、模型别名路由、配额、限流、日志和上游协议转换能力。
+
+**认证:** API Key
+
+**请求体字段:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|:---|:---|:---|:---|
+| model | string | 是 | ModelGate 中配置的模型别名 |
+| messages | array | 是 | Ollama 兼容消息数组 |
+| stream | boolean | 否 | 是否流式返回；未传时按 Ollama 协议默认流式返回 |
+| format | string/object | 否 | `json` 或 JSON Schema，会转换为 OpenAI 兼容 `response_format` |
+| options | object | 否 | 支持 `temperature`、`top_p`、`seed`、`stop`、`num_predict` 等常用选项 |
+| tools | array | 否 | 工具定义，透传为 OpenAI Chat Completions 兼容工具格式 |
+
+**非流式响应示例:**
+
+```json
+{
+  "model": "gpt-4o-mini",
+  "created_at": "2026-05-27T12:00:00.000Z",
+  "message": {
+    "role": "assistant",
+    "content": "你好，有什么可以帮你？"
+  },
+  "done": true,
+  "done_reason": "stop"
+}
+```
+
+**流式响应:** NDJSON，每行一个 JSON 对象：
+
+```json
+{"model":"gpt-4o-mini","created_at":"2026-05-27T12:00:00.000Z","message":{"role":"assistant","content":"你好"},"done":false}
+{"model":"gpt-4o-mini","created_at":"2026-05-27T12:00:01.000Z","done":true,"done_reason":"stop"}
+```
+
+---
+
 ### POST /api/v1/messages
 
 Anthropic Messages 兼容端点。
