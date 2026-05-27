@@ -1,13 +1,22 @@
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
-import { anthropicAdapter } from "@/lib/gateway/protocol-adapters/anthropic";
-import { chatCompletionsAdapter } from "@/lib/gateway/protocol-adapters/chat-completions";
+import { anthropicAdapter, anthropicGatewayAdapter } from "@/lib/gateway/protocol-adapters/anthropic";
+import { chatCompletionsAdapter, chatCompletionsGatewayAdapter } from "@/lib/gateway/protocol-adapters/chat-completions";
+import { embeddingsGatewayAdapter } from "@/lib/gateway/protocol-adapters/embeddings";
 import type { ProtocolBodyAdapter } from "@/lib/gateway/protocol-adapters/intermediate";
-import { responsesAdapter } from "@/lib/gateway/protocol-adapters/responses";
+import { responsesAdapter, responsesGatewayAdapter } from "@/lib/gateway/protocol-adapters/responses";
+import type { GatewayProtocolAdapter } from "@/lib/gateway/protocol-adapters/runtime";
 
 const adapters: Partial<Record<GatewayProtocol, ProtocolBodyAdapter>> = {
   chat_completions: chatCompletionsAdapter,
   responses: responsesAdapter,
   anthropic_messages: anthropicAdapter,
+};
+
+const gatewayAdapters: Record<GatewayProtocol, GatewayProtocolAdapter> = {
+  chat_completions: chatCompletionsGatewayAdapter,
+  responses: responsesGatewayAdapter,
+  anthropic_messages: anthropicGatewayAdapter,
+  embeddings: embeddingsGatewayAdapter,
 };
 
 export function getProtocolBodyAdapter(protocol: GatewayProtocol) {
@@ -17,6 +26,17 @@ export function getProtocolBodyAdapter(protocol: GatewayProtocol) {
   }
   return adapter;
 }
+
+export function getGatewayProtocolAdapter(protocol: GatewayProtocol) {
+  return gatewayAdapters[protocol];
+}
+
+export {
+  anthropicGatewayAdapter,
+  chatCompletionsGatewayAdapter,
+  embeddingsGatewayAdapter,
+  responsesGatewayAdapter,
+};
 
 export type {
   IntermediateRequest,
@@ -28,3 +48,4 @@ export type {
   ProtocolBodyAdapter,
   ResponseAdapterOptions,
 } from "@/lib/gateway/protocol-adapters/intermediate";
+export type { GatewayProtocolAdapter } from "@/lib/gateway/protocol-adapters/runtime";

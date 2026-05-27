@@ -21,6 +21,7 @@ import {
   toolChoiceFromIntermediateForChat,
   toolsFromIntermediateForChat,
 } from "@/lib/gateway/protocol-adapters/tools";
+import { createBodyProtocolGatewayAdapter, inputTextFromMessages } from "@/lib/gateway/protocol-adapters/runtime";
 
 const REQUEST_KEYS = [
   "model",
@@ -273,3 +274,14 @@ export const chatCompletionsAdapter: ProtocolBodyAdapter = {
     };
   },
 };
+
+export const chatCompletionsGatewayAdapter = createBodyProtocolGatewayAdapter({
+  protocol: "chat_completions",
+  bodyAdapter: chatCompletionsAdapter,
+  getInputText(body) {
+    return inputTextFromMessages(normalizeChatMessages(body.messages));
+  },
+  getMaxOutputTokens(body) {
+    return body.max_tokens;
+  },
+});

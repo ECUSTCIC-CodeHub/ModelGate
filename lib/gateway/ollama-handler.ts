@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { handleGatewayProtocolRequest } from "@/lib/gateway/gateway-handler";
+import { chatCompletionsGatewayAdapter } from "@/lib/gateway/protocol-adapters";
 import { checkApiKeyAuth } from "@/lib/auth/api-key-auth";
 import { listAccessibleModels } from "@/lib/gateway/model-access";
 import {
@@ -210,7 +211,7 @@ export async function handleOllamaChatRequest(request: Request) {
   const model = getRequestedModel(body);
   const stream = isOllamaStreamRequested(body);
   const gatewayRequest = createJsonRequest(request, adaptOllamaChatRequestBody(body));
-  const gatewayResponse = await handleGatewayProtocolRequest(gatewayRequest, "chat_completions");
+  const gatewayResponse = await handleGatewayProtocolRequest(gatewayRequest, chatCompletionsGatewayAdapter);
 
   if (!gatewayResponse.ok) {
     const text = await gatewayResponse.text().catch(() => "");

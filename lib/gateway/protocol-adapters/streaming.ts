@@ -1,15 +1,7 @@
-import { countTextTokens } from "@/lib/gateway/tokenizer";
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
-import { getProtocolBodyAdapter } from "@/lib/gateway/protocol-adapters";
-import type { IntermediateResponse } from "@/lib/gateway/protocol-adapters";
-import {
-  asArray,
-  asRecord,
-  normalizeAnthropicMessages,
-  normalizeChatMessages,
-  normalizeResponsesInput,
-  type JsonRecord,
-} from "@/lib/gateway/normalized-message";
+import { asArray, asRecord, type JsonRecord } from "@/lib/gateway/normalized-message";
+import type { ResponseAdapterOptions } from "@/lib/gateway/protocol-adapters/intermediate";
+import type { GatewayProtocolAdapter } from "@/lib/gateway/protocol-adapters/runtime";
 
 type ToolCallState = {
   index: number;
@@ -17,144 +9,6 @@ type ToolCallState = {
   name: string;
   arguments: string;
 };
-
-function stringifyEmbeddingInput(input: unknown): string {
-  if (typeof input === "string") return input;
-  if (Array.isArray(input)) {
-    return input
-      .filter((item): item is string => typeof item === "string")
-      .join("\n");
-  }
-  return "";
-}
-
-function estimateEmbeddingInputTokens(input: unknown): number {
-  if (typeof input === "string") return Math.ceil(input.length / 4);
-  if (typeof input === "number") return Number.isFinite(input) ? 1 : 0;
-  if (Array.isArray(input)) {
-    return input.reduce((total, item) => total + estimateEmbeddingInputTokens(item), 0);
-  }
-  return 0;
-}
-
-export function estimateRequestTokensForProtocol(body: JsonRecord, protocol: GatewayProtocol) {
-  if (protocol === "embeddings") {
-    return Math.max(1, estimateEmbeddingInputTokens(body.input));
-  }
-
-  const text = countInputText(body, protocol);
-  const maxTokens = Number(
-    protocol === "responses"
-      ? body.max_output_tokens ?? 256
-      : protocol === "anthropic_messages"
-        ? body.max_tokens ?? 256
-      : body.max_tokens ?? 256,
-  );
-  const outputReserve = Number.isFinite(maxTokens) ? Math.max(0, maxTokens) : 256;
-  return Math.max(1, Math.ceil(text.length / 4) + Math.min(outputReserve, 4096));
-}
-
-export function countInputText(body: JsonRecord, protocol: GatewayProtocol) {
-  if (protocol === "embeddings") {
-    return stringifyEmbeddingInput(body.input);
-  }
-
-  const messages = protocol === "responses"
-    ? normalizeResponsesInput(body.input, typeof body.instructions === "string" ? body.instructions : undefined)
-    : protocol === "anthropic_messages"
-      ? normalizeAnthropicMessages(body.messages, body.system)
-    : normalizeChatMessages(body.messages);
-
-  return messages
-    .flatMap((message) => message.content)
-    .filter((part) => part.type === "text")
-    .map((part) => part.text)
-    .join("\n");
-}
-
-export function countPromptTokensForProtocol(body: JsonRecord, protocol: GatewayProtocol, model: string) {
-  if (protocol === "embeddings") {
-    return Math.max(0, estimateEmbeddingInputTokens(body.input));
-  }
-
-  return Math.max(0, countTextTokens(countInputText(body, protocol), model));
-}
-
-export function getStreamFlag(body: JsonRecord) {
-  return body.stream === true;
-}
-
-export function adaptRequestBody(
-  body: JsonRecord,
-  inboundProtocol: GatewayProtocol,
-  outboundProtocol: GatewayProtocol,
-  realModel: string,
-) {
-  if (inboundProtocol === "embeddings" || outboundProtocol === "embeddings") {
-    if (inboundProtocol !== outboundProtocol) {
-      throw new Error("Embeddings 协议只支持原样转发请求");
-    }
-  }
-
-  if (inboundProtocol === outboundProtocol) {
-    return {
-      ...body,
-      model: realModel,
-    };
-  }
-
-  const intermediate = getProtocolBodyAdapter(inboundProtocol).requestToIntermediate(body, realModel);
-  return getProtocolBodyAdapter(outboundProtocol).requestFromIntermediate(intermediate);
-}
-
-export function extractCompletionTextFromBody(text: string, protocol: GatewayProtocol) {
-  if (protocol === "embeddings") return "";
-
-  try {
-    const parsed = JSON.parse(text) as JsonRecord;
-    const response: IntermediateResponse = getProtocolBodyAdapter(protocol).responseToIntermediate(parsed);
-    return response.content
-      .flatMap((part) => {
-        if (part.type === "text") return [part.text];
-        if (part.type === "thinking") return [part.thinking];
-        return [];
-      })
-      .join("\n");
-  } catch {
-    return "";
-  }
-}
-
-export function getUsageFromBody(text: string, protocol: GatewayProtocol) {
-  try {
-    const parsed = JSON.parse(text) as JsonRecord;
-    const usage = asRecord(parsed.usage);
-    if (protocol === "embeddings") {
-      if (!usage) return null;
-      const promptTokens = Number(usage?.prompt_tokens ?? 0);
-      const totalTokens = Number(usage?.total_tokens ?? promptTokens);
-      return { prompt_tokens: promptTokens, completion_tokens: 0, total_tokens: totalTokens };
-    }
-
-    return getProtocolBodyAdapter(protocol).responseToIntermediate(parsed).usage;
-  } catch {
-    return null;
-  }
-}
-
-export function adaptResponseBody(text: string, outboundProtocol: GatewayProtocol, inboundProtocol: GatewayProtocol, options?: { thinkingEnabled?: boolean }) {
-  if (inboundProtocol === "embeddings" || outboundProtocol === "embeddings") {
-    if (inboundProtocol !== outboundProtocol) {
-      throw new Error("Embeddings 协议只支持原样转发响应");
-    }
-  }
-
-  if (outboundProtocol === inboundProtocol) return text;
-
-  const parsed = JSON.parse(text) as JsonRecord;
-  const intermediate = getProtocolBodyAdapter(outboundProtocol).responseToIntermediate(parsed);
-  return JSON.stringify(getProtocolBodyAdapter(inboundProtocol).responseFromIntermediate(intermediate, options));
-}
 
 function parseChatChunkEvent(data: string) {
   const parsed = JSON.parse(data) as JsonRecord;
@@ -244,10 +98,12 @@ type StreamTransformResult = {
 
 export function createTransformedStream(
   upstream: ReadableStream<Uint8Array>,
-  outboundProtocol: GatewayProtocol,
-  inboundProtocol: GatewayProtocol,
-  options?: { thinkingEnabled?: boolean },
+  outboundAdapter: GatewayProtocolAdapter,
+  inboundAdapter: GatewayProtocolAdapter,
+  options?: ResponseAdapterOptions,
 ) : StreamTransformResult {
+  const outboundProtocol = outboundAdapter.protocol;
+  const inboundProtocol = inboundAdapter.protocol;
   if (outboundProtocol === inboundProtocol) {
     return createPassthroughStream(upstream, outboundProtocol);
   }

@@ -3,16 +3,8 @@ import { acquireChannel, type ChannelLease } from "@/lib/gateway/channel-runtime
 import { insertChatLog } from "@/lib/gateway/chat-log";
 import { jsonError } from "@/lib/core/http";
 import { resolveAccessibleModelAlias } from "@/lib/gateway/model-access";
-import {
-  adaptRequestBody,
-  adaptResponseBody,
-  countPromptTokensForProtocol,
-  createTransformedStream,
-  estimateRequestTokensForProtocol,
-  extractCompletionTextFromBody,
-  getStreamFlag,
-  getUsageFromBody,
-} from "@/lib/gateway/openai-adapter";
+import { getGatewayProtocolAdapter, type GatewayProtocolAdapter } from "@/lib/gateway/protocol-adapters";
+import { createTransformedStream } from "@/lib/gateway/protocol-adapters/streaming";
 import { appendQuotaHeaders, checkQuota } from "@/lib/gateway/quota";
 import { fetchUpstreamRequest } from "@/lib/gateway/proxy";
 import { checkUserRateLimit } from "@/lib/gateway/ratelimit";
@@ -21,7 +13,6 @@ import { getGatewaySettings } from "@/lib/core/settings";
 import { countTextTokens } from "@/lib/gateway/tokenizer";
 import { buildErrorResponseBody, parseUpstreamError, shouldRetryUpstreamStatus } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
-import type { GatewayProtocol } from "@/lib/gateway/protocols";
 
 const QUEUE_KEEPALIVE_INTERVAL_MS = 1_000;
 const encoder = new TextEncoder();
@@ -47,7 +38,8 @@ function normalizeUserAgent(value: string | null) {
   return normalized.length > 0 ? normalized.slice(0, 500) : null;
 }
 
-export async function handleGatewayProtocolRequest(request: Request, inboundProtocol: GatewayProtocol) {
+export async function handleGatewayProtocolRequest(request: Request, inboundAdapter: GatewayProtocolAdapter) {
+  const inboundProtocol = inboundAdapter.protocol;
   const startedAt = Date.now();
   const clientIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
     || request.headers.get("x-real-ip")
@@ -104,7 +96,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
     return jsonError("缺少模型参数 model", 400);
   }
 
-  const estimatedTokens = estimateRequestTokensForProtocol(body, inboundProtocol);
+  const estimatedTokens = inboundAdapter.estimateRequestTokens(body);
   const resolved = resolveAccessibleModelAlias(auth.user, alias);
   if (!resolved.ok) {
     if (resolved.reason === "forbidden") {
@@ -150,7 +142,19 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
   const settings = getGatewaySettings();
   const retryEnabled = settings.upstream_retry_enabled === 1;
   const maxRouteAttempts = retryEnabled ? Math.max(1, settings.upstream_retry_max_attempts) : 1;
-  const stream = inboundProtocol === "embeddings" ? false : getStreamFlag(body);
+  const stream = inboundAdapter.getStreamFlag(body);
+  const getRouteAdapter = (route: RoutedModel) => getGatewayProtocolAdapter(route.model.upstream_protocol);
+  const countPromptTokensForRoute = (route: RoutedModel) => inboundAdapter.countPromptTokens(body, route.model.real_model);
+  const adaptRequestBodyForRoute = (route: RoutedModel) =>
+    inboundAdapter.adaptRequestBody(body, getRouteAdapter(route), route.model.real_model);
+  const adaptResponseBodyForRoute = (rawText: string, route: RoutedModel) =>
+    inboundAdapter.adaptResponseBody(rawText, getRouteAdapter(route), responseOptions);
+  const getUsageForRoute = (rawText: string, route: RoutedModel) =>
+    getRouteAdapter(route).getUsageFromBody(rawText);
+  const extractCompletionTextForRoute = (rawText: string, route: RoutedModel) =>
+    getRouteAdapter(route).extractCompletionTextFromBody(rawText);
+  const createTransformedStreamForRoute = (upstreamBody: ReadableStream<Uint8Array>, route: RoutedModel) =>
+    createTransformedStream(upstreamBody, getRouteAdapter(route), inboundAdapter, responseOptions);
 
   const requestUpstreamWithFallback = async (): Promise<
     | {
@@ -214,7 +218,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
       const lease = leaseResult.lease;
 
       try {
-        const upstreamBody = adaptRequestBody(body, inboundProtocol, route.model.upstream_protocol, route.model.real_model);
+        const upstreamBody = adaptRequestBodyForRoute(route);
         const upstream = await fetchUpstreamRequest(route, upstreamBody, route.model.upstream_protocol, request.headers);
         if (shouldRetryUpstreamStatus(upstream.status) && attempt < maxRouteAttempts) {
           lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
@@ -274,8 +278,8 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
 
   if ("queued" in picked && picked.queued) {
     const { route, acquirePromise, attemptedChannels, attemptedChannelNames } = picked;
-    const localPromptTokens = countPromptTokensForProtocol(body, inboundProtocol, route.model.real_model);
-    const upstreamBody = adaptRequestBody(body, inboundProtocol, route.model.upstream_protocol, route.model.real_model);
+    const localPromptTokens = countPromptTokensForRoute(route);
+    const upstreamBody = adaptRequestBodyForRoute(route);
 
     if (stream) {
       const queuedStream = new ReadableStream<Uint8Array>({
@@ -335,9 +339,9 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
 
               if (!upstream.body) {
                 const rawText = await upstream.text().catch(() => "");
-                const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol, responseOptions);
-                const usage = getUsageFromBody(rawText, route.model.upstream_protocol);
-                const completionText = extractCompletionTextFromBody(rawText, route.model.upstream_protocol);
+                const adaptedText = adaptResponseBodyForRoute(rawText, route);
+                const usage = getUsageForRoute(rawText, route);
+                const completionText = extractCompletionTextForRoute(rawText, route);
                 const completionTokens = usage?.completion_tokens ?? Math.max(0, countTextTokens(completionText, route.model.real_model));
                 const totalTokens = usage?.total_tokens ?? localPromptTokens + completionTokens;
                 const outputTps =
@@ -375,7 +379,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
                 return;
               }
 
-              const transformed = createTransformedStream(upstream.body, route.model.upstream_protocol, inboundProtocol, responseOptions);
+              const transformed = createTransformedStreamForRoute(upstream.body, route);
               let finalized = false;
               const finalize = () => {
                 if (finalized) return;
@@ -526,9 +530,9 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
               return;
             }
 
-            const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol, responseOptions);
-            const usage = getUsageFromBody(rawText, route.model.upstream_protocol);
-            const completionText = extractCompletionTextFromBody(rawText, route.model.upstream_protocol);
+            const adaptedText = adaptResponseBodyForRoute(rawText, route);
+            const usage = getUsageForRoute(rawText, route);
+            const completionText = extractCompletionTextForRoute(rawText, route);
             const localCompletionTokens = usage?.completion_tokens ?? Math.max(0, countTextTokens(completionText, route.model.real_model));
             const localTotalTokens = usage?.total_tokens ?? (localPromptTokens + localCompletionTokens);
             const outputTps =
@@ -612,7 +616,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
   }
 
   const { route, upstream, lease, attemptedChannels, attemptedChannelNames } = picked;
-  const localPromptTokens = countPromptTokensForProtocol(body, inboundProtocol, route.model.real_model);
+  const localPromptTokens = countPromptTokensForRoute(route);
 
   if (stream) {
     if (upstream.status >= 400) {
@@ -687,9 +691,9 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
           },
         }));
       }
-      const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol, responseOptions);
-      const usage = getUsageFromBody(rawText, route.model.upstream_protocol);
-      const completionText = extractCompletionTextFromBody(rawText, route.model.upstream_protocol);
+      const adaptedText = adaptResponseBodyForRoute(rawText, route);
+      const usage = getUsageForRoute(rawText, route);
+      const completionText = extractCompletionTextForRoute(rawText, route);
       const completionTokens = usage?.completion_tokens ?? Math.max(0, countTextTokens(completionText, route.model.real_model));
       const totalTokens = usage?.total_tokens ?? localPromptTokens + completionTokens;
       const outputTps =
@@ -728,7 +732,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
       }));
     }
 
-    const transformed = createTransformedStream(upstream.body, route.model.upstream_protocol, inboundProtocol, responseOptions);
+    const transformed = createTransformedStreamForRoute(upstream.body, route);
     const streamOut = transformed.stream;
     let finalized = false;
     const finalize = () => {
@@ -838,9 +842,9 @@ export async function handleGatewayProtocolRequest(request: Request, inboundProt
       },
     }));
   }
-  const adaptedText = adaptResponseBody(rawText, route.model.upstream_protocol, inboundProtocol, responseOptions);
-  const usage = getUsageFromBody(rawText, route.model.upstream_protocol);
-  const completionText = extractCompletionTextFromBody(rawText, route.model.upstream_protocol);
+  const adaptedText = adaptResponseBodyForRoute(rawText, route);
+  const usage = getUsageForRoute(rawText, route);
+  const completionText = extractCompletionTextForRoute(rawText, route);
   const localCompletionTokens = usage?.completion_tokens ?? Math.max(0, countTextTokens(completionText, route.model.real_model));
   const localTotalTokens = usage?.total_tokens ?? (localPromptTokens + localCompletionTokens);
 

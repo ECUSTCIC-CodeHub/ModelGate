@@ -19,6 +19,7 @@ import {
   toolChoiceFromIntermediateForAnthropic,
   toolsFromIntermediateForAnthropic,
 } from "@/lib/gateway/protocol-adapters/tools";
+import { createBodyProtocolGatewayAdapter, inputTextFromMessages } from "@/lib/gateway/protocol-adapters/runtime";
 
 const REQUEST_KEYS = [
   "model",
@@ -223,3 +224,14 @@ export const anthropicAdapter: ProtocolBodyAdapter = {
     };
   },
 };
+
+export const anthropicGatewayAdapter = createBodyProtocolGatewayAdapter({
+  protocol: "anthropic_messages",
+  bodyAdapter: anthropicAdapter,
+  getInputText(body) {
+    return inputTextFromMessages(normalizeAnthropicMessages(body.messages, body.system));
+  },
+  getMaxOutputTokens(body) {
+    return body.max_tokens;
+  },
+});

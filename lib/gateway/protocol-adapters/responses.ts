@@ -18,6 +18,7 @@ import {
   toolChoiceFromIntermediateForResponses,
   toolsFromIntermediateForResponses,
 } from "@/lib/gateway/protocol-adapters/tools";
+import { createBodyProtocolGatewayAdapter, inputTextFromMessages } from "@/lib/gateway/protocol-adapters/runtime";
 
 const REQUEST_KEYS = [
   "model",
@@ -226,3 +227,16 @@ export const responsesAdapter: ProtocolBodyAdapter = {
     };
   },
 };
+
+export const responsesGatewayAdapter = createBodyProtocolGatewayAdapter({
+  protocol: "responses",
+  bodyAdapter: responsesAdapter,
+  getInputText(body) {
+    return inputTextFromMessages(
+      normalizeResponsesInput(body.input, typeof body.instructions === "string" ? body.instructions : undefined),
+    );
+  },
+  getMaxOutputTokens(body) {
+    return body.max_output_tokens;
+  },
+});
