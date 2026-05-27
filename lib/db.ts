@@ -224,8 +224,15 @@ CREATE INDEX IF NOT EXISTS idx_logs_key_id ON logs(key_id);
   const ensureColumn = (table: string, column: string, ddl: string) => {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
     if (!columns.some((col) => col.name === column)) {
-      db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
-      return true;
+      try {
+        db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+        return true;
+      } catch (error) {
+        if (error instanceof Error && /duplicate column name/i.test(error.message)) {
+          return false;
+        }
+        throw error;
+      }
     }
     return false;
   };
