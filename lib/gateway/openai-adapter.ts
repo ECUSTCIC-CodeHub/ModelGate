@@ -129,12 +129,17 @@ function normalizeContentParts(value: unknown): NormalizedContentPart[] {
   return parts;
 }
 
-function normalizedPartsToChatContent(parts: NormalizedContentPart[]) {
+function normalizedPartsToChatContent(parts: NormalizedContentPart[], options?: { preserveThinking?: boolean }) {
   const normalized = parts.flatMap((part) => {
     if (part.type === "text") {
       return [{ type: "text", text: part.text }];
     }
     if (part.type === "thinking") {
+      if (options?.preserveThinking) {
+        return part.redacted
+          ? [{ type: "redacted_thinking", data: part.thinking, signature: part.signature ?? undefined }]
+          : [{ type: "thinking", thinking: part.thinking, signature: part.signature ?? undefined }];
+      }
       return [];
     }
     if (part.type === "image") {
@@ -823,10 +828,11 @@ export function adaptRequestBody(
       : normalizeResponsesInput(body.input, typeof body.instructions === "string" ? body.instructions : undefined)
     ).map((message) => {
       const reasoningText = extractThinkingText(message.content);
+      const preserveThinking = inboundProtocol === "anthropic_messages" && message.role === "assistant";
       if (message.role === "assistant" && message.tool_calls && message.tool_calls.length > 0) {
         return {
           role: "assistant",
-          content: normalizedPartsToChatContent(message.content),
+          content: normalizedPartsToChatContent(message.content, { preserveThinking }),
           reasoning: reasoningText || undefined,
           tool_calls: message.tool_calls.map((toolCall) => ({
             id: toolCall.id,
@@ -849,7 +855,7 @@ export function adaptRequestBody(
 
       return {
         role: message.role,
-        content: normalizedPartsToChatContent(message.content),
+        content: normalizedPartsToChatContent(message.content, { preserveThinking }),
         reasoning: message.role === "assistant" && reasoningText ? reasoningText : undefined,
       };
     }),
@@ -1134,6 +1140,23 @@ export function adaptResponseBody(text: string, outboundProtocol: GatewayProtoco
         .filter((item) => item.type === "thinking")
         .map((item) => (typeof item.thinking === "string" ? item.thinking : ""))
         .join("");
+      const thinkingBlocks = anthropicContent
+        .filter((item) => item.type === "thinking" || item.type === "redacted_thinking")
+        .map((item) => {
+          if (item.type === "redacted_thinking") {
+            return {
+              type: "redacted_thinking",
+              data: typeof item.data === "string" ? item.data : "",
+              signature: typeof item.signature === "string" ? item.signature : undefined,
+            };
+          }
+          return {
+            type: "thinking",
+            thinking: typeof item.thinking === "string" ? item.thinking : "",
+            signature: typeof item.signature === "string" ? item.signature : undefined,
+          };
+        })
+        .filter((item) => item.type === "redacted_thinking" ? item.data : item.thinking);
       const textContent = anthropicContent
         .filter((item) => item.type === "text")
         .map((item) => (typeof item.text === "string" ? item.text : ""))
@@ -1150,6 +1173,12 @@ export function adaptResponseBody(text: string, outboundProtocol: GatewayProtoco
         }));
       const usage = asRecord(parsed.usage);
       const stopReason = typeof parsed.stop_reason === "string" ? parsed.stop_reason : "";
+      const messageContent = thinkingEnabled && thinkingBlocks.length > 0
+        ? [
+            ...thinkingBlocks,
+            ...(textContent ? [{ type: "text", text: textContent }] : []),
+          ]
+        : textContent || null;
       return JSON.stringify({
         id: typeof parsed.id === "string" ? parsed.id : `chatcmpl_${crypto.randomUUID().replace(/-/g, "")}`,
         object: "chat.completion",
@@ -1159,7 +1188,7 @@ export function adaptResponseBody(text: string, outboundProtocol: GatewayProtoco
           index: 0,
           message: {
             role: "assistant",
-            content: textContent || null,
+            content: messageContent,
             reasoning: reasoningText || undefined,
             tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
           },
