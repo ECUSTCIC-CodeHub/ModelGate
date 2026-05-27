@@ -21,6 +21,7 @@ type ModelItem = {
 
 const ENDPOINTS = [
   { label: "Chat Completions (OpenAI)", path: "/api/v1/chat/completions", method: "POST" },
+  { label: "Chat (Ollama)", path: "/api/v1/chat", method: "POST" },
   { label: "Responses (OpenAI)", path: "/api/v1/responses", method: "POST" },
   { label: "Messages (Anthropic Claude)", path: "/api/v1/messages", method: "POST" },
   { label: "Embeddings (OpenAI)", path: "/api/v1/embeddings", method: "POST" },
@@ -81,7 +82,7 @@ export default function AvailableModelsPage() {
           <CardHeader>
             <SectionTitle
               title="接入配置"
-              description="将 Base URL 填入客户端配置，使用 API Key 和模型 ID 即可调用；网关同时兼容下方四种协议端点。"
+              description="将 Base URL 填入客户端配置，使用 API Key 和模型 ID 即可调用；网关同时兼容下方五种协议端点。"
             />
           </CardHeader>
           <CardContent className="space-y-5">
@@ -125,7 +126,7 @@ export default function AvailableModelsPage() {
                   </TableBody>
                 </Table>
               </div>
-              <p className="text-xs text-[var(--color-foreground-muted)]">四种协议共用同一 API Key；模型 ID 填写对应协议可用的模型映射。</p>
+              <p className="text-xs text-[var(--color-foreground-muted)]">五种协议共用同一 API Key；模型 ID 填写对应协议可用的模型映射。</p>
             </div>
           </CardContent>
         </Card>

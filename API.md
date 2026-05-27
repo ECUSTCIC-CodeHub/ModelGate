@@ -20,7 +20,7 @@ Authorization: Bearer <access_token>
 
 ### API Key 认证
 
-网关端点（`/api/v1/*`）使用 API Key：
+网关端点（`/api/v1/*`，以及 Ollama 原生路径 `/api/chat`）使用 API Key：
 
 ```
 Authorization: Bearer sk-gw-xxxxx
@@ -1006,7 +1006,7 @@ email matches ".*@company\\.com"
 
 所有网关端点通过 API Key 认证。
 
-**CORS:** 默认关闭。管理员在系统设置中开启 `cors_enabled` 后，所有 `/api/v1/*` 端点会返回 `Access-Control-Allow-Origin: *` 并响应 `OPTIONS` 预检请求，允许浏览器从任意来源跨域调用。
+**CORS:** 默认关闭。管理员在系统设置中开启 `cors_enabled` 后，所有 `/api/v1/*` 端点和 `/api/chat` 会返回 `Access-Control-Allow-Origin: *` 并响应 `OPTIONS` 预检请求，允许浏览器从任意来源跨域调用。
 
 **User-Agent 透传:** 客户端请求包含 `User-Agent` 时，网关会原样透传给上游渠道；未提供时 OpenAI 协议默认使用 `OpenAI/JS 6.39.0`，Anthropic Messages 协议默认使用 Claude Code UA `claude-cli/2.1.148`。可通过环境变量 `CLAUDE_CODE_USER_AGENT` 覆盖默认 Claude Code UA。
 
@@ -1037,9 +1037,11 @@ X-Quota-Limit-Tokens-Remaining: 49543211
 
 ---
 
-### POST /api/chat
+### POST /api/v1/chat
 
 Ollama Chat 兼容接口，仅支持对话端点。请求会复用 ModelGate 的 API Key 鉴权、模型别名路由、配额、限流、日志和上游协议转换能力。
+
+**兼容别名:** `POST /api/chat`，用于兼容 Ollama 原生客户端默认路径。
 
 **认证:** API Key
 

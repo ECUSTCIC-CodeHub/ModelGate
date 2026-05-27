@@ -17,6 +17,7 @@
 - **模型别名路由** — 自动协议转换，客户端无感知
 - **多协议支持：**
   - `POST /api/v1/chat/completions` — OpenAI Chat Completions
+  - `POST /api/v1/chat` — Ollama Chat（`/api/chat` 兼容别名）
   - `POST /api/v1/responses` — OpenAI Responses
   - `POST /api/v1/messages` — Anthropic Claude Messages
   - `POST /api/v1/embeddings` — OpenAI Embeddings
@@ -237,6 +238,12 @@ curl http://localhost:3000/api/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "你好"}]}'
 
+# Ollama Chat
+curl http://localhost:3000/api/v1/chat \
+  -H 'Authorization: Bearer sk-gw-xxxx' \
+  -H 'Content-Type: application/json' \
+  -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "你好"}], "stream": false}'
+
 # OpenAI Responses
 curl http://localhost:3000/api/v1/responses \
   -H 'Authorization: Bearer sk-gw-xxxx' \
@@ -259,6 +266,6 @@ curl http://localhost:3000/api/v1/embeddings \
 ## 备注
 
 - 渠道声明支持的上游协议，每个模型映射指定使用哪种上游协议。
-- 客户端可调用 Chat Completions、Responses、Claude Messages 三种生成端点中的任意一种，网关会在入站协议与上游协议不一致时自动转换；Embeddings 仅直通 `/embeddings`，不参与协议转换。
+- 客户端可调用 Chat Completions、Ollama Chat、Responses、Claude Messages 生成端点中的任意一种，网关会在入站协议与上游协议不一致时自动转换；Embeddings 仅直通 `/embeddings`，不参与协议转换。
 - 限流为单实例内存实现，不支持多实例部署。
 - 全部采用软删除，记录通过 `deleted_at` 标记而非物理删除。
