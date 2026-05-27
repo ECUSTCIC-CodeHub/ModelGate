@@ -86,7 +86,7 @@ export function BindForm() {
 
         <div className="flex items-center gap-3 px-2">
           <div className="h-px flex-1 bg-[var(--color-border)]" />
-          <span className="text-xs text-[var(--color-foreground)]0">或</span>
+          <span className="text-xs text-[var(--color-foreground-muted)]">或</span>
           <div className="h-px flex-1 bg-[var(--color-border)]" />
         </div>
 

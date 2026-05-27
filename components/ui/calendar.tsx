@@ -25,11 +25,11 @@ export function Calendar({
                 nav: "absolute inset-x-0 top-0 flex items-center justify-between px-0.5",
                 button_previous: cn(
                     buttonVariants({ variant: "ghost", size: "icon" }),
-                    "h-7 w-7 rounded-md border border-[var(--color-border)] p-0 text-[var(--color-foreground-secondary)] hover:bg-[var(--color-surface-hover)]",
+                    "h-7 w-7 rounded-md border border-[var(--color-border)] p-0 text-[var(--color-foreground-secondary)] hover:bg-[var(--color-popover-hover)]",
                 ),
                 button_next: cn(
                     buttonVariants({ variant: "ghost", size: "icon" }),
-                    "h-7 w-7 rounded-md border border-[var(--color-border)] p-0 text-[var(--color-foreground-secondary)] hover:bg-[var(--color-surface-hover)]",
+                    "h-7 w-7 rounded-md border border-[var(--color-border)] p-0 text-[var(--color-foreground-secondary)] hover:bg-[var(--color-popover-hover)]",
                 ),
                 month_grid: "w-full border-collapse",
                 weekdays: "flex",
@@ -39,10 +39,10 @@ export function Calendar({
                 day: "relative h-9 w-9 p-0 text-center text-sm focus-within:relative focus-within:z-20",
                 day_button: cn(
                     buttonVariants({ variant: "ghost", size: "icon" }),
-                    "h-9 w-9 rounded-md p-0 font-normal text-[var(--color-foreground)] shadow-none hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-foreground)]",
+                    "h-9 w-9 rounded-md p-0 font-normal text-[var(--color-foreground)] shadow-none hover:bg-[var(--color-popover-hover)] hover:text-[var(--color-foreground)]",
                 ),
                 selected: "bg-[var(--color-accent)] text-[var(--color-accent-foreground)] rounded-md hover:bg-[var(--color-accent-hover)]",
-                today: "rounded-md border border-[var(--color-border-hover)] bg-[var(--color-surface-hover)] text-[var(--color-foreground)]",
+                today: "rounded-md border border-[var(--color-border-hover)] bg-[var(--color-popover-hover)] text-[var(--color-foreground)]",
                 outside: "text-[var(--color-foreground-subtle)] opacity-40",
                 disabled: "text-[var(--color-foreground-subtle)] opacity-30 pointer-events-none",
                 hidden: "invisible",

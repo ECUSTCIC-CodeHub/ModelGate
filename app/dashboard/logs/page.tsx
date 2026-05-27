@@ -55,6 +55,22 @@ type Summary = {
   avg_output_tps: number;
 };
 
+const USER_AGENT_PATTERNS: Array<{ pattern: RegExp; name: string }> = [
+  { pattern: /OpenAI\/JS\s*([^\s)]+)/i, name: "OpenAI/JS" },
+  { pattern: /Claude-Code\/([^\s)]+)/i, name: "Claude Code" },
+  { pattern: /claude-cli\/([^\s)]+)/i, name: "Claude Code" },
+  { pattern: /Apifox\/([^\s)]+)/i, name: "Apifox" },
+  { pattern: /PostmanRuntime\/([^\s)]+)/i, name: "Postman" },
+  { pattern: /curl\/([^\s)]+)/i, name: "curl" },
+  { pattern: /python-requests\/([^\s)]+)/i, name: "python-requests" },
+  { pattern: /node\/([^\s)]+)/i, name: "Node.js" },
+  { pattern: /Edg\/([^\s)]+)/i, name: "Edge" },
+  { pattern: /Chrome\/([^\s)]+)/i, name: "Chrome" },
+  { pattern: /Firefox\/([^\s)]+)/i, name: "Firefox" },
+  { pattern: /Version\/([^\s)]+).*Safari\//i, name: "Safari" },
+  { pattern: /Safari\/([^\s)]+)/i, name: "Safari" },
+];
+
 function formatDuration(ms: number | null | undefined) {
   if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return "-";
   if (ms < 1000) return `${Math.round(ms)} ms`;
@@ -67,6 +83,61 @@ function formatDuration(ms: number | null | undefined) {
 
   const hour = min / 60;
   return `${hour.toFixed(2)} h`;
+}
+
+function formatUserAgent(value: string | null | undefined) {
+  if (!value) return "-";
+  const text = value.trim();
+  for (const rule of USER_AGENT_PATTERNS) {
+    const match = text.match(rule.pattern);
+    if (match?.[1]) return `${rule.name} ${match[1]}`;
+  }
+  return text
+    .replace(/\s*\([^)]*\)\s*/g, " ")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .join(" ") || text;
+}
+
+function ClientInfo({ ip, userAgent }: { ip: string | null; userAgent: string | null }) {
+  const shortUserAgent = formatUserAgent(userAgent);
+
+  return (
+    <div className="max-w-64 space-y-1 leading-tight">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <span className="shrink-0 rounded-sm bg-[var(--color-popover-hover)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--color-foreground-muted)]">
+          IP
+        </span>
+        <span className="truncate font-mono text-xs text-[var(--color-foreground-muted)]">{ip ?? "-"}</span>
+      </div>
+      {userAgent ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className="flex max-w-64 cursor-help items-center gap-1.5 rounded-sm text-left text-xs text-[var(--color-foreground-secondary)] transition-colors hover:text-[var(--color-accent)]"
+            >
+              <span className="shrink-0 rounded-sm bg-[var(--color-popover-hover)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--color-foreground-muted)]">
+                UA
+              </span>
+              <span className="truncate underline decoration-[var(--color-border-strong)] underline-offset-2">{shortUserAgent}</span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent align="start" className="max-w-96">
+            <p className="break-all font-mono text-[11px] leading-relaxed">{userAgent}</p>
+          </TooltipContent>
+        </Tooltip>
+      ) : (
+        <div className="flex items-center gap-1.5 text-xs text-[var(--color-foreground-muted)]">
+          <span className="shrink-0 rounded-sm bg-[var(--color-popover-hover)] px-1.5 py-0.5 font-mono text-[10px]">
+            UA
+          </span>
+          <span>-</span>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function parseDateValue(value: string) {
@@ -262,33 +333,19 @@ export default function AdminLogsPage() {
       cols.push({
         accessorKey: "username",
         header: "用户",
-        cell: ({ row }) => {
-          const ip = row.original.client_ip;
-          const userAgent = row.original.user_agent;
-          return (
-            <div className="max-w-56 leading-tight">
-              <div className="truncate whitespace-nowrap">{row.original.username}</div>
-              <div className="truncate whitespace-nowrap text-xs text-[var(--color-foreground-muted)]" title={userAgent ?? undefined}>
-                {ip ?? "-"}{userAgent ? ` · ${userAgent}` : ""}
-              </div>
-            </div>
-          );
-        },
-      });
-    } else {
-      cols.push({
-        accessorKey: "client_ip",
-        header: "客户端",
         cell: ({ row }) => (
-          <div className="max-w-56 leading-tight">
-            <div className="font-mono text-xs text-[var(--color-foreground-muted)]">{row.original.client_ip ?? "-"}</div>
-            <div className="truncate text-xs text-[var(--color-foreground-muted)]" title={row.original.user_agent ?? undefined}>
-              {row.original.user_agent ?? "-"}
-            </div>
-          </div>
+          <span className="block max-w-36 truncate whitespace-nowrap" title={row.original.username}>
+            {row.original.username}
+          </span>
         ),
       });
     }
+
+    cols.push({
+      accessorKey: "client_ip",
+      header: "客户端",
+      cell: ({ row }) => <ClientInfo ip={row.original.client_ip} userAgent={row.original.user_agent} />,
+    });
 
     cols.push({
       id: "model",
