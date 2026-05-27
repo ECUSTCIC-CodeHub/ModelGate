@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { applyAuthCookies, hashPassword, issueAuthTokens, requireWebAuthWithRefresh, sanitizeUser, signOidcPendingToken, OIDC_PENDING_COOKIE_NAME } from "@/lib/auth";
+import { applyAuthCookies, hashPassword, issueAuthTokens, requireWebAuthWithRefresh, signOidcPendingToken, OIDC_PENDING_COOKIE_NAME } from "@/lib/auth";
 import { gatewayDb, type DbUser } from "@/lib/db";
 import {
   getOidcConfig,

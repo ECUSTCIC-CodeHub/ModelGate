@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import "../public/fonts/harmony.css";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/toast";
 import { ThemeScript } from "@/components/providers/theme-script";
@@ -19,7 +20,6 @@ export default function RootLayout({
   return (
     <html lang="zh" suppressHydrationWarning>
       <head>
-        <link rel="stylesheet" href="/fonts/harmony.css" />
         <ThemeScript />
       </head>
       <body className="antialiased">
