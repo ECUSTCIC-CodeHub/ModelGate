@@ -52,6 +52,22 @@ export type GroupOption = {
   is_default: number;
 };
 
+export type UserOidcBinding = {
+  issuer: string;
+  subject: string;
+};
+
+export type UserGroupLimits = {
+  rpm: number | null;
+  qps: number | null;
+  tpm: number | null;
+  quota_requests: number | null;
+  quota_tokens: number | null;
+  quota_period: number | null;
+  period_quota_tokens: number | null;
+  period_quota_requests: number | null;
+};
+
 export type UserSortKey = "created_at" | "used_requests" | "used_tokens" | "username";
 
 export const PERIOD_PRESETS = [
