@@ -1,0 +1,114 @@
+import type { GatewayProtocol } from "@/lib/gateway/protocols";
+
+export type DbChannel = {
+  id: number;
+  name: string;
+  base_url: string;
+  api_key: string;
+  supported_protocols: string;
+  enabled: number;
+  weight: number;
+  max_concurrency: number;
+  timeout: number;
+  created_at: string;
+  deleted_at: string | null;
+};
+
+export type DbModel = {
+  id: number;
+  alias: string;
+  real_model: string;
+  channel_id: number;
+  upstream_protocol: GatewayProtocol;
+  is_public: number;
+  enabled: number;
+  weight: number;
+  token_multiplier: number;
+  request_multiplier: number;
+  created_at: string;
+  deleted_at: string | null;
+};
+
+export type DbGroup = {
+  id: number;
+  name: string;
+  description: string | null;
+  qps: number;
+  rpm: number;
+  tpm: number;
+  quota_requests: number | null;
+  quota_tokens: number | null;
+  quota_period: number | null;
+  period_quota_tokens: number | null;
+  period_quota_requests: number | null;
+  allowed_model_aliases: string;
+  oidc_claim_value: string | null;
+  oidc_claim_expr: string | null;
+  oidc_claim_priority: number;
+  is_default: number;
+  enabled: number;
+  created_at: string;
+  deleted_at: string | null;
+};
+
+export type DbUser = {
+  id: number;
+  username: string;
+  password_hash: string;
+  role: "admin" | "user";
+  group_id: number | null;
+  oidc_issuer: string | null;
+  oidc_subject: string | null;
+  rpm: number;
+  qps: number;
+  tpm: number;
+  quota_tokens: number | null;
+  quota_requests: number | null;
+  quota_period: number | null;
+  period_quota_tokens: number | null;
+  period_quota_requests: number | null;
+  period_used_tokens: number;
+  period_used_requests: number;
+  period_reset_at: string | null;
+  used_tokens: number;
+  used_requests: number;
+  allowed_model_aliases: string;
+  note: string | null;
+  enabled: number;
+  created_at: string;
+  deleted_at: string | null;
+};
+
+export type DbKey = {
+  id: number;
+  key: string;
+  name: string;
+  user_id: number;
+  used_tokens: number;
+  used_requests: number;
+  enabled: number;
+  created_at: string;
+  deleted_at: string | null;
+};
+
+export type DbLog = {
+  id: number;
+  user_id: number;
+  key_id: number;
+  channel_id: number | null;
+  model_alias: string | null;
+  real_model: string | null;
+  stream: number;
+  status_code: number | null;
+  estimated_tokens: number | null;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  total_tokens: number | null;
+  latency_ms: number | null;
+  first_token_latency_ms: number | null;
+  output_tps: number | null;
+  route_attempts: number | null;
+  attempted_channels: string | null;
+  error_message: string | null;
+  created_at: string;
+};
