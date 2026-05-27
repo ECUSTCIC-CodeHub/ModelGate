@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { modelGateFeatures } from "@/lib/core/features";
+import { filterSettingsInputForEdition, maskSettingsForEdition } from "@/lib/core/features";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { getGatewaySettings, setGatewaySettings } from "@/lib/core/settings";
@@ -32,24 +32,7 @@ export async function GET(request: Request) {
   if ("error" in guard) return guard.error;
 
   const settings = getGatewaySettings();
-  const masked = {
-    ...settings,
-    password_login_enabled: modelGateFeatures.oidc ? settings.password_login_enabled : 1,
-    ...(modelGateFeatures.oidc ? {} : {
-      oidc_enabled: 0,
-      oidc_issuer_url: "",
-      oidc_client_id: "",
-      oidc_client_secret: "",
-      oidc_scopes: "openid profile email",
-      oidc_auto_register: 1,
-      oidc_button_text: "OIDC 登录",
-    }),
-    ...(modelGateFeatures.announcement ? {} : { announcement_content: "" }),
-    ...(modelGateFeatures.webhook ? {} : { webhook_secret: "" }),
-    oidc_client_secret: modelGateFeatures.oidc && settings.oidc_client_secret ? "••••••••" : "",
-    webhook_secret: modelGateFeatures.webhook && settings.webhook_secret ? "••••••••" : "",
-  };
-  return jsonOk({ message: "系统设置获取成功。", data: masked });
+  return jsonOk({ message: "系统设置获取成功。", data: maskSettingsForEdition(settings) });
 }
 
 export async function PUT(request: Request) {
@@ -60,22 +43,7 @@ export async function PUT(request: Request) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
-  const input = { ...parsed.data };
-  if (!modelGateFeatures.oidc) {
-    input.oidc_enabled = false;
-    delete input.oidc_issuer_url;
-    delete input.oidc_client_id;
-    delete input.oidc_client_secret;
-    delete input.oidc_scopes;
-    delete input.oidc_auto_register;
-    delete input.oidc_button_text;
-  }
-  if (!modelGateFeatures.announcement) {
-    delete input.announcement_content;
-  }
-  if (!modelGateFeatures.webhook) {
-    delete input.webhook_secret;
-  }
+  const input = filterSettingsInputForEdition({ ...parsed.data });
   if (input.oidc_client_secret === "••••••••") {
     delete input.oidc_client_secret;
   }
@@ -96,22 +64,6 @@ export async function PUT(request: Request) {
   const updated = getGatewaySettings();
   return jsonOk({
     message: "系统设置更新成功。",
-    data: {
-      ...updated,
-      password_login_enabled: modelGateFeatures.oidc ? updated.password_login_enabled : 1,
-      ...(modelGateFeatures.oidc ? {} : {
-        oidc_enabled: 0,
-        oidc_issuer_url: "",
-        oidc_client_id: "",
-        oidc_client_secret: "",
-        oidc_scopes: "openid profile email",
-        oidc_auto_register: 1,
-        oidc_button_text: "OIDC 登录",
-      }),
-      ...(modelGateFeatures.announcement ? {} : { announcement_content: "" }),
-      ...(modelGateFeatures.webhook ? {} : { webhook_secret: "" }),
-      oidc_client_secret: modelGateFeatures.oidc && updated.oidc_client_secret ? "••••••••" : "",
-      webhook_secret: modelGateFeatures.webhook && updated.webhook_secret ? "••••••••" : "",
-    },
+    data: maskSettingsForEdition(updated),
   });
 }

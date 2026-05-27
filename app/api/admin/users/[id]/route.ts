@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { hashPassword } from "@/lib/auth/auth";
 import { gatewayDb } from "@/lib/core/db";
-import { featureUnavailableMessage, modelGateFeatures } from "@/lib/core/features";
+import { modelGateFeatures, requireFeature } from "@/lib/core/features";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
@@ -42,8 +42,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const body = await request.json().catch(() => null);
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
-  if (!modelGateFeatures.periodQuota && parsed.data.reset_usage === "period") {
-    return jsonError(featureUnavailableMessage("周期配额"), 404);
+  if (parsed.data.reset_usage === "period") {
+    const unavailable = requireFeature("periodQuota");
+    if (unavailable) return unavailable;
   }
 
   const existing = gatewayDb

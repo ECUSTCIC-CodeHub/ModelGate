@@ -12,7 +12,7 @@ import {
   OIDC_PENDING_COOKIE_NAME,
 } from "@/lib/auth/auth";
 import { gatewayDb, type DbUser } from "@/lib/core/db";
-import { featureUnavailableMessage, modelGateFeatures } from "@/lib/core/features";
+import { requireFeature } from "@/lib/core/features";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { checkLoginRateLimit } from "@/lib/auth/login-ratelimit";
 import { deriveUsername, resolveGroupFromClaims } from "@/lib/auth/oidc";
@@ -46,9 +46,8 @@ function clearPendingCookie(res: NextResponse) {
 }
 
 export async function POST(request: Request) {
-  if (!modelGateFeatures.oidc) {
-    return jsonError(featureUnavailableMessage("OIDC"), 404);
-  }
+  const unavailable = requireFeature("oidc");
+  if (unavailable) return unavailable;
 
   const pendingToken = parseCookie(request.headers.get("cookie"), OIDC_PENDING_COOKIE_NAME);
   if (!pendingToken) return jsonError("绑定信息已过期，请重新登录", 401);

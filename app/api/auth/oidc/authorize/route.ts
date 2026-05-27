@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { jsonError } from "@/lib/core/http";
-import { featureUnavailableMessage, modelGateFeatures } from "@/lib/core/features";
+import { requireFeature } from "@/lib/core/features";
 import {
   getOidcConfig,
   fetchDiscovery,
@@ -13,9 +13,8 @@ import {
 } from "@/lib/auth/oidc";
 
 export async function GET(request: Request) {
-  if (!modelGateFeatures.oidc) {
-    return jsonError(featureUnavailableMessage("OIDC"), 404);
-  }
+  const unavailable = requireFeature("oidc");
+  if (unavailable) return unavailable;
 
   const config = getOidcConfig();
   if (!config.enabled || !config.issuerUrl || !config.clientId) {

@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { applyAuthCookies, hashPassword, issueAuthTokens, requireWebAuthWithRefresh, signOidcPendingToken, OIDC_PENDING_COOKIE_NAME } from "@/lib/auth/auth";
 import { gatewayDb, type DbUser } from "@/lib/core/db";
-import { featureUnavailableMessage, modelGateFeatures } from "@/lib/core/features";
+import { featureUnavailableMessage, isFeatureEnabled } from "@/lib/core/features";
 import {
   getOidcConfig,
   fetchDiscovery,
@@ -41,7 +41,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const origin = getPublicOrigin(request.url);
 
-  if (!modelGateFeatures.oidc) {
+  if (!isFeatureEnabled("oidc")) {
     return redirectWithError(origin, featureUnavailableMessage("OIDC"));
   }
 

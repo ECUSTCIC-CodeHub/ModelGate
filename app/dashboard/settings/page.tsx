@@ -325,7 +325,6 @@ export default function AdminSettingsPage() {
         </Card>
         ) : null}
 
-        {announcementFeatureEnabled ? (
         <Card>
           <CardHeader>
             <SectionTitle
@@ -343,7 +342,6 @@ export default function AdminSettingsPage() {
             </div>
           </CardContent>
         </Card>
-        ) : null}
 
         {webhookFeatureEnabled ? (
         <Card>
@@ -392,6 +390,7 @@ export default function AdminSettingsPage() {
         </Card>
         ) : null}
 
+        {announcementFeatureEnabled ? (
         <Card>
           <CardHeader>
             <SectionTitle
@@ -409,6 +408,7 @@ export default function AdminSettingsPage() {
             />
           </CardContent>
         </Card>
+        ) : null}
 
         <Card>
           <CardHeader>

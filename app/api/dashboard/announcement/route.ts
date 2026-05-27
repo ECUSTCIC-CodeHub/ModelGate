@@ -1,14 +1,13 @@
 export const dynamic = "force-dynamic";
 
 import { ensureWebUser } from "@/lib/auth/guards";
-import { featureUnavailableMessage, modelGateFeatures } from "@/lib/core/features";
-import { jsonError, jsonOk } from "@/lib/core/http";
+import { requireFeature } from "@/lib/core/features";
+import { jsonOk } from "@/lib/core/http";
 import { gatewayDb } from "@/lib/core/db";
 
 export async function GET(request: Request) {
-  if (!modelGateFeatures.announcement) {
-    return jsonError(featureUnavailableMessage("公告"), 404);
-  }
+  const unavailable = requireFeature("announcement");
+  if (unavailable) return unavailable;
 
   const guard = ensureWebUser(request);
   if ("error" in guard) return guard.error;
