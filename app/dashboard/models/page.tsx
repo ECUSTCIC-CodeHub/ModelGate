@@ -21,7 +21,7 @@ type ModelItem = {
 
 const ENDPOINTS = [
   { label: "Chat Completions (OpenAI)", path: "/api/v1/chat/completions", method: "POST" },
-  { label: "Chat (Ollama)", path: "/api/v1/chat", method: "POST" },
+  { label: "Chat (Ollama)", path: "/api/ollama/api/chat", method: "POST" },
   { label: "Responses (OpenAI)", path: "/api/v1/responses", method: "POST" },
   { label: "Messages (Anthropic Claude)", path: "/api/v1/messages", method: "POST" },
   { label: "Embeddings (OpenAI)", path: "/api/v1/embeddings", method: "POST" },

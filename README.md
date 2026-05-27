@@ -17,10 +17,10 @@
 - **模型别名路由** — 自动协议转换，客户端无感知
 - **多协议支持：**
   - `POST /api/v1/chat/completions` — OpenAI Chat Completions
-  - `POST /api/v1/chat` — Ollama Chat（`/api/chat` 兼容别名）
-  - `GET /api/tags` — Ollama 模型列表（`/api/v1/tags` 兼容别名）
-  - `POST /api/show` — Ollama 模型详情（`/api/v1/show` 兼容别名）
-  - `GET /api/version` — Ollama 版本探测
+  - `POST /api/ollama/api/chat` — Ollama Chat
+  - `GET /api/ollama/api/tags` — Ollama 模型列表
+  - `POST /api/ollama/api/show` — Ollama 模型详情
+  - `GET /api/ollama/api/version` — Ollama 版本探测
   - `POST /api/v1/responses` — OpenAI Responses
   - `POST /api/v1/messages` — Anthropic Claude Messages
   - `POST /api/v1/embeddings` — OpenAI Embeddings
@@ -151,7 +151,7 @@ SQLite 数据库：`data/gateway.db`（首次运行自动创建）
 |----------|----------|
 | `/api/admin/*`、`/api/dashboard/*` | 管理员角色 |
 | `/api/user/*` | 已认证用户，仅限本人资源 |
-| `/api/v1/*`、`/api/chat`、`/api/tags`、`/api/show`、`/api/version`、`/api/ollama/:api_key/api/*`、`/api/ollama/:api_key/v1/*` | API Key 认证 |
+| `/api/v1/*`、`/api/ollama/*` | API Key 认证 |
 
 所有接口均支持两种认证方式：
 - **Session 认证**：JWT Cookie（Web 控制台自动管理）
@@ -159,7 +159,7 @@ SQLite 数据库：`data/gateway.db`（首次运行自动创建）
 
 Query 鉴权主要用于无法自定义请求头的客户端；能设置请求头时仍推荐使用 `Authorization` 或 `x-api-key`。
 
-Ollama 客户端如果会自行追加 `/api/version`、`/api/tags`、`/api/show`、`/api/chat` 或 `/v1/chat/completions`，可将服务根地址配置为 `http://localhost:3000/api/ollama/sk-gw-xxxx`，路径中的 API Key 会自动用于鉴权。
+Ollama 兼容接口仅放在 `/api/ollama/*` 下。可以通过请求头、query 参数或 path 传递 API Key；Ollama 客户端如果会自行追加 `/api/version`、`/api/tags`、`/api/show`、`/api/chat` 或 `/v1/chat/completions`，可将服务根地址配置为 `http://localhost:3000/api/ollama/sk-gw-xxxx`，路径中的 API Key 会自动用于鉴权。
 
 ## 用户 API 接入指南
 
@@ -265,8 +265,11 @@ curl http://localhost:3000/api/v1/models \
   -H 'Authorization: Bearer sk-gw-xxxx'
 
 # Ollama 模型列表
-curl http://localhost:3000/api/tags \
+curl http://localhost:3000/api/ollama/api/tags \
   -H 'Authorization: Bearer sk-gw-xxxx'
+
+# Ollama 模型列表（query 鉴权）
+curl 'http://localhost:3000/api/ollama/api/tags?token=sk-gw-xxxx'
 
 # Ollama 客户端根地址（无法设置鉴权请求头时）
 http://localhost:3000/api/ollama/sk-gw-xxxx
@@ -278,7 +281,7 @@ curl http://localhost:3000/api/v1/chat/completions \
   -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "你好"}]}'
 
 # Ollama Chat
-curl http://localhost:3000/api/v1/chat \
+curl http://localhost:3000/api/ollama/api/chat \
   -H 'Authorization: Bearer sk-gw-xxxx' \
   -H 'Content-Type: application/json' \
   -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "你好"}], "stream": false}'
