@@ -1,10 +1,9 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useToast } from "@/components/ui/toast";
-import { authedFetch, ensureAdmin } from "@/lib/auth/client-auth";
+import { authedFetch } from "@/lib/auth/client-auth";
 import { getApiMessage } from "@/lib/shared/api-message";
 import {
   initialChannelForm,
@@ -18,61 +17,28 @@ import {
   type ModelRow,
   type ModelWithChannel,
   type Protocol,
-  type UpstreamModelOption,
 } from "./channel-model";
+import { useChannelRecords } from "./use-channel-records";
+import { useUpstreamModelPicker } from "./use-upstream-model-picker";
 
 export function useChannelAdmin() {
-  const router = useRouter();
   const { toast } = useToast();
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [error, setError] = useState("");
+  const { channels, error, loadChannels } = useChannelRecords();
   const [testingModelId, setTestingModelId] = useState<number | null>(null);
 
   const [channelDrawerOpen, setChannelDrawerOpen] = useState(false);
   const [channelEditingId, setChannelEditingId] = useState<number | null>(null);
   const [channelForm, setChannelForm] = useState<ChannelForm>(initialChannelForm);
   const [channelModels, setChannelModels] = useState<ChannelModelDraft[]>([{ ...initialModelDraft }]);
-  const [probingModels, setProbingModels] = useState(false);
 
   const [modelDrawerOpen, setModelDrawerOpen] = useState(false);
   const [modelEditingId, setModelEditingId] = useState<number | null>(null);
   const [modelForm, setModelForm] = useState<ModelForm>(initialModelForm);
-  const [upstreamPickerOpen, setUpstreamPickerOpen] = useState(false);
-  const [upstreamPickerQuery, setUpstreamPickerQuery] = useState("");
-  const [upstreamModelOptions, setUpstreamModelOptions] = useState<UpstreamModelOption[]>([]);
-
-  async function load() {
-    if (!(await ensureAdmin(router))) return;
-
-    const response = await authedFetch("/api/admin/channels");
-    const data = await response.json();
-
-    if (!response.ok) {
-      setError(data?.error?.message ?? "加载失败");
-      return;
-    }
-
-    setError("");
-    setChannels(data.data ?? []);
-  }
-
-  useEffect(() => {
-    let cancelled = false;
-    async function init() {
-      if (!(await ensureAdmin(router))) return;
-      if (cancelled) return;
-      const response = await authedFetch("/api/admin/channels");
-      if (cancelled) return;
-      const data = await response.json();
-      if (!response.ok) {
-        setError(data?.error?.message ?? "加载失败");
-        return;
-      }
-      setChannels(data.data ?? []);
-    }
-    void init();
-    return () => { cancelled = true; };
-  }, [router]);
+  const upstreamPicker = useUpstreamModelPicker({
+    channelModels,
+    setChannelModels,
+    getDefaultProtocols: () => channelForm.supported_protocols,
+  });
 
   function openCreateChannel() {
     setChannelEditingId(null);
@@ -122,101 +88,6 @@ export function useChannelAdmin() {
     setChannelModels((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   }
 
-  async function probeUpstreamModels(baseUrl: string, apiKey: string, existingModels: ModelRow[] = []) {
-    if (!baseUrl.trim() || !apiKey.trim()) {
-      toast({ variant: "error", description: "请先填写 Base URL 与 API Key。" });
-      return;
-    }
-    setProbingModels(true);
-    try {
-      const response = await authedFetch("/api/admin/channels/probe-models", {
-        method: "POST",
-        body: JSON.stringify({
-          base_url: baseUrl.trim(),
-          api_key: apiKey.trim(),
-        }),
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok) {
-        toast({ variant: "error", description: getApiMessage(data, "拉取上游模型列表失败。") });
-        return;
-      }
-      const ids = (data?.data ?? []) as string[];
-      if (ids.length === 0) {
-        toast({ variant: "error", description: "上游未返回任何模型。" });
-        return;
-      }
-      const existingRealModels = new Set(existingModels.map((model) => model.real_model.trim()).filter(Boolean));
-      const seen = new Set<string>();
-      const options = ids
-        .map((id) => id.trim())
-        .filter((id) => {
-          if (!id || seen.has(id)) return false;
-          seen.add(id);
-          return true;
-        })
-        .map<UpstreamModelOption>((id) => ({
-          id,
-          selected: existingRealModels.has(id),
-          disabled: existingRealModels.has(id),
-        }));
-      setUpstreamModelOptions(options);
-      setUpstreamPickerQuery("");
-      setUpstreamPickerOpen(true);
-      toast({ variant: "success", description: `已拉取 ${options.length} 个模型，请选择要加入草稿的模型。` });
-    } finally {
-      setProbingModels(false);
-    }
-  }
-
-  function toggleUpstreamModel(id: string, selected: boolean) {
-    setUpstreamModelOptions((prev) =>
-      prev.map((item) => (item.id === id && !item.disabled ? { ...item, selected } : item)),
-    );
-  }
-
-  function selectFilteredUpstreamModels(selected: boolean) {
-    const query = upstreamPickerQuery.trim().toLowerCase();
-    setUpstreamModelOptions((prev) =>
-      prev.map((item) => {
-        const visible = !query || item.id.toLowerCase().includes(query);
-        return visible && !item.disabled ? { ...item, selected } : item;
-      }),
-    );
-  }
-
-  function confirmUpstreamModelSelection(protocols = channelForm.supported_protocols) {
-    const selectedIds = upstreamModelOptions.filter((item) => item.selected && !item.disabled).map((item) => item.id);
-    if (selectedIds.length === 0) {
-      toast({ variant: "error", description: "请选择至少一个要加入草稿的上游模型。" });
-      return;
-    }
-
-    const protocol = protocols[0] ?? "chat_completions";
-    const currentDraftRealModels = new Set(channelModels.map((model) => model.real_model.trim()).filter(Boolean));
-    const selectedNewIds = selectedIds.filter((id) => !currentDraftRealModels.has(id));
-    if (selectedNewIds.length === 0) {
-      toast({ variant: "error", description: "所选模型已在当前草稿中。" });
-      return;
-    }
-    setChannelModels((prev) => {
-      const filledFromPrev = prev.filter((model) => model.alias.trim() || model.real_model.trim());
-      const existingRealModels = new Set(filledFromPrev.map((model) => model.real_model.trim()).filter(Boolean));
-      const additions = selectedNewIds
-        .filter((id) => !existingRealModels.has(id))
-        .map<ChannelModelDraft>((id) => ({
-          ...initialModelDraft,
-          alias: id,
-          real_model: id,
-          upstream_protocol: protocol,
-        }));
-      const merged = [...filledFromPrev, ...additions];
-      return merged.length > 0 ? merged : [{ ...initialModelDraft, upstream_protocol: protocol }];
-    });
-    setUpstreamPickerOpen(false);
-    toast({ variant: "success", description: `已加入 ${selectedNewIds.length} 个模型草稿。` });
-  }
-
   async function submitChannel(event: FormEvent) {
     event.preventDefault();
 
@@ -250,7 +121,7 @@ export function useChannelAdmin() {
       if (response.ok) {
         toast({ variant: "success", description: getApiMessage(data, "创建渠道成功。") });
         setChannelDrawerOpen(false);
-        await load();
+        await loadChannels();
         return;
       }
       toast({ variant: "error", description: getApiMessage(data, "创建渠道失败。") });
@@ -274,7 +145,7 @@ export function useChannelAdmin() {
     if (response.ok) {
       toast({ variant: "success", description: getApiMessage(data, "更新渠道成功。") });
       setChannelDrawerOpen(false);
-      await load();
+      await loadChannels();
       return;
     }
     toast({ variant: "error", description: getApiMessage(data, "更新渠道失败。") });
@@ -288,7 +159,7 @@ export function useChannelAdmin() {
     const data = await response.json().catch(() => null);
     if (response.ok) {
       toast({ variant: "success", description: getApiMessage(data, "更新渠道状态成功。") });
-      await load();
+      await loadChannels();
       return;
     }
     toast({ variant: "error", description: getApiMessage(data, "更新渠道状态失败。") });
@@ -299,7 +170,7 @@ export function useChannelAdmin() {
     const data = await response.json().catch(() => null);
     if (response.ok) {
       toast({ variant: "success", description: getApiMessage(data, "删除渠道成功。") });
-      await load();
+      await loadChannels();
       return;
     }
     toast({ variant: "error", description: getApiMessage(data, "删除渠道失败。") });
@@ -476,7 +347,7 @@ export function useChannelAdmin() {
       if (failures.length === 0) {
         toast({ variant: "success", description: `已创建 ${successCount} 个模型。` });
         setModelDrawerOpen(false);
-        await load();
+        await loadChannels();
         return;
       }
       toast({
@@ -485,7 +356,7 @@ export function useChannelAdmin() {
         durationMs: 6000,
       });
       setChannelModels(failedDrafts.length > 0 ? failedDrafts : [{ ...initialModelDraft, upstream_protocol: selectedChannelProtocols[0] ?? "chat_completions" }]);
-      if (successCount > 0) await load();
+      if (successCount > 0) await loadChannels();
       return;
     }
 
@@ -497,7 +368,7 @@ export function useChannelAdmin() {
     if (response.ok) {
       toast({ variant: "success", description: getApiMessage(data, "更新模型成功。") });
       setModelDrawerOpen(false);
-      await load();
+      await loadChannels();
       return;
     }
     toast({ variant: "error", description: getApiMessage(data, "更新模型失败。") });
@@ -511,7 +382,7 @@ export function useChannelAdmin() {
     const data = await response.json().catch(() => null);
     if (response.ok) {
       toast({ variant: "success", description: getApiMessage(data, "更新模型状态成功。") });
-      await load();
+      await loadChannels();
       return;
     }
     toast({ variant: "error", description: getApiMessage(data, "更新模型状态失败。") });
@@ -522,7 +393,7 @@ export function useChannelAdmin() {
     const data = await response.json().catch(() => null);
     if (response.ok) {
       toast({ variant: "success", description: getApiMessage(data, "删除模型成功。") });
-      await load();
+      await loadChannels();
       return;
     }
     toast({ variant: "error", description: getApiMessage(data, "删除模型失败。") });
@@ -547,7 +418,7 @@ export function useChannelAdmin() {
     channelForm,
     channelModels,
     channels,
-    confirmUpstreamModelSelection,
+    confirmUpstreamModelSelection: upstreamPicker.confirmUpstreamModelSelection,
     error,
     modelDrawerOpen,
     modelEditingId,
@@ -556,32 +427,32 @@ export function useChannelAdmin() {
     openCreateModel,
     openEditChannel,
     openEditModel,
-    probingModels,
-    probeUpstreamModels,
+    probingModels: upstreamPicker.probingModels,
+    probeUpstreamModels: upstreamPicker.probeUpstreamModels,
     removeChannel,
     removeChannelModelDraft,
     removeModel,
     selectedChannel,
     selectedChannelProtocols,
-    selectFilteredUpstreamModels,
+    selectFilteredUpstreamModels: upstreamPicker.selectFilteredUpstreamModels,
     setChannelDrawerOpen,
     setModelDrawerOpen,
-    setUpstreamPickerOpen,
-    setUpstreamPickerQuery,
+    setUpstreamPickerOpen: upstreamPicker.setUpstreamPickerOpen,
+    setUpstreamPickerQuery: upstreamPicker.setUpstreamPickerQuery,
     submitChannel,
     submitModel,
     testingModelId,
     testModel,
     toggleChannel,
     toggleModel,
-    toggleUpstreamModel,
+    toggleUpstreamModel: upstreamPicker.toggleUpstreamModel,
     updateChannelForm,
     updateChannelModelDraft,
     updateModelChannel,
     updateModelForm,
     updateSupportedProtocols,
-    upstreamModelOptions,
-    upstreamPickerOpen,
-    upstreamPickerQuery,
+    upstreamModelOptions: upstreamPicker.upstreamModelOptions,
+    upstreamPickerOpen: upstreamPicker.upstreamPickerOpen,
+    upstreamPickerQuery: upstreamPicker.upstreamPickerQuery,
   };
 }
