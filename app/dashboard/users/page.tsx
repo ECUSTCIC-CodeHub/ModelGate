@@ -205,7 +205,7 @@ export default function AdminUsersPage() {
     if (nextKeyword.trim()) params.set("keyword", nextKeyword.trim());
     if (nextGroupFilter && nextGroupFilter !== "all") params.set("group_id", nextGroupFilter);
 
-    const response = await authedFetch(`/api/dashboard/users?${params.toString()}`);
+    const response = await authedFetch(`/api/admin/users?${params.toString()}`);
     const data = await response.json();
     if (response.ok) {
       setRows(data.data ?? []);
@@ -223,9 +223,9 @@ export default function AdminUsersPage() {
       if (cancelled || !profile) return;
 
       const [usersRes, modelsRes, groupsRes] = await Promise.all([
-        authedFetch(`/api/dashboard/users?${new URLSearchParams({ limit: String(pageSize), offset: "0", sort_by: "created_at", sort_dir: "desc" })}`),
-        authedFetch("/api/dashboard/models"),
-        authedFetch("/api/dashboard/groups"),
+        authedFetch(`/api/admin/users?${new URLSearchParams({ limit: String(pageSize), offset: "0", sort_by: "created_at", sort_dir: "desc" })}`),
+        authedFetch("/api/admin/models"),
+        authedFetch("/api/admin/groups"),
       ]);
       if (cancelled) return;
 
@@ -340,7 +340,7 @@ export default function AdminUsersPage() {
     };
 
     if (editingId === null) {
-      const response = await authedFetch("/api/dashboard/users", {
+      const response = await authedFetch("/api/admin/users", {
         method: "POST",
         body: JSON.stringify({ ...payload, password: form.password }),
       });
@@ -356,7 +356,7 @@ export default function AdminUsersPage() {
       return;
     }
 
-    const response = await authedFetch(`/api/dashboard/users/${editingId}`, {
+    const response = await authedFetch(`/api/admin/users/${editingId}`, {
       method: "PUT",
       body: JSON.stringify(payload),
     });
@@ -373,7 +373,7 @@ export default function AdminUsersPage() {
   }
 
   async function resetUsage(id: number, type: "all" | "total" | "period") {
-    const response = await authedFetch(`/api/dashboard/users/${id}`, {
+    const response = await authedFetch(`/api/admin/users/${id}`, {
       method: "PUT",
       body: JSON.stringify({ reset_usage: type }),
     });
@@ -387,7 +387,7 @@ export default function AdminUsersPage() {
   }
 
   async function remove(id: number) {
-    const response = await authedFetch(`/api/dashboard/users/${id}`, { method: "DELETE" });
+    const response = await authedFetch(`/api/admin/users/${id}`, { method: "DELETE" });
     const data = await response.json().catch(() => null);
     if (response.ok) {
       toast({ variant: "success", description: getApiMessage(data, "删除用户成功。") });

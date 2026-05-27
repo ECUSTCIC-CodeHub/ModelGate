@@ -140,7 +140,7 @@ export default function AdminGroupsPage() {
 
   async function load() {
     if (!(await ensureAdmin(router))) return;
-    const response = await authedFetch("/api/dashboard/groups?limit=100");
+    const response = await authedFetch("/api/admin/groups?limit=100");
     const data = await response.json();
     if (response.ok) {
       setRows(data.data ?? []);
@@ -154,8 +154,8 @@ export default function AdminGroupsPage() {
       const profile = await ensureAdmin(router);
       if (cancelled || !profile) return;
       const [groupsRes, modelsRes] = await Promise.all([
-        authedFetch("/api/dashboard/groups?limit=100"),
-        authedFetch("/api/dashboard/models"),
+        authedFetch("/api/admin/groups?limit=100"),
+        authedFetch("/api/admin/models"),
       ]);
       if (cancelled) return;
       const groupsData = await groupsRes.json();
@@ -247,7 +247,7 @@ export default function AdminGroupsPage() {
     };
 
     if (editingId === null) {
-      const response = await authedFetch("/api/dashboard/groups", {
+      const response = await authedFetch("/api/admin/groups", {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -263,7 +263,7 @@ export default function AdminGroupsPage() {
       return;
     }
 
-    const response = await authedFetch(`/api/dashboard/groups/${editingId}`, {
+    const response = await authedFetch(`/api/admin/groups/${editingId}`, {
       method: "PUT",
       body: JSON.stringify(payload),
     });
@@ -280,7 +280,7 @@ export default function AdminGroupsPage() {
   }
 
   async function remove(id: number) {
-    const response = await authedFetch(`/api/dashboard/groups/${id}`, { method: "DELETE" });
+    const response = await authedFetch(`/api/admin/groups/${id}`, { method: "DELETE" });
     const data = await response.json().catch(() => null);
     if (response.ok) {
       toast({ variant: "success", description: getApiMessage(data, "删除用户组成功。") });

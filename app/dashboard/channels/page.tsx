@@ -197,7 +197,7 @@ export default function AdminChannelsPage() {
   async function load() {
     if (!(await ensureAdmin(router))) return;
 
-    const response = await authedFetch("/api/dashboard/channels");
+    const response = await authedFetch("/api/admin/channels");
     const data = await response.json();
 
     if (!response.ok) {
@@ -213,7 +213,7 @@ export default function AdminChannelsPage() {
     async function init() {
       if (!(await ensureAdmin(router))) return;
       if (cancelled) return;
-      const response = await authedFetch("/api/dashboard/channels");
+      const response = await authedFetch("/api/admin/channels");
       if (cancelled) return;
       const data = await response.json();
       if (!response.ok) {
@@ -268,7 +268,7 @@ export default function AdminChannelsPage() {
     }
     setProbingModels(true);
     try {
-      const response = await authedFetch("/api/dashboard/channels/probe-models", {
+      const response = await authedFetch("/api/admin/channels/probe-models", {
         method: "POST",
         body: JSON.stringify({
           base_url: baseUrl.trim(),
@@ -371,7 +371,7 @@ export default function AdminChannelsPage() {
         }))
         .filter((item) => item.alias && item.real_model);
 
-      const response = await authedFetch("/api/dashboard/channels", {
+      const response = await authedFetch("/api/admin/channels", {
         method: "POST",
         body: JSON.stringify({
           name: channelForm.name,
@@ -396,7 +396,7 @@ export default function AdminChannelsPage() {
       return;
     }
 
-    const response = await authedFetch(`/api/dashboard/channels/${channelEditingId}`, {
+    const response = await authedFetch(`/api/admin/channels/${channelEditingId}`, {
       method: "PUT",
       body: JSON.stringify({
         name: channelForm.name,
@@ -420,7 +420,7 @@ export default function AdminChannelsPage() {
   }
 
   async function toggleChannel(row: Channel) {
-    const response = await authedFetch(`/api/dashboard/channels/${row.id}`, {
+    const response = await authedFetch(`/api/admin/channels/${row.id}`, {
       method: "PUT",
       body: JSON.stringify({ enabled: row.enabled !== 1 }),
     });
@@ -434,7 +434,7 @@ export default function AdminChannelsPage() {
   }
 
   async function removeChannel(id: number) {
-    const response = await authedFetch(`/api/dashboard/channels/${id}`, { method: "DELETE" });
+    const response = await authedFetch(`/api/admin/channels/${id}`, { method: "DELETE" });
     const data = await response.json().catch(() => null);
     if (response.ok) {
       toast({ variant: "success", description: getApiMessage(data, "删除渠道成功。") });
@@ -447,7 +447,7 @@ export default function AdminChannelsPage() {
   async function testModel(row: ModelRow) {
     setTestingModelId(row.id);
     try {
-      const response = await authedFetch(`/api/dashboard/models/${row.id}/test`, {
+      const response = await authedFetch(`/api/admin/models/${row.id}/test`, {
         method: "POST",
       });
       const data = await response.json().catch(() => null);
@@ -545,7 +545,7 @@ export default function AdminChannelsPage() {
         const batch = draftModels.slice(i, i + BATCH_SIZE);
         const batchResults = await Promise.allSettled(
           batch.map((draft) =>
-            authedFetch("/api/dashboard/models", {
+            authedFetch("/api/admin/models", {
               method: "POST",
               body: JSON.stringify(draft),
             }).then(async (response) => {
@@ -611,7 +611,7 @@ export default function AdminChannelsPage() {
       return;
     }
 
-    const response = await authedFetch(`/api/dashboard/models/${modelEditingId}`, {
+    const response = await authedFetch(`/api/admin/models/${modelEditingId}`, {
       method: "PUT",
       body: JSON.stringify(modelForm),
     });
@@ -626,7 +626,7 @@ export default function AdminChannelsPage() {
   }
 
   async function toggleModel(row: ModelRow) {
-    const response = await authedFetch(`/api/dashboard/models/${row.id}`, {
+    const response = await authedFetch(`/api/admin/models/${row.id}`, {
       method: "PUT",
       body: JSON.stringify({ enabled: row.enabled !== 1 }),
     });
@@ -640,7 +640,7 @@ export default function AdminChannelsPage() {
   }
 
   async function removeModel(id: number) {
-    const response = await authedFetch(`/api/dashboard/models/${id}`, { method: "DELETE" });
+    const response = await authedFetch(`/api/admin/models/${id}`, { method: "DELETE" });
     const data = await response.json().catch(() => null);
     if (response.ok) {
       toast({ variant: "success", description: getApiMessage(data, "删除模型成功。") });

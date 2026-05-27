@@ -41,7 +41,7 @@ export default function AdminSettingsPage() {
 
   async function load() {
     if (!(await ensureAdmin(router))) return;
-    const response = await authedFetch("/api/dashboard/settings");
+    const response = await authedFetch("/api/admin/settings");
     const data = await response.json();
     if (response.ok) {
       setRegistrationEnabled(data.data.registration_enabled === 1);
@@ -75,7 +75,7 @@ export default function AdminSettingsPage() {
     async function init() {
       const profile = await ensureAdmin(router);
       if (cancelled || !profile) return;
-      const response = await authedFetch("/api/dashboard/settings");
+      const response = await authedFetch("/api/admin/settings");
       if (cancelled) return;
       const data = await response.json();
       if (cancelled) return;
@@ -133,7 +133,7 @@ export default function AdminSettingsPage() {
       cors_enabled: corsEnabled,
     };
 
-    const response = await authedFetch("/api/dashboard/settings", {
+    const response = await authedFetch("/api/admin/settings", {
       method: "PUT",
       body: JSON.stringify(payload),
     });

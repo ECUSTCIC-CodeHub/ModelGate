@@ -151,7 +151,8 @@ SQLite 数据库：`data/gateway.db`（首次运行自动创建）
 
 | 接口范围 | 权限要求 |
 |----------|----------|
-| `/api/admin/*`、`/api/dashboard/*` | 管理员角色 |
+| `/api/admin/*` | 管理员角色 |
+| `/api/dashboard/*` | 已认证 Web 用户，按接口返回本人或管理员可见数据 |
 | `/api/user/*` | 已认证用户，仅限本人资源 |
 | `/api/v1/*`、`/api/ollama/*` | API Key 认证 |
 

@@ -53,7 +53,7 @@ export default function ConsoleKeysPage() {
         if (!profile) return;
         setRole(profile.role);
 
-        const response = await authedFetch("/api/dashboard/keys");
+        const response = await authedFetch("/api/user/keys");
         const data = await response.json();
         if (!response.ok) {
             const message = getApiMessage(data, "加载密钥列表失败。");
@@ -71,7 +71,7 @@ export default function ConsoleKeysPage() {
             if (cancelled || !profile) return;
             setRole(profile.role);
 
-            const response = await authedFetch("/api/dashboard/keys");
+            const response = await authedFetch("/api/user/keys");
             if (cancelled) return;
             const data = await response.json();
             if (cancelled) return;
@@ -97,7 +97,7 @@ export default function ConsoleKeysPage() {
     }
 
     async function createKey() {
-        const response = await authedFetch("/api/dashboard/keys", { method: "POST", body: JSON.stringify({ name: newKeyName.trim() || undefined }) });
+        const response = await authedFetch("/api/user/keys", { method: "POST", body: JSON.stringify({ name: newKeyName.trim() || undefined }) });
         const data = await response.json().catch(() => null);
         if (response.ok) {
             setNewKeyName("");
@@ -111,7 +111,7 @@ export default function ConsoleKeysPage() {
     }
 
     async function renameKey(id: number, name: string) {
-        const response = await authedFetch(`/api/dashboard/keys/${id}`, {
+        const response = await authedFetch(`/api/user/keys/${id}`, {
             method: "PUT",
             body: JSON.stringify({ name }),
         });
@@ -126,7 +126,7 @@ export default function ConsoleKeysPage() {
     }
 
     async function toggleKey(id: number, enabled: boolean) {
-        const response = await authedFetch(`/api/dashboard/keys/${id}`, {
+        const response = await authedFetch(`/api/user/keys/${id}`, {
             method: "PUT",
             body: JSON.stringify({ enabled }),
         });
@@ -140,7 +140,7 @@ export default function ConsoleKeysPage() {
     }
 
     async function deleteKey(id: number) {
-        const response = await authedFetch(`/api/dashboard/keys/${id}`, { method: "DELETE" });
+        const response = await authedFetch(`/api/user/keys/${id}`, { method: "DELETE" });
         const data = await response.json().catch(() => null);
         if (response.ok) {
             toast({ variant: "success", description: getApiMessage(data, "删除密钥成功。") });
