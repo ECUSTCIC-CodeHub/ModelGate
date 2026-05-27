@@ -45,8 +45,9 @@ export async function GET(request: Request) {
       oidc_button_text: "OIDC 登录",
     }),
     ...(modelGateFeatures.announcement ? {} : { announcement_content: "" }),
+    ...(modelGateFeatures.webhook ? {} : { webhook_secret: "" }),
     oidc_client_secret: modelGateFeatures.oidc && settings.oidc_client_secret ? "••••••••" : "",
-    webhook_secret: settings.webhook_secret ? "••••••••" : "",
+    webhook_secret: modelGateFeatures.webhook && settings.webhook_secret ? "••••••••" : "",
   };
   return jsonOk({ message: "系统设置获取成功。", data: masked });
 }
@@ -71,6 +72,9 @@ export async function PUT(request: Request) {
   }
   if (!modelGateFeatures.announcement) {
     delete input.announcement_content;
+  }
+  if (!modelGateFeatures.webhook) {
+    delete input.webhook_secret;
   }
   if (input.oidc_client_secret === "••••••••") {
     delete input.oidc_client_secret;
@@ -105,8 +109,9 @@ export async function PUT(request: Request) {
         oidc_button_text: "OIDC 登录",
       }),
       ...(modelGateFeatures.announcement ? {} : { announcement_content: "" }),
+      ...(modelGateFeatures.webhook ? {} : { webhook_secret: "" }),
       oidc_client_secret: modelGateFeatures.oidc && updated.oidc_client_secret ? "••••••••" : "",
-      webhook_secret: updated.webhook_secret ? "••••••••" : "",
+      webhook_secret: modelGateFeatures.webhook && updated.webhook_secret ? "••••••••" : "",
     },
   });
 }

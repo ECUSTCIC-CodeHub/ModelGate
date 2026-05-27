@@ -12,6 +12,7 @@ export const modelGateFeatures = {
   oidc: modelGateEdition === "full",
   periodQuota: modelGateEdition === "full",
   announcement: modelGateEdition === "full",
+  webhook: modelGateEdition === "full",
 } as const;
 
 export function featureUnavailableMessage(featureName: string) {

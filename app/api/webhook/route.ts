@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { createHmac, timingSafeEqual } from "crypto";
 import { gatewayDb } from "@/lib/core/db";
+import { featureUnavailableMessage, modelGateFeatures } from "@/lib/core/features";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { resolveGroupFromClaims } from "@/lib/auth/oidc";
 import { getGatewaySettings } from "@/lib/core/settings";
@@ -129,6 +130,10 @@ function handleTagsChanged(data: TagsChangedData): string {
 }
 
 export async function POST(request: Request) {
+  if (!modelGateFeatures.webhook) {
+    return jsonError(featureUnavailableMessage("Webhook"), 404);
+  }
+
   const settings = getGatewaySettings();
   if (!settings.webhook_secret) {
     return jsonError("Webhook 未配置密钥", 503);

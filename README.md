@@ -51,7 +51,7 @@ npm run dev:full
 npm run build
 ```
 
-精简版在构建时关闭 OIDC、周期配额、系统公告，相关页面不渲染，相关 API 功能不可用或忽略对应字段：
+精简版在构建时关闭 OIDC、周期配额、系统公告、Webhook 回调，相关页面不渲染，相关 API 功能不可用或忽略对应字段：
 
 ```bash
 npm run dev:lite

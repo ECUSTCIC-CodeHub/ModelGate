@@ -37,6 +37,7 @@ export default function AdminSettingsPage() {
   const { toast } = useToast();
   const oidcFeatureEnabled = modelGateFeatures.oidc;
   const announcementFeatureEnabled = modelGateFeatures.announcement;
+  const webhookFeatureEnabled = modelGateFeatures.webhook;
 
   async function load() {
     if (!(await ensureAdmin(router))) return;
@@ -64,7 +65,7 @@ export default function AdminSettingsPage() {
       if (announcementFeatureEnabled) setAnnouncementContent(data.data.announcement_content ?? "");
       setWallpaperUrl(data.data.wallpaper_url ?? "");
       setLogoUrl(data.data.logo_url ?? "");
-      setWebhookSecret(data.data.webhook_secret ?? "");
+      if (webhookFeatureEnabled) setWebhookSecret(data.data.webhook_secret ?? "");
       setCorsEnabled(data.data.cors_enabled === 1);
     }
   }
@@ -100,13 +101,13 @@ export default function AdminSettingsPage() {
         if (announcementFeatureEnabled) setAnnouncementContent(data.data.announcement_content ?? "");
         setWallpaperUrl(data.data.wallpaper_url ?? "");
         setLogoUrl(data.data.logo_url ?? "");
-        setWebhookSecret(data.data.webhook_secret ?? "");
+        if (webhookFeatureEnabled) setWebhookSecret(data.data.webhook_secret ?? "");
         setCorsEnabled(data.data.cors_enabled === 1);
       }
     }
     void init();
     return () => { cancelled = true; };
-  }, [announcementFeatureEnabled, oidcFeatureEnabled, router]);
+  }, [announcementFeatureEnabled, oidcFeatureEnabled, router, webhookFeatureEnabled]);
 
   async function save() {
     const payload = {
@@ -128,7 +129,7 @@ export default function AdminSettingsPage() {
       ...(announcementFeatureEnabled ? { announcement_content: announcementContent } : {}),
       wallpaper_url: wallpaperUrl,
       logo_url: logoUrl,
-      webhook_secret: webhookSecret,
+      ...(webhookFeatureEnabled ? { webhook_secret: webhookSecret } : {}),
       cors_enabled: corsEnabled,
     };
 
@@ -344,6 +345,7 @@ export default function AdminSettingsPage() {
         </Card>
         ) : null}
 
+        {webhookFeatureEnabled ? (
         <Card>
           <CardHeader>
             <SectionTitle
@@ -388,6 +390,7 @@ export default function AdminSettingsPage() {
             </div>
           </CardContent>
         </Card>
+        ) : null}
 
         <Card>
           <CardHeader>
