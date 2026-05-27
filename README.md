@@ -18,6 +18,9 @@
 - **多协议支持：**
   - `POST /api/v1/chat/completions` — OpenAI Chat Completions
   - `POST /api/v1/chat` — Ollama Chat（`/api/chat` 兼容别名）
+  - `GET /api/tags` — Ollama 模型列表（`/api/v1/tags` 兼容别名）
+  - `POST /api/show` — Ollama 模型详情（`/api/v1/show` 兼容别名）
+  - `GET /api/version` — Ollama 版本探测
   - `POST /api/v1/responses` — OpenAI Responses
   - `POST /api/v1/messages` — Anthropic Claude Messages
   - `POST /api/v1/embeddings` — OpenAI Embeddings
@@ -125,13 +128,15 @@ SQLite 数据库：`data/gateway.db`（首次运行自动创建）
 |----------|----------|
 | `/api/admin/*`、`/api/dashboard/*` | 管理员角色 |
 | `/api/user/*` | 已认证用户，仅限本人资源 |
-| `/api/v1/*` | API Key 认证 |
+| `/api/v1/*`、`/api/chat`、`/api/tags`、`/api/show`、`/api/version`、`/api/ollama/:api_key/api/*`、`/api/ollama/:api_key/v1/*` | API Key 认证 |
 
 所有接口均支持两种认证方式：
 - **Session 认证**：JWT Cookie（Web 控制台自动管理）
 - **API Key 认证**：`Authorization: Bearer sk-gw-...`、`x-api-key: sk-gw-...`，或 query 参数 `?token=sk-gw-...` / `?api_key=sk-gw-...`
 
 Query 鉴权主要用于无法自定义请求头的客户端；能设置请求头时仍推荐使用 `Authorization` 或 `x-api-key`。
+
+Ollama 客户端如果会自行追加 `/api/version`、`/api/tags`、`/api/show`、`/api/chat` 或 `/v1/chat/completions`，可将服务根地址配置为 `http://localhost:3000/api/ollama/sk-gw-xxxx`，路径中的 API Key 会自动用于鉴权。
 
 ## 用户 API 接入指南
 
@@ -233,6 +238,13 @@ X-Period-Quota-Reset: 2026-05-08T00:00:00.000Z
 # 获取模型列表
 curl http://localhost:3000/api/v1/models \
   -H 'Authorization: Bearer sk-gw-xxxx'
+
+# Ollama 模型列表
+curl http://localhost:3000/api/tags \
+  -H 'Authorization: Bearer sk-gw-xxxx'
+
+# Ollama 客户端根地址（无法设置鉴权请求头时）
+http://localhost:3000/api/ollama/sk-gw-xxxx
 
 # OpenAI Chat Completions
 curl http://localhost:3000/api/v1/chat/completions \

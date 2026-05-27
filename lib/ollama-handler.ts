@@ -1,4 +1,7 @@
+import { createHash } from "node:crypto";
 import { handleGatewayProtocolRequest } from "@/lib/gateway-handler";
+import { checkApiKeyAuth } from "@/lib/api-key-auth";
+import { listAccessibleModels } from "@/lib/model-access";
 import {
   adaptChatCompletionToOllama,
   adaptChatCompletionToOllamaStreamText,
@@ -18,6 +21,10 @@ const FORWARDED_HEADERS = [
   "X-Period-Quota-Reset",
 ] as const;
 
+const OLLAMA_COMPAT_VERSION = "0.6.4";
+const OLLAMA_COMPAT_CONTEXT_LENGTH = 128 * 1024;
+const OLLAMA_COMPAT_MAX_OUTPUT_TOKENS = 8 * 1024;
+
 function responseHeaders(source: Response, contentType: string) {
   const headers = new Headers({ "content-type": contentType });
   for (const key of FORWARDED_HEADERS) {
@@ -25,6 +32,77 @@ function responseHeaders(source: Response, contentType: string) {
     if (value) headers.set(key, value);
   }
   return headers;
+}
+
+function jsonResponse(body: unknown, init?: ResponseInit) {
+  const headers = new Headers(init?.headers);
+  headers.set("content-type", "application/json");
+  return new Response(JSON.stringify(body), {
+    ...init,
+    headers,
+  });
+}
+
+function normalizeModifiedAt(value: string | null) {
+  if (!value) return new Date(0).toISOString();
+  const normalized = value.includes("T") ? value : `${value.replace(" ", "T")}Z`;
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? new Date(0).toISOString() : date.toISOString();
+}
+
+function modelDigest(alias: string) {
+  return `sha256:${createHash("sha256").update(alias).digest("hex")}`;
+}
+
+function modelFamily(alias: string) {
+  return alias.split(/[/:]/)[0]?.trim() || "modelgate";
+}
+
+function ollamaModelDetails(alias: string) {
+  const family = modelFamily(alias);
+  return {
+    parent_model: "",
+    format: "modelgate",
+    family,
+    families: [family],
+    parameter_size: "",
+    quantization_level: "",
+  };
+}
+
+function ollamaModelInfo(alias: string) {
+  const family = modelFamily(alias);
+  return {
+    "general.architecture": "modelgate",
+    "general.file_type": 0,
+    "general.parameter_count": 0,
+    "general.quantization_version": 0,
+    "general.context_length": OLLAMA_COMPAT_CONTEXT_LENGTH,
+    "general.max_output_tokens": OLLAMA_COMPAT_MAX_OUTPUT_TOKENS,
+    "modelgate.context_length": OLLAMA_COMPAT_CONTEXT_LENGTH,
+    "modelgate.max_output_tokens": OLLAMA_COMPAT_MAX_OUTPUT_TOKENS,
+    [`${family}.context_length`]: OLLAMA_COMPAT_CONTEXT_LENGTH,
+  };
+}
+
+function findAccessibleModel(request: Request, model: string) {
+  const authResult = checkApiKeyAuth(request);
+  if (!authResult.ok) {
+    return {
+      ok: false as const,
+      response: jsonResponse(
+        { error: authResult.reason === "missing" ? "认证失败，未提供 API Key。" : "认证失败，API Key 无效或已禁用。" },
+        { status: 401 },
+      ),
+    };
+  }
+
+  const item = listAccessibleModels(authResult.context.user).find((row) => row.alias === model);
+  if (!item) {
+    return { ok: false as const, response: jsonResponse({ error: `模型 ${model} 不存在或无权访问。` }, { status: 404 }) };
+  }
+
+  return { ok: true as const, item };
 }
 
 function createJsonRequest(source: Request, body: JsonRecord) {
@@ -42,6 +120,72 @@ function createJsonRequest(source: Request, body: JsonRecord) {
 
 function getRequestedModel(body: JsonRecord) {
   return typeof body.model === "string" ? body.model : "";
+}
+
+export function handleOllamaTagsRequest(request: Request) {
+  const authResult = checkApiKeyAuth(request);
+  if (!authResult.ok) {
+    return jsonResponse(
+      { error: authResult.reason === "missing" ? "认证失败，未提供 API Key。" : "认证失败，API Key 无效或已禁用。" },
+      { status: 401 },
+    );
+  }
+
+  const models = listAccessibleModels(authResult.context.user).map((item) => {
+    return {
+      name: item.alias,
+      model: item.alias,
+      modified_at: normalizeModifiedAt(item.created_at),
+      size: 0,
+      digest: modelDigest(item.alias),
+      details: ollamaModelDetails(item.alias),
+    };
+  });
+
+  return jsonResponse({ models });
+}
+
+async function parseOllamaShowModel(request: Request) {
+  const rawBody = await request.json().catch(() => null);
+  if (!rawBody || typeof rawBody !== "object" || Array.isArray(rawBody)) return null;
+  const body = rawBody as JsonRecord;
+  const model = typeof body.model === "string" ? body.model.trim() : "";
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  return model || name || null;
+}
+
+export async function handleOllamaShowRequest(request: Request) {
+  const model = await parseOllamaShowModel(request);
+  if (!model) {
+    return jsonResponse({ error: "请求参数不正确，缺少 model。" }, { status: 400 });
+  }
+
+  const result = findAccessibleModel(request, model);
+  if (!result.ok) return result.response;
+
+  const details = ollamaModelDetails(result.item.alias);
+  return jsonResponse({
+    license: "",
+    modelfile: `FROM ${result.item.alias}`,
+    parameters: `num_ctx ${OLLAMA_COMPAT_CONTEXT_LENGTH}\nnum_predict ${OLLAMA_COMPAT_MAX_OUTPUT_TOKENS}`,
+    template: "",
+    details,
+    model_info: ollamaModelInfo(result.item.alias),
+    capabilities: ["completion", "tools"],
+    modified_at: normalizeModifiedAt(result.item.created_at),
+  });
+}
+
+export function handleOllamaVersionRequest(request: Request) {
+  const authResult = checkApiKeyAuth(request);
+  if (!authResult.ok) {
+    return jsonResponse(
+      { error: authResult.reason === "missing" ? "认证失败，未提供 API Key。" : "认证失败，API Key 无效或已禁用。" },
+      { status: 401 },
+    );
+  }
+
+  return jsonResponse({ version: OLLAMA_COMPAT_VERSION });
 }
 
 export async function handleOllamaChatRequest(request: Request) {

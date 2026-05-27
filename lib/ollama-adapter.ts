@@ -43,15 +43,29 @@ function normalizeMessageContent(message: JsonRecord) {
   ];
 }
 
+function normalizeMessageThinking(message: JsonRecord) {
+  return typeof message.thinking === "string"
+    ? message.thinking
+    : typeof message.reasoning === "string"
+      ? message.reasoning
+      : typeof message.reasoning_content === "string"
+        ? message.reasoning_content
+        : "";
+}
+
 function normalizeMessages(messages: unknown) {
   return asArray(messages)
     .map((item) => {
       const record = asRecord(item);
       if (!record) return null;
-      return {
-        role: typeof record.role === "string" ? record.role : "user",
+      const role = typeof record.role === "string" ? record.role : "user";
+      const message: JsonRecord = {
+        role,
         content: normalizeMessageContent(record),
       };
+      const thinking = normalizeMessageThinking(record);
+      if (role === "assistant" && thinking) message.reasoning = thinking;
+      return message;
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item));
 }

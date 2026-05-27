@@ -740,6 +740,7 @@ export function adaptRequestBody(
     if (systemBlocks.length > 0) {
       next.system = systemBlocks.length === 1 && systemBlocks[0]?.type === "text" ? systemBlocks[0].text : systemBlocks;
     }
+    if (body.thinking !== undefined) next.thinking = body.thinking;
     next.max_tokens = body.max_output_tokens ?? body.max_tokens ?? 8192;
     if (body.temperature !== undefined) next.temperature = body.temperature;
     if (body.top_p !== undefined) next.top_p = body.top_p;
@@ -760,6 +761,15 @@ export function adaptRequestBody(
       model: realModel,
       input: normalizeChatMessages(body.messages).flatMap((message) => {
         const items: JsonRecord[] = [];
+        const reasoningText = message.role === "assistant" ? extractThinkingText(message.content) : "";
+        if (reasoningText) {
+          items.push({
+            type: "reasoning",
+            summary: [],
+            content: [{ type: "reasoning_text", text: reasoningText }],
+          });
+        }
+
         if (message.role !== "tool" && (message.content.length > 0 || message.role !== "assistant")) {
           items.push({
             type: "message",

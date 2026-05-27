@@ -20,7 +20,7 @@ Authorization: Bearer <access_token>
 
 ### API Key 认证
 
-网关端点（`/api/v1/*`，以及 Ollama 原生路径 `/api/chat`）使用 API Key：
+网关端点（`/api/v1/*`，以及 Ollama 原生路径 `/api/chat`、`/api/tags`、`/api/show`、`/api/version`）使用 API Key：
 
 ```
 Authorization: Bearer sk-gw-xxxxx
@@ -44,7 +44,26 @@ x-api-key: sk-gw-xxxxx
 ?api_key=sk-gw-xxxxx
 ```
 
-请求头方式优先级更高，也更推荐；query 鉴权会被所有支持 API Key 的端点识别，包括 `/api/v1/*`、`/api/chat`、`/api/user/*`、`/api/dashboard/*` 和 `/api/admin/*`。
+请求头方式优先级更高，也更推荐；query 鉴权会被所有支持 API Key 的端点识别，包括 `/api/v1/*`、`/api/chat`、`/api/tags`、`/api/show`、`/api/version`、`/api/user/*`、`/api/dashboard/*` 和 `/api/admin/*`。
+
+Ollama 客户端如果只能配置服务根地址、且会自行追加 `/api/version`、`/api/tags`、`/api/show`、`/api/chat` 或 `/v1/chat/completions`，可使用路径鉴权根地址：
+
+```
+http://your-domain:3000/api/ollama/sk-gw-xxxxx
+```
+
+对应路径会映射到：
+
+```
+GET  /api/ollama/sk-gw-xxxxx/api/version
+GET  /api/ollama/sk-gw-xxxxx/api/tags
+POST /api/ollama/sk-gw-xxxxx/api/show
+POST /api/ollama/sk-gw-xxxxx/api/chat
+GET  /api/ollama/sk-gw-xxxxx/v1/models
+POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
+```
+
+路径鉴权仅用于不支持请求头鉴权的 Ollama 客户端；常规客户端仍建议使用请求头。
 
 ---
 
@@ -1020,7 +1039,7 @@ email matches ".*@company\\.com"
 
 所有网关端点通过 API Key 认证。
 
-**CORS:** 默认关闭。管理员在系统设置中开启 `cors_enabled` 后，所有 `/api/v1/*` 端点和 `/api/chat` 会返回 `Access-Control-Allow-Origin: *` 并响应 `OPTIONS` 预检请求，允许浏览器从任意来源跨域调用。
+**CORS:** 默认关闭。管理员在系统设置中开启 `cors_enabled` 后，所有 `/api/v1/*` 端点、`/api/chat`、`/api/tags`、`/api/show`、`/api/version`、`/api/ollama/:api_key/api/*` 和 `/api/ollama/:api_key/v1/*` 会返回 `Access-Control-Allow-Origin: *` 并响应 `OPTIONS` 预检请求，允许浏览器从任意来源跨域调用。
 
 **User-Agent 透传:** 客户端请求包含 `User-Agent` 时，网关会原样透传给上游渠道；未提供时 OpenAI 协议默认使用 `OpenAI/JS 6.39.0`，Anthropic Messages 协议默认使用 Claude Code UA `claude-cli/2.1.148`。可通过环境变量 `CLAUDE_CODE_USER_AGENT` 覆盖默认 Claude Code UA。
 
@@ -1055,7 +1074,7 @@ X-Quota-Limit-Tokens-Remaining: 49543211
 
 Ollama Chat 兼容接口，仅支持对话端点。请求会复用 ModelGate 的 API Key 鉴权、模型别名路由、配额、限流、日志和上游协议转换能力。
 
-**兼容别名:** `POST /api/chat`，用于兼容 Ollama 原生客户端默认路径。
+**兼容别名:** `POST /api/chat`，用于兼容 Ollama 原生客户端默认路径；`POST /api/ollama/:api_key/api/chat`，用于只支持配置 Ollama 服务根地址的客户端。
 
 **认证:** API Key
 
@@ -1064,7 +1083,7 @@ Ollama Chat 兼容接口，仅支持对话端点。请求会复用 ModelGate 的
 | 字段 | 类型 | 必填 | 说明 |
 |:---|:---|:---|:---|
 | model | string | 是 | ModelGate 中配置的模型别名 |
-| messages | array | 是 | Ollama 兼容消息数组 |
+| messages | array | 是 | Ollama 兼容消息数组；历史 assistant 消息中的 `thinking` 会转换为上游协议的推理内容 |
 | stream | boolean | 否 | 是否流式返回；未传时按 Ollama 协议默认流式返回 |
 | format | string/object | 否 | `json` 或 JSON Schema，会转换为 OpenAI 兼容 `response_format` |
 | options | object | 否 | 支持 `temperature`、`top_p`、`seed`、`stop`、`num_predict` 等常用选项 |
@@ -1078,7 +1097,8 @@ Ollama Chat 兼容接口，仅支持对话端点。请求会复用 ModelGate 的
   "created_at": "2026-05-27T12:00:00.000Z",
   "message": {
     "role": "assistant",
-    "content": "你好，有什么可以帮你？"
+    "content": "你好，有什么可以帮你？",
+    "thinking": "可选的推理内容"
   },
   "done": true,
   "done_reason": "stop"
@@ -1090,6 +1110,110 @@ Ollama Chat 兼容接口，仅支持对话端点。请求会复用 ModelGate 的
 ```json
 {"model":"gpt-4o-mini","created_at":"2026-05-27T12:00:00.000Z","message":{"role":"assistant","content":"你好"},"done":false}
 {"model":"gpt-4o-mini","created_at":"2026-05-27T12:00:01.000Z","done":true,"done_reason":"stop"}
+```
+
+---
+
+### GET /api/version
+
+Ollama 版本探测兼容接口，用于 Ollama 客户端连接检测。
+
+**兼容路径:** `GET /api/ollama/:api_key/api/version`。
+
+**认证:** API Key。标准路径支持请求头或 query 参数；路径鉴权版本从 `:api_key` 读取 API Key。
+
+**请求体:** 无
+
+**响应示例:**
+
+```json
+{
+  "version": "0.6.4"
+}
+```
+
+---
+
+### GET /api/tags
+
+Ollama 模型列表兼容接口，返回当前 API Key 可访问的模型别名。
+
+**兼容别名:** `GET /api/v1/tags`；路径鉴权版本 `GET /api/ollama/:api_key/api/tags`。
+
+**认证:** API Key。标准路径支持请求头或 query 参数；路径鉴权版本从 `:api_key` 读取 API Key。
+
+**请求体:** 无
+
+**响应示例:**
+
+```json
+{
+  "models": [
+    {
+      "name": "gpt-4o-mini",
+      "model": "gpt-4o-mini",
+      "modified_at": "2026-05-27T12:00:00.000Z",
+      "size": 0,
+      "digest": "sha256:...",
+      "details": {
+        "parent_model": "",
+        "format": "modelgate",
+        "family": "gpt-4o-mini",
+        "families": ["gpt-4o-mini"],
+        "parameter_size": "",
+        "quantization_level": ""
+      }
+    }
+  ]
+}
+```
+
+---
+
+### POST /api/show
+
+Ollama 模型详情兼容接口，返回当前 API Key 可访问模型的基础元信息。
+
+**兼容别名:** `POST /api/v1/show`；路径鉴权版本 `POST /api/ollama/:api_key/api/show`。
+
+**认证:** API Key。标准路径支持请求头或 query 参数；路径鉴权版本从 `:api_key` 读取 API Key。
+
+**请求体字段:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|:---|:---|:---|:---|
+| model | string | 是 | ModelGate 中配置的模型别名 |
+
+**响应示例:**
+
+```json
+{
+  "license": "",
+  "modelfile": "FROM gpt-4o-mini",
+  "parameters": "num_ctx 131072\nnum_predict 8192",
+  "template": "",
+  "details": {
+    "parent_model": "",
+    "format": "modelgate",
+    "family": "gpt-4o-mini",
+    "families": ["gpt-4o-mini"],
+    "parameter_size": "",
+    "quantization_level": ""
+  },
+  "model_info": {
+    "general.architecture": "modelgate",
+    "general.file_type": 0,
+    "general.parameter_count": 0,
+    "general.quantization_version": 0,
+    "general.context_length": 131072,
+    "general.max_output_tokens": 8192,
+    "modelgate.context_length": 131072,
+    "modelgate.max_output_tokens": 8192,
+    "gpt-4o-mini.context_length": 131072
+  },
+  "capabilities": ["completion", "tools"],
+  "modified_at": "2026-05-27T12:00:00.000Z"
+}
 ```
 
 ---

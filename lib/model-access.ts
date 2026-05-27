@@ -47,13 +47,14 @@ const enabledModelAliasStmt = gatewayDb.prepare(
 );
 
 const accessibleModelAliasesStmt = gatewayDb.prepare(
-  `SELECT DISTINCT m.alias, m.is_public
+  `SELECT m.alias, MAX(m.is_public) AS is_public, MAX(m.created_at) AS created_at
    FROM models m
    JOIN channels c ON c.id = m.channel_id
    WHERE m.enabled = 1
      AND c.enabled = 1
      AND m.deleted_at IS NULL
      AND m.alias != '*'
+   GROUP BY m.alias
    ORDER BY m.alias ASC`,
 );
 
@@ -92,12 +93,18 @@ export function resolveAccessibleModelAlias(
 }
 
 export function listAccessibleModelAliases(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">) {
-  const rows = accessibleModelAliasesStmt.all() as Array<{ alias: string; is_public: number }>;
+  return listAccessibleModels(user).map((row) => row.alias);
+}
+
+export function listAccessibleModels(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">) {
+  const rows = accessibleModelAliasesStmt.all() as Array<{ alias: string; is_public: number; created_at: string | null }>;
 
   if (user.role === "admin") {
-    return rows.map((row) => row.alias);
+    return rows.map(({ alias, created_at }) => ({ alias, created_at }));
   }
 
   const allowed = new Set(getEffectiveAllowedAliases(user));
-  return rows.filter((row) => row.is_public === 1 || allowed.has(row.alias)).map((row) => row.alias);
+  return rows
+    .filter((row) => row.is_public === 1 || allowed.has(row.alias))
+    .map(({ alias, created_at }) => ({ alias, created_at }));
 }
