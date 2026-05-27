@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { gatewayDb } from "@/lib/db";
 import { validateClaimExpr } from "@/lib/claim-expr";
+import { modelGateFeatures } from "@/lib/features";
 import { ensureAdmin } from "@/lib/guards";
 import { jsonError, jsonOk } from "@/lib/http";
 import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/model-access";
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
-  const exprTrimmed = parsed.data.oidc_claim_expr?.trim() || null;
+  const exprTrimmed = modelGateFeatures.oidc ? parsed.data.oidc_claim_expr?.trim() || null : null;
   if (exprTrimmed) {
     const result = validateClaimExpr(exprTrimmed);
     if (!result.valid) return jsonError(`Claim 表达式语法错误: ${result.error}`, 400);
@@ -99,12 +100,12 @@ export async function POST(request: Request) {
         parsed.data.tpm ?? -1,
         normalizeQuota(parsed.data.quota_requests),
         normalizeQuota(parsed.data.quota_tokens),
-        normalizeQuota(parsed.data.quota_period),
-        normalizeQuota(parsed.data.period_quota_tokens),
-        normalizeQuota(parsed.data.period_quota_requests),
+        modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.quota_period) : null,
+        modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_tokens) : null,
+        modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_requests) : null,
         stringifyAllowedModelAliases(parsed.data.allowed_model_aliases ?? []),
         exprTrimmed,
-        parsed.data.oidc_claim_priority ?? 0,
+        modelGateFeatures.oidc ? parsed.data.oidc_claim_priority ?? 0 : 0,
         setDefault ? 1 : 0,
       );
   });

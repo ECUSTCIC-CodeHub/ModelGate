@@ -3,6 +3,7 @@ import { acquireChannel, type ChannelLease } from "@/lib/channel-runtime";
 import { insertChatLog } from "@/lib/chat-log";
 import { gatewayDb, type DbUser } from "@/lib/db";
 import { getEffectiveLimits } from "@/lib/effective-limits";
+import { modelGateFeatures } from "@/lib/features";
 import { jsonError } from "@/lib/http";
 import { resolveAccessibleModelAlias } from "@/lib/model-access";
 import {
@@ -137,14 +138,24 @@ function addUsage(userId: number, keyId: number, tokens: number, requests = 1, t
   const billedTokens = Math.max(0, tokens * tokenMultiplier);
   const billedRequests = Math.max(0, requests * requestMultiplier);
   const tx = gatewayDb.transaction(() => {
-    gatewayDb
-      .prepare(
-        `UPDATE users
-         SET used_tokens = used_tokens + ?, used_requests = used_requests + ?,
-             period_used_tokens = period_used_tokens + ?, period_used_requests = period_used_requests + ?
-         WHERE id = ? AND deleted_at IS NULL`,
-      )
-      .run(billedTokens, billedRequests, billedTokens, billedRequests, userId);
+    if (modelGateFeatures.periodQuota) {
+      gatewayDb
+        .prepare(
+          `UPDATE users
+           SET used_tokens = used_tokens + ?, used_requests = used_requests + ?,
+               period_used_tokens = period_used_tokens + ?, period_used_requests = period_used_requests + ?
+           WHERE id = ? AND deleted_at IS NULL`,
+        )
+        .run(billedTokens, billedRequests, billedTokens, billedRequests, userId);
+    } else {
+      gatewayDb
+        .prepare(
+          `UPDATE users
+           SET used_tokens = used_tokens + ?, used_requests = used_requests + ?
+           WHERE id = ? AND deleted_at IS NULL`,
+        )
+        .run(billedTokens, billedRequests, userId);
+    }
 
     gatewayDb
       .prepare(

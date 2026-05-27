@@ -32,6 +32,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
 import { authedFetch, ensureAdmin } from "@/lib/client-auth";
+import { modelGateFeatures } from "@/lib/features";
 import { formatLimit } from "@/lib/formatters";
 import { validateClaimExpr } from "@/lib/claim-expr";
 
@@ -134,6 +135,8 @@ export default function AdminGroupsPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [aliasOptions, setAliasOptions] = useState<AliasOption[]>([]);
   const { toast } = useToast();
+  const oidcFeatureEnabled = modelGateFeatures.oidc;
+  const periodQuotaEnabled = modelGateFeatures.periodQuota;
 
   async function load() {
     if (!(await ensureAdmin(router))) return;
@@ -229,12 +232,16 @@ export default function AdminGroupsPage() {
       tpm: form.tpm,
       quota_requests: form.quota_requests.trim() === "" ? null : Number(form.quota_requests),
       quota_tokens: form.quota_tokens.trim() === "" ? null : Number(form.quota_tokens),
-      quota_period: periodValue,
-      period_quota_tokens: form.period_quota_tokens.trim() === "" ? null : Number(form.period_quota_tokens),
-      period_quota_requests: form.period_quota_requests.trim() === "" ? null : Number(form.period_quota_requests),
+      ...(periodQuotaEnabled ? {
+        quota_period: periodValue,
+        period_quota_tokens: form.period_quota_tokens.trim() === "" ? null : Number(form.period_quota_tokens),
+        period_quota_requests: form.period_quota_requests.trim() === "" ? null : Number(form.period_quota_requests),
+      } : {}),
       allowed_model_aliases: form.allowed_model_aliases,
-      oidc_claim_expr: form.oidc_claim_expr.trim() || null,
-      oidc_claim_priority: Number(form.oidc_claim_priority) || 0,
+      ...(oidcFeatureEnabled ? {
+        oidc_claim_expr: form.oidc_claim_expr.trim() || null,
+        oidc_claim_priority: Number(form.oidc_claim_priority) || 0,
+      } : {}),
       is_default: form.is_default,
       enabled: form.enabled,
     };
@@ -313,7 +320,7 @@ export default function AdminGroupsPage() {
                       <TableHead>限速 (RPM/QPS/TPM)</TableHead>
                       <TableHead>请求配额</TableHead>
                       <TableHead>Token 配额</TableHead>
-                      <TableHead>周期配额</TableHead>
+                      {periodQuotaEnabled ? <TableHead>周期配额</TableHead> : null}
                       <TableHead>模型白名单</TableHead>
                       <TableHead className="text-right">操作</TableHead>
                     </TableRow>
@@ -337,6 +344,7 @@ export default function AdminGroupsPage() {
                         <TableCell>{formatLimit(row.rpm)}/{formatLimit(row.qps)}/{formatLimit(row.tpm)}</TableCell>
                         <TableCell>{row.quota_requests === null ? "∞" : formatLimit(row.quota_requests)}</TableCell>
                         <TableCell>{row.quota_tokens === null ? "∞" : formatLimit(row.quota_tokens)}</TableCell>
+                        {periodQuotaEnabled ? (
                         <TableCell>
                           {row.quota_period ? (
                             <div className="space-y-0.5 text-sm">
@@ -349,6 +357,7 @@ export default function AdminGroupsPage() {
                             </div>
                           ) : "-"}
                         </TableCell>
+                        ) : null}
                         <TableCell className="max-w-48">
                           <span className="block truncate text-[var(--color-foreground-secondary)]">
                             {row.allowed_model_aliases.length > 0 ? row.allowed_model_aliases.join(", ") : "-"}
@@ -419,41 +428,45 @@ export default function AdminGroupsPage() {
                     maxLength={200}
                   />
                 </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label>OIDC Claim 表达式</Label>
-                  <textarea
-                    className="flex w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm font-mono placeholder:text-[var(--color-foreground-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--color-foreground-subtle)] disabled:opacity-50"
-                    rows={3}
-                    value={form.oidc_claim_expr}
-                    onChange={(e) => setForm({ ...form, oidc_claim_expr: e.target.value })}
-                    placeholder={'groups contains "vip"\nrole == "admin" OR role == "superadmin"'}
-                    maxLength={512}
-                  />
-                  {form.oidc_claim_expr.trim() ? (
-                    (() => {
-                      const result = validateClaimExpr(form.oidc_claim_expr);
-                      return result.valid
-                        ? <p className="text-xs text-[var(--color-accent)]">&#10003; 表达式语法正确</p>
-                        : <p className="text-xs text-[var(--color-destructive)]">&#10007; {result.error}</p>;
-                    })()
-                  ) : (
-                    <p className="text-xs text-[var(--color-foreground-muted)]">
-                      支持操作符: ==、!=、contains、matches（正则）、exists；逻辑: AND、OR、括号分组；点号访问嵌套字段。留空则不参与 OIDC 组映射。
-                    </p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label>匹配优先级</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={9999}
-                    value={form.oidc_claim_priority}
-                    onChange={(e) => setForm({ ...form, oidc_claim_priority: e.target.value })}
-                    placeholder="0"
-                  />
-                  <p className="text-xs text-[var(--color-foreground-muted)]">数值越大越优先匹配，用于解决多个组表达式同时满足时的冲突。</p>
-                </div>
+                {oidcFeatureEnabled ? (
+                  <>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>OIDC Claim 表达式</Label>
+                      <textarea
+                        className="flex w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm font-mono placeholder:text-[var(--color-foreground-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--color-foreground-subtle)] disabled:opacity-50"
+                        rows={3}
+                        value={form.oidc_claim_expr}
+                        onChange={(e) => setForm({ ...form, oidc_claim_expr: e.target.value })}
+                        placeholder={'groups contains "vip"\nrole == "admin" OR role == "superadmin"'}
+                        maxLength={512}
+                      />
+                      {form.oidc_claim_expr.trim() ? (
+                        (() => {
+                          const result = validateClaimExpr(form.oidc_claim_expr);
+                          return result.valid
+                            ? <p className="text-xs text-[var(--color-accent)]">&#10003; 表达式语法正确</p>
+                            : <p className="text-xs text-[var(--color-destructive)]">&#10007; {result.error}</p>;
+                        })()
+                      ) : (
+                        <p className="text-xs text-[var(--color-foreground-muted)]">
+                          支持操作符: ==、!=、contains、matches（正则）、exists；逻辑: AND、OR、括号分组；点号访问嵌套字段。留空则不参与 OIDC 组映射。
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label>匹配优先级</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={9999}
+                        value={form.oidc_claim_priority}
+                        onChange={(e) => setForm({ ...form, oidc_claim_priority: e.target.value })}
+                        placeholder="0"
+                      />
+                      <p className="text-xs text-[var(--color-foreground-muted)]">数值越大越优先匹配，用于解决多个组表达式同时满足时的冲突。</p>
+                    </div>
+                  </>
+                ) : null}
                 <div className="flex items-center gap-3 md:col-span-2">
                   <Checkbox
                     checked={form.is_default}
@@ -491,6 +504,7 @@ export default function AdminGroupsPage() {
                   <Input type="number" min={-1} value={form.quota_tokens} onChange={(e) => setForm({ ...form, quota_tokens: e.target.value })} />
                 </div>
               </div>
+              {periodQuotaEnabled ? (
               <div className="mt-3 border-t border-[var(--color-border)] pt-3">
                 <p className="text-sm font-medium text-[var(--color-foreground)]">周期配额</p>
                 <p className="mb-3 text-xs text-[var(--color-foreground-muted)]">按固定时间间隔重置用量计数器，留空表示不启用周期配额。</p>
@@ -526,6 +540,7 @@ export default function AdminGroupsPage() {
                   </div>
                 </div>
               </div>
+              ) : null}
             </div>
 
             <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">

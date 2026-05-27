@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { hashPassword } from "@/lib/auth";
 import { gatewayDb } from "@/lib/db";
+import { featureUnavailableMessage, modelGateFeatures } from "@/lib/features";
 import { ensureAdmin } from "@/lib/guards";
 import { jsonError, jsonOk } from "@/lib/http";
 import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/model-access";
@@ -41,6 +42,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const body = await request.json().catch(() => null);
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
+  if (!modelGateFeatures.periodQuota && parsed.data.reset_usage === "period") {
+    return jsonError(featureUnavailableMessage("周期配额"), 404);
+  }
 
   const existing = gatewayDb
     .prepare(
@@ -117,15 +121,21 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     quota_period:
       parsed.data.quota_period === undefined
         ? existing.quota_period
-        : normalizeQuota(parsed.data.quota_period),
+        : modelGateFeatures.periodQuota
+          ? normalizeQuota(parsed.data.quota_period)
+          : existing.quota_period,
     period_quota_tokens:
       parsed.data.period_quota_tokens === undefined
         ? existing.period_quota_tokens
-        : normalizeQuota(parsed.data.period_quota_tokens),
+        : modelGateFeatures.periodQuota
+          ? normalizeQuota(parsed.data.period_quota_tokens)
+          : existing.period_quota_tokens,
     period_quota_requests:
       parsed.data.period_quota_requests === undefined
         ? existing.period_quota_requests
-        : normalizeQuota(parsed.data.period_quota_requests),
+        : modelGateFeatures.periodQuota
+          ? normalizeQuota(parsed.data.period_quota_requests)
+          : existing.period_quota_requests,
     allowed_model_aliases:
       parsed.data.allowed_model_aliases === undefined
         ? existing.allowed_model_aliases
@@ -213,7 +223,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       .prepare("UPDATE keys SET used_tokens = 0, used_requests = 0 WHERE user_id = ? AND deleted_at IS NULL")
       .run(id);
   }
-  if (parsed.data.reset_usage === "all" || parsed.data.reset_usage === "period") {
+  if (modelGateFeatures.periodQuota && (parsed.data.reset_usage === "all" || parsed.data.reset_usage === "period")) {
     gatewayDb
       .prepare("UPDATE users SET period_used_tokens = 0, period_used_requests = 0, period_reset_at = NULL WHERE id = ?")
       .run(id);

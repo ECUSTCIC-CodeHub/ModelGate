@@ -42,6 +42,28 @@ pnpm dev
 
 打开 [http://localhost:3000](http://localhost:3000)，首个注册用户自动成为管理员。
 
+## 构建版本
+
+默认构建为完整版，包含 OIDC、周期配额、系统公告等完整功能：
+
+```bash
+npm run build
+```
+
+精简版在构建时关闭 OIDC、周期配额、系统公告，相关页面不渲染，相关 API 功能不可用或忽略对应字段：
+
+```bash
+npm run build:lite
+```
+
+Docker 构建可通过 build arg 选择版本：
+
+```bash
+docker build --build-arg MODELGATE_EDITION=lite -t modelgate:lite .
+```
+
+CNB 流水线中，`main` push 只负责自动生成 tag；`tag_push` 会构建完整版镜像并推送 `latest` 和 tag 名，同时构建精简版镜像并推送 `lite`。
+
 ## 环境变量
 
 全部可选，均有默认值：
@@ -53,6 +75,7 @@ pnpm dev
 | `JWT_ACCESS_EXPIRES_SECONDS` | `900` | Access Token 有效期（15 分钟） |
 | `JWT_REFRESH_EXPIRES_SECONDS` | `604800` | Refresh Token 有效期（7 天） |
 | `AUTH_DISABLED` | — | 设为 `1` 关闭所有认证（单用户模式） |
+| `MODELGATE_EDITION` / `NEXT_PUBLIC_MODELGATE_EDITION` | `full` | 构建版本，`full` 为完整版，`lite` 为精简版 |
 
 ## 免认证模式
 
@@ -96,7 +119,7 @@ SQLite 数据库：`data/gateway.db`（首次运行自动创建）
 - **Client ID / Secret** — 从 OIDC 提供商获取
 - **回调地址** — 设置页面中展示，复制到 OIDC 提供商配置即可
 - **自动注册** — 首次 OIDC 登录时自动创建用户
-- **用户组 Claim** — 通过 OIDC token 中的 claim 值自动分配用户组（如 claim `role` 值 `vip` → VIP 组）
+- **用户组映射** — 在各用户组中配置 Claim 表达式，按 OIDC claims 自动分配用户组
 
 接口：
 
@@ -120,7 +143,7 @@ SQLite 数据库：`data/gateway.db`（首次运行自动创建）
 
 **继承优先级**：`用户设置 > 组设置 > 全局默认`。用户的限流值为 `-1` 表示继承组设置。
 
-**OIDC 组映射**：在系统设置中配置「用户组 Claim」（如 `role`），在各用户组中配置「OIDC Claim 匹配值」（如 `premium`）。用户通过 OIDC 登录时自动分配到匹配的组，每次登录自动同步。
+**OIDC 组映射**：在各用户组中配置 Claim 表达式（如 `role == "vip"` 或 `tags contains "premium"`）。用户通过 OIDC 登录时自动分配到匹配的组，每次登录自动同步。
 
 ## 权限控制
 
@@ -226,6 +249,8 @@ X-Period-Quota-Requests-Remaining: 988
 X-Period-Quota-Tokens-Remaining: 496800
 X-Period-Quota-Reset: 2026-05-08T00:00:00.000Z
 ```
+
+精简版不会返回 `X-Period-*` 周期配额响应头。
 
 ## 使用示例
 

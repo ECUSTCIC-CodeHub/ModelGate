@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { jsonError } from "@/lib/http";
+import { featureUnavailableMessage, modelGateFeatures } from "@/lib/features";
 import {
   getOidcConfig,
   fetchDiscovery,
@@ -12,6 +13,10 @@ import {
 } from "@/lib/oidc";
 
 export async function GET(request: Request) {
+  if (!modelGateFeatures.oidc) {
+    return jsonError(featureUnavailableMessage("OIDC"), 404);
+  }
+
   const config = getOidcConfig();
   if (!config.enabled || !config.issuerUrl || !config.clientId) {
     return jsonError("OIDC 未启用或配置不完整", 400);

@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:full": "MODELGATE_EDITION=full NEXT_PUBLIC_MODELGATE_EDITION=full next build",
+    "build:lite": "MODELGATE_EDITION=lite NEXT_PUBLIC_MODELGATE_EDITION=lite next build",
     "start": "next start",
     "lint": "eslint"
   },

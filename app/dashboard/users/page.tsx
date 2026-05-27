@@ -34,6 +34,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
 import { authedFetch, ensureAdmin } from "@/lib/client-auth";
+import { modelGateFeatures } from "@/lib/features";
 import { formatNumber, formatLimit } from "@/lib/formatters";
 
 type UserRow = {
@@ -183,6 +184,8 @@ export default function AdminUsersPage() {
   const [groupOptions, setGroupOptions] = useState<GroupOption[]>([]);
   const pageSize = 20;
   const { toast } = useToast();
+  const periodQuotaEnabled = modelGateFeatures.periodQuota;
+  const oidcFeatureEnabled = modelGateFeatures.oidc;
 
   async function load(
     nextPage = page,
@@ -271,7 +274,7 @@ export default function AdminUsersPage() {
 
   function onEditClick(row: UserRow) {
     setEditingId(row.id);
-    setEditingOidc(row.oidc_subject ? { issuer: row.oidc_issuer ?? "", subject: row.oidc_subject } : null);
+    setEditingOidc(oidcFeatureEnabled && row.oidc_subject ? { issuer: row.oidc_issuer ?? "", subject: row.oidc_subject } : null);
     setEditingGroupLimits(row.group_id ? {
       rpm: row.group_rpm, qps: row.group_qps, tpm: row.group_tpm,
       quota_requests: row.group_quota_requests, quota_tokens: row.group_quota_tokens,
@@ -326,9 +329,11 @@ export default function AdminUsersPage() {
       tpm: form.tpm,
       quota_tokens: form.quota_tokens.trim() === "" ? null : Number(form.quota_tokens),
       quota_requests: form.quota_requests.trim() === "" ? null : Number(form.quota_requests),
-      quota_period: periodValue,
-      period_quota_tokens: form.period_quota_tokens.trim() === "" ? null : Number(form.period_quota_tokens),
-      period_quota_requests: form.period_quota_requests.trim() === "" ? null : Number(form.period_quota_requests),
+      ...(periodQuotaEnabled ? {
+        quota_period: periodValue,
+        period_quota_tokens: form.period_quota_tokens.trim() === "" ? null : Number(form.period_quota_tokens),
+        period_quota_requests: form.period_quota_requests.trim() === "" ? null : Number(form.period_quota_requests),
+      } : {}),
       allowed_model_aliases: form.allowed_model_aliases,
       note: form.note.trim() === "" ? null : form.note.trim(),
       ...(form.new_password.trim() ? { new_password: form.new_password.trim() } : {}),
@@ -466,7 +471,7 @@ export default function AdminUsersPage() {
 
             {rows.length > 0 ? (
               <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-                <Table className="min-w-[1360px] table-fixed">
+                <Table className={periodQuotaEnabled ? "min-w-[1620px] table-fixed" : "min-w-[1440px] table-fixed"}>
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[180px]">用户名</TableHead>
@@ -476,8 +481,8 @@ export default function AdminUsersPage() {
                       <TableHead className="w-[180px]">限速 RPM/QPS/TPM</TableHead>
                       <TableHead className="w-[150px]">累计 请求/Token</TableHead>
                       <TableHead className="w-[150px]">配额 请求/Token</TableHead>
-                      <TableHead className="w-[180px]">周期配额</TableHead>
-                      <TableHead className="w-[160px] text-right">操作</TableHead>
+                      {periodQuotaEnabled ? <TableHead className="w-[180px]">周期配额</TableHead> : null}
+                      <TableHead className="w-[260px] text-right">操作</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -494,7 +499,7 @@ export default function AdminUsersPage() {
                             <Badge variant={row.enabled ? "default" : "secondary"}>
                               {row.enabled ? "启用" : "禁用"}
                             </Badge>
-                            {row.oidc_subject ? (
+                            {oidcFeatureEnabled && row.oidc_subject ? (
                               <Badge variant="outline" title={`${row.oidc_issuer}\n${row.oidc_subject}`}>OIDC</Badge>
                             ) : null}
                           </div>
@@ -529,6 +534,7 @@ export default function AdminUsersPage() {
                             {row.effective_quota_tokens === null ? "∞" : formatNumber(row.effective_quota_tokens)}
                           </span>
                         </TableCell>
+                        {periodQuotaEnabled ? (
                         <TableCell>
                           {row.effective_quota_period ? (
                             <div className="space-y-0.5 text-sm">
@@ -544,18 +550,29 @@ export default function AdminUsersPage() {
                             </div>
                           ) : <span className="text-sm text-[var(--color-foreground-muted)]">-</span>}
                         </TableCell>
+                        ) : null}
                         <TableCell className="space-x-2 whitespace-nowrap text-right">
                           <Button size="sm" variant="outline" onClick={() => onEditClick(row)}>编辑</Button>
-                          <ConfirmDialog
-                            trigger={<Button size="sm" variant="outline">重置用量</Button>}
-                            title={`重置用户 ${row.username} 的用量？`}
-                            description="选择要重置的用量类型，重置后不可恢复。"
-                            actions={<>
-                              <AlertDialogAction onClick={() => resetUsage(row.id, "period")}>仅周期用量</AlertDialogAction>
-                              <AlertDialogAction onClick={() => resetUsage(row.id, "total")}>仅总用量</AlertDialogAction>
-                              <AlertDialogAction onClick={() => resetUsage(row.id, "all")}>全部重置</AlertDialogAction>
-                            </>}
-                          />
+                          {periodQuotaEnabled ? (
+                            <ConfirmDialog
+                              trigger={<Button size="sm" variant="outline">重置用量</Button>}
+                              title={`重置用户 ${row.username} 的用量？`}
+                              description="选择要重置的用量类型，重置后不可恢复。"
+                              actions={<>
+                                <AlertDialogAction onClick={() => resetUsage(row.id, "period")}>仅周期用量</AlertDialogAction>
+                                <AlertDialogAction onClick={() => resetUsage(row.id, "total")}>仅总用量</AlertDialogAction>
+                                <AlertDialogAction onClick={() => resetUsage(row.id, "all")}>全部重置</AlertDialogAction>
+                              </>}
+                            />
+                          ) : (
+                            <ConfirmDialog
+                              trigger={<Button size="sm" variant="outline">重置用量</Button>}
+                              title={`重置用户 ${row.username} 的总用量？`}
+                              description="重置后不可恢复。"
+                              confirmText="确认重置"
+                              onConfirm={() => resetUsage(row.id, "total")}
+                            />
+                          )}
                           <ConfirmDialog
                             title={`删除用户 ${row.username}？`}
                             description="删除后该用户的登录入口会立即失效，此操作不可撤销。"
@@ -669,7 +686,7 @@ export default function AdminUsersPage() {
               </div>
             </div>
 
-            {editingId !== null && editingOidc ? (
+            {oidcFeatureEnabled && editingId !== null && editingOidc ? (
               <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
                 <p className="text-sm font-medium text-[var(--color-foreground)]">OIDC 绑定</p>
                 <div className="grid gap-3 md:grid-cols-2">
@@ -727,6 +744,7 @@ export default function AdminUsersPage() {
                   ) : null}
                 </div>
               </div>
+              {periodQuotaEnabled ? (
               <div className="mt-3 border-t border-[var(--color-border)] pt-3">
                 <p className="text-sm font-medium text-[var(--color-foreground)]">周期配额</p>
                 <p className="mb-3 text-xs text-[var(--color-foreground-muted)]">按固定时间间隔重置用量，留空表示继承组设置。</p>
@@ -771,6 +789,7 @@ export default function AdminUsersPage() {
                   </div>
                 </div>
               </div>
+              ) : null}
             </div>
 
             <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">

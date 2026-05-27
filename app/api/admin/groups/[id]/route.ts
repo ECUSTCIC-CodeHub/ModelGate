@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { gatewayDb } from "@/lib/db";
 import { validateClaimExpr } from "@/lib/claim-expr";
+import { modelGateFeatures } from "@/lib/features";
 import { ensureAdmin } from "@/lib/guards";
 import { jsonError, jsonOk } from "@/lib/http";
 import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/model-access";
@@ -59,7 +60,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
-  const exprTrimmed = parsed.data.oidc_claim_expr?.trim() || null;
+  const exprTrimmed = modelGateFeatures.oidc ? parsed.data.oidc_claim_expr?.trim() || null : null;
   if (exprTrimmed) {
     const result = validateClaimExpr(exprTrimmed);
     if (!result.valid) return jsonError(`Claim 表达式语法错误: ${result.error}`, 400);
@@ -119,24 +120,32 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     quota_period:
       parsed.data.quota_period === undefined
         ? existing.quota_period
-        : normalizeQuota(parsed.data.quota_period),
+        : modelGateFeatures.periodQuota
+          ? normalizeQuota(parsed.data.quota_period)
+          : existing.quota_period,
     period_quota_tokens:
       parsed.data.period_quota_tokens === undefined
         ? existing.period_quota_tokens
-        : normalizeQuota(parsed.data.period_quota_tokens),
+        : modelGateFeatures.periodQuota
+          ? normalizeQuota(parsed.data.period_quota_tokens)
+          : existing.period_quota_tokens,
     period_quota_requests:
       parsed.data.period_quota_requests === undefined
         ? existing.period_quota_requests
-        : normalizeQuota(parsed.data.period_quota_requests),
+        : modelGateFeatures.periodQuota
+          ? normalizeQuota(parsed.data.period_quota_requests)
+          : existing.period_quota_requests,
     allowed_model_aliases:
       parsed.data.allowed_model_aliases === undefined
         ? existing.allowed_model_aliases
         : stringifyAllowedModelAliases(parsed.data.allowed_model_aliases),
     oidc_claim_expr:
-      parsed.data.oidc_claim_expr === undefined
+      parsed.data.oidc_claim_expr === undefined || !modelGateFeatures.oidc
         ? existing.oidc_claim_expr
         : exprTrimmed,
-    oidc_claim_priority: parsed.data.oidc_claim_priority ?? existing.oidc_claim_priority,
+    oidc_claim_priority: modelGateFeatures.oidc
+      ? parsed.data.oidc_claim_priority ?? existing.oidc_claim_priority
+      : existing.oidc_claim_priority,
     is_default: setDefault ? 1 : (parsed.data.is_default === false ? 0 : existing.is_default),
     enabled:
       parsed.data.enabled === undefined

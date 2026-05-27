@@ -396,7 +396,6 @@ CREATE INDEX IF NOT EXISTS idx_channels_enabled_deleted ON channels(enabled, del
   initSetting.run("oidc_scopes", "openid profile email");
   initSetting.run("oidc_auto_register", "1");
   initSetting.run("oidc_button_text", "OIDC 登录");
-  initSetting.run("oidc_group_claim", "");
   initSetting.run("announcement_content", "");
 
 // Historical compatibility (one-time):

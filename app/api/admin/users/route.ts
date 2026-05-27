@@ -6,6 +6,7 @@ import { gatewayDb, type DbUser } from "@/lib/db";
 import { ensureAdmin } from "@/lib/guards";
 import { jsonError, jsonOk } from "@/lib/http";
 import { getEffectiveLimits, getUserGroup } from "@/lib/effective-limits";
+import { modelGateFeatures } from "@/lib/features";
 import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/model-access";
 import { USERNAME_SCHEMA } from "@/lib/username";
 import { friendlyCredentialPayloadError } from "@/lib/validation";
@@ -186,9 +187,9 @@ export async function POST(request: Request) {
       parsed.data.tpm ?? -1,
       normalizeQuota(parsed.data.quota_tokens),
       normalizeQuota(parsed.data.quota_requests),
-      normalizeQuota(parsed.data.quota_period),
-      normalizeQuota(parsed.data.period_quota_tokens),
-      normalizeQuota(parsed.data.period_quota_requests),
+      modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.quota_period) : null,
+      modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_tokens) : null,
+      modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_requests) : null,
       stringifyAllowedModelAliases(parsed.data.allowed_model_aliases ?? []),
       parsed.data.note?.trim() ? parsed.data.note.trim() : null,
     );

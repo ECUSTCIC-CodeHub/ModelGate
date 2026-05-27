@@ -1,4 +1,5 @@
 import { gatewayDb, type DbGroup, type DbUser } from "@/lib/db";
+import { modelGateFeatures } from "@/lib/features";
 
 export type EffectiveLimits = {
   qps: number;
@@ -40,7 +41,9 @@ export function getUserGroup(groupId: number | null): DbGroup | null {
 export function getEffectiveLimits(user: DbUser): EffectiveLimits {
   const group = getUserGroup(user.group_id);
 
-  const period = pickPeriod(user.quota_period ?? null, group?.quota_period ?? null);
+  const period = modelGateFeatures.periodQuota
+    ? pickPeriod(user.quota_period ?? null, group?.quota_period ?? null)
+    : null;
 
   return {
     qps: pickRate(user.qps, group?.qps ?? -1),

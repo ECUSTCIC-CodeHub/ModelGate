@@ -39,7 +39,6 @@ export function getOidcConfig() {
     scopes: s.oidc_scopes,
     autoRegister: s.oidc_auto_register === 1,
     buttonText: s.oidc_button_text,
-    groupClaim: s.oidc_group_claim,
   };
 }
 

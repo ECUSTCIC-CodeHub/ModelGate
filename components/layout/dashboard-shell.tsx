@@ -49,6 +49,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useToast } from "@/components/ui/toast";
 import { authedFetch, clearCachedProfile, clearSession, getCachedProfile, getOrFetchProfile } from "@/lib/client-auth";
 import { getApiMessage } from "@/lib/api-message";
+import { modelGateFeatures } from "@/lib/features";
 import { cn } from "@/lib/utils";
 
 type Role = "admin" | "user";
@@ -267,10 +268,10 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                     profileBrief.quota_tokens !== null && profileBrief.quota_tokens !== undefined
                       ? ["总Token", profileBrief.used_tokens ?? 0, profileBrief.quota_tokens] as const
                       : null,
-                    profileBrief.quota_period && profileBrief.period_quota_requests !== null && profileBrief.period_quota_requests !== undefined
+                    modelGateFeatures.periodQuota && profileBrief.quota_period && profileBrief.period_quota_requests !== null && profileBrief.period_quota_requests !== undefined
                       ? [`${periodLabel(profileBrief.quota_period)}请求`, periodExpired(profileBrief.period_reset_at) ? 0 : (profileBrief.period_used_requests ?? 0), profileBrief.period_quota_requests] as const
                       : null,
-                    profileBrief.quota_period && profileBrief.period_quota_tokens !== null && profileBrief.period_quota_tokens !== undefined
+                    modelGateFeatures.periodQuota && profileBrief.quota_period && profileBrief.period_quota_tokens !== null && profileBrief.period_quota_tokens !== undefined
                       ? [`${periodLabel(profileBrief.quota_period)}Token`, periodExpired(profileBrief.period_reset_at) ? 0 : (profileBrief.period_used_tokens ?? 0), profileBrief.period_quota_tokens] as const
                       : null,
                   ]).filter(Boolean).map((item) => {
@@ -451,7 +452,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
                       配额: 请求 {formatLimit(profileBrief.used_requests ?? 0)}/{formatLimit(profileBrief.quota_requests)} / Token {formatLimit(profileBrief.used_tokens ?? 0)}/{formatLimit(profileBrief.quota_tokens)}
                     </p>
                   ) : null}
-                  {profileBrief.quota_period ? (
+                  {modelGateFeatures.periodQuota && profileBrief.quota_period ? (
                     <p className="mt-1 text-xs text-[var(--color-foreground-muted)]">
                       {periodLabel(profileBrief.quota_period)}: 请求 {formatLimit(periodExpired(profileBrief.period_reset_at) ? 0 : (profileBrief.period_used_requests ?? 0))}/{formatLimit(profileBrief.period_quota_requests)} / Token {formatLimit(periodExpired(profileBrief.period_reset_at) ? 0 : (profileBrief.period_used_tokens ?? 0))}/{formatLimit(profileBrief.period_quota_tokens)}
                     </p>

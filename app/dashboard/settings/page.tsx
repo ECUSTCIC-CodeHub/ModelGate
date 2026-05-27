@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/api-message";
 import { authedFetch, ensureAdmin } from "@/lib/client-auth";
+import { modelGateFeatures } from "@/lib/features";
 
 export default function AdminSettingsPage() {
   const router = useRouter();
@@ -27,7 +28,6 @@ export default function AdminSettingsPage() {
   const [oidcScopes, setOidcScopes] = useState("openid profile email");
   const [oidcAutoRegister, setOidcAutoRegister] = useState(true);
   const [oidcButtonText, setOidcButtonText] = useState("OIDC 登录");
-  const [oidcGroupClaim, setOidcGroupClaim] = useState("");
   const [publicBaseUrl, setPublicBaseUrl] = useState("");
   const [announcementContent, setAnnouncementContent] = useState("");
   const [wallpaperUrl, setWallpaperUrl] = useState("");
@@ -35,6 +35,8 @@ export default function AdminSettingsPage() {
   const [webhookSecret, setWebhookSecret] = useState("");
   const [corsEnabled, setCorsEnabled] = useState(false);
   const { toast } = useToast();
+  const oidcFeatureEnabled = modelGateFeatures.oidc;
+  const announcementFeatureEnabled = modelGateFeatures.announcement;
 
   async function load() {
     if (!(await ensureAdmin(router))) return;
@@ -46,19 +48,20 @@ export default function AdminSettingsPage() {
       setUpstreamRetryEnabled(data.data.upstream_retry_enabled !== 0);
       setUpstreamRetryMaxAttempts(Number(data.data.upstream_retry_max_attempts ?? 3));
       setCircuitBreakerEnabled(data.data.upstream_circuit_breaker_enabled !== 0);
-      setOidcEnabled(data.data.oidc_enabled === 1);
-      setOidcIssuerUrl(data.data.oidc_issuer_url ?? "");
-      setOidcClientId(data.data.oidc_client_id ?? "");
-      setOidcClientSecret(data.data.oidc_client_secret ?? "");
-      setOidcScopes(data.data.oidc_scopes ?? "openid profile email");
-      setOidcAutoRegister(data.data.oidc_auto_register !== 0);
-      setOidcButtonText(data.data.oidc_button_text ?? "OIDC 登录");
-      setOidcGroupClaim(data.data.oidc_group_claim ?? "");
+      if (oidcFeatureEnabled) {
+        setOidcEnabled(data.data.oidc_enabled === 1);
+        setOidcIssuerUrl(data.data.oidc_issuer_url ?? "");
+        setOidcClientId(data.data.oidc_client_id ?? "");
+        setOidcClientSecret(data.data.oidc_client_secret ?? "");
+        setOidcScopes(data.data.oidc_scopes ?? "openid profile email");
+        setOidcAutoRegister(data.data.oidc_auto_register !== 0);
+        setOidcButtonText(data.data.oidc_button_text ?? "OIDC 登录");
+      }
       const savedBase = data.data.public_base_url ?? "";
       setPublicBaseUrl(
         savedBase || (typeof window !== "undefined" ? window.location.origin : ""),
       );
-      setAnnouncementContent(data.data.announcement_content ?? "");
+      if (announcementFeatureEnabled) setAnnouncementContent(data.data.announcement_content ?? "");
       setWallpaperUrl(data.data.wallpaper_url ?? "");
       setLogoUrl(data.data.logo_url ?? "");
       setWebhookSecret(data.data.webhook_secret ?? "");
@@ -81,19 +84,20 @@ export default function AdminSettingsPage() {
         setUpstreamRetryEnabled(data.data.upstream_retry_enabled !== 0);
         setUpstreamRetryMaxAttempts(Number(data.data.upstream_retry_max_attempts ?? 3));
         setCircuitBreakerEnabled(data.data.upstream_circuit_breaker_enabled !== 0);
-        setOidcEnabled(data.data.oidc_enabled === 1);
-        setOidcIssuerUrl(data.data.oidc_issuer_url ?? "");
-        setOidcClientId(data.data.oidc_client_id ?? "");
-        setOidcClientSecret(data.data.oidc_client_secret ?? "");
-        setOidcScopes(data.data.oidc_scopes ?? "openid profile email");
-        setOidcAutoRegister(data.data.oidc_auto_register !== 0);
-        setOidcButtonText(data.data.oidc_button_text ?? "OIDC 登录");
-        setOidcGroupClaim(data.data.oidc_group_claim ?? "");
+        if (oidcFeatureEnabled) {
+          setOidcEnabled(data.data.oidc_enabled === 1);
+          setOidcIssuerUrl(data.data.oidc_issuer_url ?? "");
+          setOidcClientId(data.data.oidc_client_id ?? "");
+          setOidcClientSecret(data.data.oidc_client_secret ?? "");
+          setOidcScopes(data.data.oidc_scopes ?? "openid profile email");
+          setOidcAutoRegister(data.data.oidc_auto_register !== 0);
+          setOidcButtonText(data.data.oidc_button_text ?? "OIDC 登录");
+        }
         const savedBase = data.data.public_base_url ?? "";
         setPublicBaseUrl(
           savedBase || (typeof window !== "undefined" ? window.location.origin : ""),
         );
-        setAnnouncementContent(data.data.announcement_content ?? "");
+        if (announcementFeatureEnabled) setAnnouncementContent(data.data.announcement_content ?? "");
         setWallpaperUrl(data.data.wallpaper_url ?? "");
         setLogoUrl(data.data.logo_url ?? "");
         setWebhookSecret(data.data.webhook_secret ?? "");
@@ -102,17 +106,16 @@ export default function AdminSettingsPage() {
     }
     void init();
     return () => { cancelled = true; };
-  }, [router]);
+  }, [announcementFeatureEnabled, oidcFeatureEnabled, router]);
 
   async function save() {
-    const response = await authedFetch("/api/dashboard/settings", {
-      method: "PUT",
-      body: JSON.stringify({
-        registration_enabled: registrationEnabled,
-        password_login_enabled: passwordLoginEnabled,
-        upstream_retry_enabled: upstreamRetryEnabled,
-        upstream_retry_max_attempts: upstreamRetryMaxAttempts,
-        upstream_circuit_breaker_enabled: circuitBreakerEnabled,
+    const payload = {
+      registration_enabled: registrationEnabled,
+      password_login_enabled: passwordLoginEnabled,
+      upstream_retry_enabled: upstreamRetryEnabled,
+      upstream_retry_max_attempts: upstreamRetryMaxAttempts,
+      upstream_circuit_breaker_enabled: circuitBreakerEnabled,
+      ...(oidcFeatureEnabled ? {
         oidc_enabled: oidcEnabled,
         oidc_issuer_url: oidcIssuerUrl,
         oidc_client_id: oidcClientId,
@@ -120,14 +123,18 @@ export default function AdminSettingsPage() {
         oidc_scopes: oidcScopes,
         oidc_auto_register: oidcAutoRegister,
         oidc_button_text: oidcButtonText,
-        oidc_group_claim: oidcGroupClaim,
-        public_base_url: publicBaseUrl,
-        announcement_content: announcementContent,
-        wallpaper_url: wallpaperUrl,
-        logo_url: logoUrl,
-        webhook_secret: webhookSecret,
-        cors_enabled: corsEnabled,
-      }),
+      } : {}),
+      public_base_url: publicBaseUrl,
+      ...(announcementFeatureEnabled ? { announcement_content: announcementContent } : {}),
+      wallpaper_url: wallpaperUrl,
+      logo_url: logoUrl,
+      webhook_secret: webhookSecret,
+      cors_enabled: corsEnabled,
+    };
+
+    const response = await authedFetch("/api/dashboard/settings", {
+      method: "PUT",
+      body: JSON.stringify(payload),
     });
     const data = await response.json().catch(() => null);
     if (response.ok) {
@@ -139,7 +146,11 @@ export default function AdminSettingsPage() {
   }
 
   return (
-    <DashboardShell role="admin" title="系统设置" subtitle="配置登录注册策略、上游重试与 OIDC 单点登录。">
+    <DashboardShell
+      role="admin"
+      title="系统设置"
+      subtitle={oidcFeatureEnabled ? "配置登录注册策略、上游重试与 OIDC 单点登录。" : "配置登录注册策略与上游重试。"}
+    >
       <div className="space-y-4 pb-6">
         <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
           <Card>
@@ -153,14 +164,18 @@ export default function AdminSettingsPage() {
               <div className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-medium text-[var(--color-foreground)]">允许账号密码登录</p>
-                  <p className="text-xs text-[var(--color-foreground-muted)]">关闭后仅支持 OIDC 登录。请确保 OIDC 已配置且有管理员已绑定。</p>
+                  <p className="text-xs text-[var(--color-foreground-muted)]">
+                    {oidcFeatureEnabled ? "关闭后仅支持 OIDC 登录。请确保 OIDC 已配置且有管理员已绑定。" : "当前构建不包含 OIDC，账号密码登录必须保留。"}
+                  </p>
                 </div>
-                <Switch checked={passwordLoginEnabled} onCheckedChange={setPasswordLoginEnabled} />
+                <Switch checked={passwordLoginEnabled} onCheckedChange={setPasswordLoginEnabled} disabled={!oidcFeatureEnabled} />
               </div>
               <div className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-medium text-[var(--color-foreground)]">允许账号密码注册</p>
-                  <p className="text-xs text-[var(--color-foreground-muted)]">关闭后仅管理员可创建用户，OIDC 自动注册不受影响。</p>
+                  <p className="text-xs text-[var(--color-foreground-muted)]">
+                    {oidcFeatureEnabled ? "关闭后仅管理员可创建用户，OIDC 自动注册不受影响。" : "关闭后仅管理员可创建用户。"}
+                  </p>
                 </div>
                 <Switch checked={registrationEnabled} onCheckedChange={setRegistrationEnabled} />
               </div>
@@ -204,6 +219,7 @@ export default function AdminSettingsPage() {
           </Card>
         </div>
 
+        {oidcFeatureEnabled ? (
         <Card>
           <CardHeader>
             <SectionTitle
@@ -296,15 +312,6 @@ export default function AdminSettingsPage() {
                   onChange={(e) => setOidcButtonText(e.target.value)}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>用户组 Claim（已弃用）</Label>
-                <Input
-                  placeholder="如 group、role、department"
-                  value={oidcGroupClaim}
-                  onChange={(e) => setOidcGroupClaim(e.target.value)}
-                />
-                <p className="text-xs text-[var(--color-foreground-muted)]">此字段已弃用。请在各用户组中直接使用 Claim 表达式配置组映射规则。</p>
-              </div>
             </div>
             <div className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -315,7 +322,9 @@ export default function AdminSettingsPage() {
             </div>
           </CardContent>
         </Card>
+        ) : null}
 
+        {announcementFeatureEnabled ? (
         <Card>
           <CardHeader>
             <SectionTitle
@@ -333,6 +342,7 @@ export default function AdminSettingsPage() {
             </div>
           </CardContent>
         </Card>
+        ) : null}
 
         <Card>
           <CardHeader>

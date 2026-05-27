@@ -1,5 +1,6 @@
 import { getGatewaySettings } from "@/lib/settings";
 import { getOidcConfig } from "@/lib/oidc";
+import { modelGateFeatures } from "@/lib/features";
 
 export type AuthStatus = {
   oidc_enabled: boolean;
@@ -12,9 +13,9 @@ export function getAuthStatus(): AuthStatus {
   const config = getOidcConfig();
   const settings = getGatewaySettings();
   return {
-    oidc_enabled: config.enabled && !!config.issuerUrl && !!config.clientId,
+    oidc_enabled: modelGateFeatures.oidc && config.enabled && !!config.issuerUrl && !!config.clientId,
     oidc_button_text: config.buttonText,
-    password_login_enabled: settings.password_login_enabled === 1,
+    password_login_enabled: modelGateFeatures.oidc ? settings.password_login_enabled === 1 : true,
     registration_enabled: settings.registration_enabled === 1,
   };
 }

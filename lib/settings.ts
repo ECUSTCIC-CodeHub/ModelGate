@@ -21,7 +21,6 @@ export type GatewaySettings = {
   oidc_scopes: string;
   oidc_auto_register: number;
   oidc_button_text: string;
-  oidc_group_claim: string;
   public_base_url: string;
   announcement_content: string;
   wallpaper_url: string;
@@ -46,7 +45,6 @@ const OIDC_KEYS = [
   "oidc_scopes",
   "oidc_auto_register",
   "oidc_button_text",
-  "oidc_group_claim",
   "public_base_url",
 ] as const;
 
@@ -89,7 +87,6 @@ function readGatewaySettingsFromDb(): GatewaySettings {
     oidc_scopes: map.get("oidc_scopes") ?? "openid profile email",
     oidc_auto_register: map.get("oidc_auto_register") === "0" ? 0 : 1,
     oidc_button_text: map.get("oidc_button_text") || "OIDC 登录",
-    oidc_group_claim: map.get("oidc_group_claim") ?? "",
     public_base_url: map.get("public_base_url") ?? "",
     announcement_content: map.get("announcement_content") ?? "",
     wallpaper_url: map.get("wallpaper_url") ?? "",
@@ -123,7 +120,6 @@ export function setGatewaySettings(input: {
   oidc_scopes?: string;
   oidc_auto_register?: boolean;
   oidc_button_text?: string;
-  oidc_group_claim?: string;
   public_base_url?: string;
   announcement_content?: string;
   wallpaper_url?: string;
@@ -146,7 +142,6 @@ export function setGatewaySettings(input: {
   if (input.oidc_scopes !== undefined) values.oidc_scopes = input.oidc_scopes.trim() || "openid profile email";
   if (input.oidc_auto_register !== undefined) values.oidc_auto_register = input.oidc_auto_register ? "1" : "0";
   if (input.oidc_button_text !== undefined) values.oidc_button_text = input.oidc_button_text.trim() || "OIDC 登录";
-  if (input.oidc_group_claim !== undefined) values.oidc_group_claim = input.oidc_group_claim.trim();
   if (input.public_base_url !== undefined) values.public_base_url = input.public_base_url.trim().replace(/\/+$/, "");
   if (input.announcement_content !== undefined) values.announcement_content = input.announcement_content;
   if (input.wallpaper_url !== undefined) values.wallpaper_url = input.wallpaper_url.trim();

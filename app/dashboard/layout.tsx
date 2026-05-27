@@ -5,6 +5,7 @@ import { getServerProfileFromCookieStore } from "@/lib/auth";
 import { getAuthStatus } from "@/lib/auth-status";
 import { type DbUser } from "@/lib/db";
 import { getEffectiveLimits } from "@/lib/effective-limits";
+import { modelGateFeatures } from "@/lib/features";
 import { getGatewaySettings } from "@/lib/settings";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -45,7 +46,7 @@ export default async function DashboardLayout({
     <ThemeProvider>
       <AuthProvider initialProfile={enrichedProfile} oidcEnabled={authStatus.oidc_enabled} logoUrl={logo_url}>
         {children}
-        <AnnouncementDialog />
+        {modelGateFeatures.announcement ? <AnnouncementDialog /> : null}
       </AuthProvider>
     </ThemeProvider>
   );

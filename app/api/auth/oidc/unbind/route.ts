@@ -1,10 +1,15 @@
 export const dynamic = "force-dynamic";
 
 import { gatewayDb } from "@/lib/db";
+import { featureUnavailableMessage, modelGateFeatures } from "@/lib/features";
 import { ensureWebUser } from "@/lib/guards";
 import { jsonError, jsonOk } from "@/lib/http";
 
 export async function POST(request: Request) {
+  if (!modelGateFeatures.oidc) {
+    return jsonError(featureUnavailableMessage("OIDC"), 404);
+  }
+
   const guard = ensureWebUser(request);
   if ("error" in guard) return guard.error;
 
