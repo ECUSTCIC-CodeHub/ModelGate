@@ -129,7 +129,9 @@ SQLite 数据库：`data/gateway.db`（首次运行自动创建）
 
 所有接口均支持两种认证方式：
 - **Session 认证**：JWT Cookie（Web 控制台自动管理）
-- **API Key 认证**：`Authorization: Bearer sk-gw-...` 或 `x-api-key: sk-gw-...`
+- **API Key 认证**：`Authorization: Bearer sk-gw-...`、`x-api-key: sk-gw-...`，或 query 参数 `?token=sk-gw-...` / `?api_key=sk-gw-...`
+
+Query 鉴权主要用于无法自定义请求头的客户端；能设置请求头时仍推荐使用 `Authorization` 或 `x-api-key`。
 
 ## 用户 API 接入指南
 

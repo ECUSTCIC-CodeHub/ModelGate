@@ -14,12 +14,25 @@ export type ApiKeyAuthResult =
 const keyByValueStmt = gatewayDb.prepare("SELECT * FROM keys WHERE key = ? AND enabled = 1 AND deleted_at IS NULL");
 const userByIdStmt = gatewayDb.prepare("SELECT * FROM users WHERE id = ? AND enabled = 1 AND deleted_at IS NULL");
 
+function normalizeApiKey(value: string | null) {
+  const trimmed = value?.trim();
+  return trimmed || null;
+}
+
+function parseQueryApiKey(url: string) {
+  const params = new URL(url, "http://localhost").searchParams;
+  return normalizeApiKey(params.get("token")) ?? normalizeApiKey(params.get("api_key"));
+}
+
 export function checkApiKeyAuth(request: Request): ApiKeyAuthResult {
   if (AUTH_DISABLED) {
     return { ok: true, context: getNoAuthContext() };
   }
 
-  const raw = request.headers.get("x-api-key") ?? parseBearerToken(request.headers.get("authorization"));
+  const raw =
+    normalizeApiKey(request.headers.get("x-api-key"))
+    ?? normalizeApiKey(parseBearerToken(request.headers.get("authorization")))
+    ?? parseQueryApiKey(request.url);
   if (!raw) return { ok: false, reason: "missing" };
 
   const key = keyByValueStmt.get(raw) as DbKey | undefined;

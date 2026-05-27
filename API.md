@@ -32,6 +32,20 @@ Authorization: Bearer sk-gw-xxxxx
 x-api-key: sk-gw-xxxxx
 ```
 
+也支持通过 query 参数传递，适用于无法自定义请求头的客户端：
+
+```
+?token=sk-gw-xxxxx
+```
+
+或
+
+```
+?api_key=sk-gw-xxxxx
+```
+
+请求头方式优先级更高，也更推荐；query 鉴权会被所有支持 API Key 的端点识别，包括 `/api/v1/*`、`/api/chat`、`/api/user/*`、`/api/dashboard/*` 和 `/api/admin/*`。
+
 ---
 
 ## 认证接口
