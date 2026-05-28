@@ -9,6 +9,7 @@ import { createQueuedUpstreamResponse, normalizeUserAgent } from "@/lib/gateway/
 import { checkUserRateLimit } from "@/lib/gateway/ratelimit";
 import { selectModelRoute, type RoutedModel } from "@/lib/gateway/router";
 import { getGatewaySettings } from "@/lib/core/settings";
+import { resolveClientIp } from "@/lib/core/client-ip";
 import { countTextTokens } from "@/lib/gateway/tokenizer";
 import { buildErrorResponseBody, parseUpstreamError } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
@@ -17,9 +18,7 @@ import { requestUpstreamWithFallback } from "@/lib/gateway/upstream-routing";
 export async function handleGatewayProtocolRequest(request: Request, inboundAdapter: GatewayProtocolAdapter) {
   const inboundProtocol = inboundAdapter.protocol;
   const startedAt = Date.now();
-  const clientIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-    || request.headers.get("x-real-ip")
-    || null;
+  const clientIp = resolveClientIp(request.headers);
   const clientUserAgent = normalizeUserAgent(request.headers.get("user-agent"));
   const authResult = checkApiKeyAuth(request);
   if (!authResult.ok) {

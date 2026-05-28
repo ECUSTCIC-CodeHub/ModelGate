@@ -1,3 +1,5 @@
+import { resolveClientIp } from "@/lib/core/client-ip";
+
 const attempts = new Map<string, { count: number; resetAt: number }>();
 
 const MAX_ATTEMPTS = 5;
@@ -11,14 +13,8 @@ setInterval(() => {
   }
 }, CLEANUP_INTERVAL_MS).unref();
 
-function getClientIp(request: Request): string {
-  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-    || request.headers.get("x-real-ip")
-    || "unknown";
-}
-
 function getKey(request: Request, username?: string): string {
-  const ip = getClientIp(request);
+  const ip = resolveClientIp(request.headers) ?? "unknown";
   const subject = username?.trim().toLowerCase() || "unknown";
   return `${ip}:${subject}`;
 }
