@@ -36,10 +36,19 @@ function ensurePeriodReset(userId: number, period: number, resetAt: string | nul
     return row;
   }
   const nextReset = new Date(now.getTime() + period * 1000).toISOString();
-  gatewayDb
-    .prepare("UPDATE users SET period_used_tokens = 0, period_used_requests = 0, period_reset_at = ? WHERE id = ?")
-    .run(nextReset, userId);
-  return { period_used_tokens: 0, period_used_requests: 0, period_reset_at: nextReset };
+  const result = gatewayDb
+    .prepare(
+      `UPDATE users
+       SET period_used_tokens = 0, period_used_requests = 0, period_reset_at = ?
+       WHERE id = ? AND (period_reset_at IS NULL OR period_reset_at <= ?)`,
+    )
+    .run(nextReset, userId, now.toISOString());
+  if (result.changes > 0) {
+    return { period_used_tokens: 0, period_used_requests: 0, period_reset_at: nextReset };
+  }
+  return gatewayDb
+    .prepare("SELECT period_used_tokens, period_used_requests, period_reset_at FROM users WHERE id = ?")
+    .get(userId) as { period_used_tokens: number; period_used_requests: number; period_reset_at: string };
 }
 
 export function checkQuota(userId: number, estimatedTokens: number): { ok: false; reason: string; quota?: QuotaInfo } | { ok: true; quota: QuotaInfo } {
