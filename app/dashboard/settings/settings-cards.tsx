@@ -1,5 +1,4 @@
 export { AnnouncementSettingsCard } from "./announcement-settings-card";
-export { AppearanceSettingsCard } from "./appearance-settings-card";
 export { CorsSettingsCard } from "./cors-settings-card";
 export { LoginSettingsCard } from "./login-settings-card";
 export { OidcSettingsCard } from "./oidc-settings-card";

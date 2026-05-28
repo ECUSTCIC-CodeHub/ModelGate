@@ -6,7 +6,6 @@ import { getAuthStatus } from "@/lib/auth/auth-status";
 import { type DbUser } from "@/lib/core/db";
 import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
 import { modelGateFeatures } from "@/lib/core/features";
-import { getGatewaySettings } from "@/lib/core/settings";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -40,11 +39,10 @@ export default async function DashboardLayout({
   };
 
   const authStatus = getAuthStatus();
-  const { logo_url } = getGatewaySettings();
 
   return (
     <ThemeProvider>
-      <AuthProvider initialProfile={enrichedProfile} oidcEnabled={authStatus.oidc_enabled} logoUrl={logo_url}>
+      <AuthProvider initialProfile={enrichedProfile} oidcEnabled={authStatus.oidc_enabled}>
         {children}
         {modelGateFeatures.announcement ? <AnnouncementDialog /> : null}
       </AuthProvider>

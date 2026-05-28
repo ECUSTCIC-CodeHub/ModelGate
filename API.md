@@ -320,8 +320,6 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
     "oidc_button_text": "OIDC 登录",
     "public_base_url": "",
     "announcement_content": "",
-    "wallpaper_url": "",
-    "logo_url": "",
     "webhook_secret": "",
     "cors_enabled": 0
   }
@@ -351,8 +349,6 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "oidc_button_text": "OIDC 登录",
   "public_base_url": "https://your-domain.com",
   "announcement_content": "# 欢迎",
-  "wallpaper_url": "https://example.com/api/wallpaper",
-  "logo_url": "https://example.com/logo.svg",
   "webhook_secret": "your-webhook-secret",
   "cors_enabled": false
 }
@@ -374,8 +370,6 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | oidc_button_text | string | 登录页 OIDC 按钮文案 |
 | public_base_url | string | 对外服务域名 |
 | announcement_content | string | 系统公告内容（支持 Markdown，最长 5000 字符） |
-| wallpaper_url | string | 背景壁纸图片地址（留空则不显示壁纸，最长 500 字符） |
-| logo_url | string | 侧栏 Logo 图片地址（留空则不显示 Logo，最长 500 字符） |
 | webhook_secret | string | Webhook 回调密钥（最长 200 字符） |
 | cors_enabled | boolean | 是否允许所有来源跨域访问网关 API（开启后 `/api/v1/*` 返回 `Access-Control-Allow-Origin: *` 并响应 OPTIONS 预检） |
 

@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { useAuthProfile, useLogoUrl, useOidcEnabled } from "@/components/providers/auth-provider";
+import { useAuthProfile, useOidcEnabled } from "@/components/providers/auth-provider";
 import { useTheme } from "@/components/providers/theme-provider";
 import { useToast } from "@/components/ui/toast";
 import { getDashboardMenus } from "@/components/layout/dashboard-shell/menus";
@@ -23,7 +23,6 @@ export function useDashboardShell(role: Role) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const oidcAvailable = useOidcEnabled();
-  const logoUrl = useLogoUrl();
 
   useEffect(() => {
     clearCachedProfile();
@@ -89,7 +88,6 @@ export function useDashboardShell(role: Role) {
 
   return {
     currentPassword,
-    logoUrl,
     menus,
     mobileNavOpen,
     newPassword,

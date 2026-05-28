@@ -16,7 +16,6 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
         <DashboardSidebar
           menus={shell.menus}
           pathname={shell.pathname}
-          logoUrl={shell.logoUrl}
           profile={shell.profileBrief}
           oidcAvailable={shell.oidcAvailable}
           onChangePassword={shell.openPasswordDialog}
@@ -44,7 +43,6 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
         onOpenChange={shell.setMobileNavOpen}
         menus={shell.menus}
         pathname={shell.pathname}
-        logoUrl={shell.logoUrl}
         profile={shell.profileBrief}
         theme={shell.theme}
         oidcAvailable={shell.oidcAvailable}

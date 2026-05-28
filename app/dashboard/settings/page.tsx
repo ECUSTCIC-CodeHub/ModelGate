@@ -9,7 +9,6 @@ import { authedFetch, ensureAdmin } from "@/lib/auth/client-auth";
 import { modelGateFeatures } from "@/lib/core/features";
 import {
   AnnouncementSettingsCard,
-  AppearanceSettingsCard,
   CorsSettingsCard,
   LoginSettingsCard,
   OidcSettingsCard,
@@ -44,8 +43,6 @@ export default function AdminSettingsPage() {
   const [oidcButtonText, setOidcButtonText] = useState("OIDC 登录");
   const [publicBaseUrl, setPublicBaseUrl] = useState("");
   const [announcementContent, setAnnouncementContent] = useState("");
-  const [wallpaperUrl, setWallpaperUrl] = useState("");
-  const [logoUrl, setLogoUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
   const [corsEnabled, setCorsEnabled] = useState(false);
   const { toast } = useToast();
@@ -72,8 +69,6 @@ export default function AdminSettingsPage() {
     const savedBase = stringValue(settings.public_base_url);
     setPublicBaseUrl(savedBase || (typeof window !== "undefined" ? window.location.origin : ""));
     if (announcementFeatureEnabled) setAnnouncementContent(stringValue(settings.announcement_content));
-    setWallpaperUrl(stringValue(settings.wallpaper_url));
-    setLogoUrl(stringValue(settings.logo_url));
     if (webhookFeatureEnabled) setWebhookSecret(stringValue(settings.webhook_secret));
     setCorsEnabled(settings.cors_enabled === 1);
   }, [announcementFeatureEnabled, oidcFeatureEnabled, webhookFeatureEnabled]);
@@ -119,8 +114,6 @@ export default function AdminSettingsPage() {
       } : {}),
       public_base_url: publicBaseUrl,
       ...(announcementFeatureEnabled ? { announcement_content: announcementContent } : {}),
-      wallpaper_url: wallpaperUrl,
-      logo_url: logoUrl,
       ...(webhookFeatureEnabled ? { webhook_secret: webhookSecret } : {}),
       cors_enabled: corsEnabled,
     };
@@ -209,13 +202,6 @@ export default function AdminSettingsPage() {
             setAnnouncementContent={setAnnouncementContent}
           />
         ) : null}
-
-        <AppearanceSettingsCard
-          logoUrl={logoUrl}
-          wallpaperUrl={wallpaperUrl}
-          setLogoUrl={setLogoUrl}
-          setWallpaperUrl={setWallpaperUrl}
-        />
 
         <SaveSettingsCard onSave={() => void save()} />
       </div>

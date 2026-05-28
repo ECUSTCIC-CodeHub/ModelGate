@@ -3,7 +3,6 @@ import "../public/fonts/harmony.css";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/toast";
 import { ThemeScript } from "@/components/providers/theme-script";
-import { getGatewaySettings } from "@/lib/core/settings";
 
 export const metadata: Metadata = {
   title: "ModelGate",
@@ -15,24 +14,12 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const { wallpaper_url } = getGatewaySettings();
-
   return (
     <html lang="zh" suppressHydrationWarning>
       <head>
         <ThemeScript />
       </head>
       <body className="antialiased">
-        {wallpaper_url && (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img
-            src={wallpaper_url}
-            alt=""
-            aria-hidden="true"
-            referrerPolicy="no-referrer"
-            className="anime-bg"
-          />
-        )}
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>

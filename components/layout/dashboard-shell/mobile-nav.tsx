@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { LogOut, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,7 +21,6 @@ type MobileNavSheetProps = {
   onOpenChange: (open: boolean) => void;
   menus: DashboardMenuItem[];
   pathname: string;
-  logoUrl: string | null;
   profile: ProfileBrief | null;
   oidcAvailable: boolean;
   theme: string;
@@ -39,7 +37,6 @@ export function MobileNavSheet({
   onOpenChange,
   menus,
   pathname,
-  logoUrl,
   profile,
   oidcAvailable,
   theme,
@@ -58,15 +55,6 @@ export function MobileNavSheet({
       <SheetContent side="left" className="w-[320px] p-0">
         <SheetHeader className="border-b border-[var(--color-border)] px-5 py-4">
           <div className="flex items-center gap-3">
-            {logoUrl && (
-              <Image
-                src={logoUrl}
-                alt="Logo"
-                width={32}
-                height={32}
-                className="shrink-0 dark:invert"
-              />
-            )}
             <div className="min-w-0">
               <SheetTitle>后台导航</SheetTitle>
               <SheetDescription>快速切换页面与管理账号。</SheetDescription>

@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -12,7 +11,6 @@ import { cn } from "@/lib/shared/utils";
 type DashboardSidebarProps = {
   menus: DashboardMenuItem[];
   pathname: string;
-  logoUrl: string | null;
   profile: ProfileBrief | null;
   oidcAvailable: boolean;
   onChangePassword: () => void;
@@ -25,7 +23,6 @@ type DashboardSidebarProps = {
 export function DashboardSidebar({
   menus,
   pathname,
-  logoUrl,
   profile,
   oidcAvailable,
   onChangePassword,
@@ -39,16 +36,6 @@ export function DashboardSidebar({
       <div className="sticky top-3 flex h-[calc(100vh-1.5rem)] flex-col rounded-lg border border-[var(--color-sidebar-border)] bg-[var(--color-sidebar-bg)] p-3 shadow-[var(--shadow-sm)]">
         <div className="space-y-4">
           <div className="flex items-center gap-3 px-1 py-2">
-            {logoUrl && (
-              <Image
-                src={logoUrl}
-                alt="Logo"
-                width={36}
-                height={36}
-                priority
-                className="shrink-0 dark:invert"
-              />
-            )}
             <div className="min-w-0">
               <p className="font-mono text-sm font-semibold text-[var(--color-foreground)]">ModelGate</p>
               <p className="mt-0.5 text-xs text-[var(--color-foreground-muted)]">模型网关管理控制台</p>
