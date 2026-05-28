@@ -1,6 +1,6 @@
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 
-const RETRYABLE_UPSTREAM_STATUS = new Set([429, 500, 502, 503, 504]);
+const RETRYABLE_UPSTREAM_STATUS = new Set([401, 429, 500, 502, 503, 504]);
 
 export function shouldRetryUpstreamStatus(status: number) {
   return RETRYABLE_UPSTREAM_STATUS.has(status);
