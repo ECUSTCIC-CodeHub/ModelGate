@@ -40,6 +40,7 @@ export async function requestUpstreamWithFallback({
   maxRouteAttempts,
   requestSignal,
   inboundHeaders,
+  allowedChannelIds,
   startedAt,
   buildRequestBody,
 }: {
@@ -48,6 +49,7 @@ export async function requestUpstreamWithFallback({
   maxRouteAttempts: number;
   requestSignal: AbortSignal;
   inboundHeaders: Headers;
+  allowedChannelIds?: number[] | null;
   startedAt: number;
   buildRequestBody: (route: RoutedModel) => Record<string, unknown>;
 }): Promise<UpstreamPickResult> {
@@ -60,6 +62,7 @@ export async function requestUpstreamWithFallback({
     const route = selectModelRoute(resolvedAlias, {
       excludeChannelIds: [...attemptedChannels],
       protocol: inboundProtocol,
+      allowedChannelIds,
     });
 
     if (!route) break;

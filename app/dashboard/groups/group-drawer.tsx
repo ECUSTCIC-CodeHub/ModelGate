@@ -13,7 +13,7 @@ import {
 import { GroupBasicFields } from "./group-basic-fields";
 import { GroupModelAccessFields } from "./group-model-access-fields";
 import { GroupQuotaFields } from "./group-quota-fields";
-import type { AliasOption, GroupForm } from "./group-model";
+import type { AliasOption, ChannelOption, GroupForm } from "./group-model";
 
 type GroupDrawerProps = {
   open: boolean;
@@ -21,10 +21,12 @@ type GroupDrawerProps = {
   editingId: number | null;
   form: GroupForm;
   aliasOptions: AliasOption[];
+  channelOptions: ChannelOption[];
   oidcFeatureEnabled: boolean;
   periodQuotaEnabled: boolean;
   onFormChange: (patch: Partial<GroupForm>) => void;
   onToggleAllowedAlias: (alias: string) => void;
+  onToggleAllowedChannel: (channelId: number) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>;
 };
 
@@ -34,10 +36,12 @@ export function GroupDrawer({
   editingId,
   form,
   aliasOptions,
+  channelOptions,
   oidcFeatureEnabled,
   periodQuotaEnabled,
   onFormChange,
   onToggleAllowedAlias,
+  onToggleAllowedChannel,
   onSubmit,
 }: GroupDrawerProps) {
   return (
@@ -61,7 +65,9 @@ export function GroupDrawer({
           <GroupModelAccessFields
             form={form}
             aliasOptions={aliasOptions}
+            channelOptions={channelOptions}
             onToggleAllowedAlias={onToggleAllowedAlias}
+            onToggleAllowedChannel={onToggleAllowedChannel}
           />
           <SheetFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>取消</Button>

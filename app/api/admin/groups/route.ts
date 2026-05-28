@@ -6,6 +6,7 @@ import { validateClaimExpr } from "@/lib/shared/claim-expr";
 import { modelGateFeatures } from "@/lib/core/features";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
+import { listExistingChannelIds, parseAllowedChannelIds, stringifyAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
 
 const createSchema = z.object({
@@ -20,6 +21,7 @@ const createSchema = z.object({
   period_quota_tokens: z.number().int().min(-1).nullable().optional(),
   period_quota_requests: z.number().int().min(-1).nullable().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
+  allowed_channel_ids: z.array(z.number().int().positive()).optional(),
   oidc_claim_expr: z.string().max(512).nullable().optional(),
   oidc_claim_priority: z.number().int().min(0).max(9999).optional(),
   is_default: z.boolean().optional(),
@@ -46,7 +48,7 @@ export async function GET(request: Request) {
        ORDER BY g.is_default DESC, g.id ASC
        LIMIT ? OFFSET ?`,
     )
-    .all(limit, offset) as Array<Record<string, unknown> & { allowed_model_aliases: string }>;
+    .all(limit, offset) as Array<Record<string, unknown> & { allowed_model_aliases: string; allowed_channel_ids: string }>;
 
   const total = gatewayDb
     .prepare("SELECT COUNT(*) AS total FROM groups WHERE deleted_at IS NULL")
@@ -56,6 +58,7 @@ export async function GET(request: Request) {
     data: rows.map((row) => ({
       ...row,
       allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases),
+      allowed_channel_ids: parseAllowedChannelIds(row.allowed_channel_ids),
     })),
     paging: { limit, offset, total: total.total ?? 0 },
   });
@@ -81,6 +84,9 @@ export async function POST(request: Request) {
   if (existing) return jsonError("组名已存在", 409);
 
   const setDefault = parsed.data.is_default === true;
+  const channelIds = parsed.data.allowed_channel_ids
+    ? listExistingChannelIds(parsed.data.allowed_channel_ids)
+    : [];
 
   const tx = gatewayDb.transaction(() => {
     if (setDefault) {
@@ -89,8 +95,8 @@ export async function POST(request: Request) {
 
     return gatewayDb
       .prepare(
-        `INSERT INTO groups (name, description, qps, rpm, tpm, quota_requests, quota_tokens, quota_period, period_quota_tokens, period_quota_requests, allowed_model_aliases, oidc_claim_expr, oidc_claim_priority, is_default)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO groups (name, description, qps, rpm, tpm, quota_requests, quota_tokens, quota_period, period_quota_tokens, period_quota_requests, allowed_model_aliases, allowed_channel_ids, oidc_claim_expr, oidc_claim_priority, is_default)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         parsed.data.name,
@@ -104,6 +110,7 @@ export async function POST(request: Request) {
         modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_tokens) : null,
         modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_requests) : null,
         stringifyAllowedModelAliases(parsed.data.allowed_model_aliases ?? []),
+        stringifyAllowedChannelIds(channelIds),
         exprTrimmed,
         modelGateFeatures.oidc ? parsed.data.oidc_claim_priority ?? 0 : 0,
         setDefault ? 1 : 0,
@@ -114,12 +121,17 @@ export async function POST(request: Request) {
 
   const row = gatewayDb
     .prepare("SELECT * FROM groups WHERE id = ?")
-    .get(result.lastInsertRowid) as Record<string, unknown> & { allowed_model_aliases: string };
+    .get(result.lastInsertRowid) as Record<string, unknown> & { allowed_model_aliases: string; allowed_channel_ids: string };
 
   return jsonOk(
     {
       message: "用户组创建成功。",
-      data: { ...row, allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases), user_count: 0 },
+      data: {
+        ...row,
+        allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases),
+        allowed_channel_ids: parseAllowedChannelIds(row.allowed_channel_ids),
+        user_count: 0,
+      },
     },
     201,
   );

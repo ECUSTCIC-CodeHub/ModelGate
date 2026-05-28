@@ -11,6 +11,7 @@ import {
   initialForm,
   periodToPreset,
   type AliasOption,
+  type ChannelOption,
   type GroupForm,
   type GroupRow,
 } from "./group-model";
@@ -34,6 +35,7 @@ function buildGroupForm(row: GroupRow): GroupForm {
     period_quota_tokens: row.period_quota_tokens === null ? "" : String(row.period_quota_tokens),
     period_quota_requests: row.period_quota_requests === null ? "" : String(row.period_quota_requests),
     allowed_model_aliases: row.allowed_model_aliases ?? [],
+    allowed_channel_ids: row.allowed_channel_ids ?? [],
     oidc_claim_expr: row.oidc_claim_expr ?? "",
     oidc_claim_priority: String(row.oidc_claim_priority ?? 0),
     is_default: row.is_default === 1,
@@ -64,6 +66,7 @@ function buildGroupPayload(
       period_quota_requests: form.period_quota_requests.trim() === "" ? null : Number(form.period_quota_requests),
     } : {}),
     allowed_model_aliases: form.allowed_model_aliases,
+    allowed_channel_ids: form.allowed_channel_ids,
     ...(oidcFeatureEnabled ? {
       oidc_claim_expr: form.oidc_claim_expr.trim() || null,
       oidc_claim_priority: Number(form.oidc_claim_priority) || 0,
@@ -84,6 +87,7 @@ export function useGroupAdmin() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [aliasOptions, setAliasOptions] = useState<AliasOption[]>([]);
+  const [channelOptions, setChannelOptions] = useState<ChannelOption[]>([]);
 
   async function loadGroups() {
     if (!(await ensureAdmin(router))) return;
@@ -99,9 +103,10 @@ export function useGroupAdmin() {
     async function init() {
       const profile = await ensureAdmin(router);
       if (cancelled || !profile) return;
-      const [groupsRes, modelsRes] = await Promise.all([
+      const [groupsRes, modelsRes, channelsRes] = await Promise.all([
         authedFetch("/api/admin/groups?limit=100"),
         authedFetch("/api/admin/models"),
+        authedFetch("/api/admin/channels"),
       ]);
       if (cancelled) return;
       const groupsData = (await groupsRes.json()) as GroupsResponse;
@@ -118,6 +123,16 @@ export function useGroupAdmin() {
           if (!unique.has(row.alias)) unique.set(row.alias, row);
         }
         setAliasOptions([...unique.values()].sort((a, b) => a.alias.localeCompare(b.alias)));
+      }
+      const channelsData = await channelsRes.json().catch(() => null);
+      if (cancelled) return;
+      if (channelsRes.ok) {
+        const items = Array.isArray(channelsData?.data) ? (channelsData.data as ChannelOption[]) : [];
+        setChannelOptions(
+          items
+            .map((channel) => ({ id: channel.id, name: channel.name, enabled: channel.enabled }))
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        );
       }
     }
     void init();
@@ -146,6 +161,15 @@ export function useGroupAdmin() {
       allowed_model_aliases: current.allowed_model_aliases.includes(alias)
         ? current.allowed_model_aliases.filter((item) => item !== alias)
         : [...current.allowed_model_aliases, alias].sort(),
+    }));
+  }
+
+  function toggleAllowedChannel(channelId: number) {
+    setForm((current) => ({
+      ...current,
+      allowed_channel_ids: current.allowed_channel_ids.includes(channelId)
+        ? current.allowed_channel_ids.filter((id) => id !== channelId)
+        : [...current.allowed_channel_ids, channelId].sort((a, b) => a - b),
     }));
   }
 
@@ -205,11 +229,13 @@ export function useGroupAdmin() {
     setDrawerOpen,
     editingId,
     aliasOptions,
+    channelOptions,
     oidcFeatureEnabled,
     periodQuotaEnabled,
     openCreateGroup,
     openEditGroup,
     toggleAllowedAlias,
+    toggleAllowedChannel,
     submitGroup,
     removeGroup,
   };

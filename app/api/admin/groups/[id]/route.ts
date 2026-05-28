@@ -6,6 +6,7 @@ import { validateClaimExpr } from "@/lib/shared/claim-expr";
 import { modelGateFeatures } from "@/lib/core/features";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
+import { listExistingChannelIds, parseAllowedChannelIds, stringifyAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
 
 const updateSchema = z.object({
@@ -20,6 +21,7 @@ const updateSchema = z.object({
   period_quota_tokens: z.number().int().min(-1).nullable().optional(),
   period_quota_requests: z.number().int().min(-1).nullable().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
+  allowed_channel_ids: z.array(z.number().int().positive()).optional(),
   oidc_claim_expr: z.string().max(512).nullable().optional(),
   oidc_claim_priority: z.number().int().min(0).max(9999).optional(),
   is_default: z.boolean().optional(),
@@ -42,12 +44,16 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
        FROM groups g
        WHERE g.id = ? AND g.deleted_at IS NULL`,
     )
-    .get(id) as (Record<string, unknown> & { allowed_model_aliases: string }) | undefined;
+    .get(id) as (Record<string, unknown> & { allowed_model_aliases: string; allowed_channel_ids: string }) | undefined;
 
   if (!row) return jsonError("用户组不存在", 404);
 
   return jsonOk({
-    data: { ...row, allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases) },
+    data: {
+      ...row,
+      allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases),
+      allowed_channel_ids: parseAllowedChannelIds(row.allowed_channel_ids),
+    },
   });
 }
 
@@ -82,6 +88,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         period_quota_tokens: number | null;
         period_quota_requests: number | null;
         allowed_model_aliases: string;
+        allowed_channel_ids: string;
         oidc_claim_expr: string | null;
         oidc_claim_priority: number;
         is_default: number;
@@ -139,6 +146,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       parsed.data.allowed_model_aliases === undefined
         ? existing.allowed_model_aliases
         : stringifyAllowedModelAliases(parsed.data.allowed_model_aliases),
+    allowed_channel_ids:
+      parsed.data.allowed_channel_ids === undefined
+        ? existing.allowed_channel_ids
+        : stringifyAllowedChannelIds(listExistingChannelIds(parsed.data.allowed_channel_ids)),
     oidc_claim_expr:
       parsed.data.oidc_claim_expr === undefined || !modelGateFeatures.oidc
         ? existing.oidc_claim_expr
@@ -164,7 +175,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
          SET name = ?, description = ?, qps = ?, rpm = ?, tpm = ?,
              quota_requests = ?, quota_tokens = ?,
              quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?,
-             allowed_model_aliases = ?,
+             allowed_model_aliases = ?, allowed_channel_ids = ?,
              oidc_claim_expr = ?, oidc_claim_priority = ?, is_default = ?, enabled = ?
          WHERE id = ?`,
       )
@@ -180,6 +191,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         merged.period_quota_tokens,
         merged.period_quota_requests,
         merged.allowed_model_aliases,
+        merged.allowed_channel_ids,
         merged.oidc_claim_expr,
         merged.oidc_claim_priority,
         merged.is_default,
@@ -195,11 +207,15 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
        FROM groups g
        WHERE g.id = ?`,
     )
-    .get(id) as Record<string, unknown> & { allowed_model_aliases: string };
+    .get(id) as Record<string, unknown> & { allowed_model_aliases: string; allowed_channel_ids: string };
 
   return jsonOk({
     message: "用户组更新成功。",
-    data: { ...row, allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases) },
+    data: {
+      ...row,
+      allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases),
+      allowed_channel_ids: parseAllowedChannelIds(row.allowed_channel_ids),
+    },
   });
 }
 

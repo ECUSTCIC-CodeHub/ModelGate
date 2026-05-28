@@ -32,6 +32,7 @@ export default function AdminGroupsPage() {
             <GroupTable
               rows={admin.rows}
               periodQuotaEnabled={admin.periodQuotaEnabled}
+              channelOptions={admin.channelOptions}
               onCreate={admin.openCreateGroup}
               onEdit={admin.openEditGroup}
               onRemove={(id) => { void admin.removeGroup(id); }}
@@ -46,10 +47,12 @@ export default function AdminGroupsPage() {
         editingId={admin.editingId}
         form={admin.form}
         aliasOptions={admin.aliasOptions}
+        channelOptions={admin.channelOptions}
         oidcFeatureEnabled={admin.oidcFeatureEnabled}
         periodQuotaEnabled={admin.periodQuotaEnabled}
         onFormChange={admin.updateForm}
         onToggleAllowedAlias={admin.toggleAllowedAlias}
+        onToggleAllowedChannel={admin.toggleAllowedChannel}
         onSubmit={admin.submitGroup}
       />
     </DashboardShell>

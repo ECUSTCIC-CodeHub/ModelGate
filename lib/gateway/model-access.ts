@@ -1,4 +1,5 @@
 import { gatewayDb, type DbUser } from "@/lib/core/db";
+import { getUserAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { getUserGroup } from "@/lib/gateway/effective-limits";
 
 export function parseAllowedModelAliases(raw: string | null | undefined) {
@@ -46,16 +47,15 @@ const enabledModelAliasStmt = gatewayDb.prepare(
    LIMIT 1`,
 );
 
-const accessibleModelAliasesStmt = gatewayDb.prepare(
-  `SELECT m.alias, MAX(m.is_public) AS is_public, MAX(m.created_at) AS created_at
+const accessibleModelRowsStmt = gatewayDb.prepare(
+  `SELECT m.alias, m.is_public, m.created_at, c.id AS channel_id
    FROM models m
    JOIN channels c ON c.id = m.channel_id
    WHERE m.enabled = 1
      AND c.enabled = 1
      AND m.deleted_at IS NULL
      AND m.alias != '*'
-   GROUP BY m.alias
-   ORDER BY m.alias ASC`,
+   ORDER BY m.alias ASC, m.id ASC`,
 );
 
 export function canUserAccessModelAlias(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">, alias: string) {
@@ -97,14 +97,29 @@ export function listAccessibleModelAliases(user: Pick<DbUser, "role" | "group_id
 }
 
 export function listAccessibleModels(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">) {
-  const rows = accessibleModelAliasesStmt.all() as Array<{ alias: string; is_public: number; created_at: string | null }>;
+  const rows = accessibleModelRowsStmt.all() as Array<{ alias: string; is_public: number; created_at: string | null; channel_id: number }>;
+  const allowedChannelIds = getUserAllowedChannelIds(user);
+  const allowedChannelSet = allowedChannelIds ? new Set(allowedChannelIds) : null;
+  const visible = new Map<string, { alias: string; created_at: string | null }>();
 
   if (user.role === "admin") {
-    return rows.map(({ alias, created_at }) => ({ alias, created_at }));
+    for (const row of rows) {
+      const current = visible.get(row.alias);
+      if (!current || (row.created_at ?? "") > (current.created_at ?? "")) {
+        visible.set(row.alias, { alias: row.alias, created_at: row.created_at });
+      }
+    }
+    return [...visible.values()];
   }
 
   const allowed = new Set(getEffectiveAllowedAliases(user));
-  return rows
-    .filter((row) => row.is_public === 1 || allowed.has(row.alias))
-    .map(({ alias, created_at }) => ({ alias, created_at }));
+  for (const row of rows) {
+    if (allowedChannelSet && !allowedChannelSet.has(row.channel_id)) continue;
+    if (row.is_public !== 1 && !allowed.has(row.alias)) continue;
+    const current = visible.get(row.alias);
+    if (!current || (row.created_at ?? "") > (current.created_at ?? "")) {
+      visible.set(row.alias, { alias: row.alias, created_at: row.created_at });
+    }
+  }
+  return [...visible.values()];
 }

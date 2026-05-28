@@ -6,17 +6,25 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatLimit } from "@/lib/shared/formatters";
-import { formatPeriodLabel, type GroupRow } from "./group-model";
+import { formatPeriodLabel, type ChannelOption, type GroupRow } from "./group-model";
+
+function formatAllowedChannels(ids: number[] | undefined, channelOptions: ChannelOption[]) {
+  const allowedIds = ids ?? [];
+  if (allowedIds.length === 0) return "全部";
+  return allowedIds.map((id) => channelOptions.find((channel) => channel.id === id)?.name ?? `#${id}`).join(", ");
+}
 
 export function GroupTable({
   rows,
   periodQuotaEnabled,
+  channelOptions,
   onCreate,
   onEdit,
   onRemove,
 }: {
   rows: GroupRow[];
   periodQuotaEnabled: boolean;
+  channelOptions: ChannelOption[];
   onCreate: () => void;
   onEdit: (row: GroupRow) => void;
   onRemove: (id: number) => void;
@@ -33,7 +41,7 @@ export function GroupTable({
 
   return (
     <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-      <Table className="min-w-[900px]">
+      <Table className="min-w-[980px]">
         <TableHeader>
           <TableRow>
             <TableHead>组名</TableHead>
@@ -46,6 +54,7 @@ export function GroupTable({
             <TableHead>Token 配额</TableHead>
             {periodQuotaEnabled ? <TableHead>周期配额</TableHead> : null}
             <TableHead>模型白名单</TableHead>
+            <TableHead>渠道白名单</TableHead>
             <TableHead className="text-right">操作</TableHead>
           </TableRow>
         </TableHeader>
@@ -85,6 +94,11 @@ export function GroupTable({
               <TableCell className="max-w-48">
                 <span className="block truncate text-[var(--color-foreground-secondary)]">
                   {row.allowed_model_aliases.length > 0 ? row.allowed_model_aliases.join(", ") : "-"}
+                </span>
+              </TableCell>
+              <TableCell className="max-w-48">
+                <span className="block truncate text-[var(--color-foreground-secondary)]" title={formatAllowedChannels(row.allowed_channel_ids, channelOptions)}>
+                  {formatAllowedChannels(row.allowed_channel_ids, channelOptions)}
                 </span>
               </TableCell>
               <TableCell className="space-x-2 text-right">

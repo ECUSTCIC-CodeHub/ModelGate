@@ -34,6 +34,7 @@ export function ensureModernColumns(db: BetterSqlite3.Database): ColumnMigration
   ensureColumn(db, "groups", "quota_period", "quota_period INTEGER");
   ensureColumn(db, "groups", "period_quota_tokens", "period_quota_tokens INTEGER");
   ensureColumn(db, "groups", "period_quota_requests", "period_quota_requests INTEGER");
+  ensureColumn(db, "groups", "allowed_channel_ids", `allowed_channel_ids TEXT DEFAULT '[]'`);
   ensureColumn(db, "users", "quota_period", "quota_period INTEGER");
   ensureColumn(db, "users", "period_quota_tokens", "period_quota_tokens INTEGER");
   ensureColumn(db, "users", "period_quota_requests", "period_quota_requests INTEGER");

@@ -112,13 +112,17 @@ function isProtocolCompatible(inboundProtocol: GatewayProtocol, upstreamProtocol
   return upstreamProtocol !== "embeddings";
 }
 
-export function listModelRoutes(alias: string, options?: { excludeChannelIds?: number[]; protocol?: GatewayProtocol }): RoutedModel[] {
+export function listModelRoutes(alias: string, options?: { excludeChannelIds?: number[]; protocol?: GatewayProtocol; allowedChannelIds?: number[] | null }): RoutedModel[] {
   const exclude = new Set(options?.excludeChannelIds ?? []);
   const protocol = options?.protocol;
+  const allowSet = options?.allowedChannelIds && options.allowedChannelIds.length > 0
+    ? new Set(options.allowedChannelIds)
+    : null;
   const findRows = (targetAlias: string) => listModelRoutesStmt.all(targetAlias) as CandidateRow[];
 
   const filterRows = (rows: CandidateRow[]) => rows.filter((row) =>
     !exclude.has(row.channel_id_2)
+    && (!allowSet || allowSet.has(row.channel_id_2))
     && (!protocol || isProtocolCompatible(protocol, row.upstream_protocol)),
   );
 
@@ -142,6 +146,6 @@ export function listModelRoutes(alias: string, options?: { excludeChannelIds?: n
     .map((item) => item.route);
 }
 
-export function selectModelRoute(alias: string, options?: { excludeChannelIds?: number[]; protocol?: GatewayProtocol }): RoutedModel | null {
+export function selectModelRoute(alias: string, options?: { excludeChannelIds?: number[]; protocol?: GatewayProtocol; allowedChannelIds?: number[] | null }): RoutedModel | null {
   return listModelRoutes(alias, options)[0] ?? null;
 }

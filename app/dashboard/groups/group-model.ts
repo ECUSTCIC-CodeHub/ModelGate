@@ -11,6 +11,7 @@ export type GroupRow = {
   period_quota_tokens: number | null;
   period_quota_requests: number | null;
   allowed_model_aliases: string[];
+  allowed_channel_ids: number[];
   oidc_claim_expr: string | null;
   oidc_claim_priority: number;
   is_default: number;
@@ -22,6 +23,12 @@ export type AliasOption = {
   id: number;
   alias: string;
   is_public: number;
+};
+
+export type ChannelOption = {
+  id: number;
+  name: string;
+  enabled: number;
 };
 
 export const PERIOD_PRESETS = [
@@ -64,6 +71,7 @@ export type GroupForm = {
   period_quota_tokens: string;
   period_quota_requests: string;
   allowed_model_aliases: string[];
+  allowed_channel_ids: number[];
   oidc_claim_expr: string;
   oidc_claim_priority: string;
   is_default: boolean;
@@ -83,6 +91,7 @@ export const initialForm: GroupForm = {
   period_quota_tokens: "",
   period_quota_requests: "",
   allowed_model_aliases: [],
+  allowed_channel_ids: [],
   oidc_claim_expr: "",
   oidc_claim_priority: "0",
   is_default: false,

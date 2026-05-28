@@ -42,6 +42,7 @@ export type DbGroup = {
   period_quota_tokens: number | null;
   period_quota_requests: number | null;
   allowed_model_aliases: string;
+  allowed_channel_ids: string;
   oidc_claim_value: string | null;
   oidc_claim_expr: string | null;
   oidc_claim_priority: number;
