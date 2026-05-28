@@ -1036,6 +1036,7 @@ email matches ".*@company\\.com"
 | user | string | 按用户名搜索（仅管理员） |
 | model | string | 按模型别名或真实模型搜索 |
 | channel | string | 按渠道名搜索（仅管理员） |
+| key | string | 按密钥搜索：完整 key 精确匹配；`sk-gw-abcd...wxyz` / `abcdwxyz` 按前 4 + 后 4 指纹匹配；4 位 hex 匹配前缀或后缀；其他内容按密钥备注模糊匹配 |
 | ip | string | 按客户端 IP 搜索 |
 | start_date | YYYY-MM-DD | 开始日期 |
 | end_date | YYYY-MM-DD | 结束日期 |
@@ -1056,6 +1057,9 @@ email matches ".*@company\\.com"
       "id": 1,
       "username": "admin",
       "channel_name": "openai-main",
+      "key_id": 7,
+      "key_name": "生产环境",
+      "key_masked": "sk-gw-abcd...wxyz",
       "model_alias": "gpt-4",
       "real_model": "gpt-4-turbo",
       "stream": 1,

@@ -4,6 +4,9 @@ export type LogRow = {
   id: number;
   username: string;
   channel_name: string | null;
+  key_id: number | null;
+  key_name: string | null;
+  key_masked: string | null;
   model_alias: string | null;
   real_model: string | null;
   stream: number;
@@ -35,6 +38,7 @@ export type LogFilters = {
   user: string;
   model: string;
   channel: string;
+  key: string;
   ip: string;
   startDate: string;
   endDate: string;
@@ -44,6 +48,7 @@ export const emptyLogFilters: LogFilters = {
   user: "",
   model: "",
   channel: "",
+  key: "",
   ip: "",
   startDate: "",
   endDate: "",

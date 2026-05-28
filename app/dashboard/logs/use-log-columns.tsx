@@ -42,6 +42,28 @@ export function useLogColumns(role: LogRole) {
     });
 
     cols.push({
+      id: "key",
+      header: "密钥",
+      cell: ({ row }) => {
+        const masked = row.original.key_masked;
+        if (!masked) return <span className="text-[var(--color-foreground-muted)]">-</span>;
+        const name = row.original.key_name;
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button type="button" className="block max-w-44 truncate text-left font-mono text-xs text-inherit">
+                {masked}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent align="start">
+              <p>备注：{name && name.trim() ? name : "（无）"}</p>
+            </TooltipContent>
+          </Tooltip>
+        );
+      },
+    });
+
+    cols.push({
       id: "model",
       header: "模型",
       cell: ({ row }) => {

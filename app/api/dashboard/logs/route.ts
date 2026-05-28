@@ -4,6 +4,10 @@ import { gatewayDb } from "@/lib/core/db";
 import { ensureWebUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
 
+function escapeLike(input: string): string {
+  return input.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
 function parseDateParam(value: string) {
   const trimmed = value.trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
@@ -15,6 +19,30 @@ function addOneDay(dateText: string) {
   if (Number.isNaN(date.getTime())) return null;
   date.setUTCDate(date.getUTCDate() + 1);
   return date.toISOString().slice(0, 10);
+}
+
+type KeyFilter =
+  | { kind: "exact"; key: string }
+  | { kind: "fingerprint"; front: string; back: string }
+  | { kind: "short"; nibble: string }
+  | { kind: "name"; text: string };
+
+function parseKeyFilter(raw: string): KeyFilter {
+  const text = raw.trim();
+  const stripped = text.toLowerCase().replace(/^sk-gw-/, "");
+  const dotted = /^([0-9a-f]{4})\.{3}([0-9a-f]{4})$/.exec(stripped);
+  if (dotted) return { kind: "fingerprint", front: dotted[1], back: dotted[2] };
+  if (/^[0-9a-f]{36}$/.test(stripped)) return { kind: "exact", key: `sk-gw-${stripped}` };
+  if (/^[0-9a-f]{8}$/.test(stripped)) {
+    return { kind: "fingerprint", front: stripped.slice(0, 4), back: stripped.slice(4) };
+  }
+  if (/^[0-9a-f]{4}$/.test(stripped)) return { kind: "short", nibble: stripped };
+  return { kind: "name", text };
+}
+
+function maskKey(value: string | null): string | null {
+  if (!value) return null;
+  return value.length > 14 ? `${value.slice(0, 10)}...${value.slice(-4)}` : `${value.slice(0, 4)}...`;
 }
 
 export async function GET(request: Request) {
@@ -29,6 +57,7 @@ export async function GET(request: Request) {
   const model = (url.searchParams.get("model") ?? "").trim();
   const channel = (url.searchParams.get("channel") ?? "").trim();
   const ip = (url.searchParams.get("ip") ?? "").trim();
+  const key = (url.searchParams.get("key") ?? "").trim();
   const startDate = parseDateParam(url.searchParams.get("start_date") ?? "");
   const endDate = parseDateParam(url.searchParams.get("end_date") ?? "");
 
@@ -54,8 +83,25 @@ export async function GET(request: Request) {
   }
 
   if (ip) {
-    whereClauses.push("l.client_ip LIKE ?");
-    whereArgs.push(`%${ip}%`);
+    whereClauses.push("l.client_ip LIKE ? ESCAPE '\\'");
+    whereArgs.push(`%${escapeLike(ip)}%`);
+  }
+
+  if (key) {
+    const parsed = parseKeyFilter(key);
+    if (parsed.kind === "exact") {
+      whereClauses.push("k.key = ?");
+      whereArgs.push(parsed.key);
+    } else if (parsed.kind === "fingerprint") {
+      whereClauses.push("k.key LIKE ? ESCAPE '\\'");
+      whereArgs.push(`sk-gw-${escapeLike(parsed.front)}%${escapeLike(parsed.back)}`);
+    } else if (parsed.kind === "short") {
+      whereClauses.push("(k.key LIKE ? ESCAPE '\\' OR k.key LIKE ? ESCAPE '\\')");
+      whereArgs.push(`sk-gw-${escapeLike(parsed.nibble)}%`, `%${escapeLike(parsed.nibble)}`);
+    } else {
+      whereClauses.push("LOWER(k.name) LIKE ? ESCAPE '\\'");
+      whereArgs.push(`%${escapeLike(parsed.text.toLowerCase())}%`);
+    }
   }
 
   if (startDate) {
@@ -78,6 +124,7 @@ export async function GET(request: Request) {
       `SELECT
          l.id, l.user_id, u.username, l.key_id, l.channel_id,
          c.name AS channel_name,
+         k.name AS key_name, k.key AS key_value,
          l.model_alias, l.real_model, l.stream, l.status_code,
          l.estimated_tokens, l.prompt_tokens, l.completion_tokens, l.total_tokens,
          l.latency_ms, l.first_token_latency_ms, l.output_tps, l.route_attempts, l.attempted_channels,
@@ -85,22 +132,25 @@ export async function GET(request: Request) {
        FROM logs l
        LEFT JOIN users u ON u.id = l.user_id
        LEFT JOIN channels c ON c.id = l.channel_id
+       LEFT JOIN keys k ON k.id = l.key_id
        ${whereSql}
        ORDER BY l.id DESC
        LIMIT ? OFFSET ?`,
     )
-    .all(...whereArgs, limit, offset);
+    .all(...whereArgs, limit, offset) as Array<Record<string, unknown>>;
 
-  const data = isAdmin
-    ? rows
-    : rows.map((row) => {
-        const next = { ...(row as Record<string, unknown>) };
-        delete next.username;
-        delete next.channel_name;
-        delete next.route_attempts;
-        delete next.attempted_channels;
-        return next;
-      });
+  const data = rows.map((row) => {
+    const next = { ...row };
+    next.key_masked = maskKey(typeof next.key_value === "string" ? next.key_value : null);
+    delete next.key_value;
+    if (!isAdmin) {
+      delete next.username;
+      delete next.channel_name;
+      delete next.route_attempts;
+      delete next.attempted_channels;
+    }
+    return next;
+  });
 
   const total = gatewayDb
     .prepare(
@@ -108,6 +158,7 @@ export async function GET(request: Request) {
        FROM logs l
        LEFT JOIN users u ON u.id = l.user_id
        LEFT JOIN channels c ON c.id = l.channel_id
+       LEFT JOIN keys k ON k.id = l.key_id
        ${whereSql}`,
     )
     .get(...whereArgs) as { total: number };
@@ -124,6 +175,7 @@ export async function GET(request: Request) {
        FROM logs l
        LEFT JOIN users u ON u.id = l.user_id
        LEFT JOIN channels c ON c.id = l.channel_id
+       LEFT JOIN keys k ON k.id = l.key_id
        ${whereSql}`,
     )
     .get(...whereArgs) as {

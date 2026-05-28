@@ -29,6 +29,7 @@ function buildLogParams(role: LogRole, page: number, filters: LogFilters) {
   if (role === "admin" && filters.user.trim()) params.set("user", filters.user.trim());
   if (filters.model.trim()) params.set("model", filters.model.trim());
   if (role === "admin" && filters.channel.trim()) params.set("channel", filters.channel.trim());
+  if (filters.key.trim()) params.set("key", filters.key.trim());
   if (filters.ip.trim()) params.set("ip", filters.ip.trim());
   if (filters.startDate) params.set("start_date", filters.startDate);
   if (filters.endDate) params.set("end_date", filters.endDate);

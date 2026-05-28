@@ -33,8 +33,8 @@ export function LogFiltersCard({
         <div
           className={
             role === "admin"
-              ? "grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_180px_180px_auto]"
-              : "grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_180px_180px_auto]"
+              ? "grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_180px_180px_auto]"
+              : "grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_180px_180px_auto]"
           }
         >
           {role === "admin" ? (
@@ -44,6 +44,7 @@ export function LogFiltersCard({
           {role === "admin" ? (
             <Input placeholder="搜索渠道" value={filters.channel} onChange={(e) => onFilterChange({ channel: e.target.value })} />
           ) : null}
+          <Input placeholder="搜索密钥" value={filters.key} onChange={(e) => onFilterChange({ key: e.target.value })} />
           <Input placeholder="搜索 IP" value={filters.ip} onChange={(e) => onFilterChange({ ip: e.target.value })} />
           <DateFilter value={filters.startDate} placeholder="开始日期" onChange={(value) => onFilterChange({ startDate: value })} />
           <DateFilter value={filters.endDate} placeholder="结束日期" onChange={(value) => onFilterChange({ endDate: value })} />
