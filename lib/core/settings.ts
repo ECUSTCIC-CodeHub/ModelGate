@@ -6,7 +6,7 @@ const DEFAULTS = {
   upstream_retry_max_attempts: 3,
 } as const;
 
-const GATEWAY_SETTINGS_CACHE_TTL_MS = 1_000;
+const GATEWAY_SETTINGS_CACHE_TTL_MS = 30_000;
 
 export type GatewaySettings = {
   registration_enabled: number;
