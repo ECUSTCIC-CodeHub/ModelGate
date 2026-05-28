@@ -18,14 +18,43 @@ type ToastContextValue = {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
+const TOAST_BASE_CLASS = [
+  "!rounded-lg",
+  "!border",
+  "!border-[var(--color-border-strong)]",
+  "!bg-[var(--color-popover)]",
+  "!px-4",
+  "!py-3.5",
+  "!text-[var(--color-foreground)]",
+  "!shadow-[0_18px_50px_rgba(15,23,42,0.22)]",
+  "!backdrop-blur-none",
+  "!gap-3",
+  "dark:!shadow-[0_20px_56px_rgba(0,0,0,0.55)]",
+].join(" ");
+
+const TOAST_VARIANT_CLASS: Record<ToastVariant, string> = {
+  success: "!border-l-4 !border-l-emerald-500",
+  error: "!border-l-4 !border-l-[var(--color-destructive)]",
+  info: "!border-l-4 !border-l-[var(--color-accent)]",
+};
+
+const TOAST_TITLE_CLASS = "!font-medium !leading-5 !text-[var(--color-foreground)]";
+const TOAST_DESCRIPTION_CLASS = "!leading-5 !text-[var(--color-foreground-secondary)]";
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const toast = useCallback((input: ToastInput) => {
     const variant = input.variant ?? "info";
     const options = {
       description: input.title ? input.description : undefined,
       duration: input.durationMs ?? 2600,
-      className: "!border-[var(--color-border)] !bg-[var(--color-surface)] !text-[var(--color-foreground)] !shadow-[var(--shadow-lg)]",
-      descriptionClassName: "!text-[var(--color-foreground-muted)]",
+      className: `${TOAST_BASE_CLASS} ${TOAST_VARIANT_CLASS[variant]}`,
+      descriptionClassName: TOAST_DESCRIPTION_CLASS,
+      classNames: {
+        content: "!gap-1",
+        description: TOAST_DESCRIPTION_CLASS,
+        icon: "!text-inherit",
+        title: TOAST_TITLE_CLASS,
+      },
     };
 
     if (input.title) {
@@ -56,7 +85,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <Toaster position="top-right" richColors />
+      <Toaster position="top-right" richColors={false} />
     </ToastContext.Provider>
   );
 }
