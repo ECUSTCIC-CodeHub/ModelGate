@@ -68,18 +68,18 @@ export async function GET(request: Request) {
     whereClauses.push("l.user_id = ?");
     whereArgs.push(guard.auth.user.id);
   } else if (user) {
-    whereClauses.push("u.username LIKE ?");
-    whereArgs.push(`%${user}%`);
+    whereClauses.push("u.username LIKE ? ESCAPE '\\'");
+    whereArgs.push(`%${escapeLike(user)}%`);
   }
 
   if (model) {
-    whereClauses.push("(l.model_alias LIKE ? OR l.real_model LIKE ?)");
-    whereArgs.push(`%${model}%`, `%${model}%`);
+    whereClauses.push("(l.model_alias LIKE ? ESCAPE '\\' OR l.real_model LIKE ? ESCAPE '\\')");
+    whereArgs.push(`%${escapeLike(model)}%`, `%${escapeLike(model)}%`);
   }
 
   if (channel) {
-    whereClauses.push("c.name LIKE ?");
-    whereArgs.push(`%${channel}%`);
+    whereClauses.push("c.name LIKE ? ESCAPE '\\'");
+    whereArgs.push(`%${escapeLike(channel)}%`);
   }
 
   if (ip) {

@@ -34,6 +34,10 @@ function normalizeQuota(value: number | null | undefined) {
   return value;
 }
 
+function escapeLike(input: string): string {
+  return input.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
 const USER_SORT_COLUMNS = {
   created_at: "u.id",
   used_requests: "u.used_requests",
@@ -65,8 +69,8 @@ export async function GET(request: Request) {
   const whereParts = ["u.deleted_at IS NULL"];
   const whereArgs: Array<string | number> = [];
   if (keyword) {
-    whereParts.push("u.username LIKE ?");
-    whereArgs.push(`%${keyword}%`);
+    whereParts.push("u.username LIKE ? ESCAPE '\\'");
+    whereArgs.push(`%${escapeLike(keyword)}%`);
   }
   if (groupFilterId !== null) {
     whereParts.push("u.group_id = ?");
@@ -92,8 +96,8 @@ export async function GET(request: Request) {
   const totalWhereParts = ["deleted_at IS NULL"];
   const totalWhereArgs: Array<string | number> = [];
   if (keyword) {
-    totalWhereParts.push("username LIKE ?");
-    totalWhereArgs.push(`%${keyword}%`);
+    totalWhereParts.push("username LIKE ? ESCAPE '\\'");
+    totalWhereArgs.push(`%${escapeLike(keyword)}%`);
   }
   if (groupFilterId !== null) {
     totalWhereParts.push("group_id = ?");
