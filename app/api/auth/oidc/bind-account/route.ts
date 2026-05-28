@@ -60,7 +60,7 @@ export async function POST(request: Request) {
   const createParsed = createSchema.safeParse(body);
 
   if (linkParsed.success) {
-    const rateCheck = checkLoginRateLimit(request);
+    const rateCheck = checkLoginRateLimit(request, linkParsed.data.username);
     if (!rateCheck.ok) return jsonError("尝试过于频繁，请稍后再试", 429);
 
     const user = gatewayDb

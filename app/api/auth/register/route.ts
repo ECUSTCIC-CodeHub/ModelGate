@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) return jsonError(friendlyCredentialPayloadError(parsed.error), 400);
 
-  const rateCheck = checkLoginRateLimit(request);
+  const rateCheck = checkLoginRateLimit(request, parsed.data.username);
   if (!rateCheck.ok) {
     return jsonError("注册尝试过于频繁，请稍后再试", 429);
   }

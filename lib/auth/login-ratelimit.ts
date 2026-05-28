@@ -11,19 +11,25 @@ setInterval(() => {
   }
 }, CLEANUP_INTERVAL_MS).unref();
 
-function getKey(request: Request): string {
+function getClientIp(request: Request): string {
   return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
     || request.headers.get("x-real-ip")
     || "unknown";
 }
 
-export function checkLoginRateLimit(request: Request): { ok: true } | { ok: false; retryAfterSeconds: number } {
-  const ip = getKey(request);
+function getKey(request: Request, username?: string): string {
+  const ip = getClientIp(request);
+  const subject = username?.trim().toLowerCase() || "unknown";
+  return `${ip}:${subject}`;
+}
+
+export function checkLoginRateLimit(request: Request, username?: string): { ok: true } | { ok: false; retryAfterSeconds: number } {
+  const key = getKey(request, username);
   const now = Date.now();
-  const entry = attempts.get(ip);
+  const entry = attempts.get(key);
 
   if (!entry || entry.resetAt <= now) {
-    attempts.set(ip, { count: 1, resetAt: now + WINDOW_MS });
+    attempts.set(key, { count: 1, resetAt: now + WINDOW_MS });
     return { ok: true };
   }
 

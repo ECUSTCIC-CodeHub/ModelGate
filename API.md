@@ -116,7 +116,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 }
 ```
 
-> 登录限流：每个 IP 每分钟最多 5 次尝试，超出返回 429。
+> 登录限流：每个 IP + 用户名组合每分钟最多 5 次尝试，超出返回 429。
 
 ---
 
