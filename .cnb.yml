@@ -54,16 +54,6 @@
 main:
   push:
     - *push
-  "crontab: 0 */1 * * *":
-    - stages:
-        - name: sync upstream
-          image: cnbcool/git-sync:latest
-          settings:
-            source: https://cnb.cool/Bring/Tools/ModelGate
-            target: $CNB_REPO_URL_HTTPS
-            branch: main
-            sync_mode: rebase
-            push_tags: true
 
 $:
   vscode:
