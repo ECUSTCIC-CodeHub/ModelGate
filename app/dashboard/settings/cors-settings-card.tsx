@@ -16,7 +16,7 @@ export function CorsSettingsCard({
       <CardHeader>
         <SectionTitle
           title="跨域访问 (CORS)"
-          description="允许浏览器端从任意来源调用网关 API。开启后将对所有 /api/v1/* 接口返回 Access-Control-Allow-Origin: *。"
+          description="允许浏览器端从任意来源调用网关 API。开启后将对所有 /api/v1/* 和 /api/ollama/* 接口返回 Access-Control-Allow-Origin: *。"
         />
       </CardHeader>
       <CardContent>

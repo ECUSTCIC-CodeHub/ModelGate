@@ -371,7 +371,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | public_base_url | string | 对外服务域名 |
 | announcement_content | string | 系统公告内容（支持 Markdown，最长 5000 字符） |
 | webhook_secret | string | Webhook 回调密钥（最长 200 字符） |
-| cors_enabled | boolean | 是否允许所有来源跨域访问网关 API（开启后 `/api/v1/*` 返回 `Access-Control-Allow-Origin: *` 并响应 OPTIONS 预检） |
+| cors_enabled | boolean | 是否允许所有来源跨域访问网关 API（开启后 `/api/v1/*` 和 `/api/ollama/*` 返回 `Access-Control-Allow-Origin: *` 并响应 OPTIONS 预检） |
 
 > 精简版固定保留账号密码登录；返回时会隐藏 OIDC 配置、公告内容和 Webhook 密钥，更新时忽略 `oidc_*`、`announcement_content` 与 `webhook_secret` 字段。
 
