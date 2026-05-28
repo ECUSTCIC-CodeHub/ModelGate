@@ -102,8 +102,9 @@ export async function GET(request: Request) {
   let rawClaims: Record<string, unknown> = {};
   try {
     if (tokenResponse.id_token) {
-      const result = extractIdTokenClaims(
+      const result = await extractIdTokenClaims(
         tokenResponse.id_token,
+        discovery.jwks_uri,
         config.issuerUrl,
         config.clientId,
         statePayload.nonce,

@@ -266,6 +266,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 
 **响应:** 登录成功后 302 重定向到 `/dashboard`，需要绑定或注册时按配置重定向到对应页面。
 
+> 回调会通过 OIDC Discovery 的 `jwks_uri` 验证 ID Token 签名，并校验 issuer、audience、nonce 与过期时间。
+
 > 精简版返回 404。
 
 ### GET /api/auth/oidc/bind

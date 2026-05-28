@@ -1,4 +1,5 @@
-import { randomBytes, createHash } from "node:crypto";
+import { randomBytes, createHash, createPublicKey } from "node:crypto";
+import jwt, { type Algorithm } from "jsonwebtoken";
 import { gatewayDb } from "@/lib/core/db";
 import { parseClaimExpr, evaluateClaimExpr } from "@/lib/shared/claim-expr";
 import { getGatewaySettings } from "@/lib/core/settings";
@@ -26,8 +27,16 @@ export type OidcUserInfo = {
   email?: string;
 };
 
+type OidcJwk = JsonWebKey & {
+  alg?: string;
+  kid?: string;
+  use?: string;
+};
+
 const discoveryCache = new Map<string, { data: OidcDiscovery; expiresAt: number }>();
+const jwksCache = new Map<string, { keys: OidcJwk[]; expiresAt: number }>();
 const DISCOVERY_TTL_MS = 5 * 60 * 1000;
+const OIDC_ID_TOKEN_ALGORITHMS: Algorithm[] = ["RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512"];
 
 export function getOidcConfig() {
   const s = getGatewaySettings();
@@ -126,20 +135,72 @@ export async function exchangeCode(
   return (await response.json()) as OidcTokenResponse;
 }
 
-function decodeJwtPayload(token: string): Record<string, unknown> {
-  const parts = token.split(".");
-  if (parts.length !== 3) throw new Error("Invalid JWT structure");
-  const payload = Buffer.from(parts[1], "base64url").toString("utf-8");
-  return JSON.parse(payload) as Record<string, unknown>;
+async function fetchJwks(jwksUri: string): Promise<OidcJwk[]> {
+  const now = Date.now();
+  const cached = jwksCache.get(jwksUri);
+  if (cached && cached.expiresAt > now) return cached.keys;
+
+  const response = await fetch(jwksUri, { signal: AbortSignal.timeout(10_000) });
+  if (!response.ok) throw new Error(`OIDC JWKS fetch failed: ${response.status}`);
+  const data = await response.json() as { keys?: OidcJwk[] };
+  if (!Array.isArray(data.keys) || data.keys.length === 0) {
+    throw new Error("OIDC JWKS response missing keys");
+  }
+
+  jwksCache.set(jwksUri, { keys: data.keys, expiresAt: now + DISCOVERY_TTL_MS });
+  return data.keys;
 }
 
-export function extractIdTokenClaims(
+function isAllowedIdTokenAlgorithm(alg: unknown): alg is Algorithm {
+  return typeof alg === "string" && OIDC_ID_TOKEN_ALGORITHMS.includes(alg as Algorithm);
+}
+
+function decodeJwtHeader(token: string): jwt.JwtHeader {
+  const decoded = jwt.decode(token, { complete: true });
+  if (!decoded || typeof decoded !== "object" || !decoded.header) {
+    throw new Error("Invalid JWT structure");
+  }
+  return decoded.header;
+}
+
+function selectJwk(keys: OidcJwk[], header: jwt.JwtHeader, alg: Algorithm) {
+  const candidates = keys.filter((key) => !header.kid || key.kid === header.kid);
+  if (header.kid && candidates.length === 0) {
+    throw new Error("ID token signing key not found");
+  }
+
+  const signingKeys = candidates.filter((key) => (!key.use || key.use === "sig") && (!key.alg || key.alg === alg));
+  if (signingKeys.length === 0) {
+    throw new Error("ID token signing key not usable");
+  }
+  return signingKeys[0];
+}
+
+async function verifyIdTokenSignature(idToken: string, jwksUri: string): Promise<Record<string, unknown>> {
+  if (!jwksUri) throw new Error("OIDC discovery missing jwks_uri");
+  const header = decodeJwtHeader(idToken);
+  if (!isAllowedIdTokenAlgorithm(header.alg)) {
+    throw new Error("ID token algorithm is not supported");
+  }
+
+  const keys = await fetchJwks(jwksUri);
+  const jwk = selectJwk(keys, header, header.alg);
+  const publicKey = createPublicKey({ key: jwk, format: "jwk" });
+  const claims = jwt.verify(idToken, publicKey, { algorithms: [header.alg] });
+  if (!claims || typeof claims !== "object" || typeof claims === "string") {
+    throw new Error("Invalid ID token payload");
+  }
+  return claims as Record<string, unknown>;
+}
+
+export async function extractIdTokenClaims(
   idToken: string,
+  jwksUri: string,
   expectedIssuer: string,
   expectedAudience: string,
   expectedNonce?: string,
-): OidcUserInfo & { _claims: Record<string, unknown> } {
-  const claims = decodeJwtPayload(idToken);
+): Promise<OidcUserInfo & { _claims: Record<string, unknown> }> {
+  const claims = await verifyIdTokenSignature(idToken, jwksUri);
 
   const iss = claims.iss as string | undefined;
   const expectedIssNormalized = expectedIssuer.replace(/\/+$/, "");
