@@ -36,7 +36,7 @@ export default function AdminUsersPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <PageToolbar>
-              <div className="grid flex-1 gap-3 md:grid-cols-[minmax(0,1fr)_160px_180px_140px_auto_auto]">
+              <div className="grid flex-1 gap-3 md:grid-cols-[minmax(0,1fr)_160px_180px_130px_140px_auto_auto]">
                 <Input
                   placeholder="搜索用户名"
                   value={admin.keyword}
@@ -53,6 +53,16 @@ export default function AdminUsersPage() {
                         {group.name}{group.is_default ? "（默认）" : ""}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+                <Select value={admin.roleFilter} onValueChange={admin.selectRoleFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="按角色筛选" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部角色</SelectItem>
+                    <SelectItem value="admin">管理员</SelectItem>
+                    <SelectItem value="user">普通用户</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={admin.sortBy} onValueChange={(value) => admin.setSortBy(value as UserSortKey)}>

@@ -111,6 +111,7 @@ export function useUserAdmin() {
   const [total, setTotal] = useState(0);
   const [keyword, setKeyword] = useState("");
   const [groupFilter, setGroupFilter] = useState("all");
+  const [roleFilter, setRoleFilter] = useState("all");
   const [sortBy, setSortBy] = useState<UserSortKey>("created_at");
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
   const [aliasOptions, setAliasOptions] = useState<AliasOption[]>([]);
@@ -135,6 +136,7 @@ export function useUserAdmin() {
     nextSortBy = sortBy,
     nextSortDir = sortDir,
     nextGroupFilter = groupFilter,
+    nextRoleFilter = roleFilter,
   ) {
     if (!(await ensureAdmin(router))) return;
     const offset = (nextPage - 1) * PAGE_SIZE;
@@ -146,6 +148,7 @@ export function useUserAdmin() {
     });
     if (nextKeyword.trim()) params.set("keyword", nextKeyword.trim());
     if (nextGroupFilter && nextGroupFilter !== "all") params.set("group_id", nextGroupFilter);
+    if (nextRoleFilter && nextRoleFilter !== "all") params.set("role", nextRoleFilter);
 
     const response = await authedFetch(`/api/admin/users?${params.toString()}`);
     const data = (await response.json()) as UsersListResponse;
@@ -290,20 +293,26 @@ export function useUserAdmin() {
   }
 
   function searchUsers() {
-    void loadUsers(1, keyword, sortBy, sortDir, groupFilter);
+    void loadUsers(1, keyword, sortBy, sortDir, groupFilter, roleFilter);
   }
 
   function selectGroupFilter(value: string) {
     setGroupFilter(value);
-    void loadUsers(1, keyword, sortBy, sortDir, value);
+    void loadUsers(1, keyword, sortBy, sortDir, value, roleFilter);
+  }
+
+  function selectRoleFilter(value: string) {
+    setRoleFilter(value);
+    void loadUsers(1, keyword, sortBy, sortDir, groupFilter, value);
   }
 
   function resetFilters() {
     setKeyword("");
     setGroupFilter("all");
+    setRoleFilter("all");
     setSortBy("created_at");
     setSortDir("desc");
-    void loadUsers(1, "", "created_at", "desc", "all");
+    void loadUsers(1, "", "created_at", "desc", "all", "all");
   }
 
   return {
@@ -322,6 +331,8 @@ export function useUserAdmin() {
     setKeyword,
     groupFilter,
     selectGroupFilter,
+    roleFilter,
+    selectRoleFilter,
     sortBy,
     setSortBy,
     sortDir,

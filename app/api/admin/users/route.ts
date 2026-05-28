@@ -54,6 +54,7 @@ export async function GET(request: Request) {
   const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0));
   const keyword = (url.searchParams.get("keyword") ?? "").trim();
   const groupParam = (url.searchParams.get("group_id") ?? "").trim();
+  const roleParam = (url.searchParams.get("role") ?? "").trim();
   const sortBy = (url.searchParams.get("sort_by") ?? "created_at").trim() as keyof typeof USER_SORT_COLUMNS;
   const sortDir = (url.searchParams.get("sort_dir") ?? "desc").trim().toLowerCase() === "asc" ? "ASC" : "DESC";
   const orderColumn = USER_SORT_COLUMNS[sortBy] ?? USER_SORT_COLUMNS.created_at;
@@ -75,6 +76,10 @@ export async function GET(request: Request) {
   if (groupFilterId !== null) {
     whereParts.push("u.group_id = ?");
     whereArgs.push(groupFilterId);
+  }
+  if (roleParam === "admin" || roleParam === "user") {
+    whereParts.push("u.role = ?");
+    whereArgs.push(roleParam);
   }
   const whereSql = `WHERE ${whereParts.join(" AND ")}`;
 
@@ -102,6 +107,10 @@ export async function GET(request: Request) {
   if (groupFilterId !== null) {
     totalWhereParts.push("group_id = ?");
     totalWhereArgs.push(groupFilterId);
+  }
+  if (roleParam === "admin" || roleParam === "user") {
+    totalWhereParts.push("role = ?");
+    totalWhereArgs.push(roleParam);
   }
   const total = gatewayDb
     .prepare(
