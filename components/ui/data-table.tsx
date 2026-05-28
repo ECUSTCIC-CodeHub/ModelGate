@@ -8,6 +8,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/shared/utils";
 
 type DataTableProps<TData> = {
   columns: Array<ColumnDef<TData, unknown>>;
@@ -16,6 +17,15 @@ type DataTableProps<TData> = {
   className?: string;
   tableClassName?: string;
 };
+
+type ColumnClassMeta = {
+  headerClassName?: string;
+  cellClassName?: string;
+};
+
+function getColumnClassMeta<TData>(columnDef: ColumnDef<TData, unknown>) {
+  return columnDef.meta as ColumnClassMeta | undefined;
+}
 
 export function DataTable<TData>({
   columns,
@@ -36,13 +46,16 @@ export function DataTable<TData>({
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <TableHead key={header.id}>
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(header.column.columnDef.header, header.getContext())}
-                </TableHead>
-              ))}
+              {headerGroup.headers.map((header) => {
+                const meta = getColumnClassMeta(header.column.columnDef);
+                return (
+                  <TableHead key={header.id} className={meta?.headerClassName}>
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(header.column.columnDef.header, header.getContext())}
+                  </TableHead>
+                );
+              })}
             </TableRow>
           ))}
         </TableHeader>
@@ -50,11 +63,14 @@ export function DataTable<TData>({
           {table.getRowModel().rows.length > 0 ? (
             table.getRowModel().rows.map((row) => (
               <TableRow key={row.id}>
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
+                {row.getVisibleCells().map((cell) => {
+                  const meta = getColumnClassMeta(cell.column.columnDef);
+                  return (
+                    <TableCell key={cell.id} className={cn(meta?.cellClassName)}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  );
+                })}
               </TableRow>
             ))
           ) : (

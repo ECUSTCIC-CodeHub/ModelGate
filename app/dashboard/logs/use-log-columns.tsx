@@ -135,12 +135,18 @@ export function useLogColumns(role: LogRole) {
         accessorKey: "error_message",
         header: "失败原因",
         cell: ({ row }) => {
-          if (row.original.status_code < 400) return <span className="text-[var(--color-foreground-muted)]">-</span>;
+          if (row.original.status_code < 400) {
+            return <span className="block w-full truncate text-[var(--color-foreground-muted)]">-</span>;
+          }
           return (
-            <span className="block max-w-56 truncate text-[var(--color-foreground-secondary)]" title={row.original.error_message ?? "-"}>
+            <span className="block w-full truncate text-[var(--color-foreground-secondary)]" title={row.original.error_message ?? "-"}>
               {row.original.error_message ?? "-"}
             </span>
           );
+        },
+        meta: {
+          headerClassName: "w-[28rem] min-w-[28rem] max-w-[28rem]",
+          cellClassName: "w-[28rem] min-w-[28rem] max-w-[28rem]",
         },
       },
     );
