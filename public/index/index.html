@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="ModelGate 是一个基于 Next.js + SQLite 的多租户 LLM 网关与管理控制台。"
+    />
+    <title>ModelGate | 多租户 LLM 网关</title>
+    <style>
+      :root {
+        --color-bg: #eef2ff;
+        --color-surface: rgba(255, 255, 255, 0.68);
+        --color-surface-hover: rgba(255, 255, 255, 0.84);
+        --color-foreground: #111827;
+        --color-foreground-secondary: #263149;
+        --color-foreground-muted: #728096;
+        --color-border: rgba(67, 56, 202, 0.14);
+        --color-accent: #6366f1;
+        --color-accent-hover: #4f46e5;
+        --color-accent-foreground: #ffffff;
+        --shadow-sm: 0 1px 2px rgba(30, 41, 59, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.58);
+        --glass-blur: 20px;
+        --glass-saturate: 170%;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        min-height: 100%;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        color: var(--color-foreground);
+        font-family:
+          "PingFang SC",
+          "Microsoft YaHei",
+          "SF Pro Display",
+          "Segoe UI",
+          system-ui,
+          sans-serif;
+        background-color: var(--color-bg);
+        overflow-x: hidden;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        background-image:
+          linear-gradient(135deg, rgba(99, 102, 241, 0.18), transparent 42%, rgba(129, 140, 248, 0.12)),
+          repeating-linear-gradient(90deg, transparent 0 39px, rgba(67, 56, 202, 0.035) 39px 40px),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(238, 242, 255, 0.88));
+        background-color: rgba(238, 242, 255, 0.78);
+        filter: saturate(1.1);
+        opacity: 0.96;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .page {
+        min-height: 100vh;
+      }
+
+      .hero {
+        position: relative;
+        min-height: 100vh;
+        overflow: hidden;
+      }
+
+      .header {
+        position: absolute;
+        inset: 0 0 auto;
+        z-index: 2;
+        display: flex;
+        width: min(72rem, 100%);
+        margin: 0 auto;
+        justify-content: flex-end;
+        padding: 1.5rem;
+        font-size: 0.875rem;
+      }
+
+      .source-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        color: var(--color-foreground-muted);
+        transition: color 150ms ease;
+      }
+
+      .source-link:hover {
+        color: var(--color-accent);
+      }
+
+      .hero-inner {
+        display: flex;
+        min-height: 100vh;
+        width: min(72rem, 100%);
+        margin: 0 auto;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 6rem 1.5rem;
+        text-align: center;
+      }
+
+      .content {
+        display: flex;
+        width: min(56rem, 100%);
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--color-border);
+        border-radius: 999px;
+        padding: 0.25rem 0.75rem;
+        color: var(--color-foreground-muted);
+        font-size: 0.75rem;
+        letter-spacing: 0;
+        background: var(--color-surface);
+        box-shadow: var(--shadow-sm);
+        backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+        -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+      }
+
+      .sparkle {
+        width: 1rem;
+        height: 1rem;
+        margin-right: 0.5rem;
+        color: var(--color-accent);
+      }
+
+      h1 {
+        margin: 1.75rem 0 0;
+        color: var(--color-foreground);
+        font-size: clamp(3rem, 7vw, 4.5rem);
+        font-weight: 700;
+        line-height: 1.05;
+        letter-spacing: 0;
+      }
+
+      .lead {
+        max-width: 48rem;
+        margin: 1.25rem 0 0;
+        color: var(--color-foreground-secondary);
+        font-size: clamp(1.125rem, 2vw, 1.25rem);
+        font-weight: 400;
+        line-height: 1.75;
+      }
+
+      .actions {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-top: 2rem;
+      }
+
+      .button {
+        display: inline-flex;
+        min-width: 9rem;
+        height: 2.75rem;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        border-radius: 0.375rem;
+        padding: 0 2rem;
+        color: var(--color-accent-foreground);
+        font-size: 0.875rem;
+        font-weight: 600;
+        background: var(--color-accent);
+        box-shadow: var(--shadow-sm);
+        transition: background 150ms ease, transform 150ms ease;
+      }
+
+      .button:hover {
+        background: var(--color-accent-hover);
+        transform: translateY(-1px);
+      }
+
+      .cards {
+        display: grid;
+        width: 100%;
+        gap: 1rem;
+        margin-top: 2.5rem;
+        color: var(--color-foreground-muted);
+        font-size: 0.875rem;
+      }
+
+      .card {
+        border: 1px solid var(--color-border);
+        border-radius: 0.5rem;
+        padding: 1rem 1.25rem;
+        background: var(--color-surface);
+        box-shadow: var(--shadow-sm);
+        backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+        -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+      }
+
+      .card strong {
+        display: block;
+        margin-bottom: 0.25rem;
+        color: var(--color-foreground);
+        font-weight: 600;
+      }
+
+      .card p {
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      .icon {
+        width: 1rem;
+        height: 1rem;
+      }
+
+      @media (min-width: 640px) {
+        .cards {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 640px) {
+        .header {
+          padding: 1rem;
+        }
+
+        .hero-inner {
+          padding: 5rem 1rem 2rem;
+        }
+
+        h1 {
+          font-size: 3rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <div class="hero-inner">
+          <div class="content">
+            <p class="eyebrow">
+              <svg class="sparkle" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="m12 3 1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6L12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
+                <path d="m19 15 .8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
+              </svg>
+              多租户 LLM 网关管理控制台
+            </p>
+            <h1>ModelGate</h1>
+            <p class="lead">
+              统一管理多协议模型入口、上游渠道、用户权限、限流配额与调用日志，让团队以一致方式接入和治理 LLM 服务。
+            </p>
+            <div class="actions">
+              <a class="button" href="https://cnb.cool/Bring/Tools/ModelGate" target="_blank" rel="noopener noreferrer">
+                查看项目
+                <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </a>
+            </div>
+            <div class="cards">
+              <div class="card">
+                <strong>多渠道路由</strong>
+                <p>权重分配、熔断、模型别名</p>
+              </div>
+              <div class="card">
+                <strong>租户治理</strong>
+                <p>用户组、密钥、模型白名单</p>
+              </div>
+              <div class="card">
+                <strong>调用审计</strong>
+                <p>Token 用量、延迟、状态追踪</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
