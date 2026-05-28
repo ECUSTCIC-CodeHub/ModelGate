@@ -1,0 +1,13 @@
+import type { JsonRecord } from "@/lib/gateway/ollama-adapter/types";
+
+export function asRecord(value: unknown): JsonRecord | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : null;
+}
+
+export function asArray(value: unknown) {
+  return Array.isArray(value) ? value : [];
+}
+
+export function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
