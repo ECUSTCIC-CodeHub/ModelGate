@@ -198,7 +198,7 @@ export async function GET(request: Request) {
     }
 
     if (!config.autoRegister) {
-      return clearStateCookie(redirectWithError(origin, "未找到绑定的账号，且自动注册已关闭"));
+      return clearStateCookie(redirectWithError(origin, "OIDC 登录失败，请联系管理员"));
     }
 
     const claimGroupId = resolveGroupFromClaims(rawClaims);
