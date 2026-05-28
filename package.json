@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "license": "MIT",
   "private": true,
-  "packageManager": "pnpm@10.24.0",
+  "packageManager": "npm@10.8.2",
   "scripts": {
     "dev": "next dev",
     "dev:full": "MODELGATE_EDITION=full NEXT_PUBLIC_MODELGATE_EDITION=full next dev",
@@ -38,7 +38,7 @@
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^1.14.0",
     "marked": "^18.0.3",
-    "next": "16.2.4",
+    "next": "16.2.6",
     "react": "19.2.5",
     "react-day-picker": "^9.14.0",
     "react-dom": "19.2.5",
@@ -55,14 +55,11 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "eslint": "^9.39.4",
-    "eslint-config-next": "16.2.4",
+    "eslint-config-next": "16.2.6",
     "tailwindcss": "^4.2.4",
     "typescript": "^6.0.3"
   },
   "overrides": {
     "postcss": "^8.5.10"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": ["better-sqlite3"]
   }
 }
