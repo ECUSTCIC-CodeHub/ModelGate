@@ -739,7 +739,8 @@ email matches ".*@company\\.com"
           "enabled": 1,
           "weight": 1,
           "token_multiplier": 1,
-          "request_multiplier": 1
+          "request_multiplier": 1,
+          "max_concurrency": 0
         }
       ]
     }
@@ -884,6 +885,7 @@ email matches ".*@company\\.com"
 | upstream_protocol | enum | 否 | chat_completions | `chat_completions` / `anthropic_messages` / `responses` / `embeddings` |
 | is_public | bool | 否 | true | false 时仅白名单用户可访问 |
 | weight | int | 否 | 1 | 路由权重（越大流量越多） |
+| max_concurrency | int | 否 | 0 | 模型级最大并发数，0 时继承渠道配置；实际生效值为 min(模型并发, 渠道并发) |
 | token_multiplier | float | 否 | 1 | Token 计费倍率：实际扣量 = 使用量 x 倍率 |
 | request_multiplier | float | 否 | 1 | 请求计费倍率：实际扣量 = 请求次数 x 倍率 |
 
@@ -1480,6 +1482,7 @@ OpenAI Embeddings 兼容端点，直通上游 `/embeddings`，不参与 Chat Com
   - 实际扣除 Token = 使用量 x token_multiplier
   - 实际扣除请求次数 = 请求次数 x request_multiplier
   - 支持小数累积（如 0.1 倍率，10 次请求累积扣 1 次）
+- **模型级并发:** 模型的 `max_concurrency` 为 0 时使用渠道并发限制，大于 0 时实际生效值为 `min(模型并发, 渠道并发)`
 - 用户限制未设置时（`-1` 或 `null`）自动继承所属用户组的配置
 
 ## 上游重试与熔断
