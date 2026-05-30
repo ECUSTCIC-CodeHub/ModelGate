@@ -28,6 +28,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
   const existing = gatewayDb.prepare("SELECT * FROM channels WHERE id = ? AND deleted_at IS NULL").get(id);
   if (!existing) return jsonError("渠道不存在", 404);
+  const wasEnabled = (existing as { enabled: number }).enabled === 1;
   const nextProtocols = parsed.data.supported_protocols === undefined
     ? (existing as { supported_protocols: string }).supported_protocols
     : stringifySupportedProtocols(normalizeSupportedProtocols(parsed.data.supported_protocols));
@@ -87,13 +88,25 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       gatewayDb
         .prepare("UPDATE models SET enabled = 0 WHERE channel_id = ? AND deleted_at IS NULL")
         .run(id);
+    } else if (!wasEnabled) {
+      const placeholders = nextProtocolList.map(() => "?").join(", ");
+      gatewayDb
+        .prepare(
+          `UPDATE models SET enabled = 1 WHERE channel_id = ? AND deleted_at IS NULL AND upstream_protocol IN (${placeholders})`,
+        )
+        .run(id, ...nextProtocolList);
     }
   });
   tx();
 
   const row = gatewayDb.prepare("SELECT * FROM channels WHERE id = ? AND deleted_at IS NULL").get(id);
   return jsonOk({
-    message: nextEnabled === 0 ? "渠道已禁用，关联模型已同步禁用。" : "渠道更新成功。",
+    message:
+      nextEnabled === 0
+        ? "渠道已禁用，关联模型已同步禁用。"
+        : !wasEnabled
+          ? "渠道已启用，关联模型已同步启用。"
+          : "渠道更新成功。",
     data: row,
   });
 }
