@@ -1,7 +1,7 @@
 import { gatewayDb } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
 
-export function addUsage(userId: number, keyId: number, tokens: number, requests = 1, tokenMultiplier = 1, requestMultiplier = 1) {
+export function addUsage(userId: number, keyId: number, tokens: number, requests = 1, tokenMultiplier = 1, requestMultiplier = 1, channelId?: number) {
   const billedTokens = Math.max(0, tokens * tokenMultiplier);
   const billedRequests = Math.max(0, requests * requestMultiplier);
   const tx = gatewayDb.transaction(() => {
@@ -31,6 +31,16 @@ export function addUsage(userId: number, keyId: number, tokens: number, requests
          WHERE id = ? AND deleted_at IS NULL`,
       )
       .run(billedTokens, billedRequests, keyId);
+
+    if (channelId != null && modelGateFeatures.periodQuota) {
+      gatewayDb
+        .prepare(
+          `UPDATE channels
+           SET period_used_tokens = period_used_tokens + ?, period_used_requests = period_used_requests + ?
+           WHERE id = ? AND deleted_at IS NULL`,
+        )
+        .run(billedTokens, billedRequests, channelId);
+    }
   });
   tx();
 }

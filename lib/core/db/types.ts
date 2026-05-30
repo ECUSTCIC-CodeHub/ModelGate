@@ -10,6 +10,14 @@ export type DbChannel = {
   weight: number;
   max_concurrency: number;
   timeout: number;
+  quota_tokens: number | null;
+  quota_requests: number | null;
+  quota_period: number | null;
+  period_quota_tokens: number | null;
+  period_quota_requests: number | null;
+  period_used_tokens: number;
+  period_used_requests: number;
+  period_reset_at: string | null;
   created_at: string;
   deleted_at: string | null;
 };

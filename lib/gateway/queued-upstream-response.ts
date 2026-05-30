@@ -1,4 +1,5 @@
 import type { ApiKeyContext } from "@/lib/auth/api-key-auth";
+import { checkChannelQuota } from "@/lib/gateway/channel-quota";
 import { insertChatLog } from "@/lib/gateway/chat-log";
 import { fetchUpstreamRequest } from "@/lib/gateway/proxy";
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
@@ -97,6 +98,15 @@ export function createQueuedUpstreamResponse({
 
           const lease = acquireResult.lease;
 
+          const channelQuota = checkChannelQuota(route.channel.id, estimatedTokens);
+          if (!channelQuota.ok) {
+            lease.abandon();
+            controller.enqueue(toSseDataBlock(buildErrorResponseBody(channelQuota.reason, 429, inboundProtocol, "channel_quota_exceeded", "429")));
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+            return;
+          }
+
           try {
             const upstream = await fetchUpstreamRequest(route, upstreamBody, route.model.upstream_protocol, requestHeaders);
 
@@ -148,7 +158,7 @@ export function createQueuedUpstreamResponse({
                   : null;
 
               lease.complete({ ok: true, latencyMs: Date.now() - startedAt });
-              addUsage(auth.user.id, auth.key.id, Math.max(1, totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier);
+              addUsage(auth.user.id, auth.key.id, Math.max(1, totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id);
               insertChatLog({
                 user_id: auth.user.id,
                 key_id: auth.key.id,
@@ -195,7 +205,7 @@ export function createQueuedUpstreamResponse({
               const firstTokenLatencyMs = firstTokenAt !== null ? Math.max(0, firstTokenAt - startedAt) : null;
 
               if (success) {
-                addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier);
+                addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id);
               }
               insertChatLog({
                 user_id: auth.user.id,
@@ -293,6 +303,14 @@ export function createQueuedUpstreamResponse({
 
         const lease = acquireResult.lease;
 
+        const channelQuota = checkChannelQuota(route.channel.id, estimatedTokens);
+        if (!channelQuota.ok) {
+          lease.abandon();
+          controller.enqueue(encoder.encode(buildErrorResponseBody(channelQuota.reason, 429, inboundProtocol, "channel_quota_exceeded", "429")));
+          controller.close();
+          return;
+        }
+
         try {
           const upstream = await fetchUpstreamRequest(route, upstreamBody, route.model.upstream_protocol, requestHeaders);
           const rawText = await upstream.text().catch(() => "");
@@ -339,7 +357,7 @@ export function createQueuedUpstreamResponse({
               : null;
 
           lease.complete({ ok: true, latencyMs: Date.now() - startedAt });
-          addUsage(auth.user.id, auth.key.id, Math.max(1, localTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier);
+          addUsage(auth.user.id, auth.key.id, Math.max(1, localTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id);
           insertChatLog({
             user_id: auth.user.id,
             key_id: auth.key.id,

@@ -15,6 +15,11 @@ const createSchema = z.object({
   weight: z.number().int().min(1).optional(),
   max_concurrency: z.number().int().min(1).optional(),
   timeout: z.number().int().min(1).optional(),
+  quota_tokens: z.number().int().min(0).nullable().optional(),
+  quota_requests: z.number().int().min(0).nullable().optional(),
+  quota_period: z.number().int().min(0).nullable().optional(),
+  period_quota_tokens: z.number().int().min(0).nullable().optional(),
+  period_quota_requests: z.number().int().min(0).nullable().optional(),
   models: z
     .array(
       z.object({
@@ -84,8 +89,8 @@ export async function POST(request: Request) {
     const channelEnabled = parsed.data.enabled === false ? 0 : 1;
     const result = gatewayDb
       .prepare(
-        `INSERT INTO channels (name, base_url, api_key, supported_protocols, enabled, weight, max_concurrency, timeout)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO channels (name, base_url, api_key, supported_protocols, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         parsed.data.name,
@@ -96,6 +101,11 @@ export async function POST(request: Request) {
         parsed.data.weight ?? 1,
         parsed.data.max_concurrency ?? 64,
         parsed.data.timeout ?? 60,
+        parsed.data.quota_tokens ?? null,
+        parsed.data.quota_requests ?? null,
+        parsed.data.quota_period ?? null,
+        parsed.data.period_quota_tokens ?? null,
+        parsed.data.period_quota_requests ?? null,
       );
 
     const channelId = Number(result.lastInsertRowid);

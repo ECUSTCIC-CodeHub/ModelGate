@@ -1,5 +1,6 @@
 import { checkApiKeyAuth } from "@/lib/auth/api-key-auth";
 import { getUserAllowedChannelIds } from "@/lib/gateway/channel-access";
+import { checkChannelQuota, appendChannelQuotaHeaders } from "@/lib/gateway/channel-quota";
 import { insertChatLog } from "@/lib/gateway/chat-log";
 import { jsonError } from "@/lib/core/http";
 import { resolveAccessibleModelAlias } from "@/lib/gateway/model-access";
@@ -97,9 +98,16 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   const quotaHeaders: Record<string, string> = {};
   appendQuotaHeaders(quotaHeaders, quotaResult.quota);
 
+  let channelQuotaHeaders: Record<string, string> | null = null;
+
   const withQuotaHeaders = (resp: Response): Response => {
     for (const [k, v] of Object.entries(quotaHeaders)) {
       resp.headers.set(k, v);
+    }
+    if (channelQuotaHeaders) {
+      for (const [k, v] of Object.entries(channelQuotaHeaders)) {
+        resp.headers.set(k, v);
+      }
     }
     return resp;
   };
@@ -145,9 +153,17 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     inboundHeaders: request.headers,
     allowedChannelIds,
     startedAt,
+    estimatedTokens,
     buildRequestBody: adaptRequestBodyForRoute,
   });
   if (!picked.ok) {
+    if (picked.route) {
+      const cq = checkChannelQuota(picked.route.channel.id, estimatedTokens);
+      if (cq.ok) {
+        channelQuotaHeaders = {};
+        appendChannelQuotaHeaders(channelQuotaHeaders, cq.quota);
+      }
+    }
     insertChatLog({
       user_id: auth.user.id,
       key_id: auth.key.id,
@@ -178,6 +194,11 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
 
   if ("queued" in picked && picked.queued) {
     const { route } = picked;
+    const cq = checkChannelQuota(route.channel.id, estimatedTokens);
+    if (cq.ok) {
+      channelQuotaHeaders = {};
+      appendChannelQuotaHeaders(channelQuotaHeaders, cq.quota);
+    }
     const localPromptTokens = countPromptTokensForRoute(route);
     const upstreamBody = adaptRequestBodyForRoute(route);
 
@@ -211,6 +232,11 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   }
 
   const { route, upstream, lease, attemptedChannels, attemptedChannelNames } = picked;
+  const cq = checkChannelQuota(route.channel.id, estimatedTokens);
+  if (cq.ok) {
+    channelQuotaHeaders = {};
+    appendChannelQuotaHeaders(channelQuotaHeaders, cq.quota);
+  }
   const localPromptTokens = countPromptTokensForRoute(route);
 
   if (stream) {
@@ -297,7 +323,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
           : null;
 
       lease.complete({ ok: upstream.status < 400, latencyMs: Date.now() - startedAt });
-      addUsage(auth.user.id, auth.key.id, Math.max(1, totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier);
+      addUsage(auth.user.id, auth.key.id, Math.max(1, totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id);
       insertChatLog({
         user_id: auth.user.id,
         key_id: auth.key.id,
@@ -346,7 +372,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       const firstTokenLatencyMs = firstTokenAt !== null ? Math.max(0, firstTokenAt - startedAt) : null;
 
       if (success) {
-        addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier);
+        addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id);
       }
       insertChatLog({
         user_id: auth.user.id,
@@ -449,7 +475,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       : null;
 
   lease.complete({ ok: true, latencyMs: Date.now() - startedAt });
-  addUsage(auth.user.id, auth.key.id, Math.max(1, localTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier);
+  addUsage(auth.user.id, auth.key.id, Math.max(1, localTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id);
   insertChatLog({
     user_id: auth.user.id,
     key_id: auth.key.id,

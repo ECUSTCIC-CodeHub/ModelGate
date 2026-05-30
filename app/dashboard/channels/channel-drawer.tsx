@@ -14,6 +14,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { ModelDraftCard } from "./model-draft-card";
+import { ChannelQuotaFields } from "./channel-quota-fields";
 import {
   protocolOptions,
   type ChannelForm,
@@ -27,6 +28,7 @@ export function ChannelDrawer({
   form,
   modelDrafts,
   probingModels,
+  periodQuotaEnabled,
   onOpenChange,
   onSubmit,
   onFormChange,
@@ -41,6 +43,7 @@ export function ChannelDrawer({
   form: ChannelForm;
   modelDrafts: ChannelModelDraft[];
   probingModels: boolean;
+  periodQuotaEnabled: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (event: FormEvent) => void;
   onFormChange: (patch: Partial<ChannelForm>) => void;
@@ -108,6 +111,12 @@ export function ChannelDrawer({
               <Input value={form.api_key} onChange={(e) => onFormChange({ api_key: e.target.value })} />
             </div>
           </div>
+
+          <ChannelQuotaFields
+            form={form}
+            periodQuotaEnabled={periodQuotaEnabled}
+            onChange={onFormChange}
+          />
 
           {editingId === null ? (
             <ModelDraftCard

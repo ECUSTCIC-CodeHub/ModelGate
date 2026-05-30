@@ -77,6 +77,7 @@ export default function AdminChannelsPage() {
         form={admin.channelForm}
         modelDrafts={admin.channelModels}
         probingModels={admin.probingModels}
+        periodQuotaEnabled={admin.periodQuotaEnabled}
         onOpenChange={admin.setChannelDrawerOpen}
         onSubmit={admin.submitChannel}
         onFormChange={admin.updateChannelForm}

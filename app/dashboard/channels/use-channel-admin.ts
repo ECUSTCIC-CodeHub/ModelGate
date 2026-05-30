@@ -4,12 +4,14 @@ import type { FormEvent } from "react";
 import { useState } from "react";
 import { useToast } from "@/components/ui/toast";
 import { authedFetch } from "@/lib/auth/client-auth";
+import { modelGateFeatures } from "@/lib/core/features";
 import { getApiMessage } from "@/lib/shared/api-message";
 import {
   initialChannelForm,
   initialModelDraft,
   initialModelForm,
   parseSupportedProtocols,
+  periodToPreset,
   type Channel,
   type ChannelForm,
   type ChannelModelDraft,
@@ -58,6 +60,12 @@ export function useChannelAdmin() {
       weight: row.weight,
       max_concurrency: row.max_concurrency,
       timeout: row.timeout,
+      quota_tokens: row.quota_tokens != null ? String(row.quota_tokens) : "",
+      quota_requests: row.quota_requests != null ? String(row.quota_requests) : "",
+      quota_period_preset: periodToPreset(row.quota_period),
+      quota_period_custom: row.quota_period != null && periodToPreset(row.quota_period) === "custom" ? String(row.quota_period) : "",
+      period_quota_tokens: row.period_quota_tokens != null ? String(row.period_quota_tokens) : "",
+      period_quota_requests: row.period_quota_requests != null ? String(row.period_quota_requests) : "",
     });
     setChannelModels([{ ...initialModelDraft, upstream_protocol: supportedProtocols[0] }]);
     setChannelDrawerOpen(true);
@@ -88,6 +96,21 @@ export function useChannelAdmin() {
     setChannelModels((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   }
 
+  function buildQuotaPayload(form: ChannelForm) {
+    const periodSeconds = form.quota_period_preset === "custom"
+      ? (form.quota_period_custom.trim() ? Number(form.quota_period_custom) : null)
+      : form.quota_period_preset
+        ? Number(form.quota_period_preset)
+        : null;
+    return {
+      quota_tokens: form.quota_tokens.trim() ? Number(form.quota_tokens) : null,
+      quota_requests: form.quota_requests.trim() ? Number(form.quota_requests) : null,
+      quota_period: periodSeconds,
+      period_quota_tokens: form.period_quota_tokens.trim() ? Number(form.period_quota_tokens) : null,
+      period_quota_requests: form.period_quota_requests.trim() ? Number(form.period_quota_requests) : null,
+    };
+  }
+
   async function submitChannel(event: FormEvent) {
     event.preventDefault();
 
@@ -113,6 +136,7 @@ export function useChannelAdmin() {
           weight: channelForm.weight,
           max_concurrency: channelForm.max_concurrency,
           timeout: channelForm.timeout,
+          ...buildQuotaPayload(channelForm),
           models: draftModels,
         }),
       });
@@ -138,6 +162,7 @@ export function useChannelAdmin() {
         weight: channelForm.weight,
         max_concurrency: channelForm.max_concurrency,
         timeout: channelForm.timeout,
+        ...buildQuotaPayload(channelForm),
       }),
     });
     const data = await response.json().catch(() => null);
@@ -413,6 +438,8 @@ export function useChannelAdmin() {
   const selectedChannelProtocols = parseSupportedProtocols(selectedChannel?.supported_protocols);
   const activeDraftProtocols = modelDrawerOpen && modelEditingId === null ? selectedChannelProtocols : channelForm.supported_protocols;
 
+  const periodQuotaEnabled = modelGateFeatures.periodQuota;
+
   return {
     activeDraftProtocols,
     addChannelModelDraft,
@@ -431,6 +458,7 @@ export function useChannelAdmin() {
     openCreateModel,
     openEditChannel,
     openEditModel,
+    periodQuotaEnabled,
     probingModels: upstreamPicker.probingModels,
     probeUpstreamModels: upstreamPicker.probeUpstreamModels,
     removeChannel,

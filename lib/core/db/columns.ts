@@ -48,6 +48,14 @@ export function ensureModernColumns(db: BetterSqlite3.Database): ColumnMigration
   const addedKeyUsedRequests = ensureColumn(db, "keys", "used_requests", "used_requests INTEGER DEFAULT 0");
   ensureColumn(db, "channels", "supported_protocols", `supported_protocols TEXT DEFAULT '["chat_completions"]'`);
   ensureColumn(db, "channels", "max_concurrency", "max_concurrency INTEGER DEFAULT 64");
+  ensureColumn(db, "channels", "quota_tokens", "quota_tokens INTEGER");
+  ensureColumn(db, "channels", "quota_requests", "quota_requests INTEGER");
+  ensureColumn(db, "channels", "quota_period", "quota_period INTEGER");
+  ensureColumn(db, "channels", "period_quota_tokens", "period_quota_tokens INTEGER");
+  ensureColumn(db, "channels", "period_quota_requests", "period_quota_requests INTEGER");
+  ensureColumn(db, "channels", "period_used_tokens", "period_used_tokens INTEGER DEFAULT 0");
+  ensureColumn(db, "channels", "period_used_requests", "period_used_requests INTEGER DEFAULT 0");
+  ensureColumn(db, "channels", "period_reset_at", "period_reset_at DATETIME");
   ensureColumn(db, "channels", "deleted_at", "deleted_at DATETIME");
   ensureColumn(db, "models", "deleted_at", "deleted_at DATETIME");
   ensureColumn(db, "models", "is_public", "is_public INTEGER DEFAULT 1");
