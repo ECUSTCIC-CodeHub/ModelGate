@@ -243,6 +243,7 @@ export function useChannelAdmin() {
       weight: row.weight,
       token_multiplier: row.token_multiplier ?? 1,
       request_multiplier: row.request_multiplier ?? 1,
+      max_concurrency: row.max_concurrency ?? 0,
       enabled: row.enabled === 1,
     });
     setModelDrawerOpen(true);
@@ -279,6 +280,7 @@ export function useChannelAdmin() {
           weight: item.weight,
           token_multiplier: item.token_multiplier,
           request_multiplier: item.request_multiplier,
+          max_concurrency: item.max_concurrency,
           enabled: item.enabled,
         }))
         .filter((item) => item.alias && item.real_model);
@@ -325,6 +327,7 @@ export function useChannelAdmin() {
               weight: draft.weight,
               token_multiplier: draft.token_multiplier,
               request_multiplier: draft.request_multiplier,
+              max_concurrency: draft.max_concurrency,
               enabled: draft.enabled,
             });
           }
@@ -339,6 +342,7 @@ export function useChannelAdmin() {
             weight: draft.weight,
             token_multiplier: draft.token_multiplier,
             request_multiplier: draft.request_multiplier,
+            max_concurrency: draft.max_concurrency,
             enabled: draft.enabled,
           });
         }

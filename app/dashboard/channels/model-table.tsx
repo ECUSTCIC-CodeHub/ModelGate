@@ -49,6 +49,7 @@ export function ModelTable({
             <TableHead>可见性</TableHead>
             <TableHead>权重</TableHead>
             <TableHead>倍率</TableHead>
+            <TableHead>最大并发</TableHead>
             <TableHead className="min-w-72 text-right">操作</TableHead>
           </TableRow>
         </TableHeader>
@@ -71,6 +72,7 @@ export function ModelTable({
                   T {model.token_multiplier ?? 1}x / R {model.request_multiplier ?? 1}x
                 </span>
               </TableCell>
+              <TableCell className="whitespace-nowrap">{model.max_concurrency > 0 ? model.max_concurrency : "继承渠道"}</TableCell>
               <TableCell className="text-right">
                 <div className="flex flex-nowrap justify-end gap-2">
                   <Button size="sm" variant="outline" onClick={() => onTest(model)} disabled={testingModelId === model.id}>

@@ -18,6 +18,7 @@ type CandidateRow = {
   model_weight: number;
   token_multiplier: number;
   request_multiplier: number;
+  model_max_concurrency: number;
   model_created_at: string;
   model_deleted_at: string | null;
   channel_id_2: number;
@@ -27,7 +28,7 @@ type CandidateRow = {
   supported_protocols: string;
   channel_enabled: number;
   channel_weight: number;
-  max_concurrency: number;
+  channel_max_concurrency: number;
   timeout: number;
   channel_created_at: string;
   channel_deleted_at: string | null;
@@ -53,6 +54,7 @@ const listModelRoutesStmt = gatewayDb.prepare(
       m.weight as model_weight,
       m.token_multiplier,
       m.request_multiplier,
+      m.max_concurrency as model_max_concurrency,
       m.created_at as model_created_at,
       m.deleted_at as model_deleted_at,
       c.id as channel_id_2,
@@ -62,7 +64,7 @@ const listModelRoutesStmt = gatewayDb.prepare(
       c.supported_protocols,
       c.enabled as channel_enabled,
       c.weight as channel_weight,
-      c.max_concurrency,
+      c.max_concurrency as channel_max_concurrency,
       c.timeout,
       c.created_at as channel_created_at,
       c.deleted_at as channel_deleted_at
@@ -73,6 +75,11 @@ const listModelRoutesStmt = gatewayDb.prepare(
 
 export function listEnabledAliases() {
   return listEnabledAliasesStmt.all() as { alias: string }[];
+}
+
+function effectiveMaxConcurrency(channelMax: number, modelMax: number): number {
+  if (modelMax > 0) return Math.min(channelMax, modelMax);
+  return channelMax;
 }
 
 function mapRowToRoute(row: CandidateRow): RoutedModel {
@@ -88,6 +95,7 @@ function mapRowToRoute(row: CandidateRow): RoutedModel {
       weight: row.model_weight,
       token_multiplier: row.token_multiplier ?? 1,
       request_multiplier: row.request_multiplier ?? 1,
+      max_concurrency: row.model_max_concurrency,
       created_at: row.model_created_at,
       deleted_at: row.model_deleted_at,
     },
@@ -99,7 +107,7 @@ function mapRowToRoute(row: CandidateRow): RoutedModel {
       supported_protocols: row.supported_protocols,
       enabled: row.channel_enabled,
       weight: row.channel_weight,
-      max_concurrency: row.max_concurrency,
+      max_concurrency: effectiveMaxConcurrency(row.channel_max_concurrency, row.model_max_concurrency),
       timeout: row.timeout,
       created_at: row.channel_created_at,
       deleted_at: row.channel_deleted_at,
@@ -137,7 +145,7 @@ export function listModelRoutes(alias: string, options?: { excludeChannelIds?: n
       score: scoreChannel(
         row.channel_id_2,
         Math.max(1, row.model_weight) * Math.max(1, row.channel_weight),
-        row.max_concurrency,
+        effectiveMaxConcurrency(row.channel_max_concurrency, row.model_max_concurrency),
       ),
       jitter: Math.random() * 0.001,
     }))

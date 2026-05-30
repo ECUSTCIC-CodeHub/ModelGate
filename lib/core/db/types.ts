@@ -25,6 +25,7 @@ export type DbModel = {
   weight: number;
   token_multiplier: number;
   request_multiplier: number;
+  max_concurrency: number;
   created_at: string;
   deleted_at: string | null;
 };

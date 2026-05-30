@@ -137,7 +137,7 @@ export function ModelDrawer({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid gap-3 md:grid-cols-4">
                 <div className="space-y-2">
                   <Label>权重</Label>
                   <Input type="number" min={1} value={form.weight} onChange={(e) => onFormChange({ weight: Number(e.target.value) || 1 })} />
@@ -150,8 +150,12 @@ export function ModelDrawer({
                   <Label>请求倍率</Label>
                   <Input type="number" min={0} step={0.1} value={form.request_multiplier} onChange={(e) => onFormChange({ request_multiplier: Number(e.target.value) || 1 })} />
                 </div>
+                <div className="space-y-2">
+                  <Label>最大并发</Label>
+                  <Input type="number" min={0} value={form.max_concurrency} onChange={(e) => onFormChange({ max_concurrency: Number(e.target.value) || 0 })} />
+                </div>
               </div>
-              <p className="text-xs text-[var(--color-foreground-muted)]">倍率用于计费扣量，如 Token 倍率 2 则实际扣除 Token = 使用量 × 2。默认均为 1。</p>
+              <p className="text-xs text-[var(--color-foreground-muted)]">倍率用于计费扣量，如 Token 倍率 2 则实际扣除 Token = 使用量 × 2。最大并发为 0 时使用渠道并发限制。</p>
               <div className="flex items-center justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
                 <div>
                   <p className="text-sm font-medium text-[var(--color-foreground)]">公开模型</p>
