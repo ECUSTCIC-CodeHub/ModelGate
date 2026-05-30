@@ -17,6 +17,7 @@ const updateSchema = z.object({
   weight: z.number().int().min(1).optional(),
   token_multiplier: z.number().min(0).max(100).optional(),
   request_multiplier: z.number().min(0).max(100).optional(),
+  max_concurrency: z.number().int().min(0).optional(),
 });
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -57,6 +58,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         weight: number;
         token_multiplier: number;
         request_multiplier: number;
+        max_concurrency: number;
       }
     | undefined;
   if (!existing) return jsonError("模型不存在", 404);
@@ -96,10 +98,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   gatewayDb
     .prepare(
       `UPDATE models
-       SET alias = ?, real_model = ?, channel_id = ?, upstream_protocol = ?, is_public = ?, enabled = ?, weight = ?, token_multiplier = ?, request_multiplier = ?
+       SET alias = ?, real_model = ?, channel_id = ?, upstream_protocol = ?, is_public = ?, enabled = ?, weight = ?, token_multiplier = ?, request_multiplier = ?, max_concurrency = ?
        WHERE id = ?`,
     )
-    .run(merged.alias, merged.real_model, merged.channel_id, merged.upstream_protocol, merged.is_public, merged.enabled, merged.weight, merged.token_multiplier, merged.request_multiplier, id);
+    .run(merged.alias, merged.real_model, merged.channel_id, merged.upstream_protocol, merged.is_public, merged.enabled, merged.weight, merged.token_multiplier, merged.request_multiplier, merged.max_concurrency, id);
 
   const row = gatewayDb.prepare("SELECT * FROM models WHERE id = ? AND deleted_at IS NULL").get(id);
   return jsonOk({ data: row });

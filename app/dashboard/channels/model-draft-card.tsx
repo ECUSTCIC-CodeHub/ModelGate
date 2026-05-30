@@ -59,10 +59,11 @@ export function ModelDraftCard({
           <div key={index} className="grid gap-3 rounded-lg border border-[var(--color-border)] p-3 md:grid-cols-2">
             <Input placeholder="别名" value={item.alias} onChange={(e) => onUpdateDraft(index, { alias: e.target.value })} />
             <Input placeholder="真实模型" value={item.real_model} onChange={(e) => onUpdateDraft(index, { real_model: e.target.value })} />
-            <div className="grid gap-2 md:grid-cols-3">
+            <div className="grid gap-2 md:grid-cols-4">
               <Input type="number" min={1} placeholder="权重" value={item.weight} onChange={(e) => onUpdateDraft(index, { weight: Number(e.target.value) || 1 })} />
               <Input type="number" min={0} step={0.1} placeholder="Token倍率" value={item.token_multiplier} onChange={(e) => onUpdateDraft(index, { token_multiplier: Number(e.target.value) || 1 })} />
               <Input type="number" min={0} step={0.1} placeholder="请求倍率" value={item.request_multiplier} onChange={(e) => onUpdateDraft(index, { request_multiplier: Number(e.target.value) || 1 })} />
+              <Input type="number" min={0} placeholder="最大并发" value={item.max_concurrency} onChange={(e) => onUpdateDraft(index, { max_concurrency: Number(e.target.value) || 0 })} />
             </div>
             <Select value={item.upstream_protocol} onValueChange={(value) => onUpdateDraft(index, { upstream_protocol: value as Protocol })}>
               <SelectTrigger>

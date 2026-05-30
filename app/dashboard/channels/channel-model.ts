@@ -41,6 +41,7 @@ export type ModelRow = {
   weight: number;
   token_multiplier: number;
   request_multiplier: number;
+  max_concurrency: number;
 };
 
 export type Channel = {
@@ -64,6 +65,7 @@ export type ChannelModelDraft = {
   weight: number;
   token_multiplier: number;
   request_multiplier: number;
+  max_concurrency: number;
   enabled: boolean;
 };
 
@@ -86,6 +88,7 @@ export type ModelForm = {
   weight: number;
   token_multiplier: number;
   request_multiplier: number;
+  max_concurrency: number;
   enabled: boolean;
 };
 
@@ -117,6 +120,7 @@ export const initialModelDraft: ChannelModelDraft = {
   weight: 1,
   token_multiplier: 1,
   request_multiplier: 1,
+  max_concurrency: 0,
   enabled: true,
 };
 
@@ -129,5 +133,6 @@ export const initialModelForm: ModelForm = {
   weight: 1,
   token_multiplier: 1,
   request_multiplier: 1,
+  max_concurrency: 0,
   enabled: true,
 };

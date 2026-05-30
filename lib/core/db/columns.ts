@@ -54,6 +54,7 @@ export function ensureModernColumns(db: BetterSqlite3.Database): ColumnMigration
   ensureColumn(db, "models", "upstream_protocol", `upstream_protocol TEXT DEFAULT 'chat_completions'`);
   ensureColumn(db, "models", "token_multiplier", "token_multiplier REAL DEFAULT 1");
   ensureColumn(db, "models", "request_multiplier", "request_multiplier REAL DEFAULT 1");
+  ensureColumn(db, "models", "max_concurrency", "max_concurrency INTEGER DEFAULT 0");
   ensureColumn(db, "logs", "first_token_latency_ms", "first_token_latency_ms INTEGER");
   ensureColumn(db, "logs", "output_tps", "output_tps REAL");
   ensureColumn(db, "logs", "route_attempts", "route_attempts INTEGER DEFAULT 1");
