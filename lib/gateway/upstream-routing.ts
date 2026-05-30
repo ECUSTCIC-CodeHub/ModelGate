@@ -1,4 +1,5 @@
-import { acquireChannel, type ChannelLease } from "@/lib/gateway/channel-runtime";
+import { acquireChannel, type ChannelLease, makeModelRuntimeKey } from "@/lib/gateway/channel-runtime";
+import { checkChannelQuota } from "@/lib/gateway/channel-quota";
 import { fetchUpstreamRequest } from "@/lib/gateway/proxy";
 import { selectModelRoute, type RoutedModel } from "@/lib/gateway/router";
 import { shouldRetryUpstreamStatus } from "@/lib/gateway/upstream-error";
@@ -42,6 +43,7 @@ export async function requestUpstreamWithFallback({
   inboundHeaders,
   allowedChannelIds,
   startedAt,
+  estimatedTokens,
   buildRequestBody,
 }: {
   resolvedAlias: string;
@@ -51,6 +53,7 @@ export async function requestUpstreamWithFallback({
   inboundHeaders: Headers;
   allowedChannelIds?: number[] | null;
   startedAt: number;
+  estimatedTokens: number;
   buildRequestBody: (route: RoutedModel) => Record<string, unknown>;
 }): Promise<UpstreamPickResult> {
   const attemptedChannels = new Set<number>();
@@ -72,7 +75,8 @@ export async function requestUpstreamWithFallback({
     attemptedChannels.add(route.channel.id);
     attemptedChannelNames.push(route.channel.name);
 
-    const leaseResult = acquireChannel(route.channel.id, route.channel.max_concurrency, requestSignal);
+    const runtimeKey = makeModelRuntimeKey(route.channel.id, route.model.real_model);
+    const leaseResult = acquireChannel(runtimeKey, route.channel.max_concurrency, requestSignal);
     if (isPromiseLike(leaseResult)) {
       return {
         ok: true,
@@ -87,6 +91,13 @@ export async function requestUpstreamWithFallback({
     if (!leaseResult.ok) continue;
 
     const lease = leaseResult.lease;
+
+    const channelQuota = checkChannelQuota(route.channel.id, estimatedTokens);
+    if (!channelQuota.ok) {
+      lease.abandon();
+      continue;
+    }
+
     try {
       const upstreamBody = buildRequestBody(route);
       const upstream = await fetchUpstreamRequest(route, upstreamBody, route.model.upstream_protocol, inboundHeaders);

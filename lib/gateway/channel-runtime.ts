@@ -4,7 +4,7 @@ function isCircuitBreakerEnabled(): boolean {
   return getGatewaySettings().upstream_circuit_breaker_enabled === 1;
 }
 
-type ChannelRuntimeState = {
+type ModelRuntimeState = {
   inFlight: number;
   consecutiveFailures: number;
   circuitOpenUntil: number;
@@ -13,7 +13,7 @@ type ChannelRuntimeState = {
   queue: QueueWaiter[];
 };
 
-type ChannelRuntimeStore = Map<number, ChannelRuntimeState>;
+type ModelRuntimeStore = Map<string, ModelRuntimeState>;
 
 type QueueWaiter = {
   resolve: (lease: ChannelLease) => void;
@@ -39,22 +39,31 @@ const CIRCUIT_OPEN_MS = 15_000;
 const LATENCY_EWMA_ALPHA = 0.2;
 
 declare global {
-  var __channelRuntimeStore__: ChannelRuntimeStore | undefined;
+  var __modelRuntimeStore__: ModelRuntimeStore | undefined;
+}
+
+export function makeModelRuntimeKey(channelId: number, realModel: string): string {
+  return `${channelId}:${realModel}`;
+}
+
+export function parseModelRuntimeKey(key: string): { channelId: number; realModel: string } {
+  const sep = key.indexOf(":");
+  return { channelId: Number(key.slice(0, sep)), realModel: key.slice(sep + 1) };
 }
 
 function getStore() {
-  if (!globalThis.__channelRuntimeStore__) {
-    globalThis.__channelRuntimeStore__ = new Map();
+  if (!globalThis.__modelRuntimeStore__) {
+    globalThis.__modelRuntimeStore__ = new Map();
   }
-  return globalThis.__channelRuntimeStore__;
+  return globalThis.__modelRuntimeStore__;
 }
 
-function getState(channelId: number): ChannelRuntimeState {
+function getState(key: string): ModelRuntimeState {
   const store = getStore();
-  const existing = store.get(channelId);
+  const existing = store.get(key);
   if (existing) return existing;
 
-  const created: ChannelRuntimeState = {
+  const created: ModelRuntimeState = {
     inFlight: 0,
     consecutiveFailures: 0,
     circuitOpenUntil: 0,
@@ -62,7 +71,7 @@ function getState(channelId: number): ChannelRuntimeState {
     maxConcurrency: HARD_CONCURRENCY_LIMIT,
     queue: [],
   };
-  store.set(channelId, created);
+  store.set(key, created);
   return created;
 }
 
@@ -70,11 +79,11 @@ function normalizeMaxConcurrency(value: number) {
   return Math.max(1, Math.floor(value || 1));
 }
 
-function syncStateConfig(state: ChannelRuntimeState, maxConcurrency: number) {
+function syncStateConfig(state: ModelRuntimeState, maxConcurrency: number) {
   state.maxConcurrency = normalizeMaxConcurrency(maxConcurrency);
 }
 
-function updateLatencyEwma(state: ChannelRuntimeState, latencyMs: number) {
+function updateLatencyEwma(state: ModelRuntimeState, latencyMs: number) {
   const normalized = Math.max(1, latencyMs);
   state.latencyEwmaMs =
     state.latencyEwmaMs === null
@@ -82,18 +91,18 @@ function updateLatencyEwma(state: ChannelRuntimeState, latencyMs: number) {
       : state.latencyEwmaMs * (1 - LATENCY_EWMA_ALPHA) + normalized * LATENCY_EWMA_ALPHA;
 }
 
-function getEffectiveLimit(state: ChannelRuntimeState) {
+function getEffectiveLimit(state: ModelRuntimeState) {
   const now = Date.now();
   const halfOpen = state.circuitOpenUntil !== 0 && state.circuitOpenUntil <= now;
   return halfOpen ? Math.min(state.maxConcurrency, HALF_OPEN_MAX_PROBES) : state.maxConcurrency;
 }
 
-function grantLease(channelId: number, state: ChannelRuntimeState, queued: boolean) {
+function grantLease(key: string, state: ModelRuntimeState, queued: boolean) {
   state.inFlight += 1;
-  return { ok: true as const, lease: new ChannelLease(channelId, state), queued };
+  return { ok: true as const, lease: new ChannelLease(key, state), queued };
 }
 
-function drainQueue(channelId: number, state: ChannelRuntimeState) {
+function drainQueue(key: string, state: ModelRuntimeState) {
   while (state.queue.length > 0 && state.inFlight < getEffectiveLimit(state)) {
     const waiter = state.queue.shift();
     if (!waiter) break;
@@ -101,11 +110,11 @@ function drainQueue(channelId: number, state: ChannelRuntimeState) {
     if (waiter.signal && waiter.onAbort) {
       waiter.signal.removeEventListener("abort", waiter.onAbort);
     }
-    waiter.resolve(grantLease(channelId, state, true).lease);
+    waiter.resolve(grantLease(key, state, true).lease);
   }
 }
 
-function releaseLease(state: ChannelRuntimeState) {
+function releaseLease(state: ModelRuntimeState) {
   state.inFlight = Math.max(0, state.inFlight - 1);
 }
 
@@ -113,9 +122,13 @@ export class ChannelLease {
   private released = false;
 
   constructor(
-    readonly channelId: number,
-    private readonly state: ChannelRuntimeState,
+    readonly runtimeKey: string,
+    private readonly state: ModelRuntimeState,
   ) {}
+
+  get channelId(): number {
+    return parseModelRuntimeKey(this.runtimeKey).channelId;
+  }
 
   complete(result: { ok: boolean; latencyMs: number }) {
     if (this.released) return;
@@ -134,19 +147,19 @@ export class ChannelLease {
 
     this.released = true;
     releaseLease(this.state);
-    drainQueue(this.channelId, this.state);
+    drainQueue(this.runtimeKey, this.state);
   }
 
   abandon() {
     if (this.released) return;
     this.released = true;
     releaseLease(this.state);
-    drainQueue(this.channelId, this.state);
+    drainQueue(this.runtimeKey, this.state);
   }
 }
 
-export function tryAcquireChannel(channelId: number, maxConcurrency: number): LeaseResult {
-  const state = getState(channelId);
+export function tryAcquireChannel(key: string, maxConcurrency: number): LeaseResult {
+  const state = getState(key);
   syncStateConfig(state, maxConcurrency);
   const now = Date.now();
 
@@ -158,11 +171,11 @@ export function tryAcquireChannel(channelId: number, maxConcurrency: number): Le
     return { ok: false, reason: "circuit_open" };
   }
 
-  return grantLease(channelId, state, false);
+  return grantLease(key, state, false);
 }
 
-export function acquireChannel(channelId: number, maxConcurrency: number, signal?: AbortSignal): AcquireResult | Promise<AcquireResult> {
-  const state = getState(channelId);
+export function acquireChannel(key: string, maxConcurrency: number, signal?: AbortSignal): AcquireResult | Promise<AcquireResult> {
+  const state = getState(key);
   syncStateConfig(state, maxConcurrency);
   const now = Date.now();
 
@@ -171,7 +184,7 @@ export function acquireChannel(channelId: number, maxConcurrency: number, signal
   }
 
   if (state.inFlight < getEffectiveLimit(state)) {
-    return grantLease(channelId, state, false);
+    return grantLease(key, state, false);
   }
 
   if (state.queue.length >= MAX_QUEUE_SIZE) {
@@ -219,8 +232,8 @@ export function acquireChannel(channelId: number, maxConcurrency: number, signal
   });
 }
 
-export function scoreChannel(channelId: number, staticWeight: number, maxConcurrency: number) {
-  const state = getState(channelId);
+export function scoreChannel(key: string, staticWeight: number, maxConcurrency: number) {
+  const state = getState(key);
   syncStateConfig(state, maxConcurrency);
   const now = Date.now();
 

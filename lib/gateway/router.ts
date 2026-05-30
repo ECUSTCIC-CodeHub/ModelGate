@@ -1,5 +1,5 @@
 import { gatewayDb, type DbChannel, type DbModel } from "@/lib/core/db";
-import { scoreChannel } from "@/lib/gateway/channel-runtime";
+import { makeModelRuntimeKey, scoreChannel } from "@/lib/gateway/channel-runtime";
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 
 export type RoutedModel = {
@@ -30,6 +30,14 @@ type CandidateRow = {
   channel_weight: number;
   channel_max_concurrency: number;
   timeout: number;
+  channel_quota_tokens: number | null;
+  channel_quota_requests: number | null;
+  channel_quota_period: number | null;
+  channel_period_quota_tokens: number | null;
+  channel_period_quota_requests: number | null;
+  channel_period_used_tokens: number;
+  channel_period_used_requests: number;
+  channel_period_reset_at: string | null;
   channel_created_at: string;
   channel_deleted_at: string | null;
 };
@@ -66,6 +74,14 @@ const listModelRoutesStmt = gatewayDb.prepare(
       c.weight as channel_weight,
       c.max_concurrency as channel_max_concurrency,
       c.timeout,
+      c.quota_tokens as channel_quota_tokens,
+      c.quota_requests as channel_quota_requests,
+      c.quota_period as channel_quota_period,
+      c.period_quota_tokens as channel_period_quota_tokens,
+      c.period_quota_requests as channel_period_quota_requests,
+      c.period_used_tokens as channel_period_used_tokens,
+      c.period_used_requests as channel_period_used_requests,
+      c.period_reset_at as channel_period_reset_at,
       c.created_at as channel_created_at,
       c.deleted_at as channel_deleted_at
    FROM models m
@@ -109,6 +125,14 @@ function mapRowToRoute(row: CandidateRow): RoutedModel {
       weight: row.channel_weight,
       max_concurrency: effectiveMaxConcurrency(row.channel_max_concurrency, row.model_max_concurrency),
       timeout: row.timeout,
+      quota_tokens: row.channel_quota_tokens,
+      quota_requests: row.channel_quota_requests,
+      quota_period: row.channel_quota_period,
+      period_quota_tokens: row.channel_period_quota_tokens,
+      period_quota_requests: row.channel_period_quota_requests,
+      period_used_tokens: row.channel_period_used_tokens,
+      period_used_requests: row.channel_period_used_requests,
+      period_reset_at: row.channel_period_reset_at,
       created_at: row.channel_created_at,
       deleted_at: row.channel_deleted_at,
     },
@@ -143,7 +167,7 @@ export function listModelRoutes(alias: string, options?: { excludeChannelIds?: n
     .map((row) => ({
       route: mapRowToRoute(row),
       score: scoreChannel(
-        row.channel_id_2,
+        makeModelRuntimeKey(row.channel_id_2, row.real_model),
         Math.max(1, row.model_weight) * Math.max(1, row.channel_weight),
         effectiveMaxConcurrency(row.channel_max_concurrency, row.model_max_concurrency),
       ),
