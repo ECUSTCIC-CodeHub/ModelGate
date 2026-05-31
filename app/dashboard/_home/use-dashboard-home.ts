@@ -45,7 +45,10 @@ export function useDashboardHome() {
         }
         if (modelQuotaResp.ok) {
           const modelQuotaData = await modelQuotaResp.json();
-          if (!cancelled) setModelQuotas(modelQuotaData?.data ?? []);
+          if (!cancelled) {
+            const all = (modelQuotaData?.data ?? []) as Array<{ quota_mode: string }>;
+            setModelQuotas(all.filter((m) => m.quota_mode === "independent" || m.quota_mode === "bypass_group") as ModelQuotaItem[]);
+          }
         }
       })
       .finally(() => {

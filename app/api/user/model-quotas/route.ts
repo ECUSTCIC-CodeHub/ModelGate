@@ -1,9 +1,8 @@
 export const dynamic = "force-dynamic";
 
-import { gatewayDb, type DbUser } from "@/lib/core/db";
+import { gatewayDb } from "@/lib/core/db";
 import { ensureUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
-import { modelGateFeatures } from "@/lib/core/features";
 
 function formatPeriodLabel(seconds: number): string {
   if (seconds === 3600) return "每小时";
@@ -32,11 +31,11 @@ export async function GET(request: Request) {
     `SELECT m.id, m.alias, m.real_model, m.channel_id, m.is_public, m.quota_mode,
             m.quota_tokens, m.quota_requests, m.quota_period,
             m.period_quota_tokens, m.period_quota_requests,
-            m.period_used_tokens, m.period_used_requests, m.period_reset_at
+            m.period_used_tokens, m.period_used_requests, m.period_reset_at,
+            m.token_multiplier, m.request_multiplier
      FROM models m
      JOIN channels c ON c.id = m.channel_id
-     WHERE (m.quota_mode = 'independent' OR m.quota_mode = 'bypass_group')
-       AND m.enabled = 1 AND c.enabled = 1
+     WHERE m.enabled = 1 AND c.enabled = 1
        AND m.deleted_at IS NULL AND c.deleted_at IS NULL`,
   ).all() as Array<{
     id: number;
@@ -53,6 +52,8 @@ export async function GET(request: Request) {
     period_used_tokens: number;
     period_used_requests: number;
     period_reset_at: string | null;
+    token_multiplier: number;
+    request_multiplier: number;
   }>;
 
   const accessible = models.filter((m) => {
@@ -73,25 +74,29 @@ export async function GET(request: Request) {
       periodUsedRequests = 0;
     }
 
+    const selfQuota = m.quota_mode === "independent";
+
     return {
       alias: m.alias,
       real_model: m.real_model,
       quota_mode: m.quota_mode,
-      quota_requests: m.quota_requests,
-      quota_tokens: m.quota_tokens,
-      used_requests: periodUsedRequests,
-      used_tokens: periodUsedTokens,
-      remaining_requests: m.quota_requests !== null ? Math.max(0, m.quota_requests - periodUsedRequests) : null,
-      remaining_tokens: m.quota_tokens !== null ? Math.max(0, m.quota_tokens - periodUsedTokens) : null,
-      quota_period: m.quota_period,
-      period_label: m.quota_period ? formatPeriodLabel(m.quota_period) : null,
-      period_quota_requests: m.period_quota_requests,
-      period_quota_tokens: m.period_quota_tokens,
-      period_used_requests: m.period_quota_requests != null ? periodUsedRequests : null,
-      period_used_tokens: m.period_quota_tokens != null ? periodUsedTokens : null,
-      period_remaining_requests: m.period_quota_requests != null ? Math.max(0, m.period_quota_requests - periodUsedRequests) : null,
-      period_remaining_tokens: m.period_quota_tokens != null ? Math.max(0, m.period_quota_tokens - periodUsedTokens) : null,
-      period_reset_at: m.quota_period ? m.period_reset_at : null,
+      token_multiplier: m.token_multiplier ?? 1,
+      request_multiplier: m.request_multiplier ?? 1,
+      quota_requests: selfQuota ? m.quota_requests : null,
+      quota_tokens: selfQuota ? m.quota_tokens : null,
+      used_requests: selfQuota ? periodUsedRequests : null,
+      used_tokens: selfQuota ? periodUsedTokens : null,
+      remaining_requests: selfQuota && m.quota_requests !== null ? Math.max(0, m.quota_requests - periodUsedRequests) : null,
+      remaining_tokens: selfQuota && m.quota_tokens !== null ? Math.max(0, m.quota_tokens - periodUsedTokens) : null,
+      quota_period: selfQuota ? m.quota_period : null,
+      period_label: selfQuota && m.quota_period ? formatPeriodLabel(m.quota_period) : null,
+      period_quota_requests: selfQuota ? m.period_quota_requests : null,
+      period_quota_tokens: selfQuota ? m.period_quota_tokens : null,
+      period_used_requests: selfQuota && m.period_quota_requests != null ? periodUsedRequests : null,
+      period_used_tokens: selfQuota && m.period_quota_tokens != null ? periodUsedTokens : null,
+      period_remaining_requests: selfQuota && m.period_quota_requests != null ? Math.max(0, m.period_quota_requests - periodUsedRequests) : null,
+      period_remaining_tokens: selfQuota && m.period_quota_tokens != null ? Math.max(0, m.period_quota_tokens - periodUsedTokens) : null,
+      period_reset_at: selfQuota && m.quota_period ? m.period_reset_at : null,
     };
   });
 

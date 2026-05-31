@@ -1130,7 +1130,7 @@ email matches ".*@company\\.com"
 
 ### GET /api/user/model-quotas
 
-获取当前用户可访问的、不受用户组配额约束的模型列表（`independent` 和 `bypass_group` 模式）。
+获取当前用户有权访问的所有模型列表，包含配额信息和计费倍率。先前仅返回 `independent` 和 `bypass_group` 的模型，现已扩展为返回所有权限内模型。
 
 **认证:** 用户
 
@@ -1142,6 +1142,8 @@ email matches ".*@company\\.com"
       "alias": "gpt-4",
       "real_model": "gpt-4-turbo",
       "quota_mode": "independent",
+      "token_multiplier": 1.5,
+      "request_multiplier": 1,
       "quota_requests": 1000,
       "quota_tokens": 500000,
       "used_requests": 150,
@@ -1162,10 +1164,34 @@ email matches ".*@company\\.com"
       "alias": "claude-3",
       "real_model": "claude-3-opus",
       "quota_mode": "bypass_group",
+      "token_multiplier": 1,
+      "request_multiplier": 1,
       "quota_requests": null,
       "quota_tokens": null,
-      "used_requests": 0,
-      "used_tokens": 0,
+      "used_requests": null,
+      "used_tokens": null,
+      "remaining_requests": null,
+      "remaining_tokens": null,
+      "quota_period": null,
+      "period_label": null,
+      "period_quota_requests": null,
+      "period_quota_tokens": null,
+      "period_used_requests": null,
+      "period_used_tokens": null,
+      "period_remaining_requests": null,
+      "period_remaining_tokens": null,
+      "period_reset_at": null
+    },
+    {
+      "alias": "gpt-3",
+      "real_model": "gpt-3.5-turbo",
+      "quota_mode": "follow_group",
+      "token_multiplier": 1,
+      "request_multiplier": 1,
+      "quota_requests": null,
+      "quota_tokens": null,
+      "used_requests": null,
+      "used_tokens": null,
       "remaining_requests": null,
       "remaining_tokens": null,
       "quota_period": null,
@@ -1182,7 +1208,7 @@ email matches ".*@company\\.com"
 }
 ```
 
-> 仅返回当前用户有权访问且 `quota_mode` 为 `independent` 或 `bypass_group` 的模型。`bypass_group` 模型的配额字段均为 `null`。
+> 返回当前用户有权访问的所有模型。`follow_group` 模型的配额字段均为 `null`（受用户组配额约束）；`bypass_group` 模型的配额字段均为 `null`（不受配额限制）；`independent` 模型使用自身的配额额度。`token_multiplier` 和 `request_multiplier` 表示实际扣量倍率。
 >
 > 精简版 `quota_period`、`period_label`、`period_quota_*`、`period_used_*`、`period_remaining_*`、`period_reset_at` 字段均为 `null`。
 
