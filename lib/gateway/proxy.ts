@@ -10,6 +10,7 @@ function normalizeProviderBaseUrl(baseUrl: string) {
     .replace(/\/messages$/, "")
     .replace(/\/responses$/, "")
     .replace(/\/embeddings$/, "")
+    .replace(/\/images\/generations$/, "")
     .replace(/\/models$/, "");
 }
 
@@ -18,6 +19,7 @@ const PROTOCOL_PATH: Record<GatewayProtocol, string> = {
   responses: "responses",
   anthropic_messages: "messages",
   embeddings: "embeddings",
+  images: "images/generations",
 };
 
 const OPENAI_NODE_SDK_USER_AGENT = "OpenAI/JS 6.39.0";
@@ -124,6 +126,13 @@ export async function testUpstreamModel(target: {
             ? {
                 model: target.model.real_model,
                 input: "ping",
+              }
+          : protocol === "images"
+            ? {
+                model: target.model.real_model,
+                prompt: "ping",
+                n: 1,
+                size: "1024x1024",
               }
           : protocol === "anthropic_messages"
             ? {

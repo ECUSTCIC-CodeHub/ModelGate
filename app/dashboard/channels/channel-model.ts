@@ -1,14 +1,15 @@
-export type Protocol = "chat_completions" | "responses" | "anthropic_messages" | "embeddings";
+export type Protocol = "chat_completions" | "responses" | "anthropic_messages" | "embeddings" | "images";
 
 export const protocolOptions: Array<{ value: Protocol; label: string; shortLabel: string }> = [
   { value: "chat_completions", label: "Chat Completions", shortLabel: "Chat" },
   { value: "responses", label: "Responses", shortLabel: "Responses" },
   { value: "anthropic_messages", label: "Claude Messages", shortLabel: "Claude" },
   { value: "embeddings", label: "Embeddings", shortLabel: "Embeddings" },
+  { value: "images", label: "Images", shortLabel: "Images" },
 ];
 
 export function isProtocol(value: unknown): value is Protocol {
-  return value === "chat_completions" || value === "responses" || value === "anthropic_messages" || value === "embeddings";
+  return value === "chat_completions" || value === "responses" || value === "anthropic_messages" || value === "embeddings" || value === "images";
 }
 
 export function protocolLabel(protocol: Protocol) {

@@ -167,9 +167,11 @@ function mapRowToRoute(row: CandidateRow): RoutedModel {
   };
 }
 
+const PASSTHROUGH_PROTOCOLS: GatewayProtocol[] = ["embeddings", "images"];
+
 function isProtocolCompatible(inboundProtocol: GatewayProtocol, upstreamProtocol: GatewayProtocol) {
-  if (inboundProtocol === "embeddings") return upstreamProtocol === "embeddings";
-  return upstreamProtocol !== "embeddings";
+  if (PASSTHROUGH_PROTOCOLS.includes(inboundProtocol)) return inboundProtocol === upstreamProtocol;
+  return !PASSTHROUGH_PROTOCOLS.includes(upstreamProtocol);
 }
 
 export function listModelRoutes(alias: string, options?: { excludeChannelIds?: number[]; protocol?: GatewayProtocol; allowedChannelIds?: number[] | null }): RoutedModel[] {

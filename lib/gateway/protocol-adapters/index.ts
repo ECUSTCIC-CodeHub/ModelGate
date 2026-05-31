@@ -2,6 +2,7 @@ import type { GatewayProtocol } from "@/lib/gateway/protocols";
 import { anthropicAdapter, anthropicGatewayAdapter } from "@/lib/gateway/protocol-adapters/anthropic";
 import { chatCompletionsAdapter, chatCompletionsGatewayAdapter } from "@/lib/gateway/protocol-adapters/chat-completions";
 import { embeddingsGatewayAdapter } from "@/lib/gateway/protocol-adapters/embeddings";
+import { imagesGatewayAdapter } from "@/lib/gateway/protocol-adapters/images";
 import type { ProtocolBodyAdapter } from "@/lib/gateway/protocol-adapters/intermediate";
 import { responsesAdapter, responsesGatewayAdapter } from "@/lib/gateway/protocol-adapters/responses";
 import type { GatewayProtocolAdapter } from "@/lib/gateway/protocol-adapters/runtime";
@@ -17,6 +18,7 @@ const gatewayAdapters: Record<GatewayProtocol, GatewayProtocolAdapter> = {
   responses: responsesGatewayAdapter,
   anthropic_messages: anthropicGatewayAdapter,
   embeddings: embeddingsGatewayAdapter,
+  images: imagesGatewayAdapter,
 };
 
 export function getProtocolBodyAdapter(protocol: GatewayProtocol) {
@@ -35,6 +37,7 @@ export {
   anthropicGatewayAdapter,
   chatCompletionsGatewayAdapter,
   embeddingsGatewayAdapter,
+  imagesGatewayAdapter,
   responsesGatewayAdapter,
 };
 

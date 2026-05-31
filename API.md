@@ -850,7 +850,7 @@ email matches ".*@company\\.com"
 | name | string | 是 | | 渠道名称 |
 | base_url | string | 是 | | 上游 API 地址 |
 | api_key | string | 是 | | 上游 API Key |
-| supported_protocols | string[] | 否 | ["chat_completions"] | 支持的协议：`chat_completions` / `anthropic_messages` / `responses` / `embeddings` |
+| supported_protocols | string[] | 否 | ["chat_completions"] | 支持的协议：`chat_completions` / `anthropic_messages` / `responses` / `embeddings` / `images` |
 | weight | int | 否 | 1 | 路由权重 |
 | max_concurrency | int | 否 | 64 | 最大并发数 |
 | timeout | int | 否 | 60 | 超时时间（秒） |
@@ -964,7 +964,7 @@ email matches ".*@company\\.com"
 | alias | string | 是 | | 客户端调用时的模型名 |
 | real_model | string | 是 | | 上游真实模型名 |
 | channel_id | int | 是 | | 所属渠道 ID |
-| upstream_protocol | enum | 否 | chat_completions | `chat_completions` / `anthropic_messages` / `responses` / `embeddings` |
+| upstream_protocol | enum | 否 | chat_completions | `chat_completions` / `anthropic_messages` / `responses` / `embeddings` / `images` |
 | is_public | bool | 否 | true | false 时仅白名单用户可访问 |
 | weight | int | 否 | 1 | 路由权重（越大流量越多） |
 | max_concurrency | int | 否 | 0 | 模型级最大并发数，0 时继承渠道配置；实际生效值为 min(模型并发, 渠道并发) |
@@ -1614,6 +1614,37 @@ OpenAI Embeddings 兼容端点，直通上游 `/embeddings`，不参与 Chat Com
 ```
 
 **响应:** 标准 OpenAI Embeddings 响应。
+
+---
+
+### POST /api/v1/images/generations
+
+OpenAI Images 兼容端点，直通上游 `/images/generations`，不参与 Chat Completions / Responses / Claude Messages 协议转换。
+
+**认证:** API Key
+
+**请求体:** 标准 OpenAI Images 格式：
+```json
+{
+  "model": "dall-e-3",
+  "prompt": "a white siamese cat",
+  "n": 1,
+  "size": "1024x1024",
+  "response_format": "url"
+}
+```
+
+**响应:** 标准 OpenAI Images 响应：
+```json
+{
+  "created": 1234567890,
+  "data": [
+    {
+      "url": "https://..."
+    }
+  ]
+}
+```
 
 ---
 
