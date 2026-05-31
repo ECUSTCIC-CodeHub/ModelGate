@@ -185,3 +185,28 @@ export function ensureDefaultGroup(db: BetterSqlite3.Database) {
   const newDefault = db.prepare("SELECT id FROM groups WHERE is_default = 1 AND deleted_at IS NULL").get() as { id: number };
   db.prepare("UPDATE users SET group_id = ? WHERE group_id IS NULL").run(newDefault.id);
 }
+
+export function cleanupModelUserUsage(db: BetterSqlite3.Database) {
+  if (tableExists(db, "model_user_usage")) {
+    db.exec("DROP TABLE IF EXISTS model_user_usage");
+  }
+  try {
+    const perUserColumns = [
+      "per_user_quota_requests",
+      "per_user_quota_tokens",
+      "per_user_quota_period",
+      "per_user_period_quota_requests",
+      "per_user_period_quota_tokens",
+    ];
+    const existing = (
+      db.prepare("PRAGMA table_info(models)").all() as Array<{ name: string }>
+    ).map((c) => c.name);
+    for (const col of perUserColumns) {
+      if (existing.includes(col)) {
+        db.exec(`ALTER TABLE models DROP COLUMN ${col}`);
+      }
+    }
+  } catch {
+    // SQLite 版本不支持 DROP COLUMN，跳过
+  }
+}

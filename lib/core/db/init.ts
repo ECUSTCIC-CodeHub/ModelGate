@@ -4,6 +4,7 @@ import path from "node:path";
 import { ensureModernColumns } from "@/lib/core/db/columns";
 import {
   backfillKeyUsage,
+  cleanupModelUserUsage,
   ensureDefaultGroup,
   migrateLegacyChatLogs,
   migrateLegacySettingsTable,
@@ -68,6 +69,7 @@ export const initializeGatewayDb = () => {
   seedDefaultSettings(db);
   migrateUnlimitedLimitSemantics(db);
   ensureDefaultGroup(db);
+  cleanupModelUserUsage(db);
 
   return db;
 };
