@@ -65,37 +65,39 @@ function QuotaProgress({ remaining, quota }: { remaining: number | null; quota: 
 }
 
 export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOverview | null }) {
-  if (!overview) return null;
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-6">
       <Card>
         <CardHeader>
           <SectionTitle title="系统配额概览" description="全局视角查看各用户组和特殊模型的配额使用情况。" />
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
-              <p className="text-xs text-[var(--color-foreground-muted)]">活跃用户</p>
-              <p className="text-lg font-semibold text-[var(--color-foreground)]">{formatNumber(overview.total_users)}</p>
+          {overview ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+                <p className="text-xs text-[var(--color-foreground-muted)]">活跃用户</p>
+                <p className="text-lg font-semibold text-[var(--color-foreground)]">{formatNumber(overview.total_users)}</p>
+              </div>
+              <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+                <p className="text-xs text-[var(--color-foreground-muted)]">API 密钥</p>
+                <p className="text-lg font-semibold text-[var(--color-foreground)]">{formatNumber(overview.total_keys)}</p>
+              </div>
+              <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+                <p className="text-xs text-[var(--color-foreground-muted)]">用户组</p>
+                <p className="text-lg font-semibold text-[var(--color-foreground)]">{formatNumber(overview.groups.length)}</p>
+              </div>
+              <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+                <p className="text-xs text-[var(--color-foreground-muted)]">特殊配额模型</p>
+                <p className="text-lg font-semibold text-[var(--color-foreground)]">{formatNumber(overview.models.length)}</p>
+              </div>
             </div>
-            <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
-              <p className="text-xs text-[var(--color-foreground-muted)]">API 密钥</p>
-              <p className="text-lg font-semibold text-[var(--color-foreground)]">{formatNumber(overview.total_keys)}</p>
-            </div>
-            <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
-              <p className="text-xs text-[var(--color-foreground-muted)]">用户组</p>
-              <p className="text-lg font-semibold text-[var(--color-foreground)]">{formatNumber(overview.groups.length)}</p>
-            </div>
-            <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
-              <p className="text-xs text-[var(--color-foreground-muted)]">特殊配额模型</p>
-              <p className="text-lg font-semibold text-[var(--color-foreground)]">{formatNumber(overview.models.length)}</p>
-            </div>
-          </div>
+          ) : (
+            <p className="text-sm text-[var(--color-foreground-muted)]">加载中...</p>
+          )}
         </CardContent>
       </Card>
 
-      {overview.groups.length > 0 ? (
+      {overview?.groups && overview.groups.length > 0 ? (
         <Card>
           <CardHeader>
             <SectionTitle title="用户组配额" description="各用户组的配额配置与使用情况汇总。" />
@@ -171,7 +173,7 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
         </Card>
       ) : null}
 
-      {overview.models.length > 0 ? (
+      {overview?.models && overview.models.length > 0 ? (
         <Card>
           <CardHeader>
             <SectionTitle title="特殊配额模型" description="绕过用户组限制或使用独立配额的模型。" />

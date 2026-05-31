@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DashboardQuotaCard } from "../_home/dashboard-quota-card";
 import { DashboardAdminQuotaCard, type AdminQuotaOverview } from "../_home/dashboard-admin-quota-card";
-import { authedFetch, getCachedProfile } from "@/lib/auth/client-auth";
+import { useAuthProfile } from "@/components/providers/auth-provider";
+import { authedFetch, getCachedProfile, getOrFetchProfile } from "@/lib/auth/client-auth";
 import { formatNumber, formatTokenCount } from "@/lib/shared/utils";
 import type { QuotaData } from "../_home/dashboard-model";
 
@@ -197,7 +198,9 @@ function UserQuotaContent({ quota, modelQuotas }: { quota: QuotaData | null; mod
 }
 
 export default function QuotaPage() {
-  const [role, setRole] = useState<"admin" | "user">(() => (getCachedProfile()?.role as "admin" | "user" | undefined) ?? "user");
+  const initialProfile = useAuthProfile();
+  const [role, setRole] = useState<"admin" | "user">(() => (initialProfile?.role as "admin" | "user" | undefined) ?? (getCachedProfile()?.role as "admin" | "user" | undefined) ?? "user");
+  const [loading, setLoading] = useState(true);
   const [quota, setQuota] = useState<QuotaData | null>(null);
   const [modelQuotas, setModelQuotas] = useState<ModelQuota[]>([]);
   const [adminOverview, setAdminOverview] = useState<AdminQuotaOverview | null>(null);
@@ -206,10 +209,18 @@ export default function QuotaPage() {
     let cancelled = false;
 
     void (async () => {
-      const profile = getCachedProfile();
-      if (profile) setRole(profile.role as "admin" | "user");
+      const profile = await getOrFetchProfile();
+      if (cancelled) return;
 
-      if (profile?.role === "admin") {
+      if (!profile) {
+        if (!cancelled) setLoading(false);
+        return;
+      }
+
+      const userRole = profile.role as "admin" | "user";
+      setRole(userRole);
+
+      if (userRole === "admin") {
         const res = await authedFetch("/api/admin/quota-overview");
         if (cancelled) return;
         if (res.ok) {
@@ -227,6 +238,8 @@ export default function QuotaPage() {
         if (quotaData?.data) setQuota(quotaData.data);
         if (modelData?.data) setModelQuotas(modelData.data);
       }
+
+      if (!cancelled) setLoading(false);
     })();
 
     return () => { cancelled = true; };
@@ -239,7 +252,7 @@ export default function QuotaPage() {
         title="配额与限制"
         subtitle="系统全局配额概览，查看各用户组和特殊模型的配额使用情况。"
       >
-        <DashboardAdminQuotaCard overview={adminOverview} />
+        {loading ? null : <DashboardAdminQuotaCard overview={adminOverview} />}
       </DashboardShell>
     );
   }
@@ -250,7 +263,7 @@ export default function QuotaPage() {
       title="配额与限制"
       subtitle="查看当前账户的速率限制、配额使用情况。"
     >
-      <UserQuotaContent quota={quota} modelQuotas={modelQuotas} />
+      {loading ? null : <UserQuotaContent quota={quota} modelQuotas={modelQuotas} />}
     </DashboardShell>
   );
 }
