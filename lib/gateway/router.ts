@@ -29,11 +29,6 @@ type CandidateRow = {
   model_period_used_tokens: number;
   model_period_used_requests: number;
   model_period_reset_at: string | null;
-  model_per_user_quota_requests: number | null;
-  model_per_user_quota_tokens: number | null;
-  model_per_user_quota_period: number | null;
-  model_per_user_period_quota_requests: number | null;
-  model_per_user_period_quota_tokens: number | null;
   model_created_at: string;
   model_deleted_at: string | null;
   channel_id_2: number;
@@ -87,11 +82,6 @@ const listModelRoutesStmt = gatewayDb.prepare(
       m.period_used_tokens as model_period_used_tokens,
       m.period_used_requests as model_period_used_requests,
       m.period_reset_at as model_period_reset_at,
-      m.per_user_quota_requests as model_per_user_quota_requests,
-      m.per_user_quota_tokens as model_per_user_quota_tokens,
-      m.per_user_quota_period as model_per_user_quota_period,
-      m.per_user_period_quota_requests as model_per_user_period_quota_requests,
-      m.per_user_period_quota_tokens as model_per_user_period_quota_tokens,
       m.created_at as model_created_at,
       m.deleted_at as model_deleted_at,
       c.id as channel_id_2,
@@ -150,11 +140,6 @@ function mapRowToRoute(row: CandidateRow): RoutedModel {
       period_used_tokens: row.model_period_used_tokens,
       period_used_requests: row.model_period_used_requests,
       period_reset_at: row.model_period_reset_at,
-      per_user_quota_requests: row.model_per_user_quota_requests,
-      per_user_quota_tokens: row.model_per_user_quota_tokens,
-      per_user_quota_period: row.model_per_user_quota_period,
-      per_user_period_quota_requests: row.model_per_user_period_quota_requests,
-      per_user_period_quota_tokens: row.model_per_user_period_quota_tokens,
       created_at: row.model_created_at,
       deleted_at: row.model_deleted_at,
     },

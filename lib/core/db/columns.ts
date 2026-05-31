@@ -72,11 +72,6 @@ export function ensureModernColumns(db: BetterSqlite3.Database): ColumnMigration
   ensureColumn(db, "models", "period_used_tokens", "period_used_tokens INTEGER DEFAULT 0");
   ensureColumn(db, "models", "period_used_requests", "period_used_requests INTEGER DEFAULT 0");
   ensureColumn(db, "models", "period_reset_at", "period_reset_at DATETIME");
-  ensureColumn(db, "models", "per_user_quota_requests", "per_user_quota_requests INTEGER");
-  ensureColumn(db, "models", "per_user_quota_tokens", "per_user_quota_tokens INTEGER");
-  ensureColumn(db, "models", "per_user_quota_period", "per_user_quota_period INTEGER");
-  ensureColumn(db, "models", "per_user_period_quota_requests", "per_user_period_quota_requests INTEGER");
-  ensureColumn(db, "models", "per_user_period_quota_tokens", "per_user_period_quota_tokens INTEGER");
   ensureColumn(db, "logs", "first_token_latency_ms", "first_token_latency_ms INTEGER");
   ensureColumn(db, "logs", "output_tps", "output_tps REAL");
   ensureColumn(db, "logs", "route_attempts", "route_attempts INTEGER DEFAULT 1");

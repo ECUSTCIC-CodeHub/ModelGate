@@ -45,11 +45,6 @@ export type DbModel = {
   period_used_tokens: number;
   period_used_requests: number;
   period_reset_at: string | null;
-  per_user_quota_requests: number | null;
-  per_user_quota_tokens: number | null;
-  per_user_quota_period: number | null;
-  per_user_period_quota_requests: number | null;
-  per_user_period_quota_tokens: number | null;
   created_at: string;
   deleted_at: string | null;
 };

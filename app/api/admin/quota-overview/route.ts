@@ -68,8 +68,6 @@ export async function GET(request: Request) {
             m.quota_tokens, m.quota_requests, m.quota_period,
             m.period_quota_tokens, m.period_quota_requests,
             m.period_used_tokens, m.period_used_requests, m.period_reset_at,
-            m.per_user_quota_requests, m.per_user_quota_tokens,
-            m.per_user_quota_period, m.per_user_period_quota_requests, m.per_user_period_quota_tokens,
             c.name AS channel_name
      FROM models m
      JOIN channels c ON c.id = m.channel_id
@@ -89,11 +87,6 @@ export async function GET(request: Request) {
     period_used_tokens: number;
     period_used_requests: number;
     period_reset_at: string | null;
-    per_user_quota_requests: number | null;
-    per_user_quota_tokens: number | null;
-    per_user_quota_period: number | null;
-    per_user_period_quota_requests: number | null;
-    per_user_period_quota_tokens: number | null;
     channel_name: string;
   }>;
 
@@ -127,12 +120,6 @@ export async function GET(request: Request) {
       period_remaining_requests: modelGateFeatures.periodQuota && m.quota_mode === "independent" && m.period_quota_requests != null ? Math.max(0, m.period_quota_requests - periodUsedRequests) : null,
       period_remaining_tokens: modelGateFeatures.periodQuota && m.quota_mode === "independent" && m.period_quota_tokens != null ? Math.max(0, m.period_quota_tokens - periodUsedTokens) : null,
       period_reset_at: modelGateFeatures.periodQuota && m.quota_period ? m.period_reset_at : null,
-      per_user_quota_requests: m.per_user_quota_requests,
-      per_user_quota_tokens: m.per_user_quota_tokens,
-      per_user_quota_period: m.per_user_quota_period,
-      per_user_period_label: m.per_user_quota_period ? formatPeriodLabel(m.per_user_quota_period) : null,
-      per_user_period_quota_requests: m.per_user_period_quota_requests,
-      per_user_period_quota_tokens: m.per_user_period_quota_tokens,
     };
   });
 

@@ -40,7 +40,7 @@ export async function GET(request: Request) {
 
   const channels = gatewayDb.prepare("SELECT * FROM channels WHERE deleted_at IS NULL ORDER BY id DESC").all() as Array<Record<string, unknown> & { id: number }>;
   const models = gatewayDb
-    .prepare("SELECT id, alias, real_model, channel_id, upstream_protocol, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, per_user_quota_requests, per_user_quota_tokens, per_user_quota_period, per_user_period_quota_requests, per_user_period_quota_tokens, created_at FROM models WHERE deleted_at IS NULL ORDER BY id DESC")
+    .prepare("SELECT id, alias, real_model, channel_id, upstream_protocol, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, created_at FROM models WHERE deleted_at IS NULL ORDER BY id DESC")
     .all() as Array<{
     id: number;
     alias: string;
@@ -59,11 +59,6 @@ export async function GET(request: Request) {
     quota_period: number | null;
     period_quota_tokens: number | null;
     period_quota_requests: number | null;
-    per_user_quota_requests: number | null;
-    per_user_quota_tokens: number | null;
-    per_user_quota_period: number | null;
-    per_user_period_quota_requests: number | null;
-    per_user_period_quota_tokens: number | null;
     created_at: string;
   }>;
 

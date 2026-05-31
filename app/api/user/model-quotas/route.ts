@@ -1,8 +1,9 @@
 export const dynamic = "force-dynamic";
 
-import { gatewayDb } from "@/lib/core/db";
+import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { ensureUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
+import { modelGateFeatures } from "@/lib/core/features";
 
 function formatPeriodLabel(seconds: number): string {
   if (seconds === 3600) return "每小时";
@@ -31,9 +32,7 @@ export async function GET(request: Request) {
     `SELECT m.id, m.alias, m.real_model, m.channel_id, m.is_public, m.quota_mode,
             m.quota_tokens, m.quota_requests, m.quota_period,
             m.period_quota_tokens, m.period_quota_requests,
-            m.period_used_tokens, m.period_used_requests, m.period_reset_at,
-            m.per_user_quota_requests, m.per_user_quota_tokens,
-            m.per_user_quota_period, m.per_user_period_quota_requests, m.per_user_period_quota_tokens
+            m.period_used_tokens, m.period_used_requests, m.period_reset_at
      FROM models m
      JOIN channels c ON c.id = m.channel_id
      WHERE (m.quota_mode = 'independent' OR m.quota_mode = 'bypass_group')
@@ -54,11 +53,6 @@ export async function GET(request: Request) {
     period_used_tokens: number;
     period_used_requests: number;
     period_reset_at: string | null;
-    per_user_quota_requests: number | null;
-    per_user_quota_tokens: number | null;
-    per_user_quota_period: number | null;
-    per_user_period_quota_requests: number | null;
-    per_user_period_quota_tokens: number | null;
   }>;
 
   const accessible = models.filter((m) => {
@@ -77,25 +71,6 @@ export async function GET(request: Request) {
     if (m.quota_period && m.period_reset_at && new Date(m.period_reset_at) <= now) {
       periodUsedTokens = 0;
       periodUsedRequests = 0;
-    }
-
-    const hasPerUserLimits = m.per_user_quota_requests !== null
-      || m.per_user_quota_tokens !== null
-      || m.per_user_period_quota_requests !== null
-      || m.per_user_period_quota_tokens !== null;
-
-    let perUserUsage: { used_tokens: number; used_requests: number; period_used_tokens: number; period_used_requests: number; period_reset_at: string | null } | null = null;
-    if (hasPerUserLimits) {
-      perUserUsage = (gatewayDb
-        .prepare("SELECT used_tokens, used_requests, period_used_tokens, period_used_requests, period_reset_at FROM model_user_usage WHERE model_id = ? AND user_id = ?")
-        .get(m.id, user.id) as
-        | { used_tokens: number; used_requests: number; period_used_tokens: number; period_used_requests: number; period_reset_at: string | null }
-        | undefined) ?? { used_tokens: 0, used_requests: 0, period_used_tokens: 0, period_used_requests: 0, period_reset_at: null };
-
-      if (m.per_user_quota_period && perUserUsage.period_reset_at && new Date(perUserUsage.period_reset_at) <= now) {
-        perUserUsage.period_used_tokens = 0;
-        perUserUsage.period_used_requests = 0;
-      }
     }
 
     return {
@@ -117,21 +92,6 @@ export async function GET(request: Request) {
       period_remaining_requests: m.period_quota_requests != null ? Math.max(0, m.period_quota_requests - periodUsedRequests) : null,
       period_remaining_tokens: m.period_quota_tokens != null ? Math.max(0, m.period_quota_tokens - periodUsedTokens) : null,
       period_reset_at: m.quota_period ? m.period_reset_at : null,
-      per_user_quota_requests: m.per_user_quota_requests,
-      per_user_quota_tokens: m.per_user_quota_tokens,
-      per_user_quota_period: m.per_user_quota_period,
-      per_user_period_label: m.per_user_quota_period ? formatPeriodLabel(m.per_user_quota_period) : null,
-      per_user_period_quota_requests: m.per_user_period_quota_requests,
-      per_user_period_quota_tokens: m.per_user_period_quota_tokens,
-      per_user_used_requests: perUserUsage ? perUserUsage.used_requests : null,
-      per_user_used_tokens: perUserUsage ? perUserUsage.used_tokens : null,
-      per_user_remaining_requests: perUserUsage && m.per_user_quota_requests !== null ? Math.max(0, m.per_user_quota_requests - perUserUsage.used_requests) : null,
-      per_user_remaining_tokens: perUserUsage && m.per_user_quota_tokens !== null ? Math.max(0, m.per_user_quota_tokens - perUserUsage.used_tokens) : null,
-      per_user_period_used_requests: perUserUsage && m.per_user_period_quota_requests != null ? perUserUsage.period_used_requests : null,
-      per_user_period_used_tokens: perUserUsage && m.per_user_period_quota_tokens != null ? perUserUsage.period_used_tokens : null,
-      per_user_period_remaining_requests: perUserUsage && m.per_user_period_quota_requests != null ? Math.max(0, m.per_user_period_quota_requests - perUserUsage.period_used_requests) : null,
-      per_user_period_remaining_tokens: perUserUsage && m.per_user_period_quota_tokens != null ? Math.max(0, m.per_user_period_quota_tokens - perUserUsage.period_used_tokens) : null,
-      per_user_period_reset_at: perUserUsage ? perUserUsage.period_reset_at : null,
     };
   });
 
