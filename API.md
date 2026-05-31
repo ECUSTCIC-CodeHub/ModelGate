@@ -1648,6 +1648,28 @@ OpenAI Images 兼容端点，直通上游 `/images/generations`，不参与 Chat
 
 ---
 
+### POST /api/v1/images/edits
+
+OpenAI Images Edits 兼容端点，直通上游 `/images/edits`，支持 multipart/form-data 上传图片进行编辑。
+
+**认证:** API Key
+
+**请求体:** `multipart/form-data` 格式：
+
+| 字段 | 类型 | 必填 | 说明 |
+|:---|:---|:---|:---|
+| model | string | 是 | 模型别名 |
+| image | file | 是 | 参考图片文件 |
+| prompt | string | 是 | 编辑指令 |
+| mask | file | 否 | 遮罩图片 |
+| n | int | 否 | 生成数量 |
+| size | string | 否 | 图片尺寸 |
+| response_format | string | 否 | `url` 或 `b64_json` |
+
+**响应:** 标准 OpenAI Images 响应。
+
+---
+
 ### GET /api/v1/models
 
 获取当前 API Key 可用的模型列表；若所属用户组设置了渠道白名单，只返回该用户实际可命中渠道上的模型。

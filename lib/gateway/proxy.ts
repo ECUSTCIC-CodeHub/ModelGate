@@ -11,6 +11,7 @@ function normalizeProviderBaseUrl(baseUrl: string) {
     .replace(/\/responses$/, "")
     .replace(/\/embeddings$/, "")
     .replace(/\/images\/generations$/, "")
+    .replace(/\/images\/edits$/, "")
     .replace(/\/models$/, "");
 }
 
