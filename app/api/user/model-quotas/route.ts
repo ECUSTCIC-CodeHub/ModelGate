@@ -29,13 +29,13 @@ export async function GET(request: Request) {
   const groupAllowedChannels: number[] = (() => { try { return group ? JSON.parse(group.allowed_channel_ids) : []; } catch { return []; } })();
 
   const models = gatewayDb.prepare(
-    `SELECT m.id, m.alias, m.real_model, m.channel_id, m.is_public,
+    `SELECT m.id, m.alias, m.real_model, m.channel_id, m.is_public, m.quota_mode,
             m.quota_tokens, m.quota_requests, m.quota_period,
             m.period_quota_tokens, m.period_quota_requests,
             m.period_used_tokens, m.period_used_requests, m.period_reset_at
      FROM models m
      JOIN channels c ON c.id = m.channel_id
-     WHERE m.quota_mode = 'independent'
+     WHERE (m.quota_mode = 'independent' OR m.quota_mode = 'bypass_group')
        AND m.enabled = 1 AND c.enabled = 1
        AND m.deleted_at IS NULL AND c.deleted_at IS NULL`,
   ).all() as Array<{
@@ -44,6 +44,7 @@ export async function GET(request: Request) {
     real_model: string;
     channel_id: number;
     is_public: number;
+    quota_mode: string;
     quota_tokens: number | null;
     quota_requests: number | null;
     quota_period: number | null;
@@ -75,6 +76,7 @@ export async function GET(request: Request) {
     return {
       alias: m.alias,
       real_model: m.real_model,
+      quota_mode: m.quota_mode,
       quota_requests: m.quota_requests,
       quota_tokens: m.quota_tokens,
       used_requests: periodUsedRequests,

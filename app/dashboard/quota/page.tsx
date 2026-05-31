@@ -7,13 +7,15 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DashboardQuotaCard } from "../_home/dashboard-quota-card";
-import { authedFetch } from "@/lib/auth/client-auth";
+import { DashboardAdminQuotaCard, type AdminQuotaOverview } from "../_home/dashboard-admin-quota-card";
+import { authedFetch, getCachedProfile } from "@/lib/auth/client-auth";
 import { formatNumber, formatTokenCount } from "@/lib/shared/utils";
 import type { QuotaData } from "../_home/dashboard-model";
 
 type ModelQuota = {
   alias: string;
   real_model: string;
+  quota_mode: "follow_group" | "bypass_group" | "independent";
   quota_requests: number | null;
   quota_tokens: number | null;
   used_requests: number;
@@ -69,26 +71,178 @@ function TokenQuotaBar({ used, total }: { used: number; total: number | null }) 
   );
 }
 
+function UserQuotaContent({ quota, modelQuotas }: { quota: QuotaData | null; modelQuotas: ModelQuota[] }) {
+  const independentModels = modelQuotas.filter((m) => m.quota_mode === "independent");
+  const bypassModels = modelQuotas.filter((m) => m.quota_mode === "bypass_group");
+
+  return (
+    <div className="space-y-4 pb-6">
+      <DashboardQuotaCard quota={quota} />
+
+      {independentModels.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <SectionTitle title="独立配额模型" description="以下模型配置了独立配额，不受用户组限制约束，使用模型自身的配额额度。" />
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
+              <Table className="min-w-[900px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>模型</TableHead>
+                    <TableHead>请求配额</TableHead>
+                    <TableHead>Token 配额</TableHead>
+                    <TableHead>周期请求配额</TableHead>
+                    <TableHead>周期 Token 配额</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {independentModels.map((m) => (
+                    <TableRow key={`${m.alias}:${m.real_model}`}>
+                      <TableCell>
+                        <div>
+                          <span className="font-mono text-sm">{m.alias}</span>
+                          {m.alias !== m.real_model ? (
+                            <span className="ml-2 text-xs text-[var(--color-foreground-muted)]">({m.real_model})</span>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <QuotaBar used={m.used_requests} total={m.quota_requests} />
+                      </TableCell>
+                      <TableCell>
+                        <TokenQuotaBar used={m.used_tokens} total={m.quota_tokens} />
+                      </TableCell>
+                      <TableCell>
+                        {m.period_quota_requests != null ? (
+                          <div className="space-y-1">
+                            <Badge variant="outline" className="text-xs">{m.period_label}</Badge>
+                            <QuotaBar used={m.period_used_requests ?? 0} total={m.period_quota_requests} />
+                          </div>
+                        ) : (
+                          <span className="text-xs text-[var(--color-foreground-muted)]">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {m.period_quota_tokens != null ? (
+                          <div className="space-y-1">
+                            <Badge variant="outline" className="text-xs">{m.period_label}</Badge>
+                            <TokenQuotaBar used={m.period_used_tokens ?? 0} total={m.period_quota_tokens} />
+                          </div>
+                        ) : (
+                          <span className="text-xs text-[var(--color-foreground-muted)]">-</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            {independentModels.some((m) => m.period_reset_at) ? (
+              <p className="mt-2 text-xs text-[var(--color-foreground-muted)]">
+                周期配额重置时间：
+                {independentModels.filter((m) => m.period_reset_at).map((m) => (
+                  <span key={m.alias} className="ml-2">
+                    <span className="font-mono">{m.alias}</span> {new Date(m.period_reset_at!).toLocaleString()}
+                  </span>
+                ))}
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {bypassModels.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <SectionTitle title="绕过用户组限制的模型" description="以下模型不受用户组配额和速率限制约束，使用量不计入账户总额，仅受渠道侧限制。" />
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
+              <Table className="min-w-[400px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>模型</TableHead>
+                    <TableHead>配额模式</TableHead>
+                    <TableHead>说明</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {bypassModels.map((m) => (
+                    <TableRow key={`${m.alias}:${m.real_model}`}>
+                      <TableCell>
+                        <div>
+                          <span className="font-mono text-sm">{m.alias}</span>
+                          {m.alias !== m.real_model ? (
+                            <span className="ml-2 text-xs text-[var(--color-foreground-muted)]">({m.real_model})</span>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">绕过用户组</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-xs text-[var(--color-foreground-muted)]">不受账户配额与速率限制，使用量不计入账户总额</span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+    </div>
+  );
+}
+
 export default function QuotaPage() {
+  const [role, setRole] = useState<"admin" | "user">(() => (getCachedProfile()?.role as "admin" | "user" | undefined) ?? "user");
   const [quota, setQuota] = useState<QuotaData | null>(null);
   const [modelQuotas, setModelQuotas] = useState<ModelQuota[]>([]);
+  const [adminOverview, setAdminOverview] = useState<AdminQuotaOverview | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    async function load() {
-      const [quotaRes, modelRes] = await Promise.all([
-        authedFetch("/api/user/quota"),
-        authedFetch("/api/user/model-quotas"),
-      ]);
-      if (cancelled) return;
-      const quotaData = (await quotaRes.json().catch(() => null)) as { data?: QuotaData } | null;
-      const modelData = (await modelRes.json().catch(() => null)) as { data?: ModelQuota[] } | null;
-      if (quotaData?.data) setQuota(quotaData.data);
-      if (modelData?.data) setModelQuotas(modelData.data);
-    }
-    void load();
+
+    void (async () => {
+      const profile = getCachedProfile();
+      if (profile) setRole(profile.role as "admin" | "user");
+
+      if (profile?.role === "admin") {
+        const res = await authedFetch("/api/admin/quota-overview");
+        if (cancelled) return;
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          if (!cancelled && data) setAdminOverview(data);
+        }
+      } else {
+        const [quotaRes, modelRes] = await Promise.all([
+          authedFetch("/api/user/quota"),
+          authedFetch("/api/user/model-quotas"),
+        ]);
+        if (cancelled) return;
+        const quotaData = (await quotaRes.json().catch(() => null)) as { data?: QuotaData } | null;
+        const modelData = (await modelRes.json().catch(() => null)) as { data?: ModelQuota[] } | null;
+        if (quotaData?.data) setQuota(quotaData.data);
+        if (modelData?.data) setModelQuotas(modelData.data);
+      }
+    })();
+
     return () => { cancelled = true; };
   }, []);
+
+  if (role === "admin") {
+    return (
+      <DashboardShell
+        role="admin"
+        title="配额与限制"
+        subtitle="系统全局配额概览，查看各用户组和特殊模型的配额使用情况。"
+      >
+        <DashboardAdminQuotaCard overview={adminOverview} />
+      </DashboardShell>
+    );
+  }
 
   return (
     <DashboardShell
@@ -96,82 +250,7 @@ export default function QuotaPage() {
       title="配额与限制"
       subtitle="查看当前账户的速率限制、配额使用情况。"
     >
-      <div className="space-y-4 pb-6">
-        <DashboardQuotaCard quota={quota} />
-
-        {modelQuotas.length > 0 ? (
-          <Card>
-            <CardHeader>
-              <SectionTitle title="模型独立配额" description="以下模型配置了独立配额，不受用户组限制约束。" />
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-                <Table className="min-w-[900px]">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>模型</TableHead>
-                      <TableHead>请求配额</TableHead>
-                      <TableHead>Token 配额</TableHead>
-                      <TableHead>周期请求配额</TableHead>
-                      <TableHead>周期 Token 配额</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {modelQuotas.map((m) => (
-                      <TableRow key={`${m.alias}:${m.real_model}`}>
-                        <TableCell>
-                          <div>
-                            <span className="font-mono text-sm">{m.alias}</span>
-                            {m.alias !== m.real_model ? (
-                              <span className="ml-2 text-xs text-[var(--color-foreground-muted)]">({m.real_model})</span>
-                            ) : null}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <QuotaBar used={m.used_requests} total={m.quota_requests} />
-                        </TableCell>
-                        <TableCell>
-                          <TokenQuotaBar used={m.used_tokens} total={m.quota_tokens} />
-                        </TableCell>
-                        <TableCell>
-                          {m.period_quota_requests != null ? (
-                            <div className="space-y-1">
-                              <Badge variant="outline" className="text-xs">{m.period_label}</Badge>
-                              <QuotaBar used={m.period_used_requests ?? 0} total={m.period_quota_requests} />
-                            </div>
-                          ) : (
-                            <span className="text-xs text-[var(--color-foreground-muted)]">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {m.period_quota_tokens != null ? (
-                            <div className="space-y-1">
-                              <Badge variant="outline" className="text-xs">{m.period_label}</Badge>
-                              <TokenQuotaBar used={m.period_used_tokens ?? 0} total={m.period_quota_tokens} />
-                            </div>
-                          ) : (
-                            <span className="text-xs text-[var(--color-foreground-muted)]">-</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-              {modelQuotas.some((m) => m.period_reset_at) ? (
-                <p className="mt-2 text-xs text-[var(--color-foreground-muted)]">
-                  周期配额重置时间：
-                  {modelQuotas.filter((m) => m.period_reset_at).map((m) => (
-                    <span key={m.alias} className="ml-2">
-                      <span className="font-mono">{m.alias}</span> {new Date(m.period_reset_at!).toLocaleString()}
-                    </span>
-                  ))}
-                </p>
-              ) : null}
-            </CardContent>
-          </Card>
-        ) : null}
-      </div>
+      <UserQuotaContent quota={quota} modelQuotas={modelQuotas} />
     </DashboardShell>
   );
 }
