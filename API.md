@@ -976,6 +976,11 @@ email matches ".*@company\\.com"
 | quota_period | int\|null | 否 | null | 周期配额重置间隔（秒），null 表示不启用（仅完整版） |
 | period_quota_tokens | int\|null | 否 | null | 每周期 Token 配额上限（仅完整版） |
 | period_quota_requests | int\|null | 否 | null | 每周期请求配额上限（仅完整版） |
+| per_user_quota_requests | int\|null | 否 | null | 每用户请求配额（仅 `independent` 模式），null 表示不限制 |
+| per_user_quota_tokens | int\|null | 否 | null | 每用户 Token 配额（仅 `independent` 模式），null 表示不限制 |
+| per_user_quota_period | int\|null | 否 | null | 每用户周期配额重置间隔（秒），null 表示不启用（仅完整版） |
+| per_user_period_quota_requests | int\|null | 否 | null | 每用户每周期请求配额上限（仅完整版） |
+| per_user_period_quota_tokens | int\|null | 否 | null | 每用户每周期 Token 配额上限（仅完整版） |
 
 ### PUT /api/admin/models/:id
 
@@ -1156,7 +1161,22 @@ email matches ".*@company\\.com"
       "period_used_tokens": 12000,
       "period_remaining_requests": 70,
       "period_remaining_tokens": 38000,
-      "period_reset_at": "2026-06-01T00:00:00.000Z"
+      "period_reset_at": "2026-06-01T00:00:00.000Z",
+      "per_user_quota_requests": 100,
+      "per_user_quota_tokens": 50000,
+      "per_user_quota_period": 86400,
+      "per_user_period_label": "每日",
+      "per_user_period_quota_requests": 50,
+      "per_user_period_quota_tokens": 20000,
+      "per_user_used_requests": 10,
+      "per_user_used_tokens": 5000,
+      "per_user_remaining_requests": 90,
+      "per_user_remaining_tokens": 45000,
+      "per_user_period_used_requests": 5,
+      "per_user_period_used_tokens": 2000,
+      "per_user_period_remaining_requests": 45,
+      "per_user_period_remaining_tokens": 18000,
+      "per_user_period_reset_at": "2026-06-02T00:00:00.000Z"
     },
     {
       "alias": "claude-3",
@@ -1176,7 +1196,22 @@ email matches ".*@company\\.com"
       "period_used_tokens": null,
       "period_remaining_requests": null,
       "period_remaining_tokens": null,
-      "period_reset_at": null
+      "period_reset_at": null,
+      "per_user_quota_requests": null,
+      "per_user_quota_tokens": null,
+      "per_user_quota_period": null,
+      "per_user_period_label": null,
+      "per_user_period_quota_requests": null,
+      "per_user_period_quota_tokens": null,
+      "per_user_used_requests": null,
+      "per_user_used_tokens": null,
+      "per_user_remaining_requests": null,
+      "per_user_remaining_tokens": null,
+      "per_user_period_used_requests": null,
+      "per_user_period_used_tokens": null,
+      "per_user_period_remaining_requests": null,
+      "per_user_period_remaining_tokens": null,
+      "per_user_period_reset_at": null
     }
   ]
 }
@@ -1647,6 +1682,12 @@ OpenAI Embeddings 兼容端点，直通上游 `/embeddings`，不参与 Chat Com
   - `follow_group`（默认）：受用户组配额和速率限制约束，用量计入用户配额
   - `bypass_group`：跳过用户组配额检查和速率限制检查，用量不计入用户配额
   - `independent`：跳过用户组限制，改为检查模型自身的配额配置，用量不计入用户配额
+- **每用户独立模型配额:** `independent` 模式下可选配置每用户独立限额（`per_user_quota_*` 字段），为每个用户单独跟踪用量
+  - `per_user_quota_requests` / `per_user_quota_tokens`：每用户请求/Token 总量限额
+  - `per_user_quota_period`：每用户周期配额的重置周期（秒）
+  - `per_user_period_quota_requests` / `per_user_period_quota_tokens`：每用户周期请求/Token 限额
+  - 留空（`null`）表示不限制该维度；所有 `per_user_*` 字段均留空则不跟踪每用户用量
+  - 每用户配额与模型全局配额同时生效，任一耗尽返回 429
 - **模型倍率:** `token_multiplier` 和 `request_multiplier` 控制计费扣量
   - 实际扣除 Token = 使用量 x token_multiplier
   - 实际扣除请求次数 = 请求次数 x request_multiplier

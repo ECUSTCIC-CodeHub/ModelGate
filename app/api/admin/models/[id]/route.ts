@@ -27,6 +27,11 @@ const updateSchema = z.object({
   quota_period: z.number().int().min(0).nullable().optional(),
   period_quota_tokens: z.number().int().min(0).nullable().optional(),
   period_quota_requests: z.number().int().min(0).nullable().optional(),
+  per_user_quota_requests: z.number().int().min(0).nullable().optional(),
+  per_user_quota_tokens: z.number().int().min(0).nullable().optional(),
+  per_user_quota_period: z.number().int().min(0).nullable().optional(),
+  per_user_period_quota_requests: z.number().int().min(0).nullable().optional(),
+  per_user_period_quota_tokens: z.number().int().min(0).nullable().optional(),
 });
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -74,6 +79,11 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         quota_period: number | null;
         period_quota_tokens: number | null;
         period_quota_requests: number | null;
+        per_user_quota_requests: number | null;
+        per_user_quota_tokens: number | null;
+        per_user_quota_period: number | null;
+        per_user_period_quota_requests: number | null;
+        per_user_period_quota_tokens: number | null;
       }
     | undefined;
   if (!existing) return jsonError("模型不存在", 404);
@@ -114,7 +124,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     .prepare(
       `UPDATE models
        SET alias = ?, real_model = ?, channel_id = ?, upstream_protocol = ?, is_public = ?, enabled = ?, weight = ?, token_multiplier = ?, request_multiplier = ?, max_concurrency = ?,
-           quota_mode = ?, quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?
+           quota_mode = ?, quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?,
+           per_user_quota_requests = ?, per_user_quota_tokens = ?, per_user_quota_period = ?, per_user_period_quota_requests = ?, per_user_period_quota_tokens = ?
        WHERE id = ?`,
     )
     .run(merged.alias, merged.real_model, merged.channel_id, merged.upstream_protocol, merged.is_public, merged.enabled, merged.weight, merged.token_multiplier, merged.request_multiplier, merged.max_concurrency,
@@ -124,6 +135,11 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       merged.quota_period ?? existing.quota_period ?? null,
       merged.period_quota_tokens ?? existing.period_quota_tokens ?? null,
       merged.period_quota_requests ?? existing.period_quota_requests ?? null,
+      merged.per_user_quota_requests ?? existing.per_user_quota_requests ?? null,
+      merged.per_user_quota_tokens ?? existing.per_user_quota_tokens ?? null,
+      merged.per_user_quota_period ?? existing.per_user_quota_period ?? null,
+      merged.per_user_period_quota_requests ?? existing.per_user_period_quota_requests ?? null,
+      merged.per_user_period_quota_tokens ?? existing.per_user_period_quota_tokens ?? null,
       id);
 
   const row = gatewayDb.prepare("SELECT * FROM models WHERE id = ? AND deleted_at IS NULL").get(id);

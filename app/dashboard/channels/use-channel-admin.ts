@@ -276,6 +276,12 @@ export function useChannelAdmin() {
       quota_period_custom: row.quota_period != null && periodToPreset(row.quota_period) === "custom" ? String(row.quota_period) : "",
       period_quota_tokens: row.period_quota_tokens != null ? String(row.period_quota_tokens) : "",
       period_quota_requests: row.period_quota_requests != null ? String(row.period_quota_requests) : "",
+      per_user_quota_requests: row.per_user_quota_requests != null ? String(row.per_user_quota_requests) : "",
+      per_user_quota_tokens: row.per_user_quota_tokens != null ? String(row.per_user_quota_tokens) : "",
+      per_user_quota_period_preset: periodToPreset(row.per_user_quota_period),
+      per_user_quota_period_custom: row.per_user_quota_period != null && periodToPreset(row.per_user_quota_period) === "custom" ? String(row.per_user_quota_period) : "",
+      per_user_period_quota_requests: row.per_user_period_quota_requests != null ? String(row.per_user_period_quota_requests) : "",
+      per_user_period_quota_tokens: row.per_user_period_quota_tokens != null ? String(row.per_user_period_quota_tokens) : "",
       enabled: row.enabled === 1,
     });
     setModelDrawerOpen(true);
@@ -304,6 +310,11 @@ export function useChannelAdmin() {
       : form.quota_period_preset
         ? Number(form.quota_period_preset)
         : null;
+    const perUserPeriodSeconds = form.per_user_quota_period_preset === "custom"
+      ? (form.per_user_quota_period_custom.trim() ? Number(form.per_user_quota_period_custom) : null)
+      : form.per_user_quota_period_preset
+        ? Number(form.per_user_quota_period_preset)
+        : null;
     return {
       quota_mode: form.quota_mode,
       quota_tokens: form.quota_tokens.trim() ? Number(form.quota_tokens) : null,
@@ -311,6 +322,11 @@ export function useChannelAdmin() {
       quota_period: periodSeconds,
       period_quota_tokens: form.period_quota_tokens.trim() ? Number(form.period_quota_tokens) : null,
       period_quota_requests: form.period_quota_requests.trim() ? Number(form.period_quota_requests) : null,
+      per_user_quota_requests: form.per_user_quota_requests.trim() ? Number(form.per_user_quota_requests) : null,
+      per_user_quota_tokens: form.per_user_quota_tokens.trim() ? Number(form.per_user_quota_tokens) : null,
+      per_user_quota_period: perUserPeriodSeconds,
+      per_user_period_quota_requests: form.per_user_period_quota_requests.trim() ? Number(form.per_user_period_quota_requests) : null,
+      per_user_period_quota_tokens: form.per_user_period_quota_tokens.trim() ? Number(form.per_user_period_quota_tokens) : null,
     };
   }
 

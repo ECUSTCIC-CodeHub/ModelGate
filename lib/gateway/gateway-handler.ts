@@ -124,7 +124,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   }
 
   if (quotaMode === "independent") {
-    const modelQuotaResult = checkModelQuota(existingRoute.model.id, estimatedTokens);
+    const modelQuotaResult = checkModelQuota(existingRoute.model.id, estimatedTokens, auth.user.id);
     if (!modelQuotaResult.ok) {
       logRejected(429, modelQuotaResult.reason, alias, estimatedTokens);
       return jsonError(modelQuotaResult.reason, 429);

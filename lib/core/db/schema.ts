@@ -109,6 +109,20 @@ CREATE INDEX IF NOT EXISTS idx_models_alias_enabled ON models(alias, enabled);
 CREATE INDEX IF NOT EXISTS idx_models_channel_id ON models(channel_id);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE TABLE IF NOT EXISTS model_user_usage (
+  id INTEGER PRIMARY KEY,
+  model_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  used_tokens INTEGER DEFAULT 0,
+  used_requests INTEGER DEFAULT 0,
+  period_used_tokens INTEGER DEFAULT 0,
+  period_used_requests INTEGER DEFAULT 0,
+  period_reset_at DATETIME,
+  UNIQUE(model_id, user_id),
+  FOREIGN KEY (model_id) REFERENCES models(id),
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_logs_user_created_at ON logs(user_id, created_at);

@@ -25,6 +25,11 @@ const createSchema = z.object({
   quota_period: z.number().int().min(0).nullable().optional(),
   period_quota_tokens: z.number().int().min(0).nullable().optional(),
   period_quota_requests: z.number().int().min(0).nullable().optional(),
+  per_user_quota_requests: z.number().int().min(0).nullable().optional(),
+  per_user_quota_tokens: z.number().int().min(0).nullable().optional(),
+  per_user_quota_period: z.number().int().min(0).nullable().optional(),
+  per_user_period_quota_requests: z.number().int().min(0).nullable().optional(),
+  per_user_period_quota_tokens: z.number().int().min(0).nullable().optional(),
 });
 
 export async function GET(request: Request) {
@@ -67,8 +72,8 @@ export async function POST(request: Request) {
 
   const result = gatewayDb
     .prepare(
-      `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, per_user_quota_requests, per_user_quota_tokens, per_user_quota_period, per_user_period_quota_requests, per_user_period_quota_tokens)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       parsed.data.alias,
@@ -87,6 +92,11 @@ export async function POST(request: Request) {
       parsed.data.quota_period ?? null,
       parsed.data.period_quota_tokens ?? null,
       parsed.data.period_quota_requests ?? null,
+      parsed.data.per_user_quota_requests ?? null,
+      parsed.data.per_user_quota_tokens ?? null,
+      parsed.data.per_user_quota_period ?? null,
+      parsed.data.per_user_period_quota_requests ?? null,
+      parsed.data.per_user_period_quota_tokens ?? null,
     );
 
   const row = gatewayDb.prepare("SELECT * FROM models WHERE id = ? AND deleted_at IS NULL").get(result.lastInsertRowid);

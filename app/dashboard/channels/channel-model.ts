@@ -74,6 +74,11 @@ export type ModelRow = {
   quota_period: number | null;
   period_quota_tokens: number | null;
   period_quota_requests: number | null;
+  per_user_quota_requests: number | null;
+  per_user_quota_tokens: number | null;
+  per_user_quota_period: number | null;
+  per_user_period_quota_requests: number | null;
+  per_user_period_quota_tokens: number | null;
 };
 
 export type Channel = {
@@ -140,6 +145,12 @@ export type ModelForm = {
   quota_period_custom: string;
   period_quota_tokens: string;
   period_quota_requests: string;
+  per_user_quota_requests: string;
+  per_user_quota_tokens: string;
+  per_user_quota_period_preset: string;
+  per_user_quota_period_custom: string;
+  per_user_period_quota_requests: string;
+  per_user_period_quota_tokens: string;
   enabled: boolean;
 };
 
@@ -199,5 +210,11 @@ export const initialModelForm: ModelForm = {
   quota_period_custom: "",
   period_quota_tokens: "",
   period_quota_requests: "",
+  per_user_quota_requests: "",
+  per_user_quota_tokens: "",
+  per_user_quota_period_preset: "",
+  per_user_quota_period_custom: "",
+  per_user_period_quota_requests: "",
+  per_user_period_quota_tokens: "",
   enabled: true,
 };
