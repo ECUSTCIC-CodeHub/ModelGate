@@ -158,7 +158,7 @@ export function createQueuedUpstreamResponse({
                   : null;
 
               lease.complete({ ok: true, latencyMs: Date.now() - startedAt });
-              addUsage(auth.user.id, auth.key.id, Math.max(1, totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id);
+              addUsage(auth.user.id, auth.key.id, Math.max(1, totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id);
               insertChatLog({
                 user_id: auth.user.id,
                 key_id: auth.key.id,
@@ -205,7 +205,7 @@ export function createQueuedUpstreamResponse({
               const firstTokenLatencyMs = firstTokenAt !== null ? Math.max(0, firstTokenAt - startedAt) : null;
 
               if (success) {
-                addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id);
+                addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id);
               }
               insertChatLog({
                 user_id: auth.user.id,
@@ -357,7 +357,7 @@ export function createQueuedUpstreamResponse({
               : null;
 
           lease.complete({ ok: true, latencyMs: Date.now() - startedAt });
-          addUsage(auth.user.id, auth.key.id, Math.max(1, localTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id);
+          addUsage(auth.user.id, auth.key.id, Math.max(1, localTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id);
           insertChatLog({
             user_id: auth.user.id,
             key_id: auth.key.id,

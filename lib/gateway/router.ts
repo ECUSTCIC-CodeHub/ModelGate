@@ -1,4 +1,5 @@
 import { gatewayDb, type DbChannel, type DbModel } from "@/lib/core/db";
+import type { ModelQuotaMode } from "@/lib/core/db/types";
 import { makeModelRuntimeKey, scoreChannel } from "@/lib/gateway/channel-runtime";
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 
@@ -19,6 +20,15 @@ type CandidateRow = {
   token_multiplier: number;
   request_multiplier: number;
   model_max_concurrency: number;
+  model_quota_mode: ModelQuotaMode;
+  model_quota_tokens: number | null;
+  model_quota_requests: number | null;
+  model_quota_period: number | null;
+  model_period_quota_tokens: number | null;
+  model_period_quota_requests: number | null;
+  model_period_used_tokens: number;
+  model_period_used_requests: number;
+  model_period_reset_at: string | null;
   model_created_at: string;
   model_deleted_at: string | null;
   channel_id_2: number;
@@ -63,6 +73,15 @@ const listModelRoutesStmt = gatewayDb.prepare(
       m.token_multiplier,
       m.request_multiplier,
       m.max_concurrency as model_max_concurrency,
+      m.quota_mode as model_quota_mode,
+      m.quota_tokens as model_quota_tokens,
+      m.quota_requests as model_quota_requests,
+      m.quota_period as model_quota_period,
+      m.period_quota_tokens as model_period_quota_tokens,
+      m.period_quota_requests as model_period_quota_requests,
+      m.period_used_tokens as model_period_used_tokens,
+      m.period_used_requests as model_period_used_requests,
+      m.period_reset_at as model_period_reset_at,
       m.created_at as model_created_at,
       m.deleted_at as model_deleted_at,
       c.id as channel_id_2,
@@ -112,6 +131,15 @@ function mapRowToRoute(row: CandidateRow): RoutedModel {
       token_multiplier: row.token_multiplier ?? 1,
       request_multiplier: row.request_multiplier ?? 1,
       max_concurrency: row.model_max_concurrency,
+      quota_mode: row.model_quota_mode ?? "follow_group",
+      quota_tokens: row.model_quota_tokens,
+      quota_requests: row.model_quota_requests,
+      quota_period: row.model_quota_period,
+      period_quota_tokens: row.model_period_quota_tokens,
+      period_quota_requests: row.model_period_quota_requests,
+      period_used_tokens: row.model_period_used_tokens,
+      period_used_requests: row.model_period_used_requests,
+      period_reset_at: row.model_period_reset_at,
       created_at: row.model_created_at,
       deleted_at: row.model_deleted_at,
     },

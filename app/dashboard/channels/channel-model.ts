@@ -48,6 +48,14 @@ export function periodToPreset(v: number | null): string {
   return "custom";
 }
 
+export type ModelQuotaMode = "follow_group" | "bypass_group" | "independent";
+
+export const QUOTA_MODE_OPTIONS: Array<{ value: ModelQuotaMode; label: string; description: string }> = [
+  { value: "follow_group", label: "跟随用户组", description: "受用户组配额和速率限制约束" },
+  { value: "bypass_group", label: "绕过用户组", description: "不受用户组配额和速率限制约束" },
+  { value: "independent", label: "独立配额", description: "不受用户组限制，使用模型自身配额" },
+];
+
 export type ModelRow = {
   id: number;
   alias: string;
@@ -60,6 +68,12 @@ export type ModelRow = {
   token_multiplier: number;
   request_multiplier: number;
   max_concurrency: number;
+  quota_mode: ModelQuotaMode;
+  quota_tokens: number | null;
+  quota_requests: number | null;
+  quota_period: number | null;
+  period_quota_tokens: number | null;
+  period_quota_requests: number | null;
 };
 
 export type Channel = {
@@ -89,6 +103,7 @@ export type ChannelModelDraft = {
   token_multiplier: number;
   request_multiplier: number;
   max_concurrency: number;
+  quota_mode: ModelQuotaMode;
   enabled: boolean;
 };
 
@@ -118,6 +133,13 @@ export type ModelForm = {
   token_multiplier: number;
   request_multiplier: number;
   max_concurrency: number;
+  quota_mode: ModelQuotaMode;
+  quota_tokens: string;
+  quota_requests: string;
+  quota_period_preset: string;
+  quota_period_custom: string;
+  period_quota_tokens: string;
+  period_quota_requests: string;
   enabled: boolean;
 };
 
@@ -156,6 +178,7 @@ export const initialModelDraft: ChannelModelDraft = {
   token_multiplier: 1,
   request_multiplier: 1,
   max_concurrency: 0,
+  quota_mode: "follow_group",
   enabled: true,
 };
 
@@ -169,5 +192,12 @@ export const initialModelForm: ModelForm = {
   token_multiplier: 1,
   request_multiplier: 1,
   max_concurrency: 0,
+  quota_mode: "follow_group",
+  quota_tokens: "",
+  quota_requests: "",
+  quota_period_preset: "",
+  quota_period_custom: "",
+  period_quota_tokens: "",
+  period_quota_requests: "",
   enabled: true,
 };

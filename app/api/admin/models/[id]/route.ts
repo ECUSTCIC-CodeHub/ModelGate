@@ -5,7 +5,10 @@ import { gatewayDb } from "@/lib/core/db";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { GATEWAY_PROTOCOLS, type GatewayProtocol, supportsProtocol } from "@/lib/gateway/protocols";
+import type { ModelQuotaMode } from "@/lib/core/db/types";
 import { softDeleteModel } from "@/lib/services/soft-delete-service";
+
+const QUOTA_MODES = ["follow_group", "bypass_group", "independent"] as const;
 
 const updateSchema = z.object({
   alias: z.string().min(1).optional(),
@@ -18,6 +21,12 @@ const updateSchema = z.object({
   token_multiplier: z.number().min(0).max(100).optional(),
   request_multiplier: z.number().min(0).max(100).optional(),
   max_concurrency: z.number().int().min(0).optional(),
+  quota_mode: z.enum(QUOTA_MODES).optional(),
+  quota_tokens: z.number().int().min(0).nullable().optional(),
+  quota_requests: z.number().int().min(0).nullable().optional(),
+  quota_period: z.number().int().min(0).nullable().optional(),
+  period_quota_tokens: z.number().int().min(0).nullable().optional(),
+  period_quota_requests: z.number().int().min(0).nullable().optional(),
 });
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -59,6 +68,12 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         token_multiplier: number;
         request_multiplier: number;
         max_concurrency: number;
+        quota_mode: ModelQuotaMode;
+        quota_tokens: number | null;
+        quota_requests: number | null;
+        quota_period: number | null;
+        period_quota_tokens: number | null;
+        period_quota_requests: number | null;
       }
     | undefined;
   if (!existing) return jsonError("模型不存在", 404);
@@ -98,10 +113,18 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   gatewayDb
     .prepare(
       `UPDATE models
-       SET alias = ?, real_model = ?, channel_id = ?, upstream_protocol = ?, is_public = ?, enabled = ?, weight = ?, token_multiplier = ?, request_multiplier = ?, max_concurrency = ?
+       SET alias = ?, real_model = ?, channel_id = ?, upstream_protocol = ?, is_public = ?, enabled = ?, weight = ?, token_multiplier = ?, request_multiplier = ?, max_concurrency = ?,
+           quota_mode = ?, quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?
        WHERE id = ?`,
     )
-    .run(merged.alias, merged.real_model, merged.channel_id, merged.upstream_protocol, merged.is_public, merged.enabled, merged.weight, merged.token_multiplier, merged.request_multiplier, merged.max_concurrency, id);
+    .run(merged.alias, merged.real_model, merged.channel_id, merged.upstream_protocol, merged.is_public, merged.enabled, merged.weight, merged.token_multiplier, merged.request_multiplier, merged.max_concurrency,
+      merged.quota_mode ?? existing.quota_mode ?? "follow_group",
+      merged.quota_tokens ?? existing.quota_tokens ?? null,
+      merged.quota_requests ?? existing.quota_requests ?? null,
+      merged.quota_period ?? existing.quota_period ?? null,
+      merged.period_quota_tokens ?? existing.period_quota_tokens ?? null,
+      merged.period_quota_requests ?? existing.period_quota_requests ?? null,
+      id);
 
   const row = gatewayDb.prepare("SELECT * FROM models WHERE id = ? AND deleted_at IS NULL").get(id);
   return jsonOk({ data: row });

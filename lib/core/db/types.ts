@@ -22,6 +22,8 @@ export type DbChannel = {
   deleted_at: string | null;
 };
 
+export type ModelQuotaMode = "follow_group" | "bypass_group" | "independent";
+
 export type DbModel = {
   id: number;
   alias: string;
@@ -34,6 +36,15 @@ export type DbModel = {
   token_multiplier: number;
   request_multiplier: number;
   max_concurrency: number;
+  quota_mode: ModelQuotaMode;
+  quota_tokens: number | null;
+  quota_requests: number | null;
+  quota_period: number | null;
+  period_quota_tokens: number | null;
+  period_quota_requests: number | null;
+  period_used_tokens: number;
+  period_used_requests: number;
+  period_reset_at: string | null;
   created_at: string;
   deleted_at: string | null;
 };

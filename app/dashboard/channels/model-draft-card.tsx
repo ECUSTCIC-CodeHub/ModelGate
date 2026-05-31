@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { protocolLabel, type ChannelModelDraft, type Protocol } from "./channel-model";
+import { protocolLabel, QUOTA_MODE_OPTIONS, type ChannelModelDraft, type Protocol } from "./channel-model";
 
 export function ModelDraftCard({
   title,
@@ -18,6 +18,7 @@ export function ModelDraftCard({
   drafts,
   probing,
   probeDisabled,
+  periodQuotaEnabled,
   onProbe,
   onAddDraft,
   onRemoveDraft,
@@ -29,6 +30,7 @@ export function ModelDraftCard({
   drafts: ChannelModelDraft[];
   probing: boolean;
   probeDisabled?: boolean;
+  periodQuotaEnabled: boolean;
   onProbe: () => void;
   onAddDraft: (protocols: Protocol[]) => void;
   onRemoveDraft: (index: number) => void;
@@ -75,7 +77,17 @@ export function ModelDraftCard({
                 ))}
               </SelectContent>
             </Select>
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-3">
+              <Select value={item.quota_mode} onValueChange={(value) => onUpdateDraft(index, { quota_mode: value as ChannelModelDraft["quota_mode"] })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {QUOTA_MODE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Select value={item.is_public ? "1" : "0"} onValueChange={(value) => onUpdateDraft(index, { is_public: value === "1" })}>
                 <SelectTrigger>
                   <SelectValue />

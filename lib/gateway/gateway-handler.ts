@@ -3,6 +3,7 @@ import { getUserAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { checkChannelQuota, appendChannelQuotaHeaders } from "@/lib/gateway/channel-quota";
 import { insertChatLog } from "@/lib/gateway/chat-log";
 import { jsonError } from "@/lib/core/http";
+import { checkModelQuota, appendModelQuotaHeaders } from "@/lib/gateway/model-quota";
 import { resolveAccessibleModelAlias } from "@/lib/gateway/model-access";
 import { getGatewayProtocolAdapter, type GatewayProtocolAdapter } from "@/lib/gateway/protocol-adapters";
 import { createTransformedStream } from "@/lib/gateway/protocol-adapters/streaming";
@@ -86,19 +87,51 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   }
   const resolvedAlias = resolved.alias;
 
-  const quotaResult = checkQuota(auth.user.id, estimatedTokens);
-  if (!quotaResult.ok) {
-    logRejected(429, quotaResult.reason, alias, estimatedTokens);
-    const headers: Record<string, string> = {};
-    if (quotaResult.quota) {
-      appendQuotaHeaders(headers, quotaResult.quota);
+  const existingRoute = selectModelRoute(resolvedAlias, { protocol: inboundProtocol, allowedChannelIds });
+  if (!existingRoute) {
+    if (allowedChannelIds && selectModelRoute(resolvedAlias, { protocol: inboundProtocol }) !== null) {
+      logRejected(403, "当前用户组无可用渠道", alias, estimatedTokens);
+      return jsonError("当前用户组无可用渠道", 403);
     }
-    return jsonError(quotaResult.reason, 429, undefined, headers);
+    logRejected(404, "模型别名不存在或已禁用", alias);
+    return jsonError("模型别名不存在或已禁用", 404);
   }
-  const quotaHeaders: Record<string, string> = {};
-  appendQuotaHeaders(quotaHeaders, quotaResult.quota);
 
+  const quotaMode = existingRoute.model.quota_mode;
+  const bypassUserLimits = quotaMode === "bypass_group" || quotaMode === "independent";
+
+  const quotaHeaders: Record<string, string> = {};
   let channelQuotaHeaders: Record<string, string> | null = null;
+  let modelQuotaHeaders: Record<string, string> | null = null;
+
+  if (!bypassUserLimits) {
+    const quotaResult = checkQuota(auth.user.id, estimatedTokens);
+    if (!quotaResult.ok) {
+      logRejected(429, quotaResult.reason, alias, estimatedTokens);
+      const headers: Record<string, string> = {};
+      if (quotaResult.quota) {
+        appendQuotaHeaders(headers, quotaResult.quota);
+      }
+      return jsonError(quotaResult.reason, 429, undefined, headers);
+    }
+    appendQuotaHeaders(quotaHeaders, quotaResult.quota);
+
+    const rate = checkUserRateLimit(auth.user, estimatedTokens);
+    if (!rate.ok) {
+      logRejected(429, rate.reason, alias, estimatedTokens);
+      return jsonError(rate.reason, 429);
+    }
+  }
+
+  if (quotaMode === "independent") {
+    const modelQuotaResult = checkModelQuota(existingRoute.model.id, estimatedTokens);
+    if (!modelQuotaResult.ok) {
+      logRejected(429, modelQuotaResult.reason, alias, estimatedTokens);
+      return jsonError(modelQuotaResult.reason, 429);
+    }
+    modelQuotaHeaders = {};
+    appendModelQuotaHeaders(modelQuotaHeaders, modelQuotaResult.quota);
+  }
 
   const withQuotaHeaders = (resp: Response): Response => {
     for (const [k, v] of Object.entries(quotaHeaders)) {
@@ -109,24 +142,13 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
         resp.headers.set(k, v);
       }
     }
+    if (modelQuotaHeaders) {
+      for (const [k, v] of Object.entries(modelQuotaHeaders)) {
+        resp.headers.set(k, v);
+      }
+    }
     return resp;
   };
-
-  const rate = checkUserRateLimit(auth.user, estimatedTokens);
-  if (!rate.ok) {
-    logRejected(429, rate.reason, alias, estimatedTokens);
-    return jsonError(rate.reason, 429);
-  }
-
-  const existingRoute = selectModelRoute(resolvedAlias, { protocol: inboundProtocol, allowedChannelIds });
-  if (!existingRoute) {
-    if (allowedChannelIds && selectModelRoute(resolvedAlias, { protocol: inboundProtocol }) !== null) {
-      logRejected(403, "当前用户组无可用渠道", alias, estimatedTokens);
-      return jsonError("当前用户组无可用渠道", 403);
-    }
-    logRejected(404, "模型别名不存在或已禁用", alias);
-    return jsonError("模型别名不存在或已禁用", 404);
-  }
 
   const settings = getGatewaySettings();
   const retryEnabled = settings.upstream_retry_enabled === 1;
@@ -323,7 +345,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
           : null;
 
       lease.complete({ ok: upstream.status < 400, latencyMs: Date.now() - startedAt });
-      addUsage(auth.user.id, auth.key.id, Math.max(1, totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id);
+      addUsage(auth.user.id, auth.key.id, Math.max(1, totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id);
       insertChatLog({
         user_id: auth.user.id,
         key_id: auth.key.id,
@@ -372,7 +394,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       const firstTokenLatencyMs = firstTokenAt !== null ? Math.max(0, firstTokenAt - startedAt) : null;
 
       if (success) {
-        addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id);
+        addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id);
       }
       insertChatLog({
         user_id: auth.user.id,
@@ -475,7 +497,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       : null;
 
   lease.complete({ ok: true, latencyMs: Date.now() - startedAt });
-  addUsage(auth.user.id, auth.key.id, Math.max(1, localTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id);
+  addUsage(auth.user.id, auth.key.id, Math.max(1, localTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id);
   insertChatLog({
     user_id: auth.user.id,
     key_id: auth.key.id,

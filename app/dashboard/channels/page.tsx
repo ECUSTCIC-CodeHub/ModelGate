@@ -97,6 +97,7 @@ export default function AdminChannelsPage() {
         selectedChannelProtocols={admin.selectedChannelProtocols}
         modelDrafts={admin.channelModels}
         probingModels={admin.probingModels}
+        periodQuotaEnabled={admin.periodQuotaEnabled}
         onOpenChange={admin.setModelDrawerOpen}
         onSubmit={admin.submitModel}
         onFormChange={admin.updateModelForm}

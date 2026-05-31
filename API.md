@@ -886,7 +886,13 @@ email matches ".*@company\\.com"
   "enabled": true,
   "weight": 1,
   "token_multiplier": 1.5,
-  "request_multiplier": 1
+  "request_multiplier": 1,
+  "quota_mode": "independent",
+  "quota_tokens": 1000000,
+  "quota_requests": null,
+  "quota_period": 86400,
+  "period_quota_tokens": 500000,
+  "period_quota_requests": null
 }
 ```
 
@@ -901,6 +907,12 @@ email matches ".*@company\\.com"
 | max_concurrency | int | 否 | 0 | 模型级最大并发数，0 时继承渠道配置；实际生效值为 min(模型并发, 渠道并发) |
 | token_multiplier | float | 否 | 1 | Token 计费倍率：实际扣量 = 使用量 x 倍率 |
 | request_multiplier | float | 否 | 1 | 请求计费倍率：实际扣量 = 请求次数 x 倍率 |
+| quota_mode | enum | 否 | follow_group | `follow_group`：跟随用户组限制；`bypass_group`：跳过用户组配额和速率限制；`independent`：跳过用户组限制，使用模型自身配额 |
+| quota_tokens | int\|null | 否 | null | 模型总 Token 配额（仅 `independent` 模式生效），null 表示不限制 |
+| quota_requests | int\|null | 否 | null | 模型总请求配额（仅 `independent` 模式生效），null 表示不限制 |
+| quota_period | int\|null | 否 | null | 周期配额重置间隔（秒），null 表示不启用（仅完整版） |
+| period_quota_tokens | int\|null | 否 | null | 每周期 Token 配额上限（仅完整版） |
+| period_quota_requests | int\|null | 否 | null | 每周期请求配额上限（仅完整版） |
 
 ### PUT /api/admin/models/:id
 
@@ -1242,7 +1254,7 @@ X-Channel-Period-Quota-Tokens-Remaining: 1800000
 X-Channel-Period-Quota-Reset: 2026-05-08T00:00:00.000Z
 ```
 
-> `X-Quota-*` 和 `X-Period-Quota-*` 为用户级配额；`X-Channel-Quota-*` 和 `X-Channel-Period-Quota-*` 为渠道级配额。配额头仅在配置了对应配额时返回；精简版不会返回 `X-Period-*` 和 `X-Channel-Period-*` 响应头。渠道配额独立于用户配额，两者同时生效，请求任一配额耗尽时返回 429。
+> `X-Quota-*` 和 `X-Period-Quota-*` 为用户级配额；`X-Channel-Quota-*` 和 `X-Channel-Period-Quota-*` 为渠道级配额；`X-Model-Quota-*` 和 `X-Model-Period-Quota-*` 为模型级配额（仅 `quota_mode = independent` 时返回）。配额头仅在配置了对应配额时返回；精简版不会返回 `X-Period-*`、`X-Channel-Period-*` 和 `X-Model-Period-*` 响应头。
 
 ---
 
@@ -1497,6 +1509,10 @@ OpenAI Embeddings 兼容端点，直通上游 `/embeddings`，不参与 Chat Com
 - **RPM / QPS / TPM:** 用户级速率限制，`-1` 表示不限制
 - **quota_tokens / quota_requests:** 总量配额，`null` 表示不限制
 - **渠道配额:** 渠道可独立配置总量配额和周期配额，与用户/组配额同时生效，任一耗尽返回 429
+- **模型配额模式:** 模型的 `quota_mode` 控制配额检查行为
+  - `follow_group`（默认）：受用户组配额和速率限制约束
+  - `bypass_group`：跳过用户组配额检查和速率限制检查
+  - `independent`：跳过用户组限制，改为检查模型自身的配额配置
 - **模型倍率:** `token_multiplier` 和 `request_multiplier` 控制计费扣量
   - 实际扣除 Token = 使用量 x token_multiplier
   - 实际扣除请求次数 = 请求次数 x request_multiplier

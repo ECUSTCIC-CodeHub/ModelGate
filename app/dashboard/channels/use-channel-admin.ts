@@ -269,6 +269,13 @@ export function useChannelAdmin() {
       token_multiplier: row.token_multiplier ?? 1,
       request_multiplier: row.request_multiplier ?? 1,
       max_concurrency: row.max_concurrency ?? 0,
+      quota_mode: row.quota_mode ?? "follow_group",
+      quota_tokens: row.quota_tokens != null ? String(row.quota_tokens) : "",
+      quota_requests: row.quota_requests != null ? String(row.quota_requests) : "",
+      quota_period_preset: periodToPreset(row.quota_period),
+      quota_period_custom: row.quota_period != null && periodToPreset(row.quota_period) === "custom" ? String(row.quota_period) : "",
+      period_quota_tokens: row.period_quota_tokens != null ? String(row.period_quota_tokens) : "",
+      period_quota_requests: row.period_quota_requests != null ? String(row.period_quota_requests) : "",
       enabled: row.enabled === 1,
     });
     setModelDrawerOpen(true);
@@ -291,6 +298,22 @@ export function useChannelAdmin() {
     }
   }
 
+  function buildModelQuotaPayload(form: ModelForm) {
+    const periodSeconds = form.quota_period_preset === "custom"
+      ? (form.quota_period_custom.trim() ? Number(form.quota_period_custom) : null)
+      : form.quota_period_preset
+        ? Number(form.quota_period_preset)
+        : null;
+    return {
+      quota_mode: form.quota_mode,
+      quota_tokens: form.quota_tokens.trim() ? Number(form.quota_tokens) : null,
+      quota_requests: form.quota_requests.trim() ? Number(form.quota_requests) : null,
+      quota_period: periodSeconds,
+      period_quota_tokens: form.period_quota_tokens.trim() ? Number(form.period_quota_tokens) : null,
+      period_quota_requests: form.period_quota_requests.trim() ? Number(form.period_quota_requests) : null,
+    };
+  }
+
   async function submitModel(event: FormEvent) {
     event.preventDefault();
 
@@ -306,6 +329,7 @@ export function useChannelAdmin() {
           token_multiplier: item.token_multiplier,
           request_multiplier: item.request_multiplier,
           max_concurrency: item.max_concurrency,
+          quota_mode: item.quota_mode,
           enabled: item.enabled,
         }))
         .filter((item) => item.alias && item.real_model);
@@ -353,6 +377,7 @@ export function useChannelAdmin() {
               token_multiplier: draft.token_multiplier,
               request_multiplier: draft.request_multiplier,
               max_concurrency: draft.max_concurrency,
+              quota_mode: draft.quota_mode ?? "follow_group",
               enabled: draft.enabled,
             });
           }
@@ -368,6 +393,7 @@ export function useChannelAdmin() {
             token_multiplier: draft.token_multiplier,
             request_multiplier: draft.request_multiplier,
             max_concurrency: draft.max_concurrency,
+            quota_mode: draft.quota_mode ?? "follow_group",
             enabled: draft.enabled,
           });
         }
@@ -391,7 +417,10 @@ export function useChannelAdmin() {
 
     const response = await authedFetch(`/api/admin/models/${modelEditingId}`, {
       method: "PUT",
-      body: JSON.stringify(modelForm),
+      body: JSON.stringify({
+        ...modelForm,
+        ...buildModelQuotaPayload(modelForm),
+      }),
     });
     const data = await response.json().catch(() => null);
     if (response.ok) {

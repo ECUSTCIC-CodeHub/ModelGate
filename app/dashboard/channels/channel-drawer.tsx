@@ -125,6 +125,7 @@ export function ChannelDrawer({
               protocols={form.supported_protocols}
               drafts={modelDrafts}
               probing={probingModels}
+              periodQuotaEnabled={periodQuotaEnabled}
               onProbe={onProbeModels}
               onAddDraft={onAddModelDraft}
               onRemoveDraft={onRemoveModelDraft}
