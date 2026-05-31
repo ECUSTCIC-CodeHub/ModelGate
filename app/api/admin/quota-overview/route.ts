@@ -23,21 +23,13 @@ export async function GET(request: Request) {
   const totalKeys = (gatewayDb.prepare("SELECT COUNT(*) AS count FROM keys WHERE deleted_at IS NULL").get() as { count: number }).count;
 
   const groupRows = gatewayDb.prepare(
-    `SELECT g.id, g.name, g.quota_tokens, g.quota_requests, g.quota_period,
+    `SELECT g.id, g.name, g.qps, g.rpm, g.tpm,
+            g.quota_tokens, g.quota_requests, g.quota_period,
             g.period_quota_tokens, g.period_quota_requests,
-            COALESCE(u_stats.used_tokens, 0) AS used_tokens,
-            COALESCE(u_stats.used_requests, 0) AS used_requests,
-            COALESCE(u_stats.period_used_tokens, 0) AS period_used_tokens,
-            COALESCE(u_stats.period_used_requests, 0) AS period_used_requests,
             COALESCE(u_stats.user_count, 0) AS user_count
      FROM groups g
      LEFT JOIN (
-       SELECT group_id,
-              SUM(used_tokens) AS used_tokens,
-              SUM(used_requests) AS used_requests,
-              SUM(period_used_tokens) AS period_used_tokens,
-              SUM(period_used_requests) AS period_used_requests,
-              COUNT(*) AS user_count
+       SELECT group_id, COUNT(*) AS user_count
        FROM users WHERE deleted_at IS NULL AND enabled = 1
        GROUP BY group_id
      ) u_stats ON u_stats.group_id = g.id
@@ -45,15 +37,14 @@ export async function GET(request: Request) {
   ).all() as Array<{
     id: number;
     name: string;
+    qps: number;
+    rpm: number;
+    tpm: number;
     quota_tokens: number | null;
     quota_requests: number | null;
     quota_period: number | null;
     period_quota_tokens: number | null;
     period_quota_requests: number | null;
-    used_tokens: number;
-    used_requests: number;
-    period_used_tokens: number;
-    period_used_requests: number;
     user_count: number;
   }>;
 
@@ -61,20 +52,15 @@ export async function GET(request: Request) {
     id: g.id,
     name: g.name,
     user_count: g.user_count,
+    rpm: g.rpm,
+    qps: g.qps,
+    tpm: g.tpm,
     quota_tokens: g.quota_tokens,
     quota_requests: g.quota_requests,
-    used_tokens: g.used_tokens,
-    used_requests: g.used_requests,
-    remaining_tokens: g.quota_tokens !== null ? Math.max(0, g.quota_tokens - g.used_tokens) : null,
-    remaining_requests: g.quota_requests !== null ? Math.max(0, g.quota_requests - g.used_requests) : null,
     quota_period: modelGateFeatures.periodQuota ? g.quota_period : null,
     period_label: modelGateFeatures.periodQuota && g.quota_period ? formatPeriodLabel(g.quota_period) : null,
     period_quota_tokens: modelGateFeatures.periodQuota ? g.period_quota_tokens : null,
     period_quota_requests: modelGateFeatures.periodQuota ? g.period_quota_requests : null,
-    period_used_tokens: modelGateFeatures.periodQuota ? g.period_used_tokens : null,
-    period_used_requests: modelGateFeatures.periodQuota ? g.period_used_requests : null,
-    period_remaining_tokens: modelGateFeatures.periodQuota && g.period_quota_tokens !== null ? Math.max(0, g.period_quota_tokens - g.period_used_tokens) : null,
-    period_remaining_requests: modelGateFeatures.periodQuota && g.period_quota_requests !== null ? Math.max(0, g.period_quota_requests - g.period_used_requests) : null,
   }));
 
   const modelRows = gatewayDb.prepare(

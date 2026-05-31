@@ -14,20 +14,15 @@ export type AdminQuotaOverview = {
     id: number;
     name: string;
     user_count: number;
+    rpm: number;
+    qps: number;
+    tpm: number;
     quota_tokens: number | null;
     quota_requests: number | null;
-    used_tokens: number;
-    used_requests: number;
-    remaining_tokens: number | null;
-    remaining_requests: number | null;
     quota_period: number | null;
     period_label: string | null;
     period_quota_tokens: number | null;
     period_quota_requests: number | null;
-    period_used_tokens: number | null;
-    period_used_requests: number | null;
-    period_remaining_tokens: number | null;
-    period_remaining_requests: number | null;
   }>;
   models: Array<{
     id: number;
@@ -53,6 +48,10 @@ export type AdminQuotaOverview = {
   }>;
 };
 
+function formatRate(value: number, formatter: (value: number | null | undefined) => string) {
+  return value < 0 ? "∞" : formatter(value);
+}
+
 function QuotaProgress({ remaining, quota }: { remaining: number | null; quota: number | null }) {
   return (
     <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-surface-hover)]">
@@ -69,7 +68,7 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
     <div className="space-y-4 pb-6">
       <Card>
         <CardHeader>
-          <SectionTitle title="系统配额概览" description="全局视角查看各用户组和特殊模型的配额使用情况。" />
+          <SectionTitle title="系统配额概览" description="全局视角查看各用户组和特殊模型的配额配置。" />
         </CardHeader>
         <CardContent>
           {overview ? (
@@ -100,7 +99,7 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
       {overview?.groups && overview.groups.length > 0 ? (
         <Card>
           <CardHeader>
-            <SectionTitle title="用户组配额" description="各用户组的配额配置与使用情况汇总。" />
+            <SectionTitle title="用户组配额" description="各用户组的配额与速率限制配置。这些限制对组内每个用户独立生效。" />
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
@@ -109,6 +108,7 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
                   <TableRow>
                     <TableHead>用户组</TableHead>
                     <TableHead>用户数</TableHead>
+                    <TableHead>速率限制</TableHead>
                     <TableHead>Token 配额</TableHead>
                     <TableHead>请求配额</TableHead>
                     {overview.groups.some((g) => g.period_label) ? <TableHead>周期配额</TableHead> : null}
@@ -120,25 +120,22 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
                       <TableCell className="font-medium">{g.name}</TableCell>
                       <TableCell>{formatNumber(g.user_count)}</TableCell>
                       <TableCell>
+                        <div className="space-y-1 text-xs text-[var(--color-foreground-muted)]">
+                          <div className="flex justify-between"><span>RPM</span><span className="font-mono text-[var(--color-foreground)]">{formatRate(g.rpm, formatNumber)}</span></div>
+                          <div className="flex justify-between"><span>QPS</span><span className="font-mono text-[var(--color-foreground)]">{formatRate(g.qps, formatNumber)}</span></div>
+                          <div className="flex justify-between"><span>TPM</span><span className="font-mono text-[var(--color-foreground)]">{formatRate(g.tpm, formatTokenCount)}</span></div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         {g.quota_tokens !== null ? (
-                          <div className="space-y-1">
-                            <QuotaProgress remaining={g.remaining_tokens} quota={g.quota_tokens} />
-                            <p className="text-xs text-[var(--color-foreground-muted)]">
-                              {formatTokenCount(g.used_tokens)} / {formatTokenCount(g.quota_tokens)}
-                            </p>
-                          </div>
+                          <span className="font-mono text-sm text-[var(--color-foreground)]">{formatTokenCount(g.quota_tokens)}</span>
                         ) : (
                           <span className="text-xs text-[var(--color-foreground-muted)]">不限制</span>
                         )}
                       </TableCell>
                       <TableCell>
                         {g.quota_requests !== null ? (
-                          <div className="space-y-1">
-                            <QuotaProgress remaining={g.remaining_requests} quota={g.quota_requests} />
-                            <p className="text-xs text-[var(--color-foreground-muted)]">
-                              {formatNumber(g.used_requests)} / {formatNumber(g.quota_requests)}
-                            </p>
-                          </div>
+                          <span className="font-mono text-sm text-[var(--color-foreground)]">{formatNumber(g.quota_requests)}</span>
                         ) : (
                           <span className="text-xs text-[var(--color-foreground-muted)]">不限制</span>
                         )}
@@ -150,12 +147,12 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
                               <Badge variant="outline" className="text-xs">{g.period_label}</Badge>
                               {g.period_quota_tokens !== null ? (
                                 <p className="text-xs text-[var(--color-foreground-muted)]">
-                                  Token: {formatTokenCount(g.period_used_tokens ?? 0)} / {formatTokenCount(g.period_quota_tokens)}
+                                  Token: {formatTokenCount(g.period_quota_tokens)}
                                 </p>
                               ) : null}
                               {g.period_quota_requests !== null ? (
                                 <p className="text-xs text-[var(--color-foreground-muted)]">
-                                  请求: {formatNumber(g.period_used_requests ?? 0)} / {formatNumber(g.period_quota_requests)}
+                                  请求: {formatNumber(g.period_quota_requests)}
                                 </p>
                               ) : null}
                             </div>

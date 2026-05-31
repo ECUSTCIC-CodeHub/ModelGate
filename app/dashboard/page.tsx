@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { DashboardHeaderActions } from "./_home/dashboard-header-actions";
-import { DashboardAdminQuotaCard } from "./_home/dashboard-admin-quota-card";
 import { DashboardModelQuotaCard } from "./_home/dashboard-model-quota-card";
 import { DashboardQuotaCard } from "./_home/dashboard-quota-card";
 import { DashboardQuickActionsCard } from "./_home/dashboard-quick-actions-card";
@@ -27,15 +26,8 @@ export default function DashboardHomePage() {
     >
       <div className="space-y-4 pb-6">
         <DashboardSummaryCards loading={dashboard.loading} role={dashboard.role} summary={dashboard.summary} />
-
-        {isAdmin ? (
-          <DashboardAdminQuotaCard overview={dashboard.adminQuotaOverview} />
-        ) : (
-          <>
-            <DashboardQuotaCard quota={dashboard.quota} />
-            <DashboardModelQuotaCard modelQuotas={dashboard.modelQuotas} />
-          </>
-        )}
+        <DashboardQuotaCard quota={dashboard.quota} />
+        <DashboardModelQuotaCard modelQuotas={dashboard.modelQuotas} />
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
           <DashboardTokenTrendCard chartReady={dashboard.chartReady} summary={dashboard.summary} />
