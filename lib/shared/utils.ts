@@ -25,3 +25,8 @@ export function formatCompactNumber(value: number | null | undefined) {
 export function formatTokenCount(value: number | null | undefined) {
   return formatCompactNumber(value);
 }
+
+export function formatDatetime(value: string | null | undefined) {
+  if (!value) return "-";
+  return new Date(value).toLocaleString();
+}

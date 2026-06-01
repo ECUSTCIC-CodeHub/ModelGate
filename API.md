@@ -942,12 +942,13 @@ email matches ".*@company\\.com"
   "data": [
     {
       "id": 1,
-      "key": "sk-gw-abc123...",
+      "key": "sk-gw-abc0...xyz9",
       "name": "my-key",
       "used_tokens": 1234,
       "used_requests": 56,
       "enabled": 1,
-      "created_at": "2026-05-08 00:00:00"
+      "created_at": "2026-05-08 00:00:00",
+      "last_used_at": "2026-05-10 12:34:56"
     }
   ]
 }

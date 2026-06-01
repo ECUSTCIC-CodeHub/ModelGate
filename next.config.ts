@@ -18,6 +18,7 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  allowedDevOrigins: ['*.cnb.run'],
 };
 
 export default nextConfig;

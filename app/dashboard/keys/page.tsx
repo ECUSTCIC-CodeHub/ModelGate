@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Copy } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { SectionTitle } from "@/components/dashboard/section-title";
@@ -24,6 +25,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/shared/api-message";
 import { authedFetch, ensureLoggedIn, getCachedProfile } from "@/lib/auth/client-auth";
+import { formatDatetime } from "@/lib/shared/utils";
 import { formatNumber } from "@/lib/shared/formatters";
 
 type KeyRow = {
@@ -34,7 +36,12 @@ type KeyRow = {
     used_requests: number;
     enabled: number;
     created_at: string;
+    last_used_at: string | null;
 };
+
+function maskKey(key: string) {
+    return key.length > 14 ? `${key.slice(0, 10)}...${key.slice(-4)}` : `${key.slice(0, 4)}...`;
+}
 
 export default function ConsoleKeysPage() {
     const router = useRouter();
@@ -117,12 +124,12 @@ export default function ConsoleKeysPage() {
         });
         const data = await response.json().catch(() => null);
         if (response.ok) {
-            toast({ variant: "success", description: "备注已更新。" });
+            toast({ variant: "success", description: "名称已更新。" });
             setEditingNameId(null);
             await load();
             return;
         }
-        toast({ variant: "error", description: getApiMessage(data, "更新备注失败。") });
+        toast({ variant: "error", description: getApiMessage(data, "更新名称失败。") });
     }
 
     async function toggleKey(id: number, enabled: boolean) {
@@ -172,7 +179,7 @@ export default function ConsoleKeysPage() {
                                 <div className="flex items-center gap-2">
                                     <Input
                                         className="w-36"
-                                        placeholder="备注名（可选）"
+                                        placeholder="名称（可选）"
                                         value={newKeyName}
                                         onChange={(e) => setNewKeyName(e.target.value)}
                                         maxLength={64}
@@ -187,12 +194,13 @@ export default function ConsoleKeysPage() {
                         {error ? <p className="text-sm text-[var(--color-destructive)]">{error}</p> : null}
                         {keys.length > 0 ? (
                             <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-                                <Table className="min-w-[820px]">
+                                <Table className="min-w-[1024px]">
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead>序号</TableHead>
-                                            <TableHead>备注</TableHead>
+                                            <TableHead>名称</TableHead>
                                             <TableHead>Key</TableHead>
+                                            <TableHead>创建时间</TableHead>
+                                            <TableHead>最近使用</TableHead>
                                             <TableHead>累计请求</TableHead>
                                             <TableHead>累计 Token</TableHead>
                                             <TableHead>状态</TableHead>
@@ -202,7 +210,6 @@ export default function ConsoleKeysPage() {
                                     <TableBody>
                                         {keys.map((row, index) => (
                                             <TableRow key={row.id}>
-                                                <TableCell>{index + 1}</TableCell>
                                                 <TableCell className="max-w-[160px]">
                                                     {editingNameId === row.id ? (
                                                         <Input
@@ -222,11 +229,25 @@ export default function ConsoleKeysPage() {
                                                             className="cursor-pointer text-sm text-[var(--color-foreground-secondary)] hover:text-[var(--color-accent)]"
                                                             onClick={() => { setEditingNameId(row.id); setEditingNameValue(row.name || ""); }}
                                                         >
-                                                            {row.name || <span className="text-[var(--color-foreground-subtle)]">点击添加备注</span>}
+                                                            {row.name || <span className="text-[var(--color-foreground-subtle)]">点击添加名称</span>}
                                                         </span>
                                                     )}
                                                 </TableCell>
-                                                <TableCell className="max-w-[320px] font-mono text-xs md:text-sm">{row.key}</TableCell>
+                                                <TableCell className="max-w-[320px]">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="font-mono text-xs md:text-sm">{maskKey(row.key)}</span>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            className="h-6 w-6 px-0"
+                                                            onClick={() => copyKey(row.key)}
+                                                        >
+                                                            <Copy className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="whitespace-nowrap text-xs text-[var(--color-foreground-secondary)]">{formatDatetime(row.created_at)}</TableCell>
+                                                <TableCell className="whitespace-nowrap text-xs text-[var(--color-foreground-secondary)]">{formatDatetime(row.last_used_at)}</TableCell>
                                                 <TableCell>{formatNumber(row.used_requests)}</TableCell>
                                                 <TableCell>{formatNumber(row.used_tokens)}</TableCell>
                                                 <TableCell>
@@ -259,7 +280,7 @@ export default function ConsoleKeysPage() {
                     <DialogHeader>
                         <DialogTitle>密钥创建成功</DialogTitle>
                         <DialogDescription>
-                            请立即复制并妥善保存，关闭后将无法再次查看完整密钥。
+                            请妥善保存密钥，勿与他人共享；如怀疑密钥已泄露，请立即删除旧密钥。
                         </DialogDescription>
                     </DialogHeader>
                     <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-3">
