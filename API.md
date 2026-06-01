@@ -1363,11 +1363,13 @@ email matches ".*@company\\.com"
 {
   "object": "list",
   "data": [
-    { "id": "gpt-4", "object": "model" },
-    { "id": "claude-3", "object": "model" }
+    { "id": "gpt-4", "object": "model", "token_multiplier": 1, "request_multiplier": 1 },
+    { "id": "claude-3", "object": "model", "token_multiplier": 1.5, "request_multiplier": 1 }
   ]
 }
 ```
+
+> `token_multiplier` 和 `request_multiplier` 为计费倍率，实际扣量 = 使用量 × 倍率。
 
 ---
 
