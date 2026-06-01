@@ -177,6 +177,15 @@ export async function GET(request: Request) {
     const isOidcOnlyMode = settings.password_login_enabled === 0;
 
     if (isOidcOnlyMode) {
+      if (!config.autoRegister) {
+        const adminCount = gatewayDb
+          .prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL")
+          .get() as { count: number };
+        if (adminCount.count > 0) {
+          return clearStateCookie(redirectWithError(origin, "OIDC 登录失败，请联系管理员"));
+        }
+      }
+
       const stripped = { ...rawClaims };
       for (const k of ["at_hash", "c_hash", "auth_time", "iat", "exp", "nonce"]) delete stripped[k];
       const pendingToken = signOidcPendingToken({
