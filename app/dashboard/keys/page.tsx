@@ -194,7 +194,7 @@ export default function ConsoleKeysPage() {
                         {error ? <p className="text-sm text-[var(--color-destructive)]">{error}</p> : null}
                         {keys.length > 0 ? (
                             <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-                                <Table className="min-w-[960px]">
+                                <Table className="min-w-[1024px]">
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead>名称</TableHead>
