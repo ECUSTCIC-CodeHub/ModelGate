@@ -6,10 +6,6 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 const integerFormatter = new Intl.NumberFormat("zh-CN");
-const compactFormatter = new Intl.NumberFormat("zh-CN", {
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
 
 export function formatNumber(value: number | null | undefined) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "-";
@@ -18,8 +14,12 @@ export function formatNumber(value: number | null | undefined) {
 
 export function formatCompactNumber(value: number | null | undefined) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "-";
-  if (Math.abs(value) < 1000) return integerFormatter.format(value);
-  return compactFormatter.format(value);
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000_000) return `${(value / 1_000_000_000_000).toFixed(2)}T`;
+  if (abs >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`;
+  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `${(value / 1_000).toFixed(2)}K`;
+  return integerFormatter.format(value);
 }
 
 export function formatTokenCount(value: number | null | undefined) {
