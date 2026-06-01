@@ -60,6 +60,7 @@ export async function GET(request: Request) {
   const key = (url.searchParams.get("key") ?? "").trim();
   const startDate = parseDateParam(url.searchParams.get("start_date") ?? "");
   const endDate = parseDateParam(url.searchParams.get("end_date") ?? "");
+  const status = (url.searchParams.get("status") ?? "").trim();
 
   const whereClauses: string[] = [];
   const whereArgs: Array<string | number> = [];
@@ -115,6 +116,12 @@ export async function GET(request: Request) {
       whereClauses.push("l.created_at < ?");
       whereArgs.push(`${nextDate} 00:00:00`);
     }
+  }
+
+  if (status === "failed") {
+    whereClauses.push("l.status_code >= 400");
+  } else if (status === "success") {
+    whereClauses.push("l.status_code < 400");
   }
 
   const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";

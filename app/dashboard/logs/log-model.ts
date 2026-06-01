@@ -34,6 +34,8 @@ export type LogSummary = {
   avg_output_tps: number;
 };
 
+export type LogStatusFilter = "all" | "success" | "failed";
+
 export type LogFilters = {
   user: string;
   model: string;
@@ -42,6 +44,7 @@ export type LogFilters = {
   ip: string;
   startDate: string;
   endDate: string;
+  status: LogStatusFilter;
 };
 
 export const emptyLogFilters: LogFilters = {
@@ -52,4 +55,5 @@ export const emptyLogFilters: LogFilters = {
   ip: "",
   startDate: "",
   endDate: "",
+  status: "all",
 };

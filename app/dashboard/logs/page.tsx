@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { LogFiltersCard } from "./log-filters-card";
 import { LogSummaryCards } from "./log-summary-cards";
@@ -7,7 +8,7 @@ import { LogTableCard } from "./log-table-card";
 import { useLogAdmin } from "./use-log-admin";
 import { useLogColumns } from "./use-log-columns";
 
-export default function AdminLogsPage() {
+function LogsContent() {
   const logs = useLogAdmin();
   const columns = useLogColumns(logs.role);
 
@@ -40,5 +41,13 @@ export default function AdminLogsPage() {
         />
       </div>
     </DashboardShell>
+  );
+}
+
+export default function AdminLogsPage() {
+  return (
+    <Suspense>
+      <LogsContent />
+    </Suspense>
   );
 }

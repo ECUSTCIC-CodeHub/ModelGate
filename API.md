@@ -1050,6 +1050,7 @@ email matches ".*@company\\.com"
 | ip | string | 按客户端 IP 搜索 |
 | start_date | YYYY-MM-DD | 开始日期 |
 | end_date | YYYY-MM-DD | 结束日期 |
+| status | success / failed | 按请求状态筛选：success 仅成功请求，failed 仅失败请求 |
 
 **响应 (200):**
 ```json

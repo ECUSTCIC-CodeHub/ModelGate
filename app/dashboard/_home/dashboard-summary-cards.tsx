@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import {
   Activity,
   BadgeCheck,
@@ -21,14 +22,23 @@ type DashboardSummaryCardsProps = {
   summary: Summary | null;
 };
 
+function logsUrl(params: Record<string, string>) {
+  const query = new URLSearchParams(params).toString();
+  return `/dashboard/logs${query ? `?${query}` : ""}`;
+}
+
 export function DashboardSummaryCards({ loading, role, summary }: DashboardSummaryCardsProps) {
+  const router = useRouter();
   const isAdmin = role === "admin";
+  const navigate = (href: string) => router.push(href);
+
   const statCards = [
     {
       label: "总请求数",
       value: loading ? "-" : formatNumber(summary?.total_requests),
       hint: "累计请求总量",
       icon: Activity,
+      onClick: () => navigate(logsUrl({})),
     },
     {
       label: "总 Token",
@@ -47,6 +57,7 @@ export function DashboardSummaryCards({ loading, role, summary }: DashboardSumma
       value: loading ? "-" : `${(summary?.success_rate ?? 0).toFixed(2)}%`,
       hint: summary ? `失败 ${formatNumber(summary.failed_requests)} 次` : "请求成功占比",
       icon: BadgeCheck,
+      onClick: () => navigate(logsUrl({ status: "success" })),
     },
     {
       label: "平均响应时间",
@@ -65,12 +76,14 @@ export function DashboardSummaryCards({ loading, role, summary }: DashboardSumma
       value: loading ? "-" : formatNumber(summary?.total_keys),
       hint: "当前可管理 API Key 数量",
       icon: KeyRound,
+      onClick: () => navigate("/dashboard/keys"),
     },
     {
       label: "失败请求",
       value: loading ? "-" : formatNumber(summary?.recent_failed_requests),
       hint: "近 30 天失败请求",
       icon: Activity,
+      onClick: () => navigate(logsUrl({ status: "failed" })),
     },
   ];
 
@@ -83,6 +96,7 @@ export function DashboardSummaryCards({ loading, role, summary }: DashboardSumma
           value={item.value}
           hint={item.hint}
           icon={item.icon}
+          onClick={item.onClick}
         />
       ))}
     </div>

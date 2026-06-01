@@ -8,11 +8,13 @@ type MetricCardProps = {
   hint?: string;
   icon?: LucideIcon;
   className?: string;
+  onClick?: () => void;
 };
 
-export function MetricCard({ label, value, hint, icon: Icon, className }: MetricCardProps) {
+export function MetricCard({ label, value, hint, icon: Icon, className, onClick }: MetricCardProps) {
+  const clickable = !!onClick;
   return (
-    <Card className={cn("overflow-hidden group", className)}>
+    <Card className={cn("overflow-hidden group", clickable && "cursor-pointer transition-shadow duration-200 hover:shadow-md hover:border-[var(--color-accent)]/40", className)} onClick={onClick}>
       <CardContent className="p-3 sm:p-4 lg:p-5">
         <div className="flex min-w-0 items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
