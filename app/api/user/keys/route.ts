@@ -17,7 +17,8 @@ export async function GET(request: Request) {
 
   const rows = gatewayDb
     .prepare(
-      `SELECT id, key, name, user_id, used_tokens, used_requests, enabled, created_at
+      `SELECT id, key, name, user_id, used_tokens, used_requests, enabled, created_at,
+              (SELECT MAX(created_at) FROM logs WHERE logs.key_id = keys.id) AS last_used_at
        FROM keys
        WHERE user_id = ? AND deleted_at IS NULL
        ORDER BY id DESC`,
@@ -49,7 +50,8 @@ export async function POST(request: Request) {
 
   const row = gatewayDb
     .prepare(
-      `SELECT id, key, name, user_id, used_tokens, used_requests, enabled, created_at
+      `SELECT id, key, name, user_id, used_tokens, used_requests, enabled, created_at,
+              (SELECT MAX(created_at) FROM logs WHERE logs.key_id = keys.id) AS last_used_at
        FROM keys
        WHERE id = ? AND deleted_at IS NULL`,
     )

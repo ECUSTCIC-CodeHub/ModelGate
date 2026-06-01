@@ -25,6 +25,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/shared/api-message";
 import { authedFetch, ensureLoggedIn, getCachedProfile } from "@/lib/auth/client-auth";
+import { formatDatetime } from "@/lib/shared/utils";
 import { formatNumber } from "@/lib/shared/formatters";
 
 type KeyRow = {
@@ -35,6 +36,7 @@ type KeyRow = {
     used_requests: number;
     enabled: number;
     created_at: string;
+    last_used_at: string | null;
 };
 
 function maskKey(key: string) {
@@ -192,11 +194,13 @@ export default function ConsoleKeysPage() {
                         {error ? <p className="text-sm text-[var(--color-destructive)]">{error}</p> : null}
                         {keys.length > 0 ? (
                             <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-                                <Table className="min-w-[820px]">
+                                <Table className="min-w-[960px]">
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead>名称</TableHead>
                                             <TableHead>Key</TableHead>
+                                            <TableHead>创建时间</TableHead>
+                                            <TableHead>最近使用</TableHead>
                                             <TableHead>累计请求</TableHead>
                                             <TableHead>累计 Token</TableHead>
                                             <TableHead>状态</TableHead>
@@ -242,6 +246,8 @@ export default function ConsoleKeysPage() {
                                                         </Button>
                                                     </div>
                                                 </TableCell>
+                                                <TableCell className="whitespace-nowrap text-xs text-[var(--color-foreground-secondary)]">{formatDatetime(row.created_at)}</TableCell>
+                                                <TableCell className="whitespace-nowrap text-xs text-[var(--color-foreground-secondary)]">{formatDatetime(row.last_used_at)}</TableCell>
                                                 <TableCell>{formatNumber(row.used_requests)}</TableCell>
                                                 <TableCell>{formatNumber(row.used_tokens)}</TableCell>
                                                 <TableCell>
@@ -274,7 +280,7 @@ export default function ConsoleKeysPage() {
                     <DialogHeader>
                         <DialogTitle>密钥创建成功</DialogTitle>
                         <DialogDescription>
-                            请立即复制并妥善保存，关闭后将无法再次查看完整密钥。
+                            请妥善保存密钥，勿与他人共享；如怀疑密钥已泄露，请立即删除旧密钥。
                         </DialogDescription>
                     </DialogHeader>
                     <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-3">

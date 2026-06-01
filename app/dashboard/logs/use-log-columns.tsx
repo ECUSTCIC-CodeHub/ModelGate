@@ -4,7 +4,7 @@ import { type ColumnDef } from "@tanstack/react-table";
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { formatNumber, formatTokenCount } from "@/lib/shared/utils";
+import { formatNumber, formatTokenCount, formatDatetime } from "@/lib/shared/utils";
 import { ClientInfo } from "./client-info";
 import { formatDuration } from "./log-formatters";
 import type { LogRole, LogRow } from "./log-model";
@@ -18,7 +18,7 @@ export function useLogColumns(role: LogRole) {
       header: "时间",
       cell: ({ row }) => (
         <span className="whitespace-nowrap font-mono text-xs text-[var(--color-foreground-secondary)]">
-          {new Date(row.original.created_at).toLocaleString()}
+          {formatDatetime(row.original.created_at)}
         </span>
       ),
     });
