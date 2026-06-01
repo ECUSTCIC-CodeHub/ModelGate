@@ -24,10 +24,6 @@ export async function GET(request: Request) {
     )
     .all(guard.auth.user.id) as { key: string; [k: string]: unknown }[];
 
-  for (const row of rows) {
-    row.key = row.key.slice(0, 10) + "..." + row.key.slice(-4);
-  }
-
   return jsonOk({ data: rows });
 }
 

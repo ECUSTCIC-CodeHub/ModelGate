@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Copy } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { SectionTitle } from "@/components/dashboard/section-title";
@@ -35,6 +36,10 @@ type KeyRow = {
     enabled: number;
     created_at: string;
 };
+
+function maskKey(key: string) {
+    return key.length > 14 ? `${key.slice(0, 10)}...${key.slice(-4)}` : `${key.slice(0, 4)}...`;
+}
 
 export default function ConsoleKeysPage() {
     const router = useRouter();
@@ -224,7 +229,19 @@ export default function ConsoleKeysPage() {
                                                         </span>
                                                     )}
                                                 </TableCell>
-                                                <TableCell className="max-w-[320px] font-mono text-xs md:text-sm">{row.key}</TableCell>
+                                                <TableCell className="max-w-[320px]">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="font-mono text-xs md:text-sm">{maskKey(row.key)}</span>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            className="h-6 w-6 px-0"
+                                                            onClick={() => copyKey(row.key)}
+                                                        >
+                                                            <Copy className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </div>
+                                                </TableCell>
                                                 <TableCell>{formatNumber(row.used_requests)}</TableCell>
                                                 <TableCell>{formatNumber(row.used_tokens)}</TableCell>
                                                 <TableCell>
