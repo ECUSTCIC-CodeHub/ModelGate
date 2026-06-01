@@ -90,7 +90,7 @@ export function OidcSettingsCard({
               value={oidcIssuerUrl}
               onChange={(e) => setOidcIssuerUrl(e.target.value)}
             />
-            <p className="text-xs text-[var(--color-foreground-muted)]">OIDC 提供商的 Issuer 地址，需支持 .well-known/openid-configuration</p>
+            <p className="text-xs text-[var(--color-foreground-muted)]">OIDC 提供商的 Issuer 地址。支持填前缀（如 https://accounts.example.com）或完整 Discovery URL（如 https://accounts.example.com/.well-known/openid-configuration）</p>
           </div>
           <div className="space-y-2">
             <Label>Client ID</Label>

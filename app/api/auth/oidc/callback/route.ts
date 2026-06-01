@@ -14,6 +14,7 @@ import {
   resolveGroupFromClaims,
   resolveRedirectUri,
   getPublicOrigin,
+  normalizeOidcIssuerUrl,
   type OidcUserInfo,
 } from "@/lib/auth/oidc";
 import { randomBytes } from "node:crypto";
@@ -133,7 +134,7 @@ export async function GET(request: Request) {
     return redirectWithError(origin, "用户信息获取失败", isBind);
   }
 
-  const issuer = config.issuerUrl.replace(/\/+$/, "");
+  const issuer = normalizeOidcIssuerUrl(config.issuerUrl);
   const clearStateCookie = (res: NextResponse) => {
     res.cookies.set("oidc-state", "", { httpOnly: true, sameSite: "lax", secure: false, path: "/", maxAge: 0 });
     return res;
