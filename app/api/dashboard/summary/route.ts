@@ -170,11 +170,28 @@ export async function GET(request: Request) {
   const successRateBase = Math.max(0, (summary.total_requests ?? 0) - (summary.rate_limited_requests ?? 0));
   const successCount = Math.max(0, successRateBase - ((summary.failed_requests ?? 0) - (summary.rate_limited_requests ?? 0)));
 
+  const recentFailed = isAdmin
+    ? ((gatewayDb
+        .prepare(
+          `SELECT COALESCE(SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END), 0) AS recent_failed_requests
+           FROM logs
+           WHERE created_at >= datetime('now', '-30 days')`,
+        )
+        .get() as { recent_failed_requests: number }).recent_failed_requests ?? 0)
+    : ((gatewayDb
+        .prepare(
+          `SELECT COALESCE(SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END), 0) AS recent_failed_requests
+           FROM logs
+           WHERE user_id = ? AND created_at >= datetime('now', '-30 days')`,
+        )
+        .get(guard.auth.user.id) as { recent_failed_requests: number }).recent_failed_requests ?? 0);
+
   return jsonOk({
     data: {
       total_requests: summary.total_requests ?? 0,
       total_tokens: summary.total_tokens ?? 0,
       failed_requests: summary.failed_requests ?? 0,
+      recent_failed_requests: recentFailed,
       total_keys: keyData.total_keys ?? 0,
       active_users: activeUsers,
       avg_latency_ms: summary.avg_latency_ms ?? 0,
