@@ -16,7 +16,7 @@ function handleSuccess(data: Record<string, unknown>) {
   window.location.href = role === "admin" ? "/dashboard" : "/dashboard/keys";
 }
 
-export function BindForm() {
+export function BindForm({ allowCreate }: { allowCreate: boolean }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loadingLink, setLoadingLink] = useState(false);
@@ -72,27 +72,31 @@ export function BindForm() {
           <p className="text-sm text-[var(--color-foreground-muted)]">OIDC 身份验证成功，请选择以下方式继续</p>
         </div>
 
+        {allowCreate ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>快速注册</CardTitle>
+              <CardDescription>使用 OIDC 身份信息自动创建新账号</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button className="w-full" onClick={onCreate} disabled={loading}>
+                {loadingCreate ? "创建中..." : "一键创建账号"}
+              </Button>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {allowCreate ? (
+          <div className="flex items-center gap-3 px-2">
+            <div className="h-px flex-1 bg-[var(--color-border)]" />
+            <span className="text-xs text-[var(--color-foreground-muted)]">或</span>
+            <div className="h-px flex-1 bg-[var(--color-border)]" />
+          </div>
+        ) : null}
+
         <Card>
           <CardHeader>
-            <CardTitle>快速注册</CardTitle>
-            <CardDescription>使用 OIDC 身份信息自动创建新账号</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button className="w-full" onClick={onCreate} disabled={loading}>
-              {loadingCreate ? "创建中..." : "一键创建账号"}
-            </Button>
-          </CardContent>
-        </Card>
-
-        <div className="flex items-center gap-3 px-2">
-          <div className="h-px flex-1 bg-[var(--color-border)]" />
-          <span className="text-xs text-[var(--color-foreground-muted)]">或</span>
-          <div className="h-px flex-1 bg-[var(--color-border)]" />
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>绑定已有账号</CardTitle>
+            <CardTitle>{allowCreate ? "绑定已有账号" : "绑定账号"}</CardTitle>
             <CardDescription>输入已有账号的用户名和密码，将 OIDC 身份关联到该账号</CardDescription>
           </CardHeader>
           <CardContent>
@@ -120,7 +124,7 @@ export function BindForm() {
                   disabled={loading}
                 />
               </div>
-              <Button type="submit" variant="outline" className="w-full" disabled={loading}>
+              <Button type="submit" variant={allowCreate ? "outline" : "default"} className="w-full" disabled={loading}>
                 {loadingLink ? "绑定中..." : "绑定账号"}
               </Button>
             </form>
