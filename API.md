@@ -850,7 +850,7 @@ email matches ".*@company\\.com"
 | name | string | 是 | | 渠道名称 |
 | base_url | string | 是 | | 上游 API 地址 |
 | api_key | string | 是 | | 上游 API Key |
-| supported_protocols | string[] | 否 | ["chat_completions"] | 支持的协议：`chat_completions` / `anthropic_messages` / `responses` / `embeddings` / `images` |
+| supported_protocols | string[] | 否 | ["chat_completions"] | 支持的协议：`chat_completions` / `anthropic_messages` / `responses` / `embeddings` / `images`。各协议对应的网关端点：`chat_completions` → `/api/v1/chat/completions`，`anthropic_messages` → `/api/v1/messages`，`responses` → `/api/v1/responses`，`embeddings` → `/api/v1/embeddings`，`images` → `/api/v1/images/generations` + `/api/v1/images/edits` |
 | weight | int | 否 | 1 | 路由权重 |
 | max_concurrency | int | 否 | 64 | 最大并发数 |
 | timeout | int | 否 | 60 | 超时时间（秒） |
@@ -964,7 +964,7 @@ email matches ".*@company\\.com"
 | alias | string | 是 | | 客户端调用时的模型名 |
 | real_model | string | 是 | | 上游真实模型名 |
 | channel_id | int | 是 | | 所属渠道 ID |
-| upstream_protocol | enum | 否 | chat_completions | `chat_completions` / `anthropic_messages` / `responses` / `embeddings` / `images` |
+| upstream_protocol | enum | 否 | chat_completions | `chat_completions` / `anthropic_messages` / `responses` / `embeddings` / `images`。各协议对应的上游路径：`chat_completions` → `/chat/completions`，`anthropic_messages` → `/messages`，`responses` → `/responses`，`embeddings` → `/embeddings`，`images` → `/images/generations`（`/images/edits` 由 multipart 网关单独处理） |
 | is_public | bool | 否 | true | false 时仅白名单用户可访问 |
 | weight | int | 否 | 1 | 路由权重（越大流量越多） |
 | max_concurrency | int | 否 | 0 | 模型级最大并发数，0 时继承渠道配置；实际生效值为 min(模型并发, 渠道并发) |
