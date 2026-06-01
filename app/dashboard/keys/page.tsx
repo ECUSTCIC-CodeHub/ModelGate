@@ -117,12 +117,12 @@ export default function ConsoleKeysPage() {
         });
         const data = await response.json().catch(() => null);
         if (response.ok) {
-            toast({ variant: "success", description: "备注已更新。" });
+            toast({ variant: "success", description: "名称已更新。" });
             setEditingNameId(null);
             await load();
             return;
         }
-        toast({ variant: "error", description: getApiMessage(data, "更新备注失败。") });
+        toast({ variant: "error", description: getApiMessage(data, "更新名称失败。") });
     }
 
     async function toggleKey(id: number, enabled: boolean) {
@@ -172,7 +172,7 @@ export default function ConsoleKeysPage() {
                                 <div className="flex items-center gap-2">
                                     <Input
                                         className="w-36"
-                                        placeholder="备注名（可选）"
+                                        placeholder="名称（可选）"
                                         value={newKeyName}
                                         onChange={(e) => setNewKeyName(e.target.value)}
                                         maxLength={64}
@@ -190,8 +190,7 @@ export default function ConsoleKeysPage() {
                                 <Table className="min-w-[820px]">
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead>序号</TableHead>
-                                            <TableHead>备注</TableHead>
+                                            <TableHead>名称</TableHead>
                                             <TableHead>Key</TableHead>
                                             <TableHead>累计请求</TableHead>
                                             <TableHead>累计 Token</TableHead>
@@ -202,7 +201,6 @@ export default function ConsoleKeysPage() {
                                     <TableBody>
                                         {keys.map((row, index) => (
                                             <TableRow key={row.id}>
-                                                <TableCell>{index + 1}</TableCell>
                                                 <TableCell className="max-w-[160px]">
                                                     {editingNameId === row.id ? (
                                                         <Input
@@ -222,7 +220,7 @@ export default function ConsoleKeysPage() {
                                                             className="cursor-pointer text-sm text-[var(--color-foreground-secondary)] hover:text-[var(--color-accent)]"
                                                             onClick={() => { setEditingNameId(row.id); setEditingNameValue(row.name || ""); }}
                                                         >
-                                                            {row.name || <span className="text-[var(--color-foreground-subtle)]">点击添加备注</span>}
+                                                            {row.name || <span className="text-[var(--color-foreground-subtle)]">点击添加名称</span>}
                                                         </span>
                                                     )}
                                                 </TableCell>
