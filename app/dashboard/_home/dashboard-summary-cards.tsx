@@ -68,8 +68,8 @@ export function DashboardSummaryCards({ loading, role, summary }: DashboardSumma
     },
     {
       label: "失败请求",
-      value: loading ? "-" : formatNumber(summary?.failed_requests),
-      hint: "便于快速定位异常时段",
+      value: loading ? "-" : formatNumber(summary?.recent_failed_requests),
+      hint: "近 30 天失败请求",
       icon: Activity,
     },
   ];

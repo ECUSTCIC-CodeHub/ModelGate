@@ -31,6 +31,7 @@ export type Summary = {
   total_requests: number;
   total_tokens: number;
   failed_requests: number;
+  recent_failed_requests: number;
   total_keys: number;
   active_users: number;
   avg_latency_ms: number;
