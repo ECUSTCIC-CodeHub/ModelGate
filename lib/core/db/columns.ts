@@ -62,6 +62,8 @@ export function ensureModernColumns(db: BetterSqlite3.Database): ColumnMigration
   ensureColumn(db, "logs", "user_agent", "user_agent TEXT");
   ensureColumn(db, "users", "webhook_role", "webhook_role TEXT DEFAULT ''");
   ensureColumn(db, "users", "webhook_tags", "webhook_tags TEXT DEFAULT '[]'");
+  ensureColumn(db, "users", "totp_secret", "totp_secret TEXT");
+  ensureColumn(db, "users", "totp_enabled", "totp_enabled INTEGER DEFAULT 0");
 
   return {
     addedKeyUsedTokens,
