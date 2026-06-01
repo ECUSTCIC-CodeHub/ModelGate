@@ -48,7 +48,7 @@ const enabledModelAliasStmt = gatewayDb.prepare(
 );
 
 const accessibleModelRowsStmt = gatewayDb.prepare(
-  `SELECT m.alias, m.is_public, m.created_at, c.id AS channel_id
+  `SELECT m.alias, m.is_public, m.created_at, m.token_multiplier, m.request_multiplier, c.id AS channel_id
    FROM models m
    JOIN channels c ON c.id = m.channel_id
    WHERE m.enabled = 1
@@ -97,16 +97,16 @@ export function listAccessibleModelAliases(user: Pick<DbUser, "role" | "group_id
 }
 
 export function listAccessibleModels(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">) {
-  const rows = accessibleModelRowsStmt.all() as Array<{ alias: string; is_public: number; created_at: string | null; channel_id: number }>;
+  const rows = accessibleModelRowsStmt.all() as Array<{ alias: string; is_public: number; created_at: string | null; token_multiplier: number; request_multiplier: number; channel_id: number }>;
   const allowedChannelIds = getUserAllowedChannelIds(user);
   const allowedChannelSet = allowedChannelIds ? new Set(allowedChannelIds) : null;
-  const visible = new Map<string, { alias: string; created_at: string | null }>();
+  const visible = new Map<string, { alias: string; created_at: string | null; token_multiplier: number; request_multiplier: number }>();
 
   if (user.role === "admin") {
     for (const row of rows) {
       const current = visible.get(row.alias);
       if (!current || (row.created_at ?? "") > (current.created_at ?? "")) {
-        visible.set(row.alias, { alias: row.alias, created_at: row.created_at });
+        visible.set(row.alias, { alias: row.alias, created_at: row.created_at, token_multiplier: row.token_multiplier ?? 1, request_multiplier: row.request_multiplier ?? 1 });
       }
     }
     return [...visible.values()];
@@ -118,7 +118,7 @@ export function listAccessibleModels(user: Pick<DbUser, "role" | "group_id" | "a
     if (row.is_public !== 1 && !allowed.has(row.alias)) continue;
     const current = visible.get(row.alias);
     if (!current || (row.created_at ?? "") > (current.created_at ?? "")) {
-      visible.set(row.alias, { alias: row.alias, created_at: row.created_at });
+      visible.set(row.alias, { alias: row.alias, created_at: row.created_at, token_multiplier: row.token_multiplier ?? 1, request_multiplier: row.request_multiplier ?? 1 });
     }
   }
   return [...visible.values()];

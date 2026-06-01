@@ -17,6 +17,8 @@ import { authedFetch, ensureLoggedIn, getCachedProfile } from "@/lib/auth/client
 type ModelItem = {
   id: string;
   object: "model";
+  token_multiplier: number;
+  request_multiplier: number;
 };
 
 const ENDPOINTS = [
@@ -25,6 +27,8 @@ const ENDPOINTS = [
   { label: "Responses (OpenAI)", path: "/api/v1/responses", method: "POST" },
   { label: "Messages (Anthropic Claude)", path: "/api/v1/messages", method: "POST" },
   { label: "Embeddings (OpenAI)", path: "/api/v1/embeddings", method: "POST" },
+  { label: "Images Generations (OpenAI)", path: "/api/v1/images/generations", method: "POST" },
+  { label: "Images Edits (OpenAI)", path: "/api/v1/images/edits", method: "POST" },
 ] as const;
 
 export default function AvailableModelsPage() {
@@ -82,7 +86,7 @@ export default function AvailableModelsPage() {
           <CardHeader>
             <SectionTitle
               title="接入配置"
-              description="将 Base URL 填入客户端配置，使用 API Key 和模型 ID 即可调用；网关同时兼容下方五种协议端点。"
+              description="将 Base URL 填入客户端配置，使用 API Key 和模型 ID 即可调用；网关同时兼容下方协议端点。"
             />
           </CardHeader>
           <CardContent className="space-y-5">
@@ -138,7 +142,7 @@ export default function AvailableModelsPage() {
                   </TableBody>
                 </Table>
               </div>
-              <p className="text-xs text-[var(--color-foreground-muted)]">五种协议共用同一 API Key；模型 ID 填写对应协议可用的模型映射。</p>
+              <p className="text-xs text-[var(--color-foreground-muted)]">协议端点共用同一 API Key；模型 ID 填写对应协议可用的模型映射。</p>
             </div>
           </CardContent>
         </Card>
@@ -158,6 +162,8 @@ export default function AvailableModelsPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>模型 ID</TableHead>
+                      <TableHead className="text-center">Token 倍率</TableHead>
+                      <TableHead className="text-center">请求倍率</TableHead>
                       <TableHead className="w-16" />
                     </TableRow>
                   </TableHeader>
@@ -165,6 +171,16 @@ export default function AvailableModelsPage() {
                     {rows.map((row) => (
                       <TableRow key={row.id}>
                         <TableCell className="font-mono text-sm">{row.id}</TableCell>
+                        <TableCell className="text-center">
+                          <span className={`font-mono text-sm ${row.token_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}`}>
+                            {row.token_multiplier}x
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className={`font-mono text-sm ${row.request_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}`}>
+                            {row.request_multiplier}x
+                          </span>
+                        </TableCell>
                         <TableCell>
                           <Button size="sm" variant="ghost" onClick={() => copyText(row.id)}>
                             <Copy className="h-3.5 w-3.5" />

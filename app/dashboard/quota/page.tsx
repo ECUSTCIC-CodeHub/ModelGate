@@ -195,57 +195,6 @@ function UserQuotaContent({ quota, modelQuotas }: { quota: QuotaData | null; mod
           </CardContent>
         </Card>
       ) : null}
-
-      {modelQuotas.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <SectionTitle title="模型倍率" description="各模型的 Token 和请求计费倍率，实际扣量 = 使用量 × 倍率。" />
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-              <Table className="min-w-[500px]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>模型</TableHead>
-                    <TableHead>配额模式</TableHead>
-                    <TableHead>Token 倍率</TableHead>
-                    <TableHead>请求倍率</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {modelQuotas.map((m) => (
-                    <TableRow key={`${m.alias}:${m.real_model}`}>
-                      <TableCell>
-                        <div>
-                          <span className="font-mono text-sm">{m.alias}</span>
-                          {m.alias !== m.real_model ? (
-                            <span className="ml-2 text-xs text-[var(--color-foreground-muted)]">({m.real_model})</span>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs">
-                          {m.quota_mode === "independent" ? "独立配额" : m.quota_mode === "bypass_group" ? "绕过用户组" : "跟随用户组"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <span className={`font-mono text-sm ${m.token_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground)]"}`}>
-                          {m.token_multiplier}x
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <span className={`font-mono text-sm ${m.request_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground)]"}`}>
-                          {m.request_multiplier}x
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
     </div>
   );
 }
