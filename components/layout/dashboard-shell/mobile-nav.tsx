@@ -23,6 +23,7 @@ type MobileNavSheetProps = {
   pathname: string;
   profile: ProfileBrief | null;
   oidcAvailable: boolean;
+  passwordLoginEnabled: boolean;
   theme: string;
   onToggleTheme: () => void;
   onChangePassword: () => void;
@@ -40,6 +41,7 @@ export function MobileNavSheet({
   pathname,
   profile,
   oidcAvailable,
+  passwordLoginEnabled,
   theme,
   onToggleTheme,
   onChangePassword,
@@ -94,16 +96,18 @@ export function MobileNavSheet({
               {themeLabel}
             </Button>
             {profile ? <MobileProfileSummary profile={profile} /> : null}
-            <Button
-              variant="outline"
-              className="w-full justify-between"
-              onClick={() => {
-                close();
-                onChangePassword();
-              }}
-            >
-              修改密码
-            </Button>
+            {passwordLoginEnabled ? (
+              <Button
+                variant="outline"
+                className="w-full justify-between"
+                onClick={() => {
+                  close();
+                  onChangePassword();
+                }}
+              >
+                修改密码
+              </Button>
+            ) : null}
             <Button
               variant="outline"
               className="w-full justify-between"

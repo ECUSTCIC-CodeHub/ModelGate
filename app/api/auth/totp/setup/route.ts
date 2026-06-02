@@ -1,6 +1,5 @@
 export const dynamic = "force-dynamic";
 
-import { z } from "zod";
 import QRCode from "qrcode";
 import { ensureWebUser } from "@/lib/auth/guards";
 import { jsonOk, jsonError } from "@/lib/core/http";

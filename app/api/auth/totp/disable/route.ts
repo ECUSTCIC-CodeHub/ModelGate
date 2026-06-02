@@ -5,9 +5,12 @@ import { ensureWebUser } from "@/lib/auth/guards";
 import { jsonOk, jsonError } from "@/lib/core/http";
 import { gatewayDb } from "@/lib/core/db";
 import { comparePassword } from "@/lib/auth/auth";
+import { getAuthStatus } from "@/lib/auth/auth-status";
+import { verifyTotpCode } from "@/lib/auth/totp";
 
 const schema = z.object({
-  password: z.string().min(1),
+  password: z.string().min(1).optional(),
+  code: z.string().length(6).optional(),
 });
 
 export async function POST(request: Request) {
@@ -18,19 +21,25 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => null);
   const parsed = schema.safeParse(body);
-  if (!parsed.success) return jsonError("请输入当前密码", 400);
+  if (!parsed.success) return jsonError("请求参数错误", 400);
 
   const row = gatewayDb
-    .prepare("SELECT password_hash, totp_enabled FROM users WHERE id = ? AND deleted_at IS NULL")
-    .get(user.id) as { password_hash: string; totp_enabled: number } | undefined;
+    .prepare("SELECT password_hash, totp_secret, totp_enabled FROM users WHERE id = ? AND deleted_at IS NULL")
+    .get(user.id) as { password_hash: string; totp_secret: string | null; totp_enabled: number } | undefined;
 
   if (!row) return jsonError("用户不存在", 404);
-
-  const ok = await comparePassword(parsed.data.password, row.password_hash);
-  if (!ok) return jsonError("密码错误", 401);
-
-  if (row.totp_enabled !== 1) {
+  if (row.totp_enabled !== 1 || !row.totp_secret) {
     return jsonError("TOTP 未启用", 400);
+  }
+
+  if (getAuthStatus().password_login_enabled) {
+    if (!parsed.data.password) return jsonError("请输入当前密码", 400);
+    const ok = await comparePassword(parsed.data.password, row.password_hash);
+    if (!ok) return jsonError("密码错误", 401);
+  } else {
+    if (!parsed.data.code) return jsonError("请输入 6 位验证码", 400);
+    const valid = verifyTotpCode(row.totp_secret, parsed.data.code, user.id);
+    if (!valid) return jsonError("验证码错误", 401);
   }
 
   gatewayDb

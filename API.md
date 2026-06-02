@@ -203,15 +203,20 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 
 ### POST /api/auth/totp/disable
 
-解绑 TOTP，需验证当前密码。
+解绑 TOTP。密码登录开启时需验证当前密码；仅 OIDC 登录时需验证当前 TOTP 验证码。
 
 **认证:** 用户
 
 **请求体:**
+
+密码登录开启：
 ```json
-{
-  "password": "当前密码"
-}
+{ "password": "当前密码" }
+```
+
+仅 OIDC 登录：
+```json
+{ "code": "123456" }
 ```
 
 **响应 (200):**
@@ -349,7 +354,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 
 ### POST /api/auth/change-password
 
-修改当前用户密码。
+修改当前用户密码。仅在密码登录开启时可用；仅 OIDC 登录时返回 400。
 
 **认证:** 用户
 
@@ -1302,7 +1307,7 @@ email matches ".*@company\\.com"
 
 ### PUT /api/dashboard/profile/password
 
-修改密码（等同于 `/api/auth/change-password`）。
+修改密码（等同于 `/api/auth/change-password`）。仅在密码登录开启时可用；仅 OIDC 登录时返回 400。
 
 **认证:** 用户
 

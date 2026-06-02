@@ -19,6 +19,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
           pathname={shell.pathname}
           profile={shell.profileBrief}
           oidcAvailable={shell.oidcAvailable}
+          passwordLoginEnabled={shell.passwordLoginEnabled}
           onChangePassword={shell.openPasswordDialog}
           onOidcBind={shell.onOidcBind}
           onOidcSync={shell.onOidcSync}
@@ -48,6 +49,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
         profile={shell.profileBrief}
         theme={shell.theme}
         oidcAvailable={shell.oidcAvailable}
+        passwordLoginEnabled={shell.passwordLoginEnabled}
         onToggleTheme={shell.toggleTheme}
         onChangePassword={shell.openPasswordDialog}
         onOidcBind={shell.onOidcBind}
@@ -71,6 +73,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
         open={shell.totpDialogOpen}
         onOpenChange={shell.setTotpDialogOpen}
         totpEnabled={shell.profileBrief?.totp_enabled === 1}
+        passwordLoginEnabled={shell.passwordLoginEnabled}
         onStatusChange={shell.refreshProfile}
       />
     </main>

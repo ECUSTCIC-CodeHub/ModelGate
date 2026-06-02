@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 type ProfileActionsProps = {
   oidcAvailable: boolean;
   oidcBound: boolean;
+  passwordLoginEnabled: boolean;
   totpEnabled: boolean;
   onChangePassword: () => void;
   onOidcBind: () => void;
@@ -42,6 +43,7 @@ function ActionButton({
 export function ProfileActions({
   oidcAvailable,
   oidcBound,
+  passwordLoginEnabled,
   totpEnabled,
   onChangePassword,
   onOidcBind,
@@ -52,10 +54,12 @@ export function ProfileActions({
 }: ProfileActionsProps) {
   return (
     <div className="space-y-1">
-      <ActionButton onClick={onChangePassword}>
-        <LockKeyhole className="h-4 w-4 shrink-0" />
-        <span className="flex-1 text-left">修改密码</span>
-      </ActionButton>
+      {passwordLoginEnabled ? (
+        <ActionButton onClick={onChangePassword}>
+          <LockKeyhole className="h-4 w-4 shrink-0" />
+          <span className="flex-1 text-left">修改密码</span>
+        </ActionButton>
+      ) : null}
       <ActionButton onClick={onTotpManage}>
         {totpEnabled ? <ShieldCheck className="h-4 w-4 shrink-0" /> : <Shield className="h-4 w-4 shrink-0" />}
         <span className="flex-1 text-left">{totpEnabled ? "双因素认证" : "双因素认证"}</span>

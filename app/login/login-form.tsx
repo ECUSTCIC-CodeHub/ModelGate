@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, useState } from "react";
+import { TotpCodeInput } from "@/components/auth/totp-code-input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,26 +18,19 @@ export function LoginForm({ status }: { status: AuthStatus }) {
   const searchParams = useSearchParams();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [totpRequired, setTotpRequired] = useState(false);
-  const [pendingToken, setPendingToken] = useState("");
-  const [totpCode, setTotpCode] = useState("");
   const { toast } = useToast();
 
   const oidcError = searchParams.get("oidc_error");
   const totpRequiredParam = searchParams.get("totp_required");
   const pendingTokenParam = searchParams.get("pending_token");
+  const [loading, setLoading] = useState(false);
+  const [totpRequired, setTotpRequired] = useState(() => totpRequiredParam === "1" && Boolean(pendingTokenParam));
+  const [pendingToken, setPendingToken] = useState(() => pendingTokenParam ?? "");
+  const [totpCode, setTotpCode] = useState("");
 
   const passwordEnabled = status.password_login_enabled;
   const oidcEnabled = status.oidc_enabled;
   const registrationEnabled = status.registration_enabled;
-
-  useState(() => {
-    if (totpRequiredParam === "1" && pendingTokenParam) {
-      setTotpRequired(true);
-      setPendingToken(pendingTokenParam);
-    }
-  });
 
   function handleLoginSuccess(data: { access_token: string; refresh_token: string; user: { role: string } }) {
     setSession({ accessToken: data.access_token, refreshToken: data.refresh_token });
@@ -113,24 +107,21 @@ export function LoginForm({ status }: { status: AuthStatus }) {
         <div className="w-full max-w-sm space-y-6">
           <div className="space-y-2 text-center">
             <h1 className="font-mono text-2xl font-semibold tracking-tight text-[var(--color-foreground)]">ModelGate</h1>
-            <p className="text-sm text-[var(--color-foreground-muted)]">双因素认证验证</p>
+            <p className="text-sm text-[var(--color-foreground-muted)]">二次验证</p>
           </div>
           <Card>
             <CardHeader>
               <CardTitle>输入验证码</CardTitle>
-              <CardDescription>请打开验证器 APP，输入动态验证码完成登录。</CardDescription>
+              <CardDescription>输入验证器中的 6 位验证码。</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={onTotpSubmit} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="totp_code">验证码</Label>
-                  <Input
+                  <TotpCodeInput
                     id="totp_code"
-                    pattern="[0-9]{6}"
-                    maxLength={6}
-                    placeholder="000000"
                     value={totpCode}
-                    onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    onChange={setTotpCode}
                     required
                     autoFocus
                   />

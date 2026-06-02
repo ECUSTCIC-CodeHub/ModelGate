@@ -1,8 +1,7 @@
 export const dynamic = "force-dynamic";
 
-import { z } from "zod";
 import { ensureWebUser } from "@/lib/auth/guards";
-import { jsonOk, jsonError } from "@/lib/core/http";
+import { jsonOk } from "@/lib/core/http";
 import { gatewayDb } from "@/lib/core/db";
 
 export async function GET(request: Request) {

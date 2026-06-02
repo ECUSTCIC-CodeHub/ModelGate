@@ -1,6 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
+import { TotpCodeInput } from "@/components/auth/totp-code-input";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,10 +24,17 @@ type TotpDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   totpEnabled: boolean;
+  passwordLoginEnabled: boolean;
   onStatusChange: () => void;
 };
 
-export function TotpDialog({ open, onOpenChange, totpEnabled, onStatusChange }: TotpDialogProps) {
+export function TotpDialog({
+  open,
+  onOpenChange,
+  totpEnabled,
+  passwordLoginEnabled,
+  onStatusChange,
+}: TotpDialogProps) {
   const { toast } = useToast();
   const [step, setStep] = useState<TotpSetupStep>("idle");
   const [loading, setLoading] = useState(false);
@@ -34,6 +43,7 @@ export function TotpDialog({ open, onOpenChange, totpEnabled, onStatusChange }: 
   const [otpUri, setOtpUri] = useState("");
   const [code, setCode] = useState("");
   const [disablePassword, setDisablePassword] = useState("");
+  const [disableCode, setDisableCode] = useState("");
 
   function reset() {
     setStep("idle");
@@ -42,6 +52,7 @@ export function TotpDialog({ open, onOpenChange, totpEnabled, onStatusChange }: 
     setOtpUri("");
     setCode("");
     setDisablePassword("");
+    setDisableCode("");
     setLoading(false);
   }
 
@@ -89,15 +100,19 @@ export function TotpDialog({ open, onOpenChange, totpEnabled, onStatusChange }: 
   }
 
   async function onDisable() {
-    if (!disablePassword) {
+    if (passwordLoginEnabled && !disablePassword) {
       toast({ variant: "error", description: "请输入当前密码。" });
+      return;
+    }
+    if (!passwordLoginEnabled && disableCode.length !== 6) {
+      toast({ variant: "error", description: "请输入 6 位验证码。" });
       return;
     }
     setLoading(true);
     try {
       const response = await authedFetch("/api/auth/totp/disable", {
         method: "POST",
-        body: JSON.stringify({ password: disablePassword }),
+        body: JSON.stringify(passwordLoginEnabled ? { password: disablePassword } : { code: disableCode }),
       });
       const data = await response.json().catch(() => null);
       if (!response.ok) {
@@ -124,32 +139,51 @@ export function TotpDialog({ open, onOpenChange, totpEnabled, onStatusChange }: 
         {totpEnabled ? (
           <>
             <DialogHeader>
-              <DialogTitle>解绑双因素认证</DialogTitle>
-              <DialogDescription>解绑后登录将不再需要验证码，请确认操作并输入当前密码。</DialogDescription>
+              <DialogTitle>关闭 2FA</DialogTitle>
+              <DialogDescription>
+                {passwordLoginEnabled
+                  ? "输入当前密码后关闭登录验证码。"
+                  : "输入当前验证码后关闭 2FA。"}
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="totp_disable_password">当前密码</Label>
-                <Input
-                  id="totp_disable_password"
-                  type="password"
-                  value={disablePassword}
-                  onChange={(e) => setDisablePassword(e.target.value)}
-                />
-              </div>
+              {passwordLoginEnabled ? (
+                <div className="space-y-2">
+                  <Label htmlFor="totp_disable_password">当前密码</Label>
+                  <Input
+                    id="totp_disable_password"
+                    type="password"
+                    value={disablePassword}
+                    onChange={(e) => setDisablePassword(e.target.value)}
+                  />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="totp_disable_code">当前验证码</Label>
+                  <TotpCodeInput
+                    id="totp_disable_code"
+                    value={disableCode}
+                    onChange={setDisableCode}
+                  />
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => handleOpenChange(false)}>取消</Button>
-              <Button variant="destructive" onClick={onDisable} disabled={loading}>
-                {loading ? "解绑中..." : "确认解绑"}
+              <Button
+                variant="destructive"
+                onClick={onDisable}
+                disabled={loading || (passwordLoginEnabled ? !disablePassword : disableCode.length !== 6)}
+              >
+                {loading ? "关闭中..." : "关闭"}
               </Button>
             </DialogFooter>
           </>
         ) : step === "idle" ? (
           <>
             <DialogHeader>
-              <DialogTitle>启用双因素认证</DialogTitle>
-              <DialogDescription>使用验证器 APP 扫描二维码，登录时需额外输入动态验证码。</DialogDescription>
+              <DialogTitle>启用 2FA</DialogTitle>
+              <DialogDescription>绑定验证器后，登录需输入动态验证码。</DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button variant="outline" onClick={() => handleOpenChange(false)}>取消</Button>
@@ -162,11 +196,18 @@ export function TotpDialog({ open, onOpenChange, totpEnabled, onStatusChange }: 
           <>
             <DialogHeader>
               <DialogTitle>扫描二维码</DialogTitle>
-              <DialogDescription>使用验证器 APP（如 Google Authenticator、Authy）扫描下方二维码。</DialogDescription>
+              <DialogDescription>用验证器扫描二维码，或手动输入密钥。</DialogDescription>
             </DialogHeader>
             <div className="flex flex-col items-center gap-4">
               {qrDataUrl ? (
-                <img src={qrDataUrl} alt="TOTP QR Code" className="h-52 w-52 rounded-lg border border-[var(--color-border)]" />
+                <Image
+                  src={qrDataUrl}
+                  alt="TOTP QR Code"
+                  width={208}
+                  height={208}
+                  unoptimized
+                  className="h-52 w-52 rounded-lg border border-[var(--color-border)]"
+                />
               ) : null}
               <div className="w-full space-y-2">
                 <Label>手动输入密钥</Label>
@@ -195,26 +236,23 @@ export function TotpDialog({ open, onOpenChange, totpEnabled, onStatusChange }: 
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle>验证绑定</DialogTitle>
-              <DialogDescription>输入验证器 APP 显示的 6 位数字验证码，确认绑定生效。</DialogDescription>
+              <DialogTitle>验证 2FA</DialogTitle>
+              <DialogDescription>输入验证器中的 6 位验证码。</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="totp_verify_code">验证码</Label>
-                <Input
+                <TotpCodeInput
                   id="totp_verify_code"
-                  pattern="[0-9]{6}"
-                  maxLength={6}
-                  placeholder="000000"
                   value={code}
-                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  onChange={setCode}
                 />
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setStep("setup")}>上一步</Button>
               <Button onClick={onVerifySetup} disabled={loading || code.length !== 6}>
-                {loading ? "验证中..." : "确认绑定"}
+                {loading ? "验证中..." : "启用"}
               </Button>
             </DialogFooter>
           </>
