@@ -38,16 +38,22 @@ export function TotpCodeInput({
       <input
         ref={inputRef}
         id={id}
+        name={id}
+        type="text"
         value={value}
         onChange={(event) => onChange(normalizeCode(event.target.value))}
         inputMode="numeric"
         autoComplete="one-time-code"
+        autoCorrect="off"
+        autoCapitalize="none"
+        spellCheck={false}
         pattern="[0-9]{6}"
         maxLength={6}
         autoFocus={autoFocus}
         disabled={disabled}
         required={required}
-        className="sr-only"
+        aria-label="验证码"
+        className="absolute inset-0 z-10 h-full w-full cursor-text rounded-lg border-0 bg-transparent px-0 text-[16px] text-transparent caret-transparent opacity-[0.01] outline-none"
       />
       {cells.map((digit, index) => (
         <div
