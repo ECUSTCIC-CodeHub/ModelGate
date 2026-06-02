@@ -208,7 +208,7 @@ export default function ConsoleKeysPage() {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {keys.map((row, index) => (
+                                        {keys.map((row) => (
                                             <TableRow key={row.id}>
                                                 <TableCell className="max-w-[160px]">
                                                     {editingNameId === row.id ? (
