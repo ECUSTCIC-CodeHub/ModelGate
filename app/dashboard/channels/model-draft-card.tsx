@@ -79,7 +79,7 @@ export function ModelDraftCard({
                 ))}
               </SelectContent>
             </Select>
-            <div className={`grid gap-3 md:grid-cols-2${showAdvancedFields ? "" : " md:col-span-2"}`}>
+            <div className="grid gap-3 md:grid-cols-2">
               <Select value={item.is_public ? "1" : "0"} onValueChange={(value) => onUpdateDraft(index, { is_public: value === "1" })}>
                 <SelectTrigger>
                   <SelectValue />
