@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { applyAuthCookies, hashPassword, issueAuthTokens, requireWebAuthWithRefresh, signOidcPendingToken, OIDC_PENDING_COOKIE_NAME } from "@/lib/auth/auth";
+import { applyAuthCookies, hashPassword, issueAuthTokens, requireWebAuthWithRefresh, signOidcPendingToken, signTotpPendingToken, OIDC_PENDING_COOKIE_NAME } from "@/lib/auth/auth";
 import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { featureUnavailableMessage, isFeatureEnabled } from "@/lib/core/features";
 import {
@@ -261,6 +261,12 @@ export async function GET(request: Request) {
         .prepare("UPDATE users SET group_id = ? WHERE id = ?")
         .run(claimGroupId, user.id);
     }
+  }
+
+  if (user.totp_enabled === 1 && user.totp_secret) {
+    const pendingToken = signTotpPendingToken(user);
+    const res = NextResponse.redirect(`${origin}/login?totp_required=1&pending_token=${encodeURIComponent(pendingToken)}`, 302);
+    return clearStateCookie(res);
   }
 
   const tokens = issueAuthTokens(user);

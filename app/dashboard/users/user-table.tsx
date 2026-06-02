@@ -16,6 +16,7 @@ export function UserTable({
   onCreate,
   onEdit,
   onResetUsage,
+  onRevokeTotp,
   onRemove,
 }: {
   rows: UserRow[];
@@ -24,6 +25,7 @@ export function UserTable({
   onCreate: () => void;
   onEdit: (row: UserRow) => void;
   onResetUsage: (id: number, type: "all" | "total" | "period") => void;
+  onRevokeTotp: (id: number) => void;
   onRemove: (id: number) => void;
 }) {
   if (rows.length === 0) {
@@ -38,7 +40,7 @@ export function UserTable({
 
   return (
     <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-      <Table className={periodQuotaEnabled ? "min-w-[1620px] table-fixed" : "min-w-[1440px] table-fixed"}>
+      <Table className={periodQuotaEnabled ? "min-w-[1720px] table-fixed" : "min-w-[1540px] table-fixed"}>
         <TableHeader>
           <TableRow>
             <TableHead className="w-[180px]">用户名</TableHead>
@@ -49,7 +51,7 @@ export function UserTable({
             <TableHead className="w-[150px]">累计 请求/Token</TableHead>
             <TableHead className="w-[150px]">配额 请求/Token</TableHead>
             {periodQuotaEnabled ? <TableHead className="w-[180px]">周期配额</TableHead> : null}
-            <TableHead className="w-[260px] text-right">操作</TableHead>
+            <TableHead className="w-[360px] text-right">操作</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -68,6 +70,9 @@ export function UserTable({
                   </Badge>
                   {oidcFeatureEnabled && row.oidc_subject ? (
                     <Badge variant="outline" title={`${row.oidc_issuer}\n${row.oidc_subject}`}>OIDC</Badge>
+                  ) : null}
+                  {row.totp_enabled === 1 ? (
+                    <Badge variant="outline">TOTP</Badge>
                   ) : null}
                 </div>
               </TableCell>
@@ -120,6 +125,15 @@ export function UserTable({
               ) : null}
               <TableCell className="space-x-2 whitespace-nowrap text-right">
                 <Button size="sm" variant="outline" onClick={() => onEdit(row)}>编辑</Button>
+                {row.totp_enabled === 1 ? (
+                  <ConfirmDialog
+                    trigger={<Button size="sm" variant="outline">撤销 TOTP</Button>}
+                    title={`撤销用户 ${row.username} 的 TOTP？`}
+                    description="撤销后该用户下次登录无需验证码，可重新绑定。"
+                    confirmText="确认撤销"
+                    onConfirm={() => onRevokeTotp(row.id)}
+                  />
+                ) : null}
                 {periodQuotaEnabled ? (
                   <ConfirmDialog
                     trigger={<Button size="sm" variant="outline">重置用量</Button>}
