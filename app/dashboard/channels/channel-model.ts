@@ -50,6 +50,7 @@ export type Channel = {
   base_url: string;
   api_key: string;
   supported_protocols: string;
+  user_agent: string;
   enabled: number;
   weight: number;
   max_concurrency: number;
@@ -73,6 +74,7 @@ export type ChannelForm = {
   name: string;
   base_url: string;
   api_key: string;
+  user_agent: string;
   supported_protocols: Protocol[];
   weight: number;
   max_concurrency: number;
@@ -106,6 +108,7 @@ export const initialChannelForm: ChannelForm = {
   name: "",
   base_url: "",
   api_key: "",
+  user_agent: "",
   supported_protocols: ["chat_completions"],
   weight: 1,
   max_concurrency: 64,

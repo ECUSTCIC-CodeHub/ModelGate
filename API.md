@@ -869,6 +869,7 @@ email matches ".*@company\\.com"
       "base_url": "https://api.openai.com/v1",
       "api_key": "sk-...",
       "supported_protocols": "[\"chat_completions\"]",
+      "user_agent": "OpenAI/JS 6.39.0",
       "enabled": 1,
       "weight": 1,
       "max_concurrency": 64,
@@ -906,6 +907,7 @@ email matches ".*@company\\.com"
   "base_url": "https://api.openai.com/v1",
   "api_key": "sk-xxx",
   "supported_protocols": ["chat_completions"],
+  "user_agent": "OpenAI/JS 6.39.0",
   "weight": 1,
   "max_concurrency": 64,
   "timeout": 60,
@@ -927,6 +929,7 @@ email matches ".*@company\\.com"
 | base_url | string | 是 | | 上游 API 地址 |
 | api_key | string | 是 | | 上游 API Key |
 | supported_protocols | string[] | 否 | ["chat_completions"] | 支持的协议：`chat_completions` / `anthropic_messages` / `responses` / `embeddings` |
+| user_agent | string | 否 | "" | 渠道级上游 User-Agent，留空时透传客户端 UA 或使用协议默认值 |
 | weight | int | 否 | 1 | 路由权重 |
 | max_concurrency | int | 否 | 64 | 最大并发数 |
 | timeout | int | 否 | 60 | 超时时间（秒） |
@@ -982,9 +985,16 @@ email matches ".*@company\\.com"
 ```json
 {
   "base_url": "https://api.openai.com/v1",
-  "api_key": "sk-xxx"
+  "api_key": "sk-xxx",
+  "user_agent": "OpenAI/JS 6.39.0"
 }
 ```
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|:---|:---|:---|:---|:---|
+| base_url | string | 是 | | 上游 API 地址 |
+| api_key | string | 是 | | 上游 API Key |
+| user_agent | string | 否 | "" | 探测模型列表时使用的 User-Agent |
 
 **响应 (200):**
 ```json
@@ -1340,7 +1350,7 @@ email matches ".*@company\\.com"
 
 **CORS:** 默认关闭。管理员在系统设置中开启 `cors_enabled` 后，所有 `/api/v1/*` 和 `/api/ollama/*` 端点会返回 `Access-Control-Allow-Origin: *` 并响应 `OPTIONS` 预检请求，允许浏览器从任意来源跨域调用。
 
-**User-Agent 透传:** 客户端请求包含 `User-Agent` 时，网关会原样透传给上游渠道；未提供时 OpenAI 协议默认使用 `OpenAI/JS 6.39.0`，Anthropic Messages 协议默认使用 Claude Code UA `claude-cli/2.1.148`。可通过环境变量 `CLAUDE_CODE_USER_AGENT` 覆盖默认 Claude Code UA。
+**User-Agent 透传:** 渠道配置了 `user_agent` 时，网关请求固定使用该值；未配置时，如果客户端请求包含 `User-Agent`，网关会原样透传给上游渠道；仍未提供时 OpenAI 协议默认使用 `OpenAI/JS 6.39.0`，Anthropic Messages 协议默认使用 Claude Code UA `claude-cli/2.1.148`。可通过环境变量 `CLAUDE_CODE_USER_AGENT` 覆盖默认 Claude Code UA。
 
 ### POST /api/v1/chat/completions
 

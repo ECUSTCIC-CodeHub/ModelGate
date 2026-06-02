@@ -7,6 +7,7 @@ import { jsonError, jsonOk } from "@/lib/core/http";
 const bodySchema = z.object({
   base_url: z.string().url(),
   api_key: z.string().min(1),
+  user_agent: z.string().max(500).optional(),
 });
 
 export async function POST(request: Request) {
@@ -19,6 +20,7 @@ export async function POST(request: Request) {
 
   const baseUrl = parsed.data.base_url.replace(/\/+$/, "");
   const apiKey = parsed.data.api_key;
+  const userAgent = parsed.data.user_agent?.trim();
   const url = `${baseUrl}/models`;
 
   let upstream: Response;
@@ -28,6 +30,7 @@ export async function POST(request: Request) {
         Authorization: `Bearer ${apiKey}`,
         "x-api-key": apiKey,
         Accept: "application/json",
+        ...(userAgent ? { "User-Agent": userAgent } : {}),
       },
       signal: AbortSignal.timeout(15_000),
     });

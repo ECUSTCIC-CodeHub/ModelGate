@@ -30,7 +30,7 @@ export function useUpstreamModelPicker({
   const [upstreamPickerQuery, setUpstreamPickerQuery] = useState("");
   const [upstreamModelOptions, setUpstreamModelOptions] = useState<UpstreamModelOption[]>([]);
 
-  async function probeUpstreamModels(baseUrl: string, apiKey: string, existingModels: ModelRow[] = []) {
+  async function probeUpstreamModels(baseUrl: string, apiKey: string, userAgent = "", existingModels: ModelRow[] = []) {
     if (!baseUrl.trim() || !apiKey.trim()) {
       toast({ variant: "error", description: "请先填写 Base URL 与 API Key。" });
       return;
@@ -42,6 +42,7 @@ export function useUpstreamModelPicker({
         body: JSON.stringify({
           base_url: baseUrl.trim(),
           api_key: apiKey.trim(),
+          user_agent: userAgent.trim(),
         }),
       });
       const data = await response.json().catch(() => null);

@@ -107,6 +107,17 @@ export function ChannelDrawer({
               <Label>API Key</Label>
               <Input value={form.api_key} onChange={(e) => onFormChange({ api_key: e.target.value })} />
             </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>上游 User-Agent</Label>
+              <Input
+                placeholder="留空则透传客户端 UA 或使用协议默认值"
+                value={form.user_agent}
+                onChange={(e) => onFormChange({ user_agent: e.target.value })}
+              />
+              <p className="text-xs text-[var(--color-foreground-muted)]">
+                配置后该渠道请求固定使用此 User-Agent；留空时沿用当前透传和默认策略。
+              </p>
+            </div>
           </div>
 
           {editingId === null ? (
