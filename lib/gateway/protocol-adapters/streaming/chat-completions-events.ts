@@ -27,6 +27,8 @@ export function parseChatChunkEvent(data: string) {
     .filter((item): item is ChatToolDelta => Boolean(item));
 
   const usage = asRecord(parsed.usage);
+  const promptTokens = Number(usage?.prompt_tokens ?? 0);
+  const completionTokens = Number(usage?.completion_tokens ?? 0);
   return {
     id: typeof parsed.id === "string" ? parsed.id : `chatcmpl_${crypto.randomUUID().replace(/-/g, "")}`,
     model: typeof parsed.model === "string" ? parsed.model : null,
@@ -41,9 +43,9 @@ export function parseChatChunkEvent(data: string) {
     finishReason: typeof firstChoice?.finish_reason === "string" ? firstChoice.finish_reason : null,
     usage: usage
       ? {
-          prompt_tokens: Number(usage.prompt_tokens ?? 0),
-          completion_tokens: Number(usage.completion_tokens ?? 0),
-          total_tokens: Number(usage.total_tokens ?? 0),
+          prompt_tokens: promptTokens,
+          completion_tokens: completionTokens,
+          total_tokens: Number(usage.total_tokens ?? promptTokens + completionTokens),
         }
       : null,
   };
@@ -51,7 +53,13 @@ export function parseChatChunkEvent(data: string) {
 
 export function trackChatCompletionsStreamEvent(_event: string, data: string) {
   const parsed = parseChatChunkEvent(data);
-  if (parsed.content) return { completionText: parsed.content };
-  if (parsed.reasoning) return { firstToken: true };
-  return null;
+  const tracked: {
+    completionText?: string;
+    firstToken?: boolean;
+    usage?: NonNullable<typeof parsed.usage>;
+  } = {};
+  if (parsed.usage) tracked.usage = parsed.usage;
+  if (parsed.content) tracked.completionText = parsed.content;
+  if (parsed.reasoning) tracked.firstToken = true;
+  return tracked.usage || tracked.completionText || tracked.firstToken ? tracked : null;
 }

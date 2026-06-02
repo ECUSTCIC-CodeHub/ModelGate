@@ -73,7 +73,7 @@ export function anthropicResponseToIntermediate(body: JsonRecord): IntermediateR
     content: normalizedContent,
     tool_calls: toolCalls,
     stop_reason: typeof body.stop_reason === "string" ? body.stop_reason : null,
-    usage: normalizeUsage(inputTokens, outputTokens, totalTokens),
+    usage: usage ? normalizeUsage(inputTokens, outputTokens, totalTokens) : null,
     extra: omitKeys(body, RESPONSE_KEYS),
   };
 }

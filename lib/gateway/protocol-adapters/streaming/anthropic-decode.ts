@@ -15,6 +15,7 @@ export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Arra
   let firstTokenAt: number | null = null;
   let promptTokens = 0;
   let completionTokens = 0;
+  let hasUsage = false;
   let finishReason: string | null = null;
   const toolUseByIndex = new Map<number, { id: string; name: string }>();
   const markFirstToken = () => {
@@ -57,6 +58,7 @@ export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Arra
               const message = asRecord(payload?.message);
               const nextUsage = asRecord(message?.usage);
               promptTokens = Number(nextUsage?.input_tokens ?? 0);
+              hasUsage = hasUsage || Boolean(nextUsage);
               controller.enqueue({
                 type: "start",
                 id: typeof message?.id === "string" ? message.id : undefined,
@@ -111,6 +113,7 @@ export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Arra
                 : finishReason;
               const nextUsage = asRecord(payload?.usage);
               completionTokens = Number(nextUsage?.output_tokens ?? completionTokens);
+              hasUsage = hasUsage || Boolean(nextUsage);
               controller.enqueue({ type: "usage", usage: usage() });
               continue;
             }
@@ -131,5 +134,6 @@ export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Arra
     stream,
     completionText: () => `${reasoningText}${completionText}`,
     firstTokenAt: () => firstTokenAt,
+    usage: () => (hasUsage ? usage() : null),
   };
 }

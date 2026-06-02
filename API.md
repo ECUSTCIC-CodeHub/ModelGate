@@ -1079,6 +1079,7 @@ email matches ".*@company\\.com"
       "prompt_tokens": 100,
       "completion_tokens": 50,
       "total_tokens": 150,
+      "token_source": "usage",
       "latency_ms": 1234,
       "first_token_latency_ms": 300,
       "output_tps": 45.5,
@@ -1094,7 +1095,7 @@ email matches ".*@company\\.com"
 }
 ```
 
-> `user_agent` 记录客户端请求携带的 User-Agent，最长保留 500 字符。普通用户不会看到 `username`、`channel_name`、`route_attempts`、`attempted_channels` 字段。
+> `token_source` 表示 Token 记录来源：`usage` 为上游响应返回的 usage 字段，`local` 为本地 GPT 分词器兜底统计，`estimated` 为请求失败时的预估值。`user_agent` 记录客户端请求携带的 User-Agent，最长保留 500 字符。普通用户不会看到 `username`、`channel_name`、`route_attempts`、`attempted_channels` 字段。
 
 ---
 

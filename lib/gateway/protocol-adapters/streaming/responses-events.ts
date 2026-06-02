@@ -19,13 +19,20 @@ export function parseResponsesSseEvent(event: string, data: string): ResponsesSs
 export function trackResponsesStreamEvent(eventName: string, data: string) {
   const parsed = parseResponsesSseEvent(eventName, data);
   const payload = asRecord(parsed.data);
+  const response = asRecord(payload?.response);
+  const usage = usageFromResponses(response?.usage);
+  const tracked: {
+    completionText?: string;
+    usage?: StreamUsage;
+  } = {};
+  if (usage) tracked.usage = usage;
   if (parsed.event === "response.output_text.delta" && typeof payload?.delta === "string") {
-    return { completionText: payload.delta };
+    tracked.completionText = payload.delta;
   }
   if (parsed.event === "response.reasoning_text.delta" && typeof payload?.delta === "string") {
-    return { completionText: payload.delta };
+    tracked.completionText = payload.delta;
   }
-  return null;
+  return tracked.usage || tracked.completionText ? tracked : null;
 }
 
 export function createdToUnix(value: unknown) {

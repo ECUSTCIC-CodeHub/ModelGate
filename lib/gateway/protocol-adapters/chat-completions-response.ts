@@ -75,7 +75,7 @@ export function chatCompletionsResponseToIntermediate(body: JsonRecord): Interme
     content,
     tool_calls: toolCalls,
     stop_reason: typeof firstChoice?.finish_reason === "string" ? firstChoice.finish_reason : null,
-    usage: normalizeUsage(promptTokens, completionTokens, totalTokens),
+    usage: usage ? normalizeUsage(promptTokens, completionTokens, totalTokens) : null,
     extra: omitKeys(body, RESPONSE_KEYS),
   };
 }

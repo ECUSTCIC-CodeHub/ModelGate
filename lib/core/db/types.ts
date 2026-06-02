@@ -106,6 +106,7 @@ export type DbLog = {
   prompt_tokens: number | null;
   completion_tokens: number | null;
   total_tokens: number | null;
+  token_source: string | null;
   latency_ms: number | null;
   first_token_latency_ms: number | null;
   output_tps: number | null;

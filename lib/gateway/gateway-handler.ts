@@ -11,7 +11,7 @@ import { checkUserRateLimit } from "@/lib/gateway/ratelimit";
 import { selectModelRoute, type RoutedModel } from "@/lib/gateway/router";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { resolveClientIp } from "@/lib/core/client-ip";
-import { countTextTokens } from "@/lib/gateway/tokenizer";
+import { resolveTokenUsage } from "@/lib/gateway/token-usage";
 import { buildErrorResponseBody, parseUpstreamError } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
 import { requestUpstreamWithFallback } from "@/lib/gateway/upstream-routing";
@@ -160,6 +160,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       prompt_tokens: null,
       completion_tokens: 0,
       total_tokens: estimatedTokens,
+      token_source: "estimated",
       latency_ms: Date.now() - startedAt,
       first_token_latency_ms: null,
       output_tps: null,
@@ -289,15 +290,19 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       const adaptedText = adaptResponseBodyForRoute(rawText, route);
       const usage = getUsageForRoute(rawText, route);
       const completionText = extractCompletionTextForRoute(rawText, route);
-      const completionTokens = usage?.completion_tokens ?? Math.max(0, countTextTokens(completionText, route.model.real_model));
-      const totalTokens = usage?.total_tokens ?? localPromptTokens + completionTokens;
+      const tokenUsage = resolveTokenUsage({
+        usage,
+        localPromptTokens,
+        completionText,
+        model: route.model.real_model,
+      });
       const outputTps =
-        completionTokens > 0
-          ? Number(((completionTokens * 1000) / Math.max(1, Date.now() - startedAt)).toFixed(2))
+        tokenUsage.completionTokens > 0
+          ? Number(((tokenUsage.completionTokens * 1000) / Math.max(1, Date.now() - startedAt)).toFixed(2))
           : null;
 
       lease.complete({ ok: upstream.status < 400, latencyMs: Date.now() - startedAt });
-      addUsage(auth.user.id, auth.key.id, Math.max(1, totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier);
+      addUsage(auth.user.id, auth.key.id, Math.max(1, tokenUsage.totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier);
       insertChatLog({
         user_id: auth.user.id,
         key_id: auth.key.id,
@@ -307,9 +312,10 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
         stream: true,
         status_code: upstream.status,
         estimated_tokens: estimatedTokens,
-        prompt_tokens: usage?.prompt_tokens ?? localPromptTokens,
-        completion_tokens: completionTokens,
-        total_tokens: totalTokens,
+        prompt_tokens: tokenUsage.promptTokens,
+        completion_tokens: tokenUsage.completionTokens,
+        total_tokens: tokenUsage.totalTokens,
+        token_source: tokenUsage.source,
         latency_ms: Date.now() - startedAt,
         first_token_latency_ms: null,
         output_tps: outputTps,
@@ -336,17 +342,28 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       const totalLatencyMs = Date.now() - startedAt;
       const success = upstream.status < 400;
       lease.complete({ ok: success, latencyMs: totalLatencyMs });
-      const actualCompletionTokens = success ? Math.max(0, countTextTokens(transformed.completionText(), route.model.real_model)) : 0;
-      const actualTotalTokens = localPromptTokens + actualCompletionTokens;
+      const tokenUsage = success
+        ? resolveTokenUsage({
+            usage: transformed.usage(),
+            localPromptTokens,
+            completionText: transformed.completionText(),
+            model: route.model.real_model,
+          })
+        : {
+            promptTokens: localPromptTokens,
+            completionTokens: 0,
+            totalTokens: localPromptTokens,
+            source: "local" as const,
+          };
       const outputTps =
-        success && actualCompletionTokens > 0
-          ? Number(((actualCompletionTokens * 1000) / Math.max(1, totalLatencyMs)).toFixed(2))
+        success && tokenUsage.completionTokens > 0
+          ? Number(((tokenUsage.completionTokens * 1000) / Math.max(1, totalLatencyMs)).toFixed(2))
           : null;
       const firstTokenAt = transformed.firstTokenAt();
       const firstTokenLatencyMs = firstTokenAt !== null ? Math.max(0, firstTokenAt - startedAt) : null;
 
       if (success) {
-        addUsage(auth.user.id, auth.key.id, Math.max(1, actualTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier);
+        addUsage(auth.user.id, auth.key.id, Math.max(1, tokenUsage.totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier);
       }
       insertChatLog({
         user_id: auth.user.id,
@@ -357,9 +374,10 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
         stream: true,
         status_code: upstream.status,
         estimated_tokens: estimatedTokens,
-        prompt_tokens: localPromptTokens,
-        completion_tokens: actualCompletionTokens,
-        total_tokens: actualTotalTokens,
+        prompt_tokens: tokenUsage.promptTokens,
+        completion_tokens: tokenUsage.completionTokens,
+        total_tokens: tokenUsage.totalTokens,
+        token_source: tokenUsage.source,
         latency_ms: totalLatencyMs,
         first_token_latency_ms: firstTokenLatencyMs,
         output_tps: outputTps,
@@ -440,16 +458,20 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   const adaptedText = adaptResponseBodyForRoute(rawText, route);
   const usage = getUsageForRoute(rawText, route);
   const completionText = extractCompletionTextForRoute(rawText, route);
-  const localCompletionTokens = usage?.completion_tokens ?? Math.max(0, countTextTokens(completionText, route.model.real_model));
-  const localTotalTokens = usage?.total_tokens ?? (localPromptTokens + localCompletionTokens);
+  const tokenUsage = resolveTokenUsage({
+    usage,
+    localPromptTokens,
+    completionText,
+    model: route.model.real_model,
+  });
 
   const outputTps =
-    localCompletionTokens > 0
-      ? Number(((localCompletionTokens * 1000) / Math.max(1, Date.now() - startedAt)).toFixed(2))
+    tokenUsage.completionTokens > 0
+      ? Number(((tokenUsage.completionTokens * 1000) / Math.max(1, Date.now() - startedAt)).toFixed(2))
       : null;
 
   lease.complete({ ok: true, latencyMs: Date.now() - startedAt });
-  addUsage(auth.user.id, auth.key.id, Math.max(1, localTotalTokens), 1, route.model.token_multiplier, route.model.request_multiplier);
+  addUsage(auth.user.id, auth.key.id, Math.max(1, tokenUsage.totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier);
   insertChatLog({
     user_id: auth.user.id,
     key_id: auth.key.id,
@@ -459,9 +481,10 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     stream: false,
     status_code: upstream.status,
     estimated_tokens: estimatedTokens,
-    prompt_tokens: usage?.prompt_tokens ?? localPromptTokens,
-    completion_tokens: localCompletionTokens,
-    total_tokens: localTotalTokens,
+    prompt_tokens: tokenUsage.promptTokens,
+    completion_tokens: tokenUsage.completionTokens,
+    total_tokens: tokenUsage.totalTokens,
+    token_source: tokenUsage.source,
     latency_ms: Date.now() - startedAt,
     output_tps: outputTps,
     route_attempts: Math.max(1, attemptedChannels.length),

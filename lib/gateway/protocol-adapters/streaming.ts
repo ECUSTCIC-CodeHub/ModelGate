@@ -30,6 +30,7 @@ export function createTransformedStream(
     stream: inboundStreamAdapter.encode(decoded.stream, options),
     completionText: decoded.completionText,
     firstTokenAt: decoded.firstTokenAt,
+    usage: decoded.usage,
   };
 }
 

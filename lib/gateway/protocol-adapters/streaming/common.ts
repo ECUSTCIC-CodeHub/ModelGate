@@ -25,6 +25,7 @@ export type IntermediateStreamResult = {
   stream: ReadableStream<IntermediateStreamEvent>;
   completionText: () => string;
   firstTokenAt: () => number | null;
+  usage: () => StreamUsage | null;
 };
 
 export function toSseBlock(event: string | null, data: unknown) {
@@ -41,12 +42,37 @@ export type StreamTransformResult = {
   stream: ReadableStream<Uint8Array>;
   completionText: () => string;
   firstTokenAt: () => number | null;
+  usage: () => StreamUsage | null;
 };
 
 export type PassthroughEventTracker = (event: string, data: string) => {
   completionText?: string;
   firstToken?: boolean;
+  usage?: Partial<StreamUsage>;
 } | null;
+
+function normalizeTokenCount(value: unknown, fallback: number) {
+  const count = Number(value);
+  return Number.isFinite(count) ? Math.max(0, Math.round(count)) : fallback;
+}
+
+function mergeUsage(current: StreamUsage | null, next: Partial<StreamUsage>) {
+  const promptTokens = next.prompt_tokens !== undefined
+    ? normalizeTokenCount(next.prompt_tokens, current?.prompt_tokens ?? 0)
+    : current?.prompt_tokens ?? 0;
+  const completionTokens = next.completion_tokens !== undefined
+    ? normalizeTokenCount(next.completion_tokens, current?.completion_tokens ?? 0)
+    : current?.completion_tokens ?? 0;
+  const totalTokens = next.total_tokens !== undefined
+    ? normalizeTokenCount(next.total_tokens, promptTokens + completionTokens)
+    : promptTokens + completionTokens;
+
+  return {
+    prompt_tokens: promptTokens,
+    completion_tokens: completionTokens,
+    total_tokens: totalTokens,
+  };
+}
 
 export function createPassthroughStream(
   upstream: ReadableStream<Uint8Array>,
@@ -57,6 +83,7 @@ export function createPassthroughStream(
   let completionText = "";
   let buffer = "";
   let firstTokenAt: number | null = null;
+  let usage: StreamUsage | null = null;
   const markFirstToken = () => {
     if (firstTokenAt === null) firstTokenAt = Date.now();
   };
@@ -90,6 +117,9 @@ export function createPassthroughStream(
 
             try {
               const tracked = trackEvent(eventName, data);
+              if (tracked?.usage) {
+                usage = mergeUsage(usage, tracked.usage);
+              }
               if (tracked?.completionText) {
                 markFirstToken();
                 completionText += tracked.completionText;
@@ -112,5 +142,6 @@ export function createPassthroughStream(
     stream,
     completionText: () => completionText,
     firstTokenAt: () => firstTokenAt,
+    usage: () => usage,
   };
 }

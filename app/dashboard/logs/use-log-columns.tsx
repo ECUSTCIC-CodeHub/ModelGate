@@ -9,6 +9,13 @@ import { ClientInfo } from "./client-info";
 import { formatDuration } from "./log-formatters";
 import type { LogRole, LogRow } from "./log-model";
 
+function formatTokenSource(source: LogRow["token_source"]) {
+  if (source === "usage") return "上游 usage";
+  if (source === "local") return "本地统计";
+  if (source === "estimated") return "预估";
+  return "-";
+}
+
 export function useLogColumns(role: LogRole) {
   return useMemo<Array<ColumnDef<LogRow>>>(() => {
     const cols: Array<ColumnDef<LogRow>> = [];
@@ -131,6 +138,7 @@ export function useLogColumns(role: LogRole) {
               <TooltipContent align="start">
                 <p>Prompt: {formatTokenCount(promptTokens ?? 0)}</p>
                 <p>Completion: {formatTokenCount(completionTokens ?? 0)}</p>
+                <p>来源: {formatTokenSource(row.original.token_source)}</p>
               </TooltipContent>
             </Tooltip>
           );

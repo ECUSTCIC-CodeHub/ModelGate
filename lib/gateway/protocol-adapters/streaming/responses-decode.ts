@@ -238,5 +238,6 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
     stream,
     completionText: () => `${reasoningText}${completionText}`,
     firstTokenAt: () => firstTokenAt,
+    usage: () => usage,
   };
 }

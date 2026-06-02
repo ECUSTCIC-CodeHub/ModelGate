@@ -65,7 +65,7 @@ export function responsesResponseToIntermediate(body: JsonRecord): IntermediateR
     content,
     tool_calls: extracted.toolCalls,
     stop_reason: extracted.toolCalls.length > 0 ? "tool_calls" : "stop",
-    usage: normalizeUsage(inputTokens, outputTokens, totalTokens),
+    usage: usage ? normalizeUsage(inputTokens, outputTokens, totalTokens) : null,
     extra: omitKeys(body, RESPONSE_KEYS),
   };
 }

@@ -12,6 +12,7 @@ export type CreateLogInput = {
   prompt_tokens?: number | null;
   completion_tokens?: number | null;
   total_tokens?: number | null;
+  token_source?: string | null;
   latency_ms: number;
   first_token_latency_ms?: number | null;
   output_tps?: number | null;
@@ -28,8 +29,8 @@ export function createLog(input: CreateLogInput) {
       `INSERT INTO logs (
          user_id, key_id, channel_id, model_alias, real_model,
          stream, status_code, estimated_tokens, prompt_tokens, completion_tokens, total_tokens,
-         latency_ms, first_token_latency_ms, output_tps, route_attempts, attempted_channels, error_message, client_ip, user_agent
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         token_source, latency_ms, first_token_latency_ms, output_tps, route_attempts, attempted_channels, error_message, client_ip, user_agent
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       input.user_id,
@@ -43,6 +44,7 @@ export function createLog(input: CreateLogInput) {
       input.prompt_tokens ?? null,
       input.completion_tokens ?? null,
       input.total_tokens ?? null,
+      input.token_source ?? null,
       input.latency_ms,
       input.first_token_latency_ms ?? null,
       input.output_tps ?? null,
