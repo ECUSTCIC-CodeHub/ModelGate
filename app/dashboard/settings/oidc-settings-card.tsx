@@ -96,6 +96,11 @@ export function OidcSettingsCard({
             <Label>Client ID</Label>
             <Input
               placeholder="your-client-id"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              data-bwignore="true"
               value={oidcClientId}
               onChange={(e) => setOidcClientId(e.target.value)}
             />
@@ -105,6 +110,11 @@ export function OidcSettingsCard({
             <Input
               type="password"
               placeholder="your-client-secret"
+              autoComplete="new-password"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              data-bwignore="true"
               value={oidcClientSecret}
               onChange={(e) => setOidcClientSecret(e.target.value)}
             />
@@ -113,6 +123,11 @@ export function OidcSettingsCard({
             <Label>Scopes</Label>
             <Input
               placeholder="openid profile email"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              data-bwignore="true"
               value={oidcScopes}
               onChange={(e) => setOidcScopes(e.target.value)}
             />
