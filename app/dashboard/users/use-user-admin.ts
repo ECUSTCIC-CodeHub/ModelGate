@@ -292,6 +292,17 @@ export function useUserAdmin() {
     toast({ variant: "error", description: getApiMessage(data, "删除用户失败。") });
   }
 
+  async function revokeTotp(id: number) {
+    const response = await authedFetch(`/api/admin/users/${id}/revoke-totp`, { method: "POST" });
+    const data = await response.json().catch(() => null);
+    if (response.ok) {
+      toast({ variant: "success", description: getApiMessage(data, "已撤销 TOTP。") });
+      await loadUsers(page);
+      return;
+    }
+    toast({ variant: "error", description: getApiMessage(data, "撤销 TOTP 失败。") });
+  }
+
   function searchUsers() {
     void loadUsers(1, keyword, sortBy, sortDir, groupFilter, roleFilter);
   }
@@ -349,6 +360,7 @@ export function useUserAdmin() {
     toggleAllowedAlias,
     submitUser,
     resetUsage,
+    revokeTotp,
     removeUser,
   };
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { LogOut, Moon, Sun } from "lucide-react";
+import { LogOut, Moon, Shield, ShieldCheck, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -29,6 +29,7 @@ type MobileNavSheetProps = {
   onOidcBind: () => void;
   onOidcSync: () => void;
   onOidcUnbind: () => void;
+  onTotpManage: () => void;
   onLogout: () => void;
 };
 
@@ -45,6 +46,7 @@ export function MobileNavSheet({
   onOidcBind,
   onOidcSync,
   onOidcUnbind,
+  onTotpManage,
   onLogout,
 }: MobileNavSheetProps) {
   const close = () => onOpenChange(false);
@@ -94,13 +96,27 @@ export function MobileNavSheet({
             {profile ? <MobileProfileSummary profile={profile} /> : null}
             <Button
               variant="outline"
-              className="w-full"
+              className="w-full justify-between"
               onClick={() => {
                 close();
                 onChangePassword();
               }}
             >
               修改密码
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-between"
+              onClick={() => {
+                close();
+                onTotpManage();
+              }}
+            >
+              {profile?.totp_enabled === 1 ? <ShieldCheck className="h-4 w-4" /> : <Shield className="h-4 w-4" />}
+              双因素认证
+              <span className={`text-[10px] ${profile?.totp_enabled === 1 ? "text-[var(--color-accent)]" : "text-[var(--color-foreground-subtle)]"}`}>
+                {profile?.totp_enabled === 1 ? "已启用" : "未启用"}
+              </span>
             </Button>
             {oidcAvailable ? (
               profile?.oidc_subject ? (

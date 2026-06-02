@@ -18,13 +18,31 @@ export function LoginForm({ status }: { status: AuthStatus }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [totpRequired, setTotpRequired] = useState(false);
+  const [pendingToken, setPendingToken] = useState("");
+  const [totpCode, setTotpCode] = useState("");
   const { toast } = useToast();
 
   const oidcError = searchParams.get("oidc_error");
+  const totpRequiredParam = searchParams.get("totp_required");
+  const pendingTokenParam = searchParams.get("pending_token");
 
   const passwordEnabled = status.password_login_enabled;
   const oidcEnabled = status.oidc_enabled;
   const registrationEnabled = status.registration_enabled;
+
+  useState(() => {
+    if (totpRequiredParam === "1" && pendingTokenParam) {
+      setTotpRequired(true);
+      setPendingToken(pendingTokenParam);
+    }
+  });
+
+  function handleLoginSuccess(data: { access_token: string; refresh_token: string; user: { role: string } }) {
+    setSession({ accessToken: data.access_token, refreshToken: data.refresh_token });
+    if ("user" in data && data.user) setCachedProfile(data.user as Parameters<typeof setCachedProfile>[0]);
+    window.location.href = (data.user as { role: string }).role === "admin" ? "/dashboard" : "/dashboard/keys";
+  }
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -43,9 +61,37 @@ export function LoginForm({ status }: { status: AuthStatus }) {
         return;
       }
 
-      setSession({ accessToken: data.access_token, refreshToken: data.refresh_token });
-      if (data.user) setCachedProfile(data.user);
-      window.location.href = data.user.role === "admin" ? "/dashboard" : "/dashboard/keys";
+      if (data.totp_required) {
+        setPendingToken(data.pending_token);
+        setTotpRequired(true);
+        return;
+      }
+
+      handleLoginSuccess(data);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onTotpSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (totpCode.length !== 6) return;
+    setLoading(true);
+
+    try {
+      const response = await fetch("/api/auth/totp/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ pending_token: pendingToken, code: totpCode }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        toast({ variant: "error", description: getApiMessage(data, "验证码错误。") });
+        return;
+      }
+
+      handleLoginSuccess(data);
     } finally {
       setLoading(false);
     }
@@ -53,6 +99,54 @@ export function LoginForm({ status }: { status: AuthStatus }) {
 
   function onOidcLogin() {
     window.location.href = "/api/auth/oidc/authorize";
+  }
+
+  function onBackToLogin() {
+    setTotpRequired(false);
+    setPendingToken("");
+    setTotpCode("");
+  }
+
+  if (totpRequired) {
+    return (
+      <main className="flex min-h-screen items-center justify-center px-4 py-8">
+        <div className="w-full max-w-sm space-y-6">
+          <div className="space-y-2 text-center">
+            <h1 className="font-mono text-2xl font-semibold tracking-tight text-[var(--color-foreground)]">ModelGate</h1>
+            <p className="text-sm text-[var(--color-foreground-muted)]">双因素认证验证</p>
+          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>输入验证码</CardTitle>
+              <CardDescription>请打开验证器 APP，输入动态验证码完成登录。</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={onTotpSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="totp_code">验证码</Label>
+                  <Input
+                    id="totp_code"
+                    pattern="[0-9]{6}"
+                    maxLength={6}
+                    placeholder="000000"
+                    value={totpCode}
+                    onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    required
+                    autoFocus
+                  />
+                </div>
+                <Button type="submit" className="w-full" disabled={loading || totpCode.length !== 6}>
+                  {loading ? "验证中..." : "验证"}
+                </Button>
+                <Button type="button" variant="ghost" className="w-full" onClick={onBackToLogin}>
+                  返回登录
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </main>
+    );
   }
 
   return (

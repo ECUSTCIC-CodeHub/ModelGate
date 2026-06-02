@@ -12,6 +12,7 @@ type ProfileCardProps = {
   onOidcBind: () => void;
   onOidcSync: () => void;
   onOidcUnbind: () => void;
+  onTotpManage: () => void;
   onLogout: () => void;
 };
 
@@ -42,6 +43,7 @@ export function DesktopProfileCard({
   onOidcBind,
   onOidcSync,
   onOidcUnbind,
+  onTotpManage,
   onLogout,
 }: ProfileCardProps) {
   return (
@@ -76,10 +78,12 @@ export function DesktopProfileCard({
       <ProfileActions
         oidcAvailable={oidcAvailable}
         oidcBound={Boolean(profile.oidc_subject)}
+        totpEnabled={profile.totp_enabled === 1}
         onChangePassword={onChangePassword}
         onOidcBind={onOidcBind}
         onOidcSync={onOidcSync}
         onOidcUnbind={onOidcUnbind}
+        onTotpManage={onTotpManage}
         onLogout={onLogout}
       />
     </div>
