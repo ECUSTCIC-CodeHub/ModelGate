@@ -123,7 +123,7 @@ export function ChannelDrawer({
           {editingId === null ? (
             <ModelDraftCard
               title="初始模型列表"
-              description="别名就是客户端调用时传入的 model，支持 * 作为兜底模型。"
+              description="填写客户端模型名与上游真实模型名，支持 * 作为兜底模型。"
               protocols={form.supported_protocols}
               drafts={modelDrafts}
               probing={probingModels}
@@ -131,6 +131,7 @@ export function ChannelDrawer({
               onAddDraft={onAddModelDraft}
               onRemoveDraft={onRemoveModelDraft}
               onUpdateDraft={onUpdateModelDraft}
+              showAdvancedFields={false}
             />
           ) : null}
 

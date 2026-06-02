@@ -99,7 +99,6 @@ export function useChannelAdmin() {
           real_model: item.real_model.trim(),
           upstream_protocol: item.upstream_protocol,
           is_public: item.is_public,
-          weight: item.weight,
           enabled: item.enabled,
         }))
         .filter((item) => item.alias && item.real_model);

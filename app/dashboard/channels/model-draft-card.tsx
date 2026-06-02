@@ -22,6 +22,7 @@ export function ModelDraftCard({
   onAddDraft,
   onRemoveDraft,
   onUpdateDraft,
+  showAdvancedFields = true,
 }: {
   title: string;
   description: string;
@@ -33,6 +34,7 @@ export function ModelDraftCard({
   onAddDraft: (protocols: Protocol[]) => void;
   onRemoveDraft: (index: number) => void;
   onUpdateDraft: (index: number, patch: Partial<ChannelModelDraft>) => void;
+  showAdvancedFields?: boolean;
 }) {
   return (
     <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
@@ -59,12 +61,14 @@ export function ModelDraftCard({
           <div key={index} className="grid gap-3 rounded-lg border border-[var(--color-border)] p-3 md:grid-cols-2">
             <Input placeholder="别名" value={item.alias} onChange={(e) => onUpdateDraft(index, { alias: e.target.value })} />
             <Input placeholder="真实模型" value={item.real_model} onChange={(e) => onUpdateDraft(index, { real_model: e.target.value })} />
-            <div className="grid gap-2 md:grid-cols-4">
-              <Input type="number" min={1} placeholder="权重" value={item.weight} onChange={(e) => onUpdateDraft(index, { weight: Number(e.target.value) || 1 })} />
-              <Input type="number" min={0} step={0.1} placeholder="Token倍率" value={item.token_multiplier} onChange={(e) => onUpdateDraft(index, { token_multiplier: Number(e.target.value) || 1 })} />
-              <Input type="number" min={0} step={0.1} placeholder="请求倍率" value={item.request_multiplier} onChange={(e) => onUpdateDraft(index, { request_multiplier: Number(e.target.value) || 1 })} />
-              <Input type="number" min={0} placeholder="最大并发" value={item.max_concurrency} onChange={(e) => onUpdateDraft(index, { max_concurrency: Number(e.target.value) || 0 })} />
-            </div>
+            {showAdvancedFields ? (
+              <div className="grid gap-2 md:grid-cols-4">
+                <Input type="number" min={1} placeholder="权重" value={item.weight} onChange={(e) => onUpdateDraft(index, { weight: Number(e.target.value) || 1 })} />
+                <Input type="number" min={0} step={0.1} placeholder="Token倍率" value={item.token_multiplier} onChange={(e) => onUpdateDraft(index, { token_multiplier: Number(e.target.value) || 1 })} />
+                <Input type="number" min={0} step={0.1} placeholder="请求倍率" value={item.request_multiplier} onChange={(e) => onUpdateDraft(index, { request_multiplier: Number(e.target.value) || 1 })} />
+                <Input type="number" min={0} placeholder="最大并发" value={item.max_concurrency} onChange={(e) => onUpdateDraft(index, { max_concurrency: Number(e.target.value) || 0 })} />
+              </div>
+            ) : null}
             <Select value={item.upstream_protocol} onValueChange={(value) => onUpdateDraft(index, { upstream_protocol: value as Protocol })}>
               <SelectTrigger>
                 <SelectValue />
@@ -75,7 +79,7 @@ export function ModelDraftCard({
                 ))}
               </SelectContent>
             </Select>
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className={`grid gap-3 md:grid-cols-2${showAdvancedFields ? "" : " md:col-span-2"}`}>
               <Select value={item.is_public ? "1" : "0"} onValueChange={(value) => onUpdateDraft(index, { is_public: value === "1" })}>
                 <SelectTrigger>
                   <SelectValue />

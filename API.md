@@ -917,7 +917,7 @@ email matches ".*@company\\.com"
       "real_model": "gpt-4-turbo",
       "upstream_protocol": "chat_completions",
       "is_public": true,
-      "weight": 1
+      "enabled": true
     }
   ]
 }
@@ -934,6 +934,19 @@ email matches ".*@company\\.com"
 | max_concurrency | int | 否 | 64 | 最大并发数 |
 | timeout | int | 否 | 60 | 超时时间（秒） |
 | models | array | 否 | [] | 初始模型列表 |
+
+`models` 初始模型字段：
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|:---|:---|:---|:---|:---|
+| alias | string | 是 | | 客户端调用时的模型名 |
+| real_model | string | 是 | | 上游真实模型名 |
+| upstream_protocol | enum | 否 | 渠道第一个协议 | `chat_completions` / `anthropic_messages` / `responses` / `embeddings` |
+| is_public | bool | 否 | true | false 时仅白名单用户可访问 |
+| enabled | bool | 否 | true | 是否启用 |
+| weight | int | 否 | 1 | 初始模型权重；前端创建流程默认不配置，创建后可在模型管理中调整 |
+
+Token 倍率、请求倍率和模型级并发需在模型管理接口中配置。
 
 ### PUT /api/admin/channels/:id
 
