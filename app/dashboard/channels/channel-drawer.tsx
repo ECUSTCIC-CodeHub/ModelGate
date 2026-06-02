@@ -27,6 +27,7 @@ export function ChannelDrawer({
   form,
   modelDrafts,
   probingModels,
+  dismissBlocked = false,
   onOpenChange,
   onSubmit,
   onFormChange,
@@ -41,6 +42,7 @@ export function ChannelDrawer({
   form: ChannelForm;
   modelDrafts: ChannelModelDraft[];
   probingModels: boolean;
+  dismissBlocked?: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (event: FormEvent) => void;
   onFormChange: (patch: Partial<ChannelForm>) => void;
@@ -52,7 +54,13 @@ export function ChannelDrawer({
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="sm:max-w-2xl">
+      <SheetContent
+        side="right"
+        className="sm:max-w-2xl"
+        onInteractOutside={(event) => {
+          if (dismissBlocked) event.preventDefault();
+        }}
+      >
         <SheetHeader>
           <SheetTitle>{editingId === null ? "新增接口渠道" : `编辑渠道 #${editingId}`}</SheetTitle>
           <SheetDescription>配置渠道名称、Base URL、API Key、超时与默认模型草稿。</SheetDescription>

@@ -38,6 +38,7 @@ export function ModelDrawer({
   selectedChannelProtocols,
   modelDrafts,
   probingModels,
+  dismissBlocked = false,
   onOpenChange,
   onSubmit,
   onFormChange,
@@ -55,6 +56,7 @@ export function ModelDrawer({
   selectedChannelProtocols: Protocol[];
   modelDrafts: ChannelModelDraft[];
   probingModels: boolean;
+  dismissBlocked?: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (event: FormEvent) => void;
   onFormChange: (patch: Partial<ModelForm>) => void;
@@ -66,7 +68,13 @@ export function ModelDrawer({
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="sm:max-w-xl">
+      <SheetContent
+        side="right"
+        className="sm:max-w-xl"
+        onInteractOutside={(event) => {
+          if (dismissBlocked) event.preventDefault();
+        }}
+      >
         <SheetHeader>
           <SheetTitle>{editingId === null ? "新增模型映射" : `编辑模型 #${editingId}`}</SheetTitle>
           <SheetDescription>配置 alias、真实模型、所属渠道、公开性与启用状态。</SheetDescription>
