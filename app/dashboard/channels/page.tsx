@@ -77,6 +77,7 @@ export default function AdminChannelsPage() {
         form={admin.channelForm}
         modelDrafts={admin.channelModels}
         probingModels={admin.probingModels}
+        dismissBlocked={admin.upstreamPickerOpen}
         onOpenChange={admin.setChannelDrawerOpen}
         onSubmit={admin.submitChannel}
         onFormChange={admin.updateChannelForm}
@@ -96,6 +97,7 @@ export default function AdminChannelsPage() {
         selectedChannelProtocols={admin.selectedChannelProtocols}
         modelDrafts={admin.channelModels}
         probingModels={admin.probingModels}
+        dismissBlocked={admin.upstreamPickerOpen}
         onOpenChange={admin.setModelDrawerOpen}
         onSubmit={admin.submitModel}
         onFormChange={admin.updateModelForm}
