@@ -47,6 +47,7 @@ export function ensureModernColumns(db: BetterSqlite3.Database): ColumnMigration
   const addedKeyUsedTokens = ensureColumn(db, "keys", "used_tokens", "used_tokens INTEGER DEFAULT 0");
   const addedKeyUsedRequests = ensureColumn(db, "keys", "used_requests", "used_requests INTEGER DEFAULT 0");
   ensureColumn(db, "channels", "supported_protocols", `supported_protocols TEXT DEFAULT '["chat_completions"]'`);
+  ensureColumn(db, "channels", "user_agent", "user_agent TEXT DEFAULT ''");
   ensureColumn(db, "channels", "max_concurrency", "max_concurrency INTEGER DEFAULT 64");
   ensureColumn(db, "channels", "quota_tokens", "quota_tokens INTEGER");
   ensureColumn(db, "channels", "quota_requests", "quota_requests INTEGER");
@@ -74,11 +75,15 @@ export function ensureModernColumns(db: BetterSqlite3.Database): ColumnMigration
   ensureColumn(db, "models", "period_reset_at", "period_reset_at DATETIME");
   ensureColumn(db, "logs", "first_token_latency_ms", "first_token_latency_ms INTEGER");
   ensureColumn(db, "logs", "output_tps", "output_tps REAL");
+  ensureColumn(db, "logs", "token_source", "token_source TEXT");
+  ensureColumn(db, "logs", "metadata", "metadata TEXT");
   ensureColumn(db, "logs", "route_attempts", "route_attempts INTEGER DEFAULT 1");
   ensureColumn(db, "logs", "attempted_channels", "attempted_channels TEXT");
   ensureColumn(db, "logs", "user_agent", "user_agent TEXT");
   ensureColumn(db, "users", "webhook_role", "webhook_role TEXT DEFAULT ''");
   ensureColumn(db, "users", "webhook_tags", "webhook_tags TEXT DEFAULT '[]'");
+  ensureColumn(db, "users", "totp_secret", "totp_secret TEXT");
+  ensureColumn(db, "users", "totp_enabled", "totp_enabled INTEGER DEFAULT 0");
 
   return {
     addedKeyUsedTokens,
