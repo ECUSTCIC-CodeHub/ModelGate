@@ -29,7 +29,9 @@ export function createTransformedStream(
   return {
     stream: inboundStreamAdapter.encode(decoded.stream, options),
     completionText: decoded.completionText,
+    reasoningText: decoded.reasoningText,
     firstTokenAt: decoded.firstTokenAt,
+    usage: decoded.usage,
   };
 }
 

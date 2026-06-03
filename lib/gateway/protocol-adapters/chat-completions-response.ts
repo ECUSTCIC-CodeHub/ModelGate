@@ -8,13 +8,45 @@ import {
 } from "@/lib/gateway/normalized-message";
 import {
   finishReasonFromAnthropic,
-  normalizeUsage,
   omitKeys,
   type IntermediateResponse,
   type ResponseAdapterOptions,
 } from "@/lib/gateway/protocol-adapters/intermediate";
+import { usageFromChatCompletions } from "@/lib/gateway/protocol-adapters/usage";
 
 const RESPONSE_KEYS = ["id", "object", "created", "model", "choices", "usage"];
+
+function chatUsageFromIntermediate(usage: IntermediateResponse["usage"]) {
+  if (!usage) return undefined;
+  const completionDetails =
+    usage.reasoning_tokens !== undefined || usage.text_tokens !== undefined
+      ? {
+          ...(usage.reasoning_tokens !== undefined ? { reasoning_tokens: usage.reasoning_tokens } : {}),
+          ...(usage.text_tokens !== undefined ? { text_tokens: usage.text_tokens } : {}),
+        }
+      : undefined;
+  const promptDetails =
+    usage.cache_read_tokens !== undefined || usage.cache_creation_tokens !== undefined
+      ? {
+          ...(usage.cache_read_tokens !== undefined ? { cached_tokens: usage.cache_read_tokens } : {}),
+          ...(usage.cache_creation_tokens !== undefined
+            ? {
+                cache_creation: {
+                  cache_creation_input_tokens: usage.cache_creation_tokens,
+                  cache_type: "ephemeral",
+                },
+              }
+            : {}),
+        }
+      : undefined;
+  return {
+    prompt_tokens: usage.prompt_tokens,
+    completion_tokens: usage.completion_tokens,
+    total_tokens: usage.total_tokens,
+    ...(completionDetails ? { completion_tokens_details: completionDetails } : {}),
+    ...(promptDetails ? { prompt_tokens_details: promptDetails } : {}),
+  };
+}
 
 export function extractChatMessageText(message: JsonRecord | null) {
   if (!message) return "";
@@ -60,10 +92,7 @@ export function chatCompletionsResponseToIntermediate(body: JsonRecord): Interme
     content.unshift({ type: "thinking", thinking: reasoningText });
   }
 
-  const usage = asRecord(body.usage);
-  const promptTokens = Number(usage?.prompt_tokens ?? 0);
-  const completionTokens = Number(usage?.completion_tokens ?? 0);
-  const totalTokens = Number(usage?.total_tokens ?? promptTokens + completionTokens);
+  const usage = usageFromChatCompletions(body.usage);
   const toolCalls = extractChatToolCalls(message);
 
   return {
@@ -75,7 +104,7 @@ export function chatCompletionsResponseToIntermediate(body: JsonRecord): Interme
     content,
     tool_calls: toolCalls,
     stop_reason: typeof firstChoice?.finish_reason === "string" ? firstChoice.finish_reason : null,
-    usage: normalizeUsage(promptTokens, completionTokens, totalTokens),
+    usage,
     extra: omitKeys(body, RESPONSE_KEYS),
   };
 }
@@ -115,10 +144,6 @@ export function chatCompletionsResponseFromIntermediate(
         ? finishReasonFromAnthropic(response.stop_reason, toolCalls.length > 0)
         : toolCalls.length > 0 ? "tool_calls" : response.stop_reason ?? "stop",
     }],
-    usage: response.usage ? {
-      prompt_tokens: response.usage.prompt_tokens,
-      completion_tokens: response.usage.completion_tokens,
-      total_tokens: response.usage.total_tokens,
-    } : undefined,
+    usage: chatUsageFromIntermediate(response.usage),
   };
 }

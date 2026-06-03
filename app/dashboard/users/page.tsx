@@ -98,6 +98,7 @@ export default function AdminUsersPage() {
               onCreate={admin.openCreateUser}
               onEdit={admin.openEditUser}
               onResetUsage={(id, type) => { void admin.resetUsage(id, type); }}
+              onRevokeTotp={(id) => { void admin.revokeTotp(id); }}
               onRemove={(id) => { void admin.removeUser(id); }}
             />
 

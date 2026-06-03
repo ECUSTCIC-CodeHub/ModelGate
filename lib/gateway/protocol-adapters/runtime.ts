@@ -11,12 +11,14 @@ import type {
 export type GatewayProtocolAdapter = {
   protocol: GatewayProtocol;
   bodyAdapter?: ProtocolBodyAdapter;
+  prepareOutboundRequestBody?: (body: JsonRecord) => JsonRecord;
   estimateRequestTokens(body: JsonRecord): number;
   countPromptTokens(body: JsonRecord, model: string): number;
   getStreamFlag(body: JsonRecord): boolean;
   adaptRequestBody(body: JsonRecord, outbound: GatewayProtocolAdapter, realModel: string): JsonRecord;
   adaptResponseBody(text: string, outbound: GatewayProtocolAdapter, options?: ResponseAdapterOptions): string;
   extractCompletionTextFromBody(text: string): string;
+  extractReasoningTextFromBody(text: string): string;
   getUsageFromBody(text: string): IntermediateUsage | null;
 };
 
@@ -33,12 +35,14 @@ export function createBodyProtocolGatewayAdapter(options: {
   bodyAdapter: ProtocolBodyAdapter;
   getInputText(body: JsonRecord): string;
   getMaxOutputTokens(body: JsonRecord): unknown;
+  prepareOutboundRequestBody?: (body: JsonRecord) => JsonRecord;
 }): GatewayProtocolAdapter {
-  const { protocol, bodyAdapter, getInputText, getMaxOutputTokens } = options;
+  const { protocol, bodyAdapter, getInputText, getMaxOutputTokens, prepareOutboundRequestBody } = options;
 
   return {
     protocol,
     bodyAdapter,
+    prepareOutboundRequestBody,
     estimateRequestTokens(body) {
       const maxTokens = Number(getMaxOutputTokens(body) ?? 256);
       const outputReserve = Number.isFinite(maxTokens) ? Math.max(0, maxTokens) : 256;
@@ -51,11 +55,12 @@ export function createBodyProtocolGatewayAdapter(options: {
       return body.stream === true;
     },
     adaptRequestBody(body, outbound, realModel) {
+      const prepare = (requestBody: JsonRecord) => outbound.prepareOutboundRequestBody?.(requestBody) ?? requestBody;
       if (outbound.protocol === protocol) {
-        return {
+        return prepare({
           ...body,
           model: realModel,
-        };
+        });
       }
 
       if (!outbound.bodyAdapter) {
@@ -63,7 +68,7 @@ export function createBodyProtocolGatewayAdapter(options: {
       }
 
       const intermediate = bodyAdapter.requestToIntermediate(body, realModel);
-      return outbound.bodyAdapter.requestFromIntermediate(intermediate);
+      return prepare(outbound.bodyAdapter.requestFromIntermediate(intermediate));
     },
     adaptResponseBody(text, outbound, responseOptions) {
       if (outbound.protocol === protocol) return text;
@@ -82,9 +87,19 @@ export function createBodyProtocolGatewayAdapter(options: {
         return response.content
           .flatMap((part) => {
             if (part.type === "text") return [part.text];
-            if (part.type === "thinking") return [part.thinking];
             return [];
           })
+          .join("\n");
+      } catch {
+        return "";
+      }
+    },
+    extractReasoningTextFromBody(text) {
+      try {
+        const parsed = JSON.parse(text) as JsonRecord;
+        const response: IntermediateResponse = bodyAdapter.responseToIntermediate(parsed);
+        return response.content
+          .flatMap((part) => (part.type === "thinking" ? [part.thinking] : []))
           .join("\n");
       } catch {
         return "";

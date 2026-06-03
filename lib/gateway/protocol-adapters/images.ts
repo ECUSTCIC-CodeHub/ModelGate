@@ -35,6 +35,9 @@ export const imagesGatewayAdapter: GatewayProtocolAdapter = {
   extractCompletionTextFromBody() {
     return "";
   },
+  extractReasoningTextFromBody() {
+    return "";
+  },
   getUsageFromBody() {
     return null;
   },

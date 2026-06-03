@@ -4,6 +4,15 @@ import { gatewayDb } from "@/lib/core/db";
 import { ensureUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
 
+function parseLogMetadata(value: unknown) {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  try {
+    return JSON.parse(value) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(request: Request) {
   const guard = ensureUser(request);
   if ("error" in guard) return guard.error;
@@ -19,7 +28,7 @@ export async function GET(request: Request) {
          c.name AS channel_name,
          l.model_alias, l.real_model, l.stream, l.status_code,
          l.estimated_tokens, l.prompt_tokens, l.completion_tokens, l.total_tokens,
-         l.latency_ms, l.first_token_latency_ms, l.output_tps, l.token_source,
+         l.latency_ms, l.first_token_latency_ms, l.output_tps, l.token_source, l.metadata,
          l.error_message, l.client_ip, l.user_agent, l.created_at
        FROM logs l
        LEFT JOIN users u ON u.id = l.user_id
@@ -28,7 +37,12 @@ export async function GET(request: Request) {
        ORDER BY l.id DESC
        LIMIT ? OFFSET ?`,
     )
-    .all(guard.auth.user.id, limit, offset);
+    .all(guard.auth.user.id, limit, offset) as Array<Record<string, unknown>>;
+
+  const data = rows.map((row) => ({
+    ...row,
+    metadata: parseLogMetadata(row.metadata),
+  }));
 
   const total = gatewayDb
     .prepare("SELECT COUNT(*) AS total FROM logs WHERE user_id = ?")
@@ -57,7 +71,7 @@ export async function GET(request: Request) {
 
   return jsonOk({
     summary,
-    data: rows,
+    data,
     paging: { limit, offset, total: total.total },
   });
 }

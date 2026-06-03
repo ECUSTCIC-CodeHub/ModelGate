@@ -19,6 +19,11 @@ export type IntermediateUsage = {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  text_tokens?: number;
+  reasoning_tokens?: number;
+  cache_read_tokens?: number;
+  cache_creation_tokens?: number;
+  cache_miss_tokens?: number;
 };
 
 export type IntermediateRequest = {
@@ -100,10 +105,20 @@ export function finishReasonFromAnthropic(value: string | null, hasTools: boolea
   return "stop";
 }
 
-export function normalizeUsage(promptTokens: number, completionTokens: number, totalTokens?: number): IntermediateUsage {
+export function normalizeUsage(
+  promptTokens: number,
+  completionTokens: number,
+  totalTokens?: number,
+  details?: Pick<IntermediateUsage, "text_tokens" | "reasoning_tokens" | "cache_read_tokens" | "cache_creation_tokens" | "cache_miss_tokens">,
+): IntermediateUsage {
   return {
     prompt_tokens: promptTokens,
     completion_tokens: completionTokens,
     total_tokens: totalTokens ?? promptTokens + completionTokens,
+    ...(details?.text_tokens !== undefined ? { text_tokens: details.text_tokens } : {}),
+    ...(details?.reasoning_tokens !== undefined ? { reasoning_tokens: details.reasoning_tokens } : {}),
+    ...(details?.cache_read_tokens !== undefined ? { cache_read_tokens: details.cache_read_tokens } : {}),
+    ...(details?.cache_creation_tokens !== undefined ? { cache_creation_tokens: details.cache_creation_tokens } : {}),
+    ...(details?.cache_miss_tokens !== undefined ? { cache_miss_tokens: details.cache_miss_tokens } : {}),
   };
 }

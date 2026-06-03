@@ -1,0 +1,17 @@
+services:
+  modelgate:
+    image: docker.cnb.cool/bring/tools/modelgate:latest
+    container_name: modelgate
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET:-change-me-to-a-random-string}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-change-me-to-another-random-string}
+      - TZ=Asia/Shanghai
+      # - AUTH_DISABLED=1
+    volumes:
+      - modelgate-data:/app/data
+
+volumes:
+  modelgate-data:

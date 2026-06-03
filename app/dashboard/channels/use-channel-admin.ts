@@ -56,6 +56,7 @@ export function useChannelAdmin() {
       name: row.name,
       base_url: row.base_url,
       api_key: row.api_key,
+      user_agent: row.user_agent ?? "",
       supported_protocols: supportedProtocols,
       weight: row.weight,
       max_concurrency: row.max_concurrency,
@@ -121,7 +122,6 @@ export function useChannelAdmin() {
           real_model: item.real_model.trim(),
           upstream_protocol: item.upstream_protocol,
           is_public: item.is_public,
-          weight: item.weight,
           enabled: item.enabled,
         }))
         .filter((item) => item.alias && item.real_model);
@@ -132,6 +132,7 @@ export function useChannelAdmin() {
           name: channelForm.name,
           base_url: channelForm.base_url,
           api_key: channelForm.api_key,
+          user_agent: channelForm.user_agent,
           supported_protocols: channelForm.supported_protocols,
           weight: channelForm.weight,
           max_concurrency: channelForm.max_concurrency,
@@ -158,6 +159,7 @@ export function useChannelAdmin() {
         name: channelForm.name,
         base_url: channelForm.base_url,
         api_key: channelForm.api_key,
+        user_agent: channelForm.user_agent,
         supported_protocols: channelForm.supported_protocols,
         weight: channelForm.weight,
         max_concurrency: channelForm.max_concurrency,

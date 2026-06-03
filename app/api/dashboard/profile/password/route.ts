@@ -6,6 +6,7 @@ import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { ensureWebUser } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { friendlyCredentialPayloadError } from "@/lib/auth/validation";
+import { getAuthStatus } from "@/lib/auth/auth-status";
 
 const schema = z.object({
   current_password: z.string().min(1),
@@ -15,6 +16,10 @@ const schema = z.object({
 export async function PUT(request: Request) {
   const guard = ensureWebUser(request);
   if ("error" in guard) return guard.error;
+
+  if (!getAuthStatus().password_login_enabled) {
+    return jsonError("当前仅支持 OIDC 登录，不能修改本地密码。", 400);
+  }
 
   const body = await request.json().catch(() => null);
   const parsed = schema.safeParse(body);

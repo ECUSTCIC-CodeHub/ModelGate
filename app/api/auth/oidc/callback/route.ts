@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { applyAuthCookies, hashPassword, issueAuthTokens, requireWebAuthWithRefresh, signOidcPendingToken, OIDC_PENDING_COOKIE_NAME } from "@/lib/auth/auth";
+import { applyAuthCookies, hashPassword, issueAuthTokens, requireWebAuthWithRefresh, signOidcPendingToken, signTotpPendingToken, OIDC_PENDING_COOKIE_NAME } from "@/lib/auth/auth";
 import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { featureUnavailableMessage, isFeatureEnabled } from "@/lib/core/features";
 import {
@@ -14,6 +14,7 @@ import {
   resolveGroupFromClaims,
   resolveRedirectUri,
   getPublicOrigin,
+  normalizeOidcIssuerUrl,
   type OidcUserInfo,
 } from "@/lib/auth/oidc";
 import { randomBytes } from "node:crypto";
@@ -133,7 +134,7 @@ export async function GET(request: Request) {
     return redirectWithError(origin, "用户信息获取失败", isBind);
   }
 
-  const issuer = config.issuerUrl.replace(/\/+$/, "");
+  const issuer = normalizeOidcIssuerUrl(config.issuerUrl);
   const clearStateCookie = (res: NextResponse) => {
     res.cookies.set("oidc-state", "", { httpOnly: true, sameSite: "lax", secure: false, path: "/", maxAge: 0 });
     return res;
@@ -177,6 +178,15 @@ export async function GET(request: Request) {
     const isOidcOnlyMode = settings.password_login_enabled === 0;
 
     if (isOidcOnlyMode) {
+      if (!config.autoRegister) {
+        const adminCount = gatewayDb
+          .prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL")
+          .get() as { count: number };
+        if (adminCount.count > 0) {
+          return clearStateCookie(redirectWithError(origin, "OIDC 登录失败，请联系管理员"));
+        }
+      }
+
       const stripped = { ...rawClaims };
       for (const k of ["at_hash", "c_hash", "auth_time", "iat", "exp", "nonce"]) delete stripped[k];
       const pendingToken = signOidcPendingToken({
@@ -251,6 +261,12 @@ export async function GET(request: Request) {
         .prepare("UPDATE users SET group_id = ? WHERE id = ?")
         .run(claimGroupId, user.id);
     }
+  }
+
+  if (user.totp_enabled === 1 && user.totp_secret) {
+    const pendingToken = signTotpPendingToken(user);
+    const res = NextResponse.redirect(`${origin}/login?totp_required=1&pending_token=${encodeURIComponent(pendingToken)}`, 302);
+    return clearStateCookie(res);
   }
 
   const tokens = issueAuthTokens(user);

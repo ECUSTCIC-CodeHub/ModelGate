@@ -9,6 +9,11 @@ export type StreamUsage = {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  text_tokens?: number;
+  reasoning_tokens?: number;
+  cache_read_tokens?: number;
+  cache_creation_tokens?: number;
+  cache_miss_tokens?: number;
 };
 
 export type IntermediateStreamEvent =
@@ -24,7 +29,9 @@ export type IntermediateStreamEvent =
 export type IntermediateStreamResult = {
   stream: ReadableStream<IntermediateStreamEvent>;
   completionText: () => string;
+  reasoningText: () => string;
   firstTokenAt: () => number | null;
+  usage: () => StreamUsage | null;
 };
 
 export function toSseBlock(event: string | null, data: unknown) {
@@ -40,13 +47,60 @@ export function toSseBlock(event: string | null, data: unknown) {
 export type StreamTransformResult = {
   stream: ReadableStream<Uint8Array>;
   completionText: () => string;
+  reasoningText: () => string;
   firstTokenAt: () => number | null;
+  usage: () => StreamUsage | null;
 };
 
 export type PassthroughEventTracker = (event: string, data: string) => {
   completionText?: string;
+  reasoningText?: string;
   firstToken?: boolean;
+  usage?: Partial<StreamUsage>;
 } | null;
+
+function normalizeTokenCount(value: unknown, fallback: number) {
+  const count = Number(value);
+  return Number.isFinite(count) ? Math.max(0, Math.round(count)) : fallback;
+}
+
+function mergeUsage(current: StreamUsage | null, next: Partial<StreamUsage>) {
+  const promptTokens = next.prompt_tokens !== undefined
+    ? normalizeTokenCount(next.prompt_tokens, current?.prompt_tokens ?? 0)
+    : current?.prompt_tokens ?? 0;
+  const completionTokens = next.completion_tokens !== undefined
+    ? normalizeTokenCount(next.completion_tokens, current?.completion_tokens ?? 0)
+    : current?.completion_tokens ?? 0;
+  const totalTokens = next.total_tokens !== undefined
+    ? normalizeTokenCount(next.total_tokens, promptTokens + completionTokens)
+    : promptTokens + completionTokens;
+  const textTokens = next.text_tokens !== undefined
+    ? normalizeTokenCount(next.text_tokens, current?.text_tokens ?? 0)
+    : current?.text_tokens;
+  const reasoningTokens = next.reasoning_tokens !== undefined
+    ? normalizeTokenCount(next.reasoning_tokens, current?.reasoning_tokens ?? 0)
+    : current?.reasoning_tokens;
+  const cacheReadTokens = next.cache_read_tokens !== undefined
+    ? normalizeTokenCount(next.cache_read_tokens, current?.cache_read_tokens ?? 0)
+    : current?.cache_read_tokens;
+  const cacheCreationTokens = next.cache_creation_tokens !== undefined
+    ? normalizeTokenCount(next.cache_creation_tokens, current?.cache_creation_tokens ?? 0)
+    : current?.cache_creation_tokens;
+  const cacheMissTokens = next.cache_miss_tokens !== undefined
+    ? normalizeTokenCount(next.cache_miss_tokens, current?.cache_miss_tokens ?? 0)
+    : current?.cache_miss_tokens;
+
+  return {
+    prompt_tokens: promptTokens,
+    completion_tokens: completionTokens,
+    total_tokens: totalTokens,
+    ...(textTokens !== undefined ? { text_tokens: textTokens } : {}),
+    ...(reasoningTokens !== undefined ? { reasoning_tokens: reasoningTokens } : {}),
+    ...(cacheReadTokens !== undefined ? { cache_read_tokens: cacheReadTokens } : {}),
+    ...(cacheCreationTokens !== undefined ? { cache_creation_tokens: cacheCreationTokens } : {}),
+    ...(cacheMissTokens !== undefined ? { cache_miss_tokens: cacheMissTokens } : {}),
+  };
+}
 
 export function createPassthroughStream(
   upstream: ReadableStream<Uint8Array>,
@@ -55,8 +109,10 @@ export function createPassthroughStream(
   const reader = upstream.getReader();
   const decoder = new TextDecoder();
   let completionText = "";
+  let reasoningText = "";
   let buffer = "";
   let firstTokenAt: number | null = null;
+  let usage: StreamUsage | null = null;
   const markFirstToken = () => {
     if (firstTokenAt === null) firstTokenAt = Date.now();
   };
@@ -90,9 +146,16 @@ export function createPassthroughStream(
 
             try {
               const tracked = trackEvent(eventName, data);
+              if (tracked?.usage) {
+                usage = mergeUsage(usage, tracked.usage);
+              }
               if (tracked?.completionText) {
                 markFirstToken();
                 completionText += tracked.completionText;
+              }
+              if (tracked?.reasoningText) {
+                markFirstToken();
+                reasoningText += tracked.reasoningText;
               } else if (tracked?.firstToken) {
                 markFirstToken();
               }
@@ -111,6 +174,8 @@ export function createPassthroughStream(
   return {
     stream,
     completionText: () => completionText,
+    reasoningText: () => reasoningText,
     firstTokenAt: () => firstTokenAt,
+    usage: () => usage,
   };
 }

@@ -6,6 +6,7 @@ export type DbChannel = {
   base_url: string;
   api_key: string;
   supported_protocols: string;
+  user_agent: string;
   enabled: number;
   weight: number;
   max_concurrency: number;
@@ -96,6 +97,8 @@ export type DbUser = {
   allowed_model_aliases: string;
   note: string | null;
   enabled: number;
+  totp_secret: string | null;
+  totp_enabled: number;
   created_at: string;
   deleted_at: string | null;
 };
@@ -125,6 +128,8 @@ export type DbLog = {
   prompt_tokens: number | null;
   completion_tokens: number | null;
   total_tokens: number | null;
+  token_source: string | null;
+  metadata: string | null;
   latency_ms: number | null;
   first_token_latency_ms: number | null;
   output_tps: number | null;

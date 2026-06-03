@@ -13,10 +13,12 @@ type DashboardSidebarProps = {
   pathname: string;
   profile: ProfileBrief | null;
   oidcAvailable: boolean;
+  passwordLoginEnabled: boolean;
   onChangePassword: () => void;
   onOidcBind: () => void;
   onOidcSync: () => void;
   onOidcUnbind: () => void;
+  onTotpManage: () => void;
   onLogout: () => void;
 };
 
@@ -25,10 +27,12 @@ export function DashboardSidebar({
   pathname,
   profile,
   oidcAvailable,
+  passwordLoginEnabled,
   onChangePassword,
   onOidcBind,
   onOidcSync,
   onOidcUnbind,
+  onTotpManage,
   onLogout,
 }: DashboardSidebarProps) {
   return (
@@ -71,10 +75,12 @@ export function DashboardSidebar({
           <DesktopProfileCard
             profile={profile}
             oidcAvailable={oidcAvailable}
+            passwordLoginEnabled={passwordLoginEnabled}
             onChangePassword={onChangePassword}
             onOidcBind={onOidcBind}
             onOidcSync={onOidcSync}
             onOidcUnbind={onOidcUnbind}
+            onTotpManage={onTotpManage}
             onLogout={onLogout}
           />
         ) : null}

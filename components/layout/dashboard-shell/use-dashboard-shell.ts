@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { useAuthProfile, useOidcEnabled } from "@/components/providers/auth-provider";
+import { useAuthProfile, useOidcEnabled, usePasswordLoginEnabled } from "@/components/providers/auth-provider";
 import { useTheme } from "@/components/providers/theme-provider";
 import { useToast } from "@/components/ui/toast";
 import { getDashboardMenus } from "@/components/layout/dashboard-shell/menus";
@@ -20,9 +20,11 @@ export function useDashboardShell(role: Role) {
   const [profileBrief, setProfileBrief] = useState<ProfileBrief | null>(() => initialProfile ?? getCachedProfile());
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [totpDialogOpen, setTotpDialogOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const oidcAvailable = useOidcEnabled();
+  const passwordLoginEnabled = usePasswordLoginEnabled();
 
   useEffect(() => {
     clearCachedProfile();
@@ -92,6 +94,7 @@ export function useDashboardShell(role: Role) {
     mobileNavOpen,
     newPassword,
     oidcAvailable,
+    passwordLoginEnabled,
     passwordDialogOpen,
     pathname,
     profileBrief,
@@ -101,11 +104,14 @@ export function useDashboardShell(role: Role) {
     setPasswordDialogOpen,
     theme,
     toggleTheme,
+    totpDialogOpen,
+    setTotpDialogOpen,
     onChangePassword,
     onLogout,
     onOidcBind,
     onOidcSync,
     onOidcUnbind,
     openPasswordDialog,
+    refreshProfile,
   };
 }

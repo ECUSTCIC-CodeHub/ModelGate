@@ -5,10 +5,10 @@ import {
   type JsonRecord,
 } from "@/lib/gateway/normalized-message";
 import {
-  normalizeUsage,
   omitKeys,
   type IntermediateResponse,
 } from "@/lib/gateway/protocol-adapters/intermediate";
+import { usageFromResponses } from "@/lib/gateway/protocol-adapters/usage";
 
 const RESPONSE_KEYS = ["id", "object", "created_at", "created", "status", "error", "incomplete_details", "model", "output", "output_text", "usage"];
 
@@ -48,10 +48,7 @@ function createdToUnix(value: unknown) {
 
 export function responsesResponseToIntermediate(body: JsonRecord): IntermediateResponse {
   const extracted = extractResponsesMessage(body.output);
-  const usage = asRecord(body.usage);
-  const inputTokens = Number(usage?.input_tokens ?? 0);
-  const outputTokens = Number(usage?.output_tokens ?? 0);
-  const totalTokens = Number(usage?.total_tokens ?? inputTokens + outputTokens);
+  const usage = usageFromResponses(body.usage);
   const content = [];
   if (extracted.reasoning) content.push({ type: "thinking" as const, thinking: extracted.reasoning });
   if (extracted.text || extracted.toolCalls.length === 0) content.push({ type: "text" as const, text: extracted.text || "" });
@@ -65,7 +62,7 @@ export function responsesResponseToIntermediate(body: JsonRecord): IntermediateR
     content,
     tool_calls: extracted.toolCalls,
     stop_reason: extracted.toolCalls.length > 0 ? "tool_calls" : "stop",
-    usage: normalizeUsage(inputTokens, outputTokens, totalTokens),
+    usage,
     extra: omitKeys(body, RESPONSE_KEYS),
   };
 }
@@ -116,6 +113,15 @@ export function responsesResponseFromIntermediate(response: IntermediateResponse
       input_tokens: response.usage.prompt_tokens,
       output_tokens: response.usage.completion_tokens,
       total_tokens: response.usage.total_tokens,
+      output_tokens_details: response.usage.reasoning_tokens !== undefined || response.usage.text_tokens !== undefined
+        ? {
+            ...(response.usage.reasoning_tokens !== undefined ? { reasoning_tokens: response.usage.reasoning_tokens } : {}),
+            ...(response.usage.text_tokens !== undefined ? { text_tokens: response.usage.text_tokens } : {}),
+          }
+        : undefined,
+      input_tokens_details: response.usage.cache_read_tokens !== undefined
+        ? { cached_tokens: response.usage.cache_read_tokens }
+        : undefined,
     } : undefined,
   };
 }

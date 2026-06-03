@@ -4,10 +4,63 @@ import { type ColumnDef } from "@tanstack/react-table";
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { formatNumber, formatTokenCount } from "@/lib/shared/utils";
+import { formatNumber, formatTokenCount, formatDatetime } from "@/lib/shared/utils";
 import { ClientInfo } from "./client-info";
 import { formatDuration } from "./log-formatters";
 import type { LogRole, LogRow } from "./log-model";
+
+function formatTokenSourceShort(source: LogRow["token_source"]) {
+  if (source === "usage") return "远端";
+  if (source === "local") return "本地";
+  if (source === "estimated") return "预估";
+  return "-";
+}
+
+function formatNullableToken(value: number | null | undefined) {
+  return value === null || value === undefined ? "-" : formatTokenCount(value);
+}
+
+function hasTokenValue(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function TokenDetailRow({
+  label,
+  prompt,
+  completion,
+  reasoning,
+  cache,
+  total,
+}: {
+  label: string;
+  prompt: number | null | undefined;
+  completion: number | null | undefined;
+  reasoning?: number | null | undefined;
+  cache?: number | null | undefined;
+  total: number | null | undefined;
+}) {
+  return (
+    <div>
+      <div className="mb-1 text-[11px] font-medium text-[var(--color-foreground-muted)]">{label}</div>
+      <div className="grid grid-cols-[3.5rem_1fr] gap-x-2 gap-y-0.5 font-mono text-[11px]">
+        <span className="text-[var(--color-foreground-muted)]">请求</span>
+        <span>{formatNullableToken(prompt)}</span>
+        <span className="text-[var(--color-foreground-muted)]">响应</span>
+        <span>{formatNullableToken(completion)}</span>
+        <span className="text-[var(--color-foreground-muted)]">思考</span>
+        <span>{formatNullableToken(reasoning)}</span>
+        {hasTokenValue(cache) ? (
+          <>
+            <span className="text-[var(--color-foreground-muted)]">缓存</span>
+            <span>{formatNullableToken(cache)}</span>
+          </>
+        ) : null}
+        <span className="text-[var(--color-foreground-muted)]">总计</span>
+        <span>{formatNullableToken(total)}</span>
+      </div>
+    </div>
+  );
+}
 
 export function useLogColumns(role: LogRole) {
   return useMemo<Array<ColumnDef<LogRow>>>(() => {
@@ -18,7 +71,7 @@ export function useLogColumns(role: LogRole) {
       header: "时间",
       cell: ({ row }) => (
         <span className="whitespace-nowrap font-mono text-xs text-[var(--color-foreground-secondary)]">
-          {new Date(row.original.created_at).toLocaleString()}
+          {formatDatetime(row.original.created_at)}
         </span>
       ),
     });
@@ -116,21 +169,44 @@ export function useLogColumns(role: LogRole) {
           const promptTokens = row.original.prompt_tokens;
           const completionTokens = row.original.completion_tokens;
           const totalTokens = row.original.total_tokens ?? 0;
+          const tokenUsage = row.original.metadata?.token_usage;
+          const remoteUsage = tokenUsage?.remote ?? null;
+          const localUsage = tokenUsage?.local ?? null;
 
           return (
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  className="inline-flex items-center whitespace-nowrap text-left text-inherit"
+                  className="block min-w-28 whitespace-nowrap text-left text-inherit"
                   title={formatNumber(totalTokens)}
                 >
-                  <span>{formatTokenCount(totalTokens)}</span>
+                  <span className="block font-mono text-xs">
+                    入 {formatTokenCount(promptTokens ?? 0)} / 出 {formatTokenCount(completionTokens ?? 0)}
+                  </span>
+                  <span className="block text-xs text-[var(--color-foreground-muted)]">
+                    总 {formatTokenCount(totalTokens)} · {formatTokenSourceShort(row.original.token_source)}
+                  </span>
                 </button>
               </TooltipTrigger>
-              <TooltipContent align="start">
-                <p>Prompt: {formatTokenCount(promptTokens ?? 0)}</p>
-                <p>Completion: {formatTokenCount(completionTokens ?? 0)}</p>
+              <TooltipContent align="start" className="max-w-[360px]">
+                <div className="space-y-3">
+                  <TokenDetailRow
+                    label="远端 usage"
+                    prompt={remoteUsage?.prompt_tokens}
+                    completion={remoteUsage?.completion_tokens}
+                    reasoning={remoteUsage?.reasoning_tokens}
+                    cache={remoteUsage?.cache?.read_tokens}
+                    total={remoteUsage?.total_tokens}
+                  />
+                  <TokenDetailRow
+                    label="本地统计"
+                    prompt={localUsage?.prompt_tokens}
+                    completion={localUsage?.completion_tokens}
+                    reasoning={localUsage?.reasoning_tokens}
+                    total={localUsage?.total_tokens}
+                  />
+                </div>
               </TooltipContent>
             </Tooltip>
           );

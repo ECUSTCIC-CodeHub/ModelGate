@@ -30,7 +30,9 @@ function buildUpstreamUrl(baseUrl: string, protocol: GatewayProtocol) {
   return `${normalizeProviderBaseUrl(baseUrl)}/${PROTOCOL_PATH[protocol]}`;
 }
 
-function resolveUpstreamUserAgent(protocol: GatewayProtocol, inboundHeaders?: Headers) {
+function resolveUpstreamUserAgent(protocol: GatewayProtocol, channelUserAgent?: string | null, inboundHeaders?: Headers) {
+  const configuredUserAgent = channelUserAgent?.trim();
+  if (configuredUserAgent) return configuredUserAgent;
   const inboundUserAgent = inboundHeaders?.get("user-agent");
   if (inboundUserAgent && inboundUserAgent.length > 0) return inboundUserAgent;
   return protocol === "anthropic_messages" ? CLAUDE_CODE_USER_AGENT : OPENAI_NODE_SDK_USER_AGENT;
@@ -41,7 +43,7 @@ function buildUpstreamHeaders(
   protocol: GatewayProtocol,
   inboundHeaders?: Headers,
 ): Record<string, string> {
-  const userAgent = resolveUpstreamUserAgent(protocol, inboundHeaders);
+  const userAgent = resolveUpstreamUserAgent(protocol, route.channel.user_agent, inboundHeaders);
 
   if (protocol === "anthropic_messages") {
     const headers: Record<string, string> = {
@@ -91,7 +93,7 @@ export async function fetchUpstreamRequest(
 }
 
 export async function testUpstreamModel(target: {
-  channel: Pick<DbChannel, "base_url" | "api_key" | "timeout">;
+  channel: Pick<DbChannel, "base_url" | "api_key" | "timeout" | "user_agent">;
   model: Pick<DbModel, "real_model" | "upstream_protocol">;
 }) {
   const { controller, timeout } = createTimeoutController(target.channel.timeout);
@@ -105,14 +107,14 @@ export async function testUpstreamModel(target: {
         protocol === "anthropic_messages"
           ? {
               "content-type": "application/json",
-              "user-agent": resolveUpstreamUserAgent(protocol),
+              "user-agent": resolveUpstreamUserAgent(protocol, target.channel.user_agent),
               "x-api-key": target.channel.api_key,
               authorization: `Bearer ${target.channel.api_key}`,
               "anthropic-version": "2023-06-01",
             }
           : {
               "content-type": "application/json",
-              "user-agent": resolveUpstreamUserAgent(protocol),
+              "user-agent": resolveUpstreamUserAgent(protocol, target.channel.user_agent),
               authorization: `Bearer ${target.channel.api_key}`,
             },
       body: JSON.stringify(

@@ -6,17 +6,28 @@ import { CachedProfile, setCachedProfile } from "@/lib/auth/client-auth";
 type AuthContextValue = {
   profile: CachedProfile | null;
   oidcEnabled: boolean;
+  passwordLoginEnabled: boolean;
 };
 
-const AuthProfileContext = createContext<AuthContextValue>({ profile: null, oidcEnabled: false });
+const AuthProfileContext = createContext<AuthContextValue>({
+  profile: null,
+  oidcEnabled: false,
+  passwordLoginEnabled: true,
+});
 
 type AuthProviderProps = {
   initialProfile: CachedProfile | null;
   oidcEnabled?: boolean;
+  passwordLoginEnabled?: boolean;
   children: ReactNode;
 };
 
-export function AuthProvider({ initialProfile, oidcEnabled = false, children }: AuthProviderProps) {
+export function AuthProvider({
+  initialProfile,
+  oidcEnabled = false,
+  passwordLoginEnabled = true,
+  children,
+}: AuthProviderProps) {
   useEffect(() => {
     if (initialProfile) {
       setCachedProfile(initialProfile);
@@ -24,7 +35,7 @@ export function AuthProvider({ initialProfile, oidcEnabled = false, children }: 
   }, [initialProfile]);
 
   return (
-    <AuthProfileContext.Provider value={{ profile: initialProfile, oidcEnabled }}>
+    <AuthProfileContext.Provider value={{ profile: initialProfile, oidcEnabled, passwordLoginEnabled }}>
       {children}
     </AuthProfileContext.Provider>
   );
@@ -36,4 +47,8 @@ export function useAuthProfile() {
 
 export function useOidcEnabled() {
   return useContext(AuthProfileContext).oidcEnabled;
+}
+
+export function usePasswordLoginEnabled() {
+  return useContext(AuthProfileContext).passwordLoginEnabled;
 }

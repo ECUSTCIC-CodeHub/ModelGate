@@ -42,6 +42,37 @@ pnpm dev
 
 打开 [http://localhost:3000](http://localhost:3000)，首个注册用户自动成为管理员。
 
+## Docker Compose
+
+项目提供预构建镜像，可通过 Docker Compose 快速部署：
+
+```bash
+docker compose up -d
+```
+
+### 镜像选择
+
+| 镜像 | 说明 |
+|------|------|
+| `docker.cnb.cool/bring/tools/modelgate:latest` | 完整版 |
+| `docker.cnb.cool/bring/tools/modelgate:lite` | 精简版 |
+
+按需修改 `docker-compose.yml` 中的 `image` 字段即可切换版本。
+
+### 环境变量
+
+通过环境变量或 `.env` 文件配置：
+
+| 变量 | 说明 |
+|------|------|
+| `JWT_ACCESS_SECRET` | Access Token 签名密钥，生产环境务必替换为随机字符串 |
+| `JWT_REFRESH_SECRET` | Refresh Token 签名密钥，同上 |
+| `AUTH_DISABLED=1` | 取消注释可开启免认证模式（单用户/局域网场景） |
+
+### 数据持久化
+
+SQLite 数据库通过 Docker volume `modelgate-data` 持久化，容器重建后数据不会丢失。
+
 ## 构建版本
 
 默认构建为完整版，包含 OIDC、周期配额、系统公告等完整功能：

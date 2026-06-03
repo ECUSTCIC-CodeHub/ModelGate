@@ -1,5 +1,25 @@
 export type LogRole = "admin" | "user";
 
+export type LogTokenUsageTotals = {
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  text_tokens?: number | null;
+  reasoning_tokens?: number | null;
+  total_tokens: number | null;
+  cache?: {
+    read_tokens?: number | null;
+    creation_tokens?: number | null;
+    miss_tokens?: number | null;
+  } | null;
+};
+
+export type LogMetadata = {
+  token_usage?: {
+    remote?: LogTokenUsageTotals | null;
+    local?: LogTokenUsageTotals | null;
+  };
+} | null;
+
 export type LogRow = {
   id: number;
   username: string;
@@ -15,6 +35,8 @@ export type LogRow = {
   prompt_tokens: number | null;
   completion_tokens: number | null;
   total_tokens: number | null;
+  token_source: "usage" | "local" | "estimated" | string | null;
+  metadata: LogMetadata;
   latency_ms: number | null;
   first_token_latency_ms: number | null;
   output_tps: number | null;
@@ -34,6 +56,8 @@ export type LogSummary = {
   avg_output_tps: number;
 };
 
+export type LogStatusFilter = "all" | "success" | "failed";
+
 export type LogFilters = {
   user: string;
   model: string;
@@ -42,6 +66,7 @@ export type LogFilters = {
   ip: string;
   startDate: string;
   endDate: string;
+  status: LogStatusFilter;
 };
 
 export const emptyLogFilters: LogFilters = {
@@ -52,4 +77,5 @@ export const emptyLogFilters: LogFilters = {
   ip: "",
   startDate: "",
   endDate: "",
+  status: "all",
 };

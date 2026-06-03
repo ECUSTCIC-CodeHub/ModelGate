@@ -1,6 +1,7 @@
 import type {
   IntermediateStreamEvent,
   IntermediateStreamResult,
+  StreamUsage,
 } from "@/lib/gateway/protocol-adapters/streaming/common";
 import { parseChatChunkEvent } from "@/lib/gateway/protocol-adapters/streaming/chat-completions-events";
 
@@ -11,6 +12,7 @@ export function decodeChatCompletionsStream(upstream: ReadableStream<Uint8Array>
   let completionText = "";
   let reasoningText = "";
   let firstTokenAt: number | null = null;
+  let usage: StreamUsage | null = null;
   let started = false;
   const toolCalls = new Map<number, { id: string; name: string }>();
   const markFirstToken = () => {
@@ -46,6 +48,7 @@ export function decodeChatCompletionsStream(upstream: ReadableStream<Uint8Array>
             }
 
             if (parsed.usage) {
+              usage = parsed.usage;
               controller.enqueue({ type: "usage", usage: parsed.usage });
             }
 
@@ -101,7 +104,9 @@ export function decodeChatCompletionsStream(upstream: ReadableStream<Uint8Array>
 
   return {
     stream,
-    completionText: () => `${reasoningText}${completionText}`,
+    completionText: () => completionText,
+    reasoningText: () => reasoningText,
     firstTokenAt: () => firstTokenAt,
+    usage: () => usage,
   };
 }

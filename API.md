@@ -94,7 +94,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 
 ### POST /api/auth/login
 
-账号密码登录。
+账号密码登录。若用户已启用 TOTP 双因素认证，返回 `totp_required: true` 和一个临时令牌，需继续调用 TOTP 验证接口完成登录。
 
 **认证:** 无
 
@@ -105,6 +105,48 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "password": "your-password"
 }
 ```
+
+**响应 - 无 TOTP (200):**
+```json
+{
+  "message": "登录成功。",
+  "user": { "id": 1, "username": "admin", "role": "admin" },
+  "access_token": "eyJ...",
+  "refresh_token": "eyJ...",
+  "expires_in": 900
+}
+```
+
+**响应 - 需要 TOTP (200):**
+```json
+{
+  "totp_required": true,
+  "pending_token": "eyJ..."
+}
+```
+
+> 登录限流：每个 IP + 用户名组合每分钟最多 5 次尝试，超出返回 429。
+
+---
+
+### POST /api/auth/totp/verify
+
+登录时验证 TOTP 验证码，交换临时令牌获取正式认证令牌。
+
+**认证:** 无
+
+**请求体:**
+```json
+{
+  "pending_token": "eyJ...",
+  "code": "123456"
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|:---|:---|:---|:---|
+| pending_token | string | 是 | 登录接口返回的临时令牌，5 分钟有效 |
+| code | string | 是 | 6 位 TOTP 验证码 |
 
 **响应 (200):**
 ```json
@@ -117,7 +159,110 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 }
 ```
 
-> 登录限流：每个 IP + 用户名组合每分钟最多 5 次尝试，超出返回 429。
+> 已使用的验证码会被拒绝（防重放攻击），验证尝试受登录限流保护。
+
+---
+
+### POST /api/auth/totp/setup
+
+发起 TOTP 绑定，生成密钥并返回 OTP URI 和二维码。
+
+**认证:** 用户
+
+**响应 (200):**
+```json
+{
+  "secret": "JBSWY3DPEHPK3PXP",
+  "otp_uri": "otpauth://totp/ModelGate:admin?secret=JBSWY3DPEHPK3PXP&issuer=ModelGate",
+  "qr_data_url": "data:image/png;base64,..."
+}
+```
+
+> TOTP 密钥在数据库中加密存储。已启用 TOTP 的用户需先解绑才能重新设置。
+
+---
+
+### POST /api/auth/totp/verify-setup
+
+验证 TOTP 绑定：输入验证器 APP 显示的验证码，确认绑定生效。
+
+**认证:** 用户
+
+**请求体:**
+```json
+{
+  "code": "123456"
+}
+```
+
+**响应 (200):**
+```json
+{ "message": "TOTP 绑定成功。" }
+```
+
+---
+
+### POST /api/auth/totp/disable
+
+解绑 TOTP。密码登录开启时需验证当前密码；仅 OIDC 登录时需验证当前 TOTP 验证码。
+
+**认证:** 用户
+
+**请求体:**
+
+密码登录开启：
+```json
+{ "password": "当前密码" }
+```
+
+仅 OIDC 登录：
+```json
+{ "code": "123456" }
+```
+
+**响应 (200):**
+```json
+{ "message": "TOTP 已解绑。" }
+```
+
+---
+
+### GET /api/auth/totp/status
+
+获取当前用户的 TOTP 启用状态。
+
+**认证:** 用户
+
+**响应 (200):**
+```json
+{
+  "totp_enabled": true
+}
+```
+
+---
+
+### POST /api/admin/users/:id/revoke-totp
+
+管理员撤销指定用户的 TOTP 双因素认证。撤销后用户下次登录无需验证码，可重新绑定。
+
+**认证:** 管理员
+
+**路径参数:**
+| 参数 | 类型 | 说明 |
+|:---|:---|:---|
+| `id` | number | 用户 ID |
+
+**响应 (200):**
+```json
+{ "message": "已撤销该用户的 TOTP。" }
+```
+
+**错误响应:**
+| 状态码 | 说明 |
+|:---|:---|
+| 404 | 用户不存在 |
+| 400 | 该用户未启用 TOTP |
 
 ---
 
@@ -210,7 +355,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 
 ### POST /api/auth/change-password
 
-修改当前用户密码。
+修改当前用户密码。仅在密码登录开启时可用；仅 OIDC 登录时返回 400。
 
 **认证:** 用户
 
@@ -787,6 +932,7 @@ email matches ".*@company\\.com"
       "base_url": "https://api.openai.com/v1",
       "api_key": "sk-...",
       "supported_protocols": "[\"chat_completions\"]",
+      "user_agent": "OpenAI/JS 6.39.0",
       "enabled": 1,
       "weight": 1,
       "max_concurrency": 64,
@@ -825,6 +971,7 @@ email matches ".*@company\\.com"
   "base_url": "https://api.openai.com/v1",
   "api_key": "sk-xxx",
   "supported_protocols": ["chat_completions"],
+  "user_agent": "OpenAI/JS 6.39.0",
   "weight": 1,
   "max_concurrency": 64,
   "timeout": 60,
@@ -839,7 +986,7 @@ email matches ".*@company\\.com"
       "real_model": "gpt-4-turbo",
       "upstream_protocol": "chat_completions",
       "is_public": true,
-      "weight": 1
+      "enabled": true
     }
   ]
 }
@@ -851,6 +998,7 @@ email matches ".*@company\\.com"
 | base_url | string | 是 | | 上游 API 地址 |
 | api_key | string | 是 | | 上游 API Key |
 | supported_protocols | string[] | 否 | ["chat_completions"] | 支持的协议：`chat_completions` / `anthropic_messages` / `responses` / `embeddings` / `images`。各协议对应的网关端点：`chat_completions` → `/api/v1/chat/completions`，`anthropic_messages` → `/api/v1/messages`，`responses` → `/api/v1/responses`，`embeddings` → `/api/v1/embeddings`，`images` → `/api/v1/images/generations` + `/api/v1/images/edits` |
+| user_agent | string | 否 | "" | 渠道级上游 User-Agent，留空时透传客户端 UA 或使用协议默认值 |
 | weight | int | 否 | 1 | 路由权重 |
 | max_concurrency | int | 否 | 64 | 最大并发数 |
 | timeout | int | 否 | 60 | 超时时间（秒） |
@@ -860,6 +1008,19 @@ email matches ".*@company\\.com"
 | period_quota_tokens | int\|null | 否 | null | 每周期 Token 配额上限（仅完整版） |
 | period_quota_requests | int\|null | 否 | null | 每周期请求配额上限（仅完整版） |
 | models | array | 否 | [] | 初始模型列表 |
+
+`models` 初始模型字段：
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|:---|:---|:---|:---|:---|
+| alias | string | 是 | | 客户端调用时的模型名 |
+| real_model | string | 是 | | 上游真实模型名 |
+| upstream_protocol | enum | 否 | 渠道第一个协议 | `chat_completions` / `anthropic_messages` / `responses` / `embeddings` |
+| is_public | bool | 否 | true | false 时仅白名单用户可访问 |
+| enabled | bool | 否 | true | 是否启用 |
+| weight | int | 否 | 1 | 初始模型权重；前端创建流程默认不配置，创建后可在模型管理中调整 |
+
+Token 倍率、请求倍率和模型级并发需在模型管理接口中配置。
 
 ### PUT /api/admin/channels/:id
 
@@ -913,9 +1074,16 @@ email matches ".*@company\\.com"
 ```json
 {
   "base_url": "https://api.openai.com/v1",
-  "api_key": "sk-xxx"
+  "api_key": "sk-xxx",
+  "user_agent": "OpenAI/JS 6.39.0"
 }
 ```
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|:---|:---|:---|:---|:---|
+| base_url | string | 是 | | 上游 API 地址 |
+| api_key | string | 是 | | 上游 API Key |
+| user_agent | string | 否 | "" | 探测模型列表时使用的 User-Agent |
 
 **响应 (200):**
 ```json
@@ -1030,12 +1198,13 @@ email matches ".*@company\\.com"
   "data": [
     {
       "id": 1,
-      "key": "sk-gw-abc123...",
+      "key": "sk-gw-abc0...xyz9",
       "name": "my-key",
       "used_tokens": 1234,
       "used_requests": 56,
       "enabled": 1,
-      "created_at": "2026-05-08 00:00:00"
+      "created_at": "2026-05-08 00:00:00",
+      "last_used_at": "2026-05-10 12:34:56"
     }
   ]
 }
@@ -1235,6 +1404,7 @@ email matches ".*@company\\.com"
 | ip | string | 按客户端 IP 搜索 |
 | start_date | YYYY-MM-DD | 开始日期 |
 | end_date | YYYY-MM-DD | 结束日期 |
+| status | success / failed | 按请求状态筛选：success 仅成功请求，failed 仅失败请求 |
 
 **响应 (200):**
 ```json
@@ -1262,6 +1432,20 @@ email matches ".*@company\\.com"
       "prompt_tokens": 100,
       "completion_tokens": 50,
       "total_tokens": 150,
+      "token_source": "usage",
+      "metadata": {
+        "token_usage": {
+          "remote": {
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "text_tokens": 38,
+            "reasoning_tokens": 12,
+            "total_tokens": 150,
+            "cache": { "read_tokens": 32, "creation_tokens": 0, "miss_tokens": 68 }
+          },
+          "local": { "prompt_tokens": 98, "completion_tokens": 37, "reasoning_tokens": 12, "total_tokens": 147 }
+        }
+      },
       "latency_ms": 1234,
       "first_token_latency_ms": 300,
       "output_tps": 45.5,
@@ -1277,7 +1461,7 @@ email matches ".*@company\\.com"
 }
 ```
 
-> `user_agent` 记录客户端请求携带的 User-Agent，最长保留 500 字符。普通用户不会看到 `username`、`channel_name`、`route_attempts`、`attempted_channels` 字段。
+> `prompt_tokens`、`completion_tokens`、`total_tokens` 为实际用于扣量和汇总的 Token 用量：优先采用远端 usage，远端缺失时回退本地统计。日志中的 `completion_tokens` 表示可见输出 Token，不包含单独识别出的思考 Token；如果上游没有返回可见文本 Token 明细，但流式内容中包含思考文本，会用本地对可见文本的统计作为响应 Token。`total_tokens` 仍包含思考消耗。`metadata.token_usage.remote` 记录上游返回的 usage 原始 Token 数，其中 `text_tokens` 表示上游明细中明确返回的可见文本 Token，`reasoning_tokens` 表示上游明确返回的思考 Token，`cache` 记录上游返回的缓存命中/读取、缓存创建/写入、缓存未命中 Token。`metadata.token_usage.local` 记录本地分词统计结果。`output_tps` 使用可见输出 Token 与思考 Token 共同计算输出速度。`token_source` 表示本次采用来源：`usage` 为上游响应返回的 usage 字段，`local` 为本地 GPT 分词器兜底统计，`estimated` 为请求失败时的预估值。`user_agent` 记录客户端请求携带的 User-Agent，最长保留 500 字符。普通用户不会看到 `username`、`channel_name`、`route_attempts`、`attempted_channels` 字段。
 
 ---
 
@@ -1344,7 +1528,7 @@ email matches ".*@company\\.com"
 
 ### PUT /api/dashboard/profile/password
 
-修改密码（等同于 `/api/auth/change-password`）。
+修改密码（等同于 `/api/auth/change-password`）。仅在密码登录开启时可用；仅 OIDC 登录时返回 400。
 
 **认证:** 用户
 
@@ -1379,7 +1563,7 @@ email matches ".*@company\\.com"
 
 **CORS:** 默认关闭。管理员在系统设置中开启 `cors_enabled` 后，所有 `/api/v1/*` 和 `/api/ollama/*` 端点会返回 `Access-Control-Allow-Origin: *` 并响应 `OPTIONS` 预检请求，允许浏览器从任意来源跨域调用。
 
-**User-Agent 透传:** 客户端请求包含 `User-Agent` 时，网关会原样透传给上游渠道；未提供时 OpenAI 协议默认使用 `OpenAI/JS 6.39.0`，Anthropic Messages 协议默认使用 Claude Code UA `claude-cli/2.1.148`。可通过环境变量 `CLAUDE_CODE_USER_AGENT` 覆盖默认 Claude Code UA。
+**User-Agent 透传:** 渠道配置了 `user_agent` 时，网关请求固定使用该值；未配置时，如果客户端请求包含 `User-Agent`，网关会原样透传给上游渠道；仍未提供时 OpenAI 协议默认使用 `OpenAI/JS 6.39.0`，Anthropic Messages 协议默认使用 Claude Code UA `claude-cli/2.1.148`。可通过环境变量 `CLAUDE_CODE_USER_AGENT` 覆盖默认 Claude Code UA。
 
 ### POST /api/v1/chat/completions
 
@@ -1401,6 +1585,8 @@ OpenAI Chat Completions 兼容端点。
 ```
 
 **响应:** 标准 OpenAI Chat Completion 响应，支持流式输出（`stream: true`）。
+
+> 流式 Chat Completions 请求转发到上游时，网关会自动附加 `stream_options.include_usage = true`，用于优先记录上游返回的 Token usage 和缓存 Token；上游不返回 usage 时才使用本地分词统计。
 
 **额外响应头:**
 ```

@@ -5,12 +5,12 @@ import {
 } from "@/lib/gateway/normalized-message";
 import {
   finishReasonToAnthropic,
-  normalizeUsage,
   omitKeys,
   parseToolArguments,
   type IntermediateResponse,
   type ResponseAdapterOptions,
 } from "@/lib/gateway/protocol-adapters/intermediate";
+import { usageFromAnthropic } from "@/lib/gateway/protocol-adapters/usage";
 
 const RESPONSE_KEYS = ["id", "type", "role", "model", "content", "stop_reason", "stop_sequence", "usage"];
 
@@ -55,10 +55,7 @@ export function anthropicResponseToIntermediate(body: JsonRecord): IntermediateR
       name: typeof item.name === "string" ? item.name : "",
       arguments: JSON.stringify(asRecord(item.input) ?? item.input ?? {}),
     }));
-  const usage = asRecord(body.usage);
-  const inputTokens = Number(usage?.input_tokens ?? 0);
-  const outputTokens = Number(usage?.output_tokens ?? 0);
-  const totalTokens = Number(usage?.total_tokens ?? inputTokens + outputTokens);
+  const usage = usageFromAnthropic(body.usage);
 
   if (normalizedContent.length === 0 && toolCalls.length === 0) {
     normalizedContent.push({ type: "text", text: "" });
@@ -73,7 +70,7 @@ export function anthropicResponseToIntermediate(body: JsonRecord): IntermediateR
     content: normalizedContent,
     tool_calls: toolCalls,
     stop_reason: typeof body.stop_reason === "string" ? body.stop_reason : null,
-    usage: normalizeUsage(inputTokens, outputTokens, totalTokens),
+    usage,
     extra: omitKeys(body, RESPONSE_KEYS),
   };
 }
@@ -121,6 +118,8 @@ export function anthropicResponseFromIntermediate(
     usage: response.usage ? {
       input_tokens: response.usage.prompt_tokens,
       output_tokens: response.usage.completion_tokens,
+      cache_read_input_tokens: response.usage.cache_read_tokens,
+      cache_creation_input_tokens: response.usage.cache_creation_tokens,
     } : undefined,
   };
 }

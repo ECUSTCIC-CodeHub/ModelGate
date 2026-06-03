@@ -91,7 +91,7 @@ export default function AvailableModelsPage() {
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-3">
-              <p className="text-xs font-medium text-[var(--color-foreground-muted)]">Base URL</p>
+              <p className="text-xs font-medium text-[var(--color-foreground-muted)]">Base URL（OpenAI）</p>
               <div className="flex items-center gap-2">
                 <code className="flex-1 truncate rounded bg-[var(--color-surface-hover)] px-3 py-2 text-sm text-[var(--color-foreground)]">{origin}/api/v1</code>
                 <Button type="button" variant="outline" size="sm" onClick={() => copyText(`${origin}/api/v1`)}>

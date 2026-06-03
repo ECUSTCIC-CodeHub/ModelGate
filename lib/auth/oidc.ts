@@ -61,19 +61,28 @@ export function resolveRedirectUri(requestUrl: string): string {
   return `${getPublicOrigin(requestUrl)}/api/auth/oidc/callback`;
 }
 
+export function normalizeOidcIssuerUrl(raw: string): string {
+  let url = raw.trim().replace(/\/+$/, "");
+  if (url.endsWith("/.well-known/openid-configuration")) {
+    url = url.slice(0, -"/.well-known/openid-configuration".length);
+  }
+  return url;
+}
+
 export async function fetchDiscovery(issuerUrl: string): Promise<OidcDiscovery> {
+  const normalized = normalizeOidcIssuerUrl(issuerUrl);
   const now = Date.now();
-  const cached = discoveryCache.get(issuerUrl);
+  const cached = discoveryCache.get(normalized);
   if (cached && cached.expiresAt > now) return cached.data;
 
-  const url = issuerUrl.replace(/\/+$/, "") + "/.well-known/openid-configuration";
+  const url = normalized + "/.well-known/openid-configuration";
   const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
   if (!response.ok) throw new Error(`OIDC discovery failed: ${response.status}`);
   const data = (await response.json()) as OidcDiscovery;
   if (!data.authorization_endpoint || !data.token_endpoint) {
     throw new Error("OIDC discovery response missing required endpoints");
   }
-  discoveryCache.set(issuerUrl, { data, expiresAt: now + DISCOVERY_TTL_MS });
+  discoveryCache.set(normalized, { data, expiresAt: now + DISCOVERY_TTL_MS });
   return data;
 }
 
@@ -203,8 +212,8 @@ export async function extractIdTokenClaims(
   const claims = await verifyIdTokenSignature(idToken, jwksUri);
 
   const iss = claims.iss as string | undefined;
-  const expectedIssNormalized = expectedIssuer.replace(/\/+$/, "");
-  const issNormalized = (iss ?? "").replace(/\/+$/, "");
+  const expectedIssNormalized = normalizeOidcIssuerUrl(expectedIssuer);
+  const issNormalized = normalizeOidcIssuerUrl(iss ?? "");
   if (issNormalized !== expectedIssNormalized) {
     throw new Error(`ID token issuer mismatch: ${iss}`);
   }

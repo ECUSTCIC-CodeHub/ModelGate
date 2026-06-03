@@ -1,4 +1,5 @@
 import { asArray, asRecord, type JsonRecord } from "@/lib/gateway/normalized-message";
+import { usageFromChatCompletions } from "@/lib/gateway/protocol-adapters/usage";
 
 type ChatToolDelta = {
   index: number;
@@ -26,7 +27,7 @@ export function parseChatChunkEvent(data: string) {
     })
     .filter((item): item is ChatToolDelta => Boolean(item));
 
-  const usage = asRecord(parsed.usage);
+  const usage = usageFromChatCompletions(parsed.usage);
   return {
     id: typeof parsed.id === "string" ? parsed.id : `chatcmpl_${crypto.randomUUID().replace(/-/g, "")}`,
     model: typeof parsed.model === "string" ? parsed.model : null,
@@ -39,19 +40,20 @@ export function parseChatChunkEvent(data: string) {
         : "",
     toolCalls,
     finishReason: typeof firstChoice?.finish_reason === "string" ? firstChoice.finish_reason : null,
-    usage: usage
-      ? {
-          prompt_tokens: Number(usage.prompt_tokens ?? 0),
-          completion_tokens: Number(usage.completion_tokens ?? 0),
-          total_tokens: Number(usage.total_tokens ?? 0),
-        }
-      : null,
+    usage,
   };
 }
 
 export function trackChatCompletionsStreamEvent(_event: string, data: string) {
   const parsed = parseChatChunkEvent(data);
-  if (parsed.content) return { completionText: parsed.content };
-  if (parsed.reasoning) return { firstToken: true };
-  return null;
+  const tracked: {
+    completionText?: string;
+    reasoningText?: string;
+    firstToken?: boolean;
+    usage?: NonNullable<typeof parsed.usage>;
+  } = {};
+  if (parsed.usage) tracked.usage = parsed.usage;
+  if (parsed.content) tracked.completionText = parsed.content;
+  if (parsed.reasoning) tracked.reasoningText = parsed.reasoning;
+  return tracked.usage || tracked.completionText || tracked.reasoningText || tracked.firstToken ? tracked : null;
 }

@@ -29,6 +29,7 @@ export function ChannelDrawer({
   modelDrafts,
   probingModels,
   periodQuotaEnabled,
+  dismissBlocked = false,
   onOpenChange,
   onSubmit,
   onFormChange,
@@ -44,6 +45,7 @@ export function ChannelDrawer({
   modelDrafts: ChannelModelDraft[];
   probingModels: boolean;
   periodQuotaEnabled: boolean;
+  dismissBlocked?: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (event: FormEvent) => void;
   onFormChange: (patch: Partial<ChannelForm>) => void;
@@ -55,7 +57,13 @@ export function ChannelDrawer({
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="sm:max-w-2xl">
+      <SheetContent
+        side="right"
+        className="sm:max-w-2xl"
+        onInteractOutside={(event) => {
+          if (dismissBlocked) event.preventDefault();
+        }}
+      >
         <SheetHeader>
           <SheetTitle>{editingId === null ? "新增接口渠道" : `编辑渠道 #${editingId}`}</SheetTitle>
           <SheetDescription>配置渠道名称、Base URL、API Key、超时与默认模型草稿。</SheetDescription>
@@ -110,6 +118,17 @@ export function ChannelDrawer({
               <Label>API Key</Label>
               <Input value={form.api_key} onChange={(e) => onFormChange({ api_key: e.target.value })} />
             </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>上游 User-Agent</Label>
+              <Input
+                placeholder="留空则透传客户端 UA 或使用协议默认值"
+                value={form.user_agent}
+                onChange={(e) => onFormChange({ user_agent: e.target.value })}
+              />
+              <p className="text-xs text-[var(--color-foreground-muted)]">
+                配置后该渠道请求固定使用此 User-Agent；留空时沿用当前透传和默认策略。
+              </p>
+            </div>
           </div>
 
           <ChannelQuotaFields
@@ -121,7 +140,7 @@ export function ChannelDrawer({
           {editingId === null ? (
             <ModelDraftCard
               title="初始模型列表"
-              description="别名就是客户端调用时传入的 model，支持 * 作为兜底模型。"
+              description="填写客户端模型名与上游真实模型名，支持 * 作为兜底模型。"
               protocols={form.supported_protocols}
               drafts={modelDrafts}
               probing={probingModels}
@@ -130,6 +149,7 @@ export function ChannelDrawer({
               onAddDraft={onAddModelDraft}
               onRemoveDraft={onRemoveModelDraft}
               onUpdateDraft={onUpdateModelDraft}
+              showAdvancedFields={false}
             />
           ) : null}
 

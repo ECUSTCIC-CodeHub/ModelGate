@@ -45,6 +45,15 @@ function maskKey(value: string | null): string | null {
   return value.length > 14 ? `${value.slice(0, 10)}...${value.slice(-4)}` : `${value.slice(0, 4)}...`;
 }
 
+function parseLogMetadata(value: unknown) {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  try {
+    return JSON.parse(value) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(request: Request) {
   const guard = ensureWebUser(request);
   if ("error" in guard) return guard.error;
@@ -60,6 +69,7 @@ export async function GET(request: Request) {
   const key = (url.searchParams.get("key") ?? "").trim();
   const startDate = parseDateParam(url.searchParams.get("start_date") ?? "");
   const endDate = parseDateParam(url.searchParams.get("end_date") ?? "");
+  const status = (url.searchParams.get("status") ?? "").trim();
 
   const whereClauses: string[] = [];
   const whereArgs: Array<string | number> = [];
@@ -117,6 +127,12 @@ export async function GET(request: Request) {
     }
   }
 
+  if (status === "failed") {
+    whereClauses.push("l.status_code >= 400");
+  } else if (status === "success") {
+    whereClauses.push("l.status_code < 400");
+  }
+
   const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
 
   const rows = gatewayDb
@@ -127,7 +143,7 @@ export async function GET(request: Request) {
          k.name AS key_name, k.key AS key_value,
          l.model_alias, l.real_model, l.stream, l.status_code,
          l.estimated_tokens, l.prompt_tokens, l.completion_tokens, l.total_tokens,
-         l.latency_ms, l.first_token_latency_ms, l.output_tps, l.route_attempts, l.attempted_channels,
+         l.token_source, l.metadata, l.latency_ms, l.first_token_latency_ms, l.output_tps, l.route_attempts, l.attempted_channels,
          l.error_message, l.client_ip, l.user_agent, l.created_at
        FROM logs l
        LEFT JOIN users u ON u.id = l.user_id
@@ -142,6 +158,7 @@ export async function GET(request: Request) {
   const data = rows.map((row) => {
     const next = { ...row };
     next.key_masked = maskKey(typeof next.key_value === "string" ? next.key_value : null);
+    next.metadata = parseLogMetadata(next.metadata);
     delete next.key_value;
     if (!isAdmin) {
       delete next.username;

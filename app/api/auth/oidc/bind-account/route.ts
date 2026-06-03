@@ -15,7 +15,7 @@ import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { requireFeature } from "@/lib/core/features";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { checkLoginRateLimit } from "@/lib/auth/login-ratelimit";
-import { deriveUsername, resolveGroupFromClaims } from "@/lib/auth/oidc";
+import { deriveUsername, resolveGroupFromClaims, getOidcConfig } from "@/lib/auth/oidc";
 import { USERNAME_SCHEMA } from "@/lib/auth/username";
 import { randomBytes } from "node:crypto";
 
@@ -94,6 +94,16 @@ export async function POST(request: Request) {
   }
 
   if (createParsed.success) {
+    const config = getOidcConfig();
+    if (!config.autoRegister) {
+      const adminCount = gatewayDb
+        .prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL")
+        .get() as { count: number };
+      if (adminCount.count > 0) {
+        return jsonError("自动注册已关闭，请联系管理员创建账号", 403);
+      }
+    }
+
     gatewayDb
       .prepare("UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL WHERE oidc_issuer = ? AND oidc_subject = ?")
       .run(pending.issuer, pending.sub);

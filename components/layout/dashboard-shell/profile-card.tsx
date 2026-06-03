@@ -8,10 +8,12 @@ import type { ProfileBrief } from "@/components/layout/dashboard-shell/types";
 type ProfileCardProps = {
   profile: ProfileBrief;
   oidcAvailable: boolean;
+  passwordLoginEnabled: boolean;
   onChangePassword: () => void;
   onOidcBind: () => void;
   onOidcSync: () => void;
   onOidcUnbind: () => void;
+  onTotpManage: () => void;
   onLogout: () => void;
 };
 
@@ -38,10 +40,12 @@ function quotaRows(profile: ProfileBrief) {
 export function DesktopProfileCard({
   profile,
   oidcAvailable,
+  passwordLoginEnabled,
   onChangePassword,
   onOidcBind,
   onOidcSync,
   onOidcUnbind,
+  onTotpManage,
   onLogout,
 }: ProfileCardProps) {
   return (
@@ -76,10 +80,13 @@ export function DesktopProfileCard({
       <ProfileActions
         oidcAvailable={oidcAvailable}
         oidcBound={Boolean(profile.oidc_subject)}
+        passwordLoginEnabled={passwordLoginEnabled}
+        totpEnabled={profile.totp_enabled === 1}
         onChangePassword={onChangePassword}
         onOidcBind={onOidcBind}
         onOidcSync={onOidcSync}
         onOidcUnbind={onOidcUnbind}
+        onTotpManage={onTotpManage}
         onLogout={onLogout}
       />
     </div>

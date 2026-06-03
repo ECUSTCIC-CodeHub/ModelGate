@@ -42,7 +42,11 @@ export default async function DashboardLayout({
 
   return (
     <ThemeProvider>
-      <AuthProvider initialProfile={enrichedProfile} oidcEnabled={authStatus.oidc_enabled}>
+      <AuthProvider
+        initialProfile={enrichedProfile}
+        oidcEnabled={authStatus.oidc_enabled}
+        passwordLoginEnabled={authStatus.password_login_enabled}
+      >
         {children}
         {modelGateFeatures.announcement ? <AnnouncementDialog /> : null}
       </AuthProvider>

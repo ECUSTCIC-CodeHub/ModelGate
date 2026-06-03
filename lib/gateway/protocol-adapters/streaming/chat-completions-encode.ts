@@ -16,6 +16,38 @@ export function encodeChatCompletionsStream(events: ReadableStream<IntermediateS
   let finished = false;
   const toolCalls = new Map<number, { id: string; name: string }>();
 
+  const chatUsage = () => {
+    if (!usage) return undefined;
+    const completionDetails =
+      usage.reasoning_tokens !== undefined || usage.text_tokens !== undefined
+        ? {
+            ...(usage.reasoning_tokens !== undefined ? { reasoning_tokens: usage.reasoning_tokens } : {}),
+            ...(usage.text_tokens !== undefined ? { text_tokens: usage.text_tokens } : {}),
+          }
+        : undefined;
+    const promptDetails =
+      usage.cache_read_tokens !== undefined || usage.cache_creation_tokens !== undefined
+        ? {
+            ...(usage.cache_read_tokens !== undefined ? { cached_tokens: usage.cache_read_tokens } : {}),
+            ...(usage.cache_creation_tokens !== undefined
+              ? {
+                  cache_creation: {
+                    cache_creation_input_tokens: usage.cache_creation_tokens,
+                    cache_type: "ephemeral",
+                  },
+                }
+              : {}),
+          }
+        : undefined;
+    return {
+      prompt_tokens: usage.prompt_tokens,
+      completion_tokens: usage.completion_tokens,
+      total_tokens: usage.total_tokens,
+      ...(completionDetails ? { completion_tokens_details: completionDetails } : {}),
+      ...(promptDetails ? { prompt_tokens_details: promptDetails } : {}),
+    };
+  };
+
   const emit = (
     controller: ReadableStreamDefaultController<Uint8Array>,
     delta: JsonRecord,
@@ -31,7 +63,7 @@ export function encodeChatCompletionsStream(events: ReadableStream<IntermediateS
         delta,
         finish_reason: reason,
       }],
-      ...(usage ? { usage } : {}),
+      ...(usage ? { usage: chatUsage() } : {}),
     })));
   };
 
