@@ -51,9 +51,11 @@ export function resolveTokenUsage(options: {
     const remoteTextTokens = options.usage.text_tokens === undefined
       ? null
       : normalizeTokenCount(options.usage.text_tokens, 0);
-    const completionTokens = remoteTextTokens ?? (remoteReasoningTokens !== null
-      ? Math.max(0, remoteCompletionTokens - remoteReasoningTokens)
-      : remoteCompletionTokens);
+    const completionTokens = remoteTextTokens ?? (localReasoningTokens > 0 && remoteReasoningTokens === null
+      ? localCompletionTokens
+      : reasoningTokens > 0
+        ? Math.max(0, remoteCompletionTokens - reasoningTokens)
+        : remoteCompletionTokens);
     return {
       promptTokens,
       completionTokens,
@@ -69,7 +71,7 @@ export function resolveTokenUsage(options: {
       localReasoningTokens,
       localTotalTokens,
       reasoningTokens,
-      outputTpsTokens: completionTokens,
+      outputTpsTokens: completionTokens + reasoningTokens,
       cacheReadTokens: options.usage.cache_read_tokens === undefined
         ? null
         : normalizeTokenCount(options.usage.cache_read_tokens, 0),
@@ -97,7 +99,7 @@ export function resolveTokenUsage(options: {
     localReasoningTokens,
     localTotalTokens,
     reasoningTokens: localReasoningTokens,
-    outputTpsTokens: localCompletionTokens,
+    outputTpsTokens: localCompletionTokens + localReasoningTokens,
     cacheReadTokens: null,
     cacheCreationTokens: null,
     cacheMissTokens: null,
@@ -120,7 +122,7 @@ export function tokenUsageMetadata(usage: ResolvedTokenUsage) {
             prompt_tokens: usage.remotePromptTokens,
             completion_tokens: usage.remoteCompletionTokens,
             total_tokens: usage.remoteTotalTokens,
-            text_tokens: usage.remoteTextTokens ?? usage.completionTokens,
+            ...(usage.remoteTextTokens !== null ? { text_tokens: usage.remoteTextTokens } : {}),
             ...(usage.remoteReasoningTokens !== null ? { reasoning_tokens: usage.remoteReasoningTokens } : {}),
             ...(hasCacheUsage ? { cache: cacheUsage } : {}),
           },
