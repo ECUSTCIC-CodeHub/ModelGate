@@ -113,6 +113,12 @@ export function responsesResponseFromIntermediate(response: IntermediateResponse
       input_tokens: response.usage.prompt_tokens,
       output_tokens: response.usage.completion_tokens,
       total_tokens: response.usage.total_tokens,
+      output_tokens_details: response.usage.reasoning_tokens !== undefined || response.usage.text_tokens !== undefined
+        ? {
+            ...(response.usage.reasoning_tokens !== undefined ? { reasoning_tokens: response.usage.reasoning_tokens } : {}),
+            ...(response.usage.text_tokens !== undefined ? { text_tokens: response.usage.text_tokens } : {}),
+          }
+        : undefined,
       input_tokens_details: response.usage.cache_read_tokens !== undefined
         ? { cached_tokens: response.usage.cache_read_tokens }
         : undefined,

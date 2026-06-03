@@ -24,6 +24,7 @@ export function trackResponsesStreamEvent(eventName: string, data: string) {
   const usage = usageFromResponses(response?.usage);
   const tracked: {
     completionText?: string;
+    reasoningText?: string;
     usage?: StreamUsage;
   } = {};
   if (usage) tracked.usage = usage;
@@ -31,9 +32,9 @@ export function trackResponsesStreamEvent(eventName: string, data: string) {
     tracked.completionText = payload.delta;
   }
   if (parsed.event === "response.reasoning_text.delta" && typeof payload?.delta === "string") {
-    tracked.completionText = payload.delta;
+    tracked.reasoningText = payload.delta;
   }
-  return tracked.usage || tracked.completionText ? tracked : null;
+  return tracked.usage || tracked.completionText || tracked.reasoningText ? tracked : null;
 }
 
 export function createdToUnix(value: unknown) {
@@ -51,9 +52,15 @@ export function responseUsage(usage: StreamUsage | null) {
   return usage
     ? {
         input_tokens: usage.prompt_tokens,
-        output_tokens: usage.completion_tokens,
-        total_tokens: usage.total_tokens,
-        input_tokens_details: usage.cache_read_tokens !== undefined
+      output_tokens: usage.completion_tokens,
+      total_tokens: usage.total_tokens,
+      output_tokens_details: usage.reasoning_tokens !== undefined || usage.text_tokens !== undefined
+        ? {
+            ...(usage.reasoning_tokens !== undefined ? { reasoning_tokens: usage.reasoning_tokens } : {}),
+            ...(usage.text_tokens !== undefined ? { text_tokens: usage.text_tokens } : {}),
+          }
+        : undefined,
+      input_tokens_details: usage.cache_read_tokens !== undefined
           ? { cached_tokens: usage.cache_read_tokens }
           : undefined,
       }

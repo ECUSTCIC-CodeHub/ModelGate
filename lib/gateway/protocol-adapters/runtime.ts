@@ -18,6 +18,7 @@ export type GatewayProtocolAdapter = {
   adaptRequestBody(body: JsonRecord, outbound: GatewayProtocolAdapter, realModel: string): JsonRecord;
   adaptResponseBody(text: string, outbound: GatewayProtocolAdapter, options?: ResponseAdapterOptions): string;
   extractCompletionTextFromBody(text: string): string;
+  extractReasoningTextFromBody(text: string): string;
   getUsageFromBody(text: string): IntermediateUsage | null;
 };
 
@@ -86,9 +87,19 @@ export function createBodyProtocolGatewayAdapter(options: {
         return response.content
           .flatMap((part) => {
             if (part.type === "text") return [part.text];
-            if (part.type === "thinking") return [part.thinking];
             return [];
           })
+          .join("\n");
+      } catch {
+        return "";
+      }
+    },
+    extractReasoningTextFromBody(text) {
+      try {
+        const parsed = JSON.parse(text) as JsonRecord;
+        const response: IntermediateResponse = bodyAdapter.responseToIntermediate(parsed);
+        return response.content
+          .flatMap((part) => (part.type === "thinking" ? [part.thinking] : []))
           .join("\n");
       } catch {
         return "";

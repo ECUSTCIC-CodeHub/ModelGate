@@ -10,13 +10,18 @@ export type ResolvedTokenUsage = {
   source: TokenUsageSource;
   remotePromptTokens: number | null;
   remoteCompletionTokens: number | null;
+  remoteTextTokens: number | null;
   remoteTotalTokens: number | null;
+  remoteReasoningTokens: number | null;
   localPromptTokens: number;
   localCompletionTokens: number;
+  localReasoningTokens: number;
   localTotalTokens: number;
-  cacheReadTokens: number;
-  cacheCreationTokens: number;
-  cacheMissTokens: number;
+  reasoningTokens: number;
+  outputTpsTokens: number;
+  cacheReadTokens: number | null;
+  cacheCreationTokens: number | null;
+  cacheMissTokens: number | null;
 };
 
 function normalizeTokenCount(value: unknown, fallback: number) {
@@ -28,29 +33,52 @@ export function resolveTokenUsage(options: {
   usage: IntermediateUsage | null | undefined;
   localPromptTokens: number;
   completionText: string;
+  reasoningText?: string;
   model: string;
 }): ResolvedTokenUsage {
   const localCompletionTokens = Math.max(0, countTextTokens(options.completionText, options.model));
-  const localTotalTokens = options.localPromptTokens + localCompletionTokens;
+  const localReasoningTokens = Math.max(0, countTextTokens(options.reasoningText ?? "", options.model));
+  const localTotalTokens = options.localPromptTokens + localCompletionTokens + localReasoningTokens;
 
   if (options.usage) {
     const promptTokens = normalizeTokenCount(options.usage.prompt_tokens, options.localPromptTokens);
-    const completionTokens = normalizeTokenCount(options.usage.completion_tokens, 0);
-    const totalTokens = normalizeTokenCount(options.usage.total_tokens, promptTokens + completionTokens);
+    const remoteCompletionTokens = normalizeTokenCount(options.usage.completion_tokens, 0);
+    const totalTokens = normalizeTokenCount(options.usage.total_tokens, promptTokens + remoteCompletionTokens);
+    const remoteReasoningTokens = options.usage.reasoning_tokens === undefined
+      ? null
+      : normalizeTokenCount(options.usage.reasoning_tokens, 0);
+    const reasoningTokens = remoteReasoningTokens ?? localReasoningTokens;
+    const remoteTextTokens = options.usage.text_tokens === undefined
+      ? null
+      : normalizeTokenCount(options.usage.text_tokens, 0);
+    const completionTokens = remoteTextTokens ?? (remoteReasoningTokens !== null
+      ? Math.max(0, remoteCompletionTokens - remoteReasoningTokens)
+      : remoteCompletionTokens);
     return {
       promptTokens,
       completionTokens,
       totalTokens,
       source: "usage",
       remotePromptTokens: promptTokens,
-      remoteCompletionTokens: completionTokens,
+      remoteCompletionTokens,
+      remoteTextTokens,
       remoteTotalTokens: totalTokens,
+      remoteReasoningTokens,
       localPromptTokens: options.localPromptTokens,
       localCompletionTokens,
+      localReasoningTokens,
       localTotalTokens,
-      cacheReadTokens: normalizeTokenCount(options.usage.cache_read_tokens, 0),
-      cacheCreationTokens: normalizeTokenCount(options.usage.cache_creation_tokens, 0),
-      cacheMissTokens: normalizeTokenCount(options.usage.cache_miss_tokens, 0),
+      reasoningTokens,
+      outputTpsTokens: completionTokens,
+      cacheReadTokens: options.usage.cache_read_tokens === undefined
+        ? null
+        : normalizeTokenCount(options.usage.cache_read_tokens, 0),
+      cacheCreationTokens: options.usage.cache_creation_tokens === undefined
+        ? null
+        : normalizeTokenCount(options.usage.cache_creation_tokens, 0),
+      cacheMissTokens: options.usage.cache_miss_tokens === undefined
+        ? null
+        : normalizeTokenCount(options.usage.cache_miss_tokens, 0),
     };
   }
 
@@ -61,17 +89,29 @@ export function resolveTokenUsage(options: {
     source: "local",
     remotePromptTokens: null,
     remoteCompletionTokens: null,
+    remoteTextTokens: null,
     remoteTotalTokens: null,
+    remoteReasoningTokens: null,
     localPromptTokens: options.localPromptTokens,
     localCompletionTokens,
+    localReasoningTokens,
     localTotalTokens,
-    cacheReadTokens: 0,
-    cacheCreationTokens: 0,
-    cacheMissTokens: 0,
+    reasoningTokens: localReasoningTokens,
+    outputTpsTokens: localCompletionTokens,
+    cacheReadTokens: null,
+    cacheCreationTokens: null,
+    cacheMissTokens: null,
   };
 }
 
 export function tokenUsageMetadata(usage: ResolvedTokenUsage) {
+  const cacheUsage = {
+    ...(usage.cacheReadTokens !== null ? { read_tokens: usage.cacheReadTokens } : {}),
+    ...(usage.cacheCreationTokens !== null ? { creation_tokens: usage.cacheCreationTokens } : {}),
+    ...(usage.cacheMissTokens !== null ? { miss_tokens: usage.cacheMissTokens } : {}),
+  };
+  const hasCacheUsage = Object.keys(cacheUsage).length > 0;
+
   return {
     token_usage: {
       remote: usage.remotePromptTokens === null
@@ -80,16 +120,15 @@ export function tokenUsageMetadata(usage: ResolvedTokenUsage) {
             prompt_tokens: usage.remotePromptTokens,
             completion_tokens: usage.remoteCompletionTokens,
             total_tokens: usage.remoteTotalTokens,
+            text_tokens: usage.remoteTextTokens ?? usage.completionTokens,
+            ...(usage.remoteReasoningTokens !== null ? { reasoning_tokens: usage.remoteReasoningTokens } : {}),
+            ...(hasCacheUsage ? { cache: cacheUsage } : {}),
           },
       local: {
         prompt_tokens: usage.localPromptTokens,
         completion_tokens: usage.localCompletionTokens,
+        reasoning_tokens: usage.localReasoningTokens,
         total_tokens: usage.localTotalTokens,
-      },
-      cache: {
-        read_tokens: usage.cacheReadTokens,
-        creation_tokens: usage.cacheCreationTokens,
-        miss_tokens: usage.cacheMissTokens,
       },
     },
   };

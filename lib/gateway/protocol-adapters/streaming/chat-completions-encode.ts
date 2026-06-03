@@ -18,6 +18,13 @@ export function encodeChatCompletionsStream(events: ReadableStream<IntermediateS
 
   const chatUsage = () => {
     if (!usage) return undefined;
+    const completionDetails =
+      usage.reasoning_tokens !== undefined || usage.text_tokens !== undefined
+        ? {
+            ...(usage.reasoning_tokens !== undefined ? { reasoning_tokens: usage.reasoning_tokens } : {}),
+            ...(usage.text_tokens !== undefined ? { text_tokens: usage.text_tokens } : {}),
+          }
+        : undefined;
     const promptDetails =
       usage.cache_read_tokens !== undefined || usage.cache_creation_tokens !== undefined
         ? {
@@ -36,6 +43,7 @@ export function encodeChatCompletionsStream(events: ReadableStream<IntermediateS
       prompt_tokens: usage.prompt_tokens,
       completion_tokens: usage.completion_tokens,
       total_tokens: usage.total_tokens,
+      ...(completionDetails ? { completion_tokens_details: completionDetails } : {}),
       ...(promptDetails ? { prompt_tokens_details: promptDetails } : {}),
     };
   };

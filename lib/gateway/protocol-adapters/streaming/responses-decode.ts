@@ -236,7 +236,8 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
 
   return {
     stream,
-    completionText: () => `${reasoningText}${completionText}`,
+    completionText: () => completionText,
+    reasoningText: () => reasoningText,
     firstTokenAt: () => firstTokenAt,
     usage: () => usage,
   };

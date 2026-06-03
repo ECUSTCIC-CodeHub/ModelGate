@@ -19,7 +19,10 @@ function sumTokenFields(record: Record<string, unknown> | null | undefined, keys
 
 function hasTokenField(record: Record<string, unknown> | null | undefined, keys: string[]) {
   if (!record) return false;
-  return keys.some((key) => Number.isFinite(Number(record[key])));
+  return keys.some((key) => {
+    const value = record[key];
+    return value !== null && value !== undefined && Number.isFinite(Number(value));
+  });
 }
 
 function sumNestedTokenFields(record: Record<string, unknown> | null | undefined, keys: string[]) {
@@ -34,7 +37,9 @@ function hasNestedTokenField(record: Record<string, unknown> | null | undefined,
   if (!record) return false;
   return keys.some((key) => {
     const nested = asRecord(record[key]);
-    return nested ? Object.values(nested).some((value) => Number.isFinite(Number(value))) : false;
+    return nested
+      ? Object.values(nested).some((value) => value !== null && value !== undefined && Number.isFinite(Number(value)))
+      : false;
   });
 }
 
@@ -43,6 +48,12 @@ function normalizeRemoteUsage(usage: Record<string, unknown>, fields: UsageField
   const completionTokens = tokenCount(fields.completionTokens);
   const totalTokens = tokenCount(fields.totalTokens, promptTokens + completionTokens);
   const promptDetails = asRecord(usage.prompt_tokens_details) ?? asRecord(usage.input_tokens_details);
+  const completionDetails = asRecord(usage.completion_tokens_details) ?? asRecord(usage.output_tokens_details);
+  const textTokens = sumTokenFields(usage, ["text_tokens", "output_text_tokens"]) +
+    sumTokenFields(completionDetails, ["text_tokens", "output_text_tokens"]);
+  const reasoningTokens =
+    sumTokenFields(usage, ["reasoning_tokens", "thinking_tokens", "reasoning_content_tokens", "thoughts_tokens", "thoughts_token_count"]) +
+    sumTokenFields(completionDetails, ["reasoning_tokens", "thinking_tokens", "reasoning_content_tokens", "thoughts_tokens", "thoughts_token_count"]);
 
   const cacheReadKeys = [
     "cached_tokens",
@@ -113,6 +124,8 @@ function normalizeRemoteUsage(usage: Record<string, unknown>, fields: UsageField
     ]);
 
   return normalizeUsage(promptTokens, completionTokens, totalTokens, {
+    ...(textTokens > 0 ? { text_tokens: textTokens } : {}),
+    ...(reasoningTokens > 0 ? { reasoning_tokens: reasoningTokens } : {}),
     ...(hasCacheReadTokens ? { cache_read_tokens: cacheReadTokens } : {}),
     ...(hasCacheCreationTokens ? { cache_creation_tokens: cacheCreationTokens } : {}),
     ...(hasCacheMissTokens ? { cache_miss_tokens: cacheMissTokens } : {}),

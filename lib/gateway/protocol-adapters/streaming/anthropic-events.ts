@@ -49,7 +49,7 @@ export function trackAnthropicMessagesStreamEvent(eventName: string, data: strin
       return { completionText: delta.text };
     }
     if (delta?.type === "thinking_delta" && typeof delta.thinking === "string") {
-      return { firstToken: true };
+      return { reasoningText: delta.thinking };
     }
   }
 

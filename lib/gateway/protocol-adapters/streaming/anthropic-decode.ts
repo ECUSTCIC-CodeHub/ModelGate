@@ -145,7 +145,8 @@ export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Arra
 
   return {
     stream,
-    completionText: () => `${reasoningText}${completionText}`,
+    completionText: () => completionText,
+    reasoningText: () => reasoningText,
     firstTokenAt: () => firstTokenAt,
     usage: () => (hasUsage ? usage() : null),
   };

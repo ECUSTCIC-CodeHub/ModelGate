@@ -27,15 +27,23 @@ function formatNullableToken(value: number | null | undefined) {
   return value === null || value === undefined ? "-" : formatTokenCount(value);
 }
 
+function hasTokenValue(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
 function TokenDetailRow({
   label,
   prompt,
   completion,
+  reasoning,
+  cache,
   total,
 }: {
   label: string;
   prompt: number | null | undefined;
   completion: number | null | undefined;
+  reasoning?: number | null | undefined;
+  cache?: number | null | undefined;
   total: number | null | undefined;
 }) {
   return (
@@ -46,6 +54,14 @@ function TokenDetailRow({
         <span>{formatNullableToken(prompt)}</span>
         <span className="text-[var(--color-foreground-muted)]">响应</span>
         <span>{formatNullableToken(completion)}</span>
+        <span className="text-[var(--color-foreground-muted)]">思考</span>
+        <span>{formatNullableToken(reasoning)}</span>
+        {hasTokenValue(cache) ? (
+          <>
+            <span className="text-[var(--color-foreground-muted)]">缓存</span>
+            <span>{formatNullableToken(cache)}</span>
+          </>
+        ) : null}
         <span className="text-[var(--color-foreground-muted)]">总计</span>
         <span>{formatNullableToken(total)}</span>
       </div>
@@ -163,7 +179,6 @@ export function useLogColumns(role: LogRole) {
           const tokenUsage = row.original.metadata?.token_usage;
           const remoteUsage = tokenUsage?.remote ?? null;
           const localUsage = tokenUsage?.local ?? null;
-          const cacheUsage = tokenUsage?.cache ?? null;
 
           return (
             <Tooltip>
@@ -187,31 +202,24 @@ export function useLogColumns(role: LogRole) {
                     label={`采用用量 · ${formatTokenSource(row.original.token_source)}`}
                     prompt={promptTokens}
                     completion={completionTokens}
+                    reasoning={remoteUsage?.reasoning_tokens ?? localUsage?.reasoning_tokens}
                     total={row.original.total_tokens}
                   />
                   <TokenDetailRow
                     label="远端 usage"
                     prompt={remoteUsage?.prompt_tokens}
-                    completion={remoteUsage?.completion_tokens}
+                    completion={remoteUsage?.text_tokens ?? remoteUsage?.completion_tokens}
+                    reasoning={remoteUsage?.reasoning_tokens}
+                    cache={remoteUsage?.cache?.read_tokens}
                     total={remoteUsage?.total_tokens}
                   />
                   <TokenDetailRow
                     label="本地统计"
                     prompt={localUsage?.prompt_tokens}
                     completion={localUsage?.completion_tokens}
+                    reasoning={localUsage?.reasoning_tokens}
                     total={localUsage?.total_tokens}
                   />
-                  <div>
-                    <div className="mb-1 text-[11px] font-medium text-[var(--color-foreground-muted)]">缓存 Token</div>
-                    <div className="grid grid-cols-[3.5rem_1fr] gap-x-2 gap-y-0.5 font-mono text-[11px]">
-                      <span className="text-[var(--color-foreground-muted)]">命中</span>
-                      <span>{formatNullableToken(cacheUsage?.read_tokens)}</span>
-                      <span className="text-[var(--color-foreground-muted)]">写入</span>
-                      <span>{formatNullableToken(cacheUsage?.creation_tokens)}</span>
-                      <span className="text-[var(--color-foreground-muted)]">未命中</span>
-                      <span>{formatNullableToken(cacheUsage?.miss_tokens)}</span>
-                    </div>
-                  </div>
                 </div>
               </TooltipContent>
             </Tooltip>

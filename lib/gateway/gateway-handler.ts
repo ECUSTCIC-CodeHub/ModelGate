@@ -134,6 +134,8 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     getRouteAdapter(route).getUsageFromBody(rawText);
   const extractCompletionTextForRoute = (rawText: string, route: RoutedModel) =>
     getRouteAdapter(route).extractCompletionTextFromBody(rawText);
+  const extractReasoningTextForRoute = (rawText: string, route: RoutedModel) =>
+    getRouteAdapter(route).extractReasoningTextFromBody(rawText);
   const createTransformedStreamForRoute = (upstreamBody: ReadableStream<Uint8Array>, route: RoutedModel) =>
     createTransformedStream(upstreamBody, getRouteAdapter(route), inboundAdapter, responseOptions);
 
@@ -199,6 +201,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       adaptResponseBodyForRoute,
       getUsageForRoute,
       extractCompletionTextForRoute,
+      extractReasoningTextForRoute,
       createTransformedStreamForRoute,
     });
   }
@@ -290,15 +293,17 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       const adaptedText = adaptResponseBodyForRoute(rawText, route);
       const usage = getUsageForRoute(rawText, route);
       const completionText = extractCompletionTextForRoute(rawText, route);
+      const reasoningText = extractReasoningTextForRoute(rawText, route);
       const tokenUsage = resolveTokenUsage({
         usage,
         localPromptTokens,
         completionText,
+        reasoningText,
         model: route.model.real_model,
       });
       const outputTps =
-        tokenUsage.completionTokens > 0
-          ? Number(((tokenUsage.completionTokens * 1000) / Math.max(1, Date.now() - startedAt)).toFixed(2))
+        tokenUsage.outputTpsTokens > 0
+          ? Number(((tokenUsage.outputTpsTokens * 1000) / Math.max(1, Date.now() - startedAt)).toFixed(2))
           : null;
 
       lease.complete({ ok: upstream.status < 400, latencyMs: Date.now() - startedAt });
@@ -347,11 +352,12 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
         usage: success ? transformed.usage() : null,
         localPromptTokens,
         completionText: success ? transformed.completionText() : "",
+        reasoningText: success ? transformed.reasoningText() : "",
         model: route.model.real_model,
       });
       const outputTps =
-        success && tokenUsage.completionTokens > 0
-          ? Number(((tokenUsage.completionTokens * 1000) / Math.max(1, totalLatencyMs)).toFixed(2))
+        success && tokenUsage.outputTpsTokens > 0
+          ? Number(((tokenUsage.outputTpsTokens * 1000) / Math.max(1, totalLatencyMs)).toFixed(2))
           : null;
       const firstTokenAt = transformed.firstTokenAt();
       const firstTokenLatencyMs = firstTokenAt !== null ? Math.max(0, firstTokenAt - startedAt) : null;
@@ -453,16 +459,18 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   const adaptedText = adaptResponseBodyForRoute(rawText, route);
   const usage = getUsageForRoute(rawText, route);
   const completionText = extractCompletionTextForRoute(rawText, route);
+  const reasoningText = extractReasoningTextForRoute(rawText, route);
   const tokenUsage = resolveTokenUsage({
     usage,
     localPromptTokens,
     completionText,
+    reasoningText,
     model: route.model.real_model,
   });
 
   const outputTps =
-    tokenUsage.completionTokens > 0
-      ? Number(((tokenUsage.completionTokens * 1000) / Math.max(1, Date.now() - startedAt)).toFixed(2))
+    tokenUsage.outputTpsTokens > 0
+      ? Number(((tokenUsage.outputTpsTokens * 1000) / Math.max(1, Date.now() - startedAt)).toFixed(2))
       : null;
 
   lease.complete({ ok: true, latencyMs: Date.now() - startedAt });

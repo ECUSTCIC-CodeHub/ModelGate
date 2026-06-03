@@ -39,6 +39,9 @@ export const embeddingsGatewayAdapter: GatewayProtocolAdapter = {
   extractCompletionTextFromBody() {
     return "";
   },
+  extractReasoningTextFromBody() {
+    return "";
+  },
   getUsageFromBody(text) {
     try {
       const parsed = JSON.parse(text) as JsonRecord;

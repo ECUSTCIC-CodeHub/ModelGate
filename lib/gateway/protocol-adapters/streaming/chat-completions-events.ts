@@ -48,11 +48,12 @@ export function trackChatCompletionsStreamEvent(_event: string, data: string) {
   const parsed = parseChatChunkEvent(data);
   const tracked: {
     completionText?: string;
+    reasoningText?: string;
     firstToken?: boolean;
     usage?: NonNullable<typeof parsed.usage>;
   } = {};
   if (parsed.usage) tracked.usage = parsed.usage;
   if (parsed.content) tracked.completionText = parsed.content;
-  if (parsed.reasoning) tracked.firstToken = true;
-  return tracked.usage || tracked.completionText || tracked.firstToken ? tracked : null;
+  if (parsed.reasoning) tracked.reasoningText = parsed.reasoning;
+  return tracked.usage || tracked.completionText || tracked.reasoningText || tracked.firstToken ? tracked : null;
 }

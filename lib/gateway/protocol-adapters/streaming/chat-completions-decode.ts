@@ -104,7 +104,8 @@ export function decodeChatCompletionsStream(upstream: ReadableStream<Uint8Array>
 
   return {
     stream,
-    completionText: () => `${reasoningText}${completionText}`,
+    completionText: () => completionText,
+    reasoningText: () => reasoningText,
     firstTokenAt: () => firstTokenAt,
     usage: () => usage,
   };

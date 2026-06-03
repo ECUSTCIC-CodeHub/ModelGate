@@ -3,18 +3,20 @@ export type LogRole = "admin" | "user";
 export type LogTokenUsageTotals = {
   prompt_tokens: number | null;
   completion_tokens: number | null;
+  text_tokens?: number | null;
+  reasoning_tokens?: number | null;
   total_tokens: number | null;
+  cache?: {
+    read_tokens?: number | null;
+    creation_tokens?: number | null;
+    miss_tokens?: number | null;
+  } | null;
 };
 
 export type LogMetadata = {
   token_usage?: {
     remote?: LogTokenUsageTotals | null;
     local?: LogTokenUsageTotals | null;
-    cache?: {
-      read_tokens?: number | null;
-      creation_tokens?: number | null;
-      miss_tokens?: number | null;
-    } | null;
   };
 } | null;
 
