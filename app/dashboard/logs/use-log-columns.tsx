@@ -9,13 +9,6 @@ import { ClientInfo } from "./client-info";
 import { formatDuration } from "./log-formatters";
 import type { LogRole, LogRow } from "./log-model";
 
-function formatTokenSource(source: LogRow["token_source"]) {
-  if (source === "usage") return "上游 usage";
-  if (source === "local") return "本地统计";
-  if (source === "estimated") return "预估";
-  return "-";
-}
-
 function formatTokenSourceShort(source: LogRow["token_source"]) {
   if (source === "usage") return "远端";
   if (source === "local") return "本地";
@@ -199,16 +192,9 @@ export function useLogColumns(role: LogRole) {
               <TooltipContent align="start" className="max-w-[360px]">
                 <div className="space-y-3">
                   <TokenDetailRow
-                    label={`采用用量 · ${formatTokenSource(row.original.token_source)}`}
-                    prompt={promptTokens}
-                    completion={completionTokens}
-                    reasoning={remoteUsage?.reasoning_tokens ?? localUsage?.reasoning_tokens}
-                    total={row.original.total_tokens}
-                  />
-                  <TokenDetailRow
                     label="远端 usage"
                     prompt={remoteUsage?.prompt_tokens}
-                    completion={remoteUsage?.text_tokens ?? remoteUsage?.completion_tokens}
+                    completion={remoteUsage?.completion_tokens}
                     reasoning={remoteUsage?.reasoning_tokens}
                     cache={remoteUsage?.cache?.read_tokens}
                     total={remoteUsage?.total_tokens}
