@@ -19,6 +19,9 @@ export type IntermediateUsage = {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  cache_read_tokens?: number;
+  cache_creation_tokens?: number;
+  cache_miss_tokens?: number;
 };
 
 export type IntermediateRequest = {
@@ -100,10 +103,18 @@ export function finishReasonFromAnthropic(value: string | null, hasTools: boolea
   return "stop";
 }
 
-export function normalizeUsage(promptTokens: number, completionTokens: number, totalTokens?: number): IntermediateUsage {
+export function normalizeUsage(
+  promptTokens: number,
+  completionTokens: number,
+  totalTokens?: number,
+  details?: Pick<IntermediateUsage, "cache_read_tokens" | "cache_creation_tokens" | "cache_miss_tokens">,
+): IntermediateUsage {
   return {
     prompt_tokens: promptTokens,
     completion_tokens: completionTokens,
     total_tokens: totalTokens ?? promptTokens + completionTokens,
+    ...(details?.cache_read_tokens !== undefined ? { cache_read_tokens: details.cache_read_tokens } : {}),
+    ...(details?.cache_creation_tokens !== undefined ? { cache_creation_tokens: details.cache_creation_tokens } : {}),
+    ...(details?.cache_miss_tokens !== undefined ? { cache_miss_tokens: details.cache_miss_tokens } : {}),
   };
 }

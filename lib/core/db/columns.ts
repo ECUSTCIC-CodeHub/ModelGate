@@ -59,6 +59,7 @@ export function ensureModernColumns(db: BetterSqlite3.Database): ColumnMigration
   ensureColumn(db, "logs", "first_token_latency_ms", "first_token_latency_ms INTEGER");
   ensureColumn(db, "logs", "output_tps", "output_tps REAL");
   ensureColumn(db, "logs", "token_source", "token_source TEXT");
+  ensureColumn(db, "logs", "metadata", "metadata TEXT");
   ensureColumn(db, "logs", "route_attempts", "route_attempts INTEGER DEFAULT 1");
   ensureColumn(db, "logs", "attempted_channels", "attempted_channels TEXT");
   ensureColumn(db, "logs", "user_agent", "user_agent TEXT");

@@ -4,7 +4,7 @@ import { fetchUpstreamRequest } from "@/lib/gateway/proxy";
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 import type { StreamTransformResult } from "@/lib/gateway/protocol-adapters/streaming";
 import type { RoutedModel } from "@/lib/gateway/router";
-import { resolveTokenUsage } from "@/lib/gateway/token-usage";
+import { resolveTokenUsage, tokenUsageMetadata } from "@/lib/gateway/token-usage";
 import { buildErrorResponseBody, parseUpstreamError } from "@/lib/gateway/upstream-error";
 import type { UpstreamPickResult } from "@/lib/gateway/upstream-routing";
 import { addUsage } from "@/lib/gateway/usage-accounting";
@@ -166,6 +166,7 @@ export function createQueuedUpstreamResponse({
                 completion_tokens: tokenUsage.completionTokens,
                 total_tokens: tokenUsage.totalTokens,
                 token_source: tokenUsage.source,
+                metadata: tokenUsageMetadata(tokenUsage),
                 latency_ms: Date.now() - startedAt,
                 first_token_latency_ms: null,
                 output_tps: outputTps,
@@ -190,19 +191,12 @@ export function createQueuedUpstreamResponse({
               const totalLatencyMs = Date.now() - startedAt;
               const success = upstream.status < 400;
               lease.complete({ ok: success, latencyMs: totalLatencyMs });
-              const tokenUsage = success
-                ? resolveTokenUsage({
-                    usage: transformed.usage(),
-                    localPromptTokens,
-                    completionText: transformed.completionText(),
-                    model: route.model.real_model,
-                  })
-                : {
-                    promptTokens: localPromptTokens,
-                    completionTokens: 0,
-                    totalTokens: localPromptTokens,
-                    source: "local" as const,
-                  };
+              const tokenUsage = resolveTokenUsage({
+                usage: success ? transformed.usage() : null,
+                localPromptTokens,
+                completionText: success ? transformed.completionText() : "",
+                model: route.model.real_model,
+              });
               const outputTps =
                 success && tokenUsage.completionTokens > 0
                   ? Number(((tokenUsage.completionTokens * 1000) / Math.max(1, totalLatencyMs)).toFixed(2))
@@ -226,6 +220,7 @@ export function createQueuedUpstreamResponse({
                 completion_tokens: tokenUsage.completionTokens,
                 total_tokens: tokenUsage.totalTokens,
                 token_source: tokenUsage.source,
+                metadata: tokenUsageMetadata(tokenUsage),
                 latency_ms: totalLatencyMs,
                 first_token_latency_ms: firstTokenLatencyMs,
                 output_tps: outputTps,
@@ -374,6 +369,7 @@ export function createQueuedUpstreamResponse({
             completion_tokens: tokenUsage.completionTokens,
             total_tokens: tokenUsage.totalTokens,
             token_source: tokenUsage.source,
+            metadata: tokenUsageMetadata(tokenUsage),
             latency_ms: Date.now() - startedAt,
             output_tps: outputTps,
             route_attempts: Math.max(1, attemptedChannels.length),

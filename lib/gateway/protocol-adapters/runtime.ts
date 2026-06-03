@@ -11,6 +11,7 @@ import type {
 export type GatewayProtocolAdapter = {
   protocol: GatewayProtocol;
   bodyAdapter?: ProtocolBodyAdapter;
+  prepareOutboundRequestBody?: (body: JsonRecord) => JsonRecord;
   estimateRequestTokens(body: JsonRecord): number;
   countPromptTokens(body: JsonRecord, model: string): number;
   getStreamFlag(body: JsonRecord): boolean;
@@ -33,12 +34,14 @@ export function createBodyProtocolGatewayAdapter(options: {
   bodyAdapter: ProtocolBodyAdapter;
   getInputText(body: JsonRecord): string;
   getMaxOutputTokens(body: JsonRecord): unknown;
+  prepareOutboundRequestBody?: (body: JsonRecord) => JsonRecord;
 }): GatewayProtocolAdapter {
-  const { protocol, bodyAdapter, getInputText, getMaxOutputTokens } = options;
+  const { protocol, bodyAdapter, getInputText, getMaxOutputTokens, prepareOutboundRequestBody } = options;
 
   return {
     protocol,
     bodyAdapter,
+    prepareOutboundRequestBody,
     estimateRequestTokens(body) {
       const maxTokens = Number(getMaxOutputTokens(body) ?? 256);
       const outputReserve = Number.isFinite(maxTokens) ? Math.max(0, maxTokens) : 256;
@@ -51,11 +54,12 @@ export function createBodyProtocolGatewayAdapter(options: {
       return body.stream === true;
     },
     adaptRequestBody(body, outbound, realModel) {
+      const prepare = (requestBody: JsonRecord) => outbound.prepareOutboundRequestBody?.(requestBody) ?? requestBody;
       if (outbound.protocol === protocol) {
-        return {
+        return prepare({
           ...body,
           model: realModel,
-        };
+        });
       }
 
       if (!outbound.bodyAdapter) {
@@ -63,7 +67,7 @@ export function createBodyProtocolGatewayAdapter(options: {
       }
 
       const intermediate = bodyAdapter.requestToIntermediate(body, realModel);
-      return outbound.bodyAdapter.requestFromIntermediate(intermediate);
+      return prepare(outbound.bodyAdapter.requestFromIntermediate(intermediate));
     },
     adaptResponseBody(text, outbound, responseOptions) {
       if (outbound.protocol === protocol) return text;

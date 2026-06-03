@@ -11,7 +11,7 @@ import { checkUserRateLimit } from "@/lib/gateway/ratelimit";
 import { selectModelRoute, type RoutedModel } from "@/lib/gateway/router";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { resolveClientIp } from "@/lib/core/client-ip";
-import { resolveTokenUsage } from "@/lib/gateway/token-usage";
+import { resolveTokenUsage, tokenUsageMetadata } from "@/lib/gateway/token-usage";
 import { buildErrorResponseBody, parseUpstreamError } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
 import { requestUpstreamWithFallback } from "@/lib/gateway/upstream-routing";
@@ -316,6 +316,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
         completion_tokens: tokenUsage.completionTokens,
         total_tokens: tokenUsage.totalTokens,
         token_source: tokenUsage.source,
+        metadata: tokenUsageMetadata(tokenUsage),
         latency_ms: Date.now() - startedAt,
         first_token_latency_ms: null,
         output_tps: outputTps,
@@ -342,19 +343,12 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       const totalLatencyMs = Date.now() - startedAt;
       const success = upstream.status < 400;
       lease.complete({ ok: success, latencyMs: totalLatencyMs });
-      const tokenUsage = success
-        ? resolveTokenUsage({
-            usage: transformed.usage(),
-            localPromptTokens,
-            completionText: transformed.completionText(),
-            model: route.model.real_model,
-          })
-        : {
-            promptTokens: localPromptTokens,
-            completionTokens: 0,
-            totalTokens: localPromptTokens,
-            source: "local" as const,
-          };
+      const tokenUsage = resolveTokenUsage({
+        usage: success ? transformed.usage() : null,
+        localPromptTokens,
+        completionText: success ? transformed.completionText() : "",
+        model: route.model.real_model,
+      });
       const outputTps =
         success && tokenUsage.completionTokens > 0
           ? Number(((tokenUsage.completionTokens * 1000) / Math.max(1, totalLatencyMs)).toFixed(2))
@@ -378,6 +372,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
         completion_tokens: tokenUsage.completionTokens,
         total_tokens: tokenUsage.totalTokens,
         token_source: tokenUsage.source,
+        metadata: tokenUsageMetadata(tokenUsage),
         latency_ms: totalLatencyMs,
         first_token_latency_ms: firstTokenLatencyMs,
         output_tps: outputTps,
@@ -485,6 +480,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     completion_tokens: tokenUsage.completionTokens,
     total_tokens: tokenUsage.totalTokens,
     token_source: tokenUsage.source,
+    metadata: tokenUsageMetadata(tokenUsage),
     latency_ms: Date.now() - startedAt,
     output_tps: outputTps,
     route_attempts: Math.max(1, attemptedChannels.length),

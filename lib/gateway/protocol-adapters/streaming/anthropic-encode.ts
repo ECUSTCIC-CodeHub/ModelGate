@@ -11,6 +11,8 @@ export function encodeAnthropicMessagesStream(events: ReadableStream<Intermediat
   let model: string | null = null;
   let promptTokens = 0;
   let completionTokens = 0;
+  let cacheReadTokens: number | undefined;
+  let cacheCreationTokens: number | undefined;
   let started = false;
   let finished = false;
   let nextBlockIndex = 0;
@@ -39,6 +41,8 @@ export function encodeAnthropicMessagesStream(events: ReadableStream<Intermediat
         usage: {
           input_tokens: promptTokens,
           output_tokens: 0,
+          cache_read_input_tokens: cacheReadTokens,
+          cache_creation_input_tokens: cacheCreationTokens,
         },
       },
     });
@@ -92,6 +96,8 @@ export function encodeAnthropicMessagesStream(events: ReadableStream<Intermediat
             if (value.usage) {
               promptTokens = value.usage.prompt_tokens;
               completionTokens = value.usage.completion_tokens;
+              cacheReadTokens = value.usage.cache_read_tokens;
+              cacheCreationTokens = value.usage.cache_creation_tokens;
             }
             ensureStarted(controller);
             continue;
@@ -100,6 +106,8 @@ export function encodeAnthropicMessagesStream(events: ReadableStream<Intermediat
           if (value.type === "usage") {
             promptTokens = value.usage.prompt_tokens;
             completionTokens = value.usage.completion_tokens;
+            cacheReadTokens = value.usage.cache_read_tokens;
+            cacheCreationTokens = value.usage.cache_creation_tokens;
             continue;
           }
 

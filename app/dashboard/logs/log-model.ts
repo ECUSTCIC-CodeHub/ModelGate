@@ -1,5 +1,23 @@
 export type LogRole = "admin" | "user";
 
+export type LogTokenUsageTotals = {
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  total_tokens: number | null;
+};
+
+export type LogMetadata = {
+  token_usage?: {
+    remote?: LogTokenUsageTotals | null;
+    local?: LogTokenUsageTotals | null;
+    cache?: {
+      read_tokens?: number | null;
+      creation_tokens?: number | null;
+      miss_tokens?: number | null;
+    } | null;
+  };
+} | null;
+
 export type LogRow = {
   id: number;
   username: string;
@@ -16,6 +34,7 @@ export type LogRow = {
   completion_tokens: number | null;
   total_tokens: number | null;
   token_source: "usage" | "local" | "estimated" | string | null;
+  metadata: LogMetadata;
   latency_ms: number | null;
   first_token_latency_ms: number | null;
   output_tps: number | null;

@@ -9,6 +9,9 @@ export type StreamUsage = {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  cache_read_tokens?: number;
+  cache_creation_tokens?: number;
+  cache_miss_tokens?: number;
 };
 
 export type IntermediateStreamEvent =
@@ -66,11 +69,23 @@ function mergeUsage(current: StreamUsage | null, next: Partial<StreamUsage>) {
   const totalTokens = next.total_tokens !== undefined
     ? normalizeTokenCount(next.total_tokens, promptTokens + completionTokens)
     : promptTokens + completionTokens;
+  const cacheReadTokens = next.cache_read_tokens !== undefined
+    ? normalizeTokenCount(next.cache_read_tokens, current?.cache_read_tokens ?? 0)
+    : current?.cache_read_tokens;
+  const cacheCreationTokens = next.cache_creation_tokens !== undefined
+    ? normalizeTokenCount(next.cache_creation_tokens, current?.cache_creation_tokens ?? 0)
+    : current?.cache_creation_tokens;
+  const cacheMissTokens = next.cache_miss_tokens !== undefined
+    ? normalizeTokenCount(next.cache_miss_tokens, current?.cache_miss_tokens ?? 0)
+    : current?.cache_miss_tokens;
 
   return {
     prompt_tokens: promptTokens,
     completion_tokens: completionTokens,
     total_tokens: totalTokens,
+    ...(cacheReadTokens !== undefined ? { cache_read_tokens: cacheReadTokens } : {}),
+    ...(cacheCreationTokens !== undefined ? { cache_creation_tokens: cacheCreationTokens } : {}),
+    ...(cacheMissTokens !== undefined ? { cache_miss_tokens: cacheMissTokens } : {}),
   };
 }
 

@@ -1,4 +1,5 @@
 import { asArray, asRecord, type JsonRecord } from "@/lib/gateway/normalized-message";
+import { usageFromChatCompletions } from "@/lib/gateway/protocol-adapters/usage";
 
 type ChatToolDelta = {
   index: number;
@@ -26,9 +27,7 @@ export function parseChatChunkEvent(data: string) {
     })
     .filter((item): item is ChatToolDelta => Boolean(item));
 
-  const usage = asRecord(parsed.usage);
-  const promptTokens = Number(usage?.prompt_tokens ?? 0);
-  const completionTokens = Number(usage?.completion_tokens ?? 0);
+  const usage = usageFromChatCompletions(parsed.usage);
   return {
     id: typeof parsed.id === "string" ? parsed.id : `chatcmpl_${crypto.randomUUID().replace(/-/g, "")}`,
     model: typeof parsed.model === "string" ? parsed.model : null,
@@ -41,13 +40,7 @@ export function parseChatChunkEvent(data: string) {
         : "",
     toolCalls,
     finishReason: typeof firstChoice?.finish_reason === "string" ? firstChoice.finish_reason : null,
-    usage: usage
-      ? {
-          prompt_tokens: promptTokens,
-          completion_tokens: completionTokens,
-          total_tokens: Number(usage.total_tokens ?? promptTokens + completionTokens),
-        }
-      : null,
+    usage,
   };
 }
 

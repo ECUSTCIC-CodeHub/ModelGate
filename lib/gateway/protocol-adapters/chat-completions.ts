@@ -11,6 +11,7 @@ import {
   chatCompletionsResponseFromIntermediate,
   chatCompletionsResponseToIntermediate,
 } from "@/lib/gateway/protocol-adapters/chat-completions-response";
+import type { JsonRecord } from "@/lib/gateway/normalized-message";
 
 export {
   extractChatMessageText,
@@ -24,6 +25,21 @@ export const chatCompletionsAdapter: ProtocolBodyAdapter = {
   responseFromIntermediate: chatCompletionsResponseFromIntermediate,
 };
 
+function ensureStreamUsageOption(body: JsonRecord): JsonRecord {
+  if (body.stream !== true) return body;
+  const streamOptions =
+    typeof body.stream_options === "object" && body.stream_options !== null && !Array.isArray(body.stream_options)
+      ? body.stream_options as JsonRecord
+      : {};
+  return {
+    ...body,
+    stream_options: {
+      ...streamOptions,
+      include_usage: true,
+    },
+  };
+}
+
 export const chatCompletionsGatewayAdapter = createBodyProtocolGatewayAdapter({
   protocol: "chat_completions",
   bodyAdapter: chatCompletionsAdapter,
@@ -33,4 +49,5 @@ export const chatCompletionsGatewayAdapter = createBodyProtocolGatewayAdapter({
   getMaxOutputTokens(body) {
     return body.max_tokens;
   },
+  prepareOutboundRequestBody: ensureStreamUsageOption,
 });

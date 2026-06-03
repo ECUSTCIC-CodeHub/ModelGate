@@ -5,6 +5,7 @@ import {
   type StreamUsage,
 } from "@/lib/gateway/protocol-adapters/streaming/common";
 import { parseAnthropicSseEvent } from "@/lib/gateway/protocol-adapters/streaming/anthropic-events";
+import { usageFromAnthropic } from "@/lib/gateway/protocol-adapters/usage";
 
 export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Array>): IntermediateStreamResult {
   const reader = upstream.getReader();
@@ -15,6 +16,9 @@ export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Arra
   let firstTokenAt: number | null = null;
   let promptTokens = 0;
   let completionTokens = 0;
+  let cacheReadTokens: number | undefined;
+  let cacheCreationTokens: number | undefined;
+  let cacheMissTokens: number | undefined;
   let hasUsage = false;
   let finishReason: string | null = null;
   const toolUseByIndex = new Map<number, { id: string; name: string }>();
@@ -26,6 +30,9 @@ export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Arra
     prompt_tokens: promptTokens,
     completion_tokens: completionTokens,
     total_tokens: promptTokens + completionTokens,
+    ...(cacheReadTokens !== undefined ? { cache_read_tokens: cacheReadTokens } : {}),
+    ...(cacheCreationTokens !== undefined ? { cache_creation_tokens: cacheCreationTokens } : {}),
+    ...(cacheMissTokens !== undefined ? { cache_miss_tokens: cacheMissTokens } : {}),
   });
 
   const stream = new ReadableStream<IntermediateStreamEvent>({
@@ -56,8 +63,11 @@ export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Arra
 
             if (event.event === "message_start") {
               const message = asRecord(payload?.message);
-              const nextUsage = asRecord(message?.usage);
-              promptTokens = Number(nextUsage?.input_tokens ?? 0);
+              const nextUsage = usageFromAnthropic(message?.usage);
+              promptTokens = nextUsage?.prompt_tokens ?? 0;
+              cacheReadTokens = nextUsage?.cache_read_tokens;
+              cacheCreationTokens = nextUsage?.cache_creation_tokens;
+              cacheMissTokens = nextUsage?.cache_miss_tokens;
               hasUsage = hasUsage || Boolean(nextUsage);
               controller.enqueue({
                 type: "start",
@@ -111,8 +121,11 @@ export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Arra
               finishReason = typeof delta?.stop_reason === "string"
                 ? (delta.stop_reason === "tool_use" ? "tool_calls" : "stop")
                 : finishReason;
-              const nextUsage = asRecord(payload?.usage);
-              completionTokens = Number(nextUsage?.output_tokens ?? completionTokens);
+              const nextUsage = usageFromAnthropic(payload?.usage);
+              completionTokens = nextUsage?.completion_tokens ?? completionTokens;
+              cacheReadTokens = nextUsage?.cache_read_tokens ?? cacheReadTokens;
+              cacheCreationTokens = nextUsage?.cache_creation_tokens ?? cacheCreationTokens;
+              cacheMissTokens = nextUsage?.cache_miss_tokens ?? cacheMissTokens;
               hasUsage = hasUsage || Boolean(nextUsage);
               controller.enqueue({ type: "usage", usage: usage() });
               continue;

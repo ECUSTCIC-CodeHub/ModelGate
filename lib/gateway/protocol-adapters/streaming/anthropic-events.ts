@@ -1,4 +1,5 @@
 import { asRecord, type JsonRecord } from "@/lib/gateway/normalized-message";
+import { usageFromAnthropic } from "@/lib/gateway/protocol-adapters/usage";
 
 export type AnthropicSseEvent = {
   event: string;
@@ -18,24 +19,24 @@ export function trackAnthropicMessagesStreamEvent(eventName: string, data: strin
   const payload = asRecord(parsed.data);
   if (parsed.event === "message_start") {
     const message = asRecord(payload?.message);
-    const usage = asRecord(message?.usage);
+    const usage = usageFromAnthropic(message?.usage);
     if (usage) {
       return {
-        usage: {
-          prompt_tokens: Number(usage.input_tokens ?? 0),
-          completion_tokens: 0,
-        },
+        usage,
       };
     }
     return null;
   }
 
   if (parsed.event === "message_delta") {
-    const usage = asRecord(payload?.usage);
+    const usage = usageFromAnthropic(payload?.usage);
     if (usage) {
       return {
         usage: {
-          completion_tokens: Number(usage.output_tokens ?? 0),
+          completion_tokens: usage.completion_tokens,
+          cache_read_tokens: usage.cache_read_tokens,
+          cache_creation_tokens: usage.cache_creation_tokens,
+          cache_miss_tokens: usage.cache_miss_tokens,
         },
       };
     }
