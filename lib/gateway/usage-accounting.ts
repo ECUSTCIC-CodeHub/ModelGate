@@ -1,9 +1,15 @@
 import { gatewayDb } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
 
+function cleanFloat(value: number): number {
+  const rounded = Math.round(value);
+  if (Math.abs(value - rounded) < 1e-6) return rounded;
+  return Math.round(value * 1e6) / 1e6;
+}
+
 export function addUsage(userId: number, keyId: number, tokens: number, requests = 1, tokenMultiplier = 1, requestMultiplier = 1, channelId?: number, modelId?: number, quotaMode?: string) {
-  const billedTokens = Math.round(Math.max(0, tokens * tokenMultiplier));
-  const billedRequests = Math.round(Math.max(0, requests * requestMultiplier));
+  const billedTokens = cleanFloat(Math.max(0, tokens * tokenMultiplier));
+  const billedRequests = cleanFloat(Math.max(0, requests * requestMultiplier));
   const countUserUsage = quotaMode === "follow_group" || quotaMode == null;
   const tx = gatewayDb.transaction(() => {
     if (countUserUsage) {
