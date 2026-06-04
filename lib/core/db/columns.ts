@@ -86,6 +86,17 @@ export function ensureModernColumns(db: BetterSqlite3.Database): ColumnMigration
   ensureColumn(db, "users", "totp_secret", "totp_secret TEXT");
   ensureColumn(db, "users", "totp_enabled", "totp_enabled INTEGER DEFAULT 0");
 
+  db.exec(`UPDATE users SET used_tokens = ROUND(used_tokens, 6), used_requests = ROUND(used_requests, 6),
+           period_used_tokens = ROUND(period_used_tokens, 6), period_used_requests = ROUND(period_used_requests, 6)
+           WHERE used_tokens != ROUND(used_tokens, 6) OR used_requests != ROUND(used_requests, 6)
+              OR period_used_tokens != ROUND(period_used_tokens, 6) OR period_used_requests != ROUND(period_used_requests, 6)`);
+  db.exec(`UPDATE keys SET used_tokens = ROUND(used_tokens, 6), used_requests = ROUND(used_requests, 6)
+           WHERE used_tokens != ROUND(used_tokens, 6) OR used_requests != ROUND(used_requests, 6)`);
+  db.exec(`UPDATE channels SET period_used_tokens = ROUND(period_used_tokens, 6), period_used_requests = ROUND(period_used_requests, 6)
+           WHERE period_used_tokens != ROUND(period_used_tokens, 6) OR period_used_requests != ROUND(period_used_requests, 6)`);
+  db.exec(`UPDATE models SET period_used_tokens = ROUND(period_used_tokens, 6), period_used_requests = ROUND(period_used_requests, 6)
+           WHERE period_used_tokens != ROUND(period_used_tokens, 6) OR period_used_requests != ROUND(period_used_requests, 6)`);
+
   return {
     addedKeyUsedTokens,
     addedKeyUsedRequests,
