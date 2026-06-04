@@ -1,6 +1,6 @@
 import { TOTP, Secret } from "otpauth";
 import { encryptTotpSecret, decryptTotpSecret } from "@/lib/auth/totp-crypto";
-import { checkAndMarkTotpCode } from "@/lib/auth/totp-replay";
+import { checkAndMarkTotpCode, unmarkTotpCode } from "@/lib/auth/totp-replay";
 
 const ISSUER = "ModelGate";
 const PERIOD = 30;
@@ -39,5 +39,9 @@ export function verifyTotpCode(encryptedSecret: string, code: string, userId: nu
   });
 
   const delta = totp.validate({ token: code, window: 1 });
-  return delta !== null;
+  if (delta === null) {
+    unmarkTotpCode(userId, code);
+    return false;
+  }
+  return true;
 }

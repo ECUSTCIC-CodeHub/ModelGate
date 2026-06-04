@@ -16,3 +16,7 @@ export function checkAndMarkTotpCode(userId: number, code: string): boolean {
   usedCodes.set(key, Date.now());
   return true;
 }
+
+export function unmarkTotpCode(userId: number, code: string): void {
+  usedCodes.delete(`${userId}:${code}`);
+}
