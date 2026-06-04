@@ -45,6 +45,7 @@ export function ChannelTable({
             <TableHead>权重</TableHead>
             <TableHead>最大并发</TableHead>
             <TableHead>超时</TableHead>
+            <TableHead>include_usage</TableHead>
             <TableHead>模型数</TableHead>
             <TableHead className="text-right">操作</TableHead>
           </TableRow>
@@ -68,6 +69,11 @@ export function ChannelTable({
               <TableCell>{row.weight}</TableCell>
               <TableCell>{row.max_concurrency}</TableCell>
               <TableCell>{row.timeout}s</TableCell>
+              <TableCell>
+                <Badge variant={row.force_include_usage === 1 ? "default" : "secondary"}>
+                  {row.force_include_usage === 1 ? "开启" : "关闭"}
+                </Badge>
+              </TableCell>
               <TableCell>{row.models?.length ?? 0}</TableCell>
               <TableCell className="space-x-2 text-right">
                 <Button size="sm" variant="outline" onClick={() => onEdit(row)}>编辑</Button>

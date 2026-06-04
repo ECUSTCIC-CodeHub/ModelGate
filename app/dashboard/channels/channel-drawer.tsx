@@ -129,6 +129,18 @@ export function ChannelDrawer({
                 配置后该渠道请求固定使用此 User-Agent；留空时沿用当前透传和默认策略。
               </p>
             </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label className="flex items-center gap-2">
+                <Checkbox
+                  checked={form.force_include_usage}
+                  onCheckedChange={(next) => onFormChange({ force_include_usage: next === true })}
+                />
+                强制注入 include_usage
+              </Label>
+              <p className="text-xs text-[var(--color-foreground-muted)]">
+                开启后该渠道请求向上游注入 stream_options.include_usage，部分上游（如微软）不支持此参数时请关闭。
+              </p>
+            </div>
           </div>
 
           <ChannelQuotaFields

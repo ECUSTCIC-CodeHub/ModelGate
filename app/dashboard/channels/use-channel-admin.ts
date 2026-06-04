@@ -67,6 +67,7 @@ export function useChannelAdmin() {
       quota_period_custom: row.quota_period != null && periodToPreset(row.quota_period) === "custom" ? String(row.quota_period) : "",
       period_quota_tokens: row.period_quota_tokens != null ? String(row.period_quota_tokens) : "",
       period_quota_requests: row.period_quota_requests != null ? String(row.period_quota_requests) : "",
+      force_include_usage: row.force_include_usage === 1,
     });
     setChannelModels([{ ...initialModelDraft, upstream_protocol: supportedProtocols[0] }]);
     setChannelDrawerOpen(true);
@@ -137,6 +138,7 @@ export function useChannelAdmin() {
           weight: channelForm.weight,
           max_concurrency: channelForm.max_concurrency,
           timeout: channelForm.timeout,
+          force_include_usage: channelForm.force_include_usage,
           ...buildQuotaPayload(channelForm),
           models: draftModels,
         }),
@@ -164,6 +166,7 @@ export function useChannelAdmin() {
         weight: channelForm.weight,
         max_concurrency: channelForm.max_concurrency,
         timeout: channelForm.timeout,
+        force_include_usage: channelForm.force_include_usage,
         ...buildQuotaPayload(channelForm),
       }),
     });

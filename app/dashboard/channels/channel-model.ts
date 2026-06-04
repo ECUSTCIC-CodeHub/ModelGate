@@ -93,6 +93,7 @@ export type Channel = {
   quota_period: number | null;
   period_quota_tokens: number | null;
   period_quota_requests: number | null;
+  force_include_usage: number;
   models?: ModelRow[];
 };
 
@@ -124,6 +125,7 @@ export type ChannelForm = {
   quota_period_custom: string;
   period_quota_tokens: string;
   period_quota_requests: string;
+  force_include_usage: boolean;
 };
 
 export type ModelForm = {
@@ -171,6 +173,7 @@ export const initialChannelForm: ChannelForm = {
   quota_period_custom: "",
   period_quota_tokens: "",
   period_quota_requests: "",
+  force_include_usage: true,
 };
 
 export const initialModelDraft: ChannelModelDraft = {
