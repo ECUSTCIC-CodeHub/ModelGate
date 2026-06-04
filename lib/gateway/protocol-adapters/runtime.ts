@@ -57,10 +57,13 @@ export function createBodyProtocolGatewayAdapter(options: {
     adaptRequestBody(body, outbound, realModel, forceIncludeUsage = true) {
       const prepare = (requestBody: JsonRecord) => {
         const prepared = outbound.prepareOutboundRequestBody?.(requestBody) ?? requestBody;
-        if (!forceIncludeUsage && prepared.stream === true) {
+        if (prepared.stream === true) {
           const streamOptions = typeof prepared.stream_options === "object" && prepared.stream_options !== null && !Array.isArray(prepared.stream_options)
             ? prepared.stream_options as JsonRecord
             : {};
+          if (forceIncludeUsage) {
+            return { ...prepared, stream_options: { ...streamOptions, include_usage: true } };
+          }
           if ("include_usage" in streamOptions) {
             const { include_usage: _includeUsage, ...rest } = streamOptions;
             return { ...prepared, stream_options: Object.keys(rest).length > 0 ? rest : undefined };
