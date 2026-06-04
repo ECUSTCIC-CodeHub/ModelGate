@@ -20,6 +20,7 @@ const updateSchema = z.object({
   quota_period: z.number().int().min(0).nullable().optional(),
   period_quota_tokens: z.number().int().min(0).nullable().optional(),
   period_quota_requests: z.number().int().min(0).nullable().optional(),
+  force_include_usage: z.boolean().optional(),
 });
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -75,7 +76,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       .prepare(
         `UPDATE channels
          SET name = ?, base_url = ?, api_key = ?, supported_protocols = ?, enabled = ?, weight = ?, max_concurrency = ?, timeout = ?,
-             quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?
+             quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, force_include_usage = ?
          WHERE id = ?`,
       )
       .run(
@@ -92,6 +93,11 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         (merged as { quota_period: number | null }).quota_period ?? null,
         (merged as { period_quota_tokens: number | null }).period_quota_tokens ?? null,
         (merged as { period_quota_requests: number | null }).period_quota_requests ?? null,
+        parsed.data.force_include_usage === undefined
+          ? (existing as { force_include_usage: number }).force_include_usage
+          : parsed.data.force_include_usage
+            ? 1
+            : 0,
         id,
       );
 

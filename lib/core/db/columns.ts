@@ -58,6 +58,7 @@ export function ensureModernColumns(db: BetterSqlite3.Database): ColumnMigration
   ensureColumn(db, "channels", "period_used_requests", "period_used_requests INTEGER DEFAULT 0");
   ensureColumn(db, "channels", "period_reset_at", "period_reset_at DATETIME");
   ensureColumn(db, "channels", "deleted_at", "deleted_at DATETIME");
+  ensureColumn(db, "channels", "force_include_usage", "force_include_usage INTEGER DEFAULT 1");
   ensureColumn(db, "models", "deleted_at", "deleted_at DATETIME");
   ensureColumn(db, "models", "is_public", "is_public INTEGER DEFAULT 1");
   ensureColumn(db, "models", "upstream_protocol", `upstream_protocol TEXT DEFAULT 'chat_completions'`);

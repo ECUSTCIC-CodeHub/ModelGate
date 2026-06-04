@@ -15,7 +15,7 @@ export type GatewayProtocolAdapter = {
   estimateRequestTokens(body: JsonRecord): number;
   countPromptTokens(body: JsonRecord, model: string): number;
   getStreamFlag(body: JsonRecord): boolean;
-  adaptRequestBody(body: JsonRecord, outbound: GatewayProtocolAdapter, realModel: string): JsonRecord;
+  adaptRequestBody(body: JsonRecord, outbound: GatewayProtocolAdapter, realModel: string, forceIncludeUsage?: boolean): JsonRecord;
   adaptResponseBody(text: string, outbound: GatewayProtocolAdapter, options?: ResponseAdapterOptions): string;
   extractCompletionTextFromBody(text: string): string;
   extractReasoningTextFromBody(text: string): string;
@@ -54,8 +54,20 @@ export function createBodyProtocolGatewayAdapter(options: {
     getStreamFlag(body) {
       return body.stream === true;
     },
-    adaptRequestBody(body, outbound, realModel) {
-      const prepare = (requestBody: JsonRecord) => outbound.prepareOutboundRequestBody?.(requestBody) ?? requestBody;
+    adaptRequestBody(body, outbound, realModel, forceIncludeUsage = true) {
+      const prepare = (requestBody: JsonRecord) => {
+        const prepared = outbound.prepareOutboundRequestBody?.(requestBody) ?? requestBody;
+        if (!forceIncludeUsage && prepared.stream === true) {
+          const streamOptions = typeof prepared.stream_options === "object" && prepared.stream_options !== null && !Array.isArray(prepared.stream_options)
+            ? prepared.stream_options as JsonRecord
+            : {};
+          if ("include_usage" in streamOptions) {
+            const { include_usage: _includeUsage, ...rest } = streamOptions;
+            return { ...prepared, stream_options: Object.keys(rest).length > 0 ? rest : undefined };
+          }
+        }
+        return prepared;
+      };
       if (outbound.protocol === protocol) {
         return prepare({
           ...body,

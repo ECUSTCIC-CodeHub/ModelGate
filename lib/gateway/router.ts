@@ -51,6 +51,7 @@ type CandidateRow = {
   channel_period_reset_at: string | null;
   channel_created_at: string;
   channel_deleted_at: string | null;
+  channel_force_include_usage: number;
 };
 
 const listEnabledAliasesStmt = gatewayDb.prepare(
@@ -104,7 +105,8 @@ const listModelRoutesStmt = gatewayDb.prepare(
       c.period_used_requests as channel_period_used_requests,
       c.period_reset_at as channel_period_reset_at,
       c.created_at as channel_created_at,
-      c.deleted_at as channel_deleted_at
+      c.deleted_at as channel_deleted_at,
+      c.force_include_usage as channel_force_include_usage
    FROM models m
    JOIN channels c ON c.id = m.channel_id
    WHERE m.alias = ? AND m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL AND c.deleted_at IS NULL`,
@@ -166,6 +168,7 @@ function mapRowToRoute(row: CandidateRow): RoutedModel {
       period_reset_at: row.channel_period_reset_at,
       created_at: row.channel_created_at,
       deleted_at: row.channel_deleted_at,
+      force_include_usage: row.channel_force_include_usage ?? 1,
     },
   };
 }

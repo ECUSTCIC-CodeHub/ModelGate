@@ -157,7 +157,12 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   const getRouteAdapter = (route: RoutedModel) => getGatewayProtocolAdapter(route.model.upstream_protocol);
   const countPromptTokensForRoute = (route: RoutedModel) => inboundAdapter.countPromptTokens(body, route.model.real_model);
   const adaptRequestBodyForRoute = (route: RoutedModel) =>
-    inboundAdapter.adaptRequestBody(body, getRouteAdapter(route), route.model.real_model);
+    inboundAdapter.adaptRequestBody(
+      body,
+      getRouteAdapter(route),
+      route.model.real_model,
+      route.channel.force_include_usage !== 0,
+    );
   const adaptResponseBodyForRoute = (rawText: string, route: RoutedModel) =>
     inboundAdapter.adaptResponseBody(rawText, getRouteAdapter(route), responseOptions);
   const getUsageForRoute = (rawText: string, route: RoutedModel) =>

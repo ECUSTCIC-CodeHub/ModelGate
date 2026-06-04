@@ -21,6 +21,7 @@ export type DbChannel = {
   period_reset_at: string | null;
   created_at: string;
   deleted_at: string | null;
+  force_include_usage: number;
 };
 
 export type ModelQuotaMode = "follow_group" | "bypass_group" | "independent";
