@@ -24,6 +24,26 @@ export type AdminQuotaOverview = {
     period_quota_tokens: number | null;
     period_quota_requests: number | null;
   }>;
+  channels: Array<{
+    id: number;
+    name: string;
+    model_count: number;
+    quota_tokens: number | null;
+    quota_requests: number | null;
+    used_tokens: number | null;
+    used_requests: number | null;
+    remaining_tokens: number | null;
+    remaining_requests: number | null;
+    quota_period: number | null;
+    period_label: string | null;
+    period_quota_tokens: number | null;
+    period_quota_requests: number | null;
+    period_used_tokens: number | null;
+    period_used_requests: number | null;
+    period_remaining_tokens: number | null;
+    period_remaining_requests: number | null;
+    period_reset_at: string | null;
+  }>;
   models: Array<{
     id: number;
     alias: string;
@@ -84,6 +104,10 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
               <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
                 <p className="text-xs text-[var(--color-foreground-muted)]">用户组</p>
                 <p className="text-lg font-semibold text-[var(--color-foreground)]">{formatNumber(overview.groups.length)}</p>
+              </div>
+              <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+                <p className="text-xs text-[var(--color-foreground-muted)]">渠道</p>
+                <p className="text-lg font-semibold text-[var(--color-foreground)]">{formatNumber(overview.channels.length)}</p>
               </div>
               <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
                 <p className="text-xs text-[var(--color-foreground-muted)]">特殊配额模型</p>
@@ -153,6 +177,82 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
                               {g.period_quota_requests !== null ? (
                                 <p className="text-xs text-[var(--color-foreground-muted)]">
                                   请求: {formatNumber(g.period_quota_requests)}
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-[var(--color-foreground-muted)]">-</span>
+                          )}
+                        </TableCell>
+                      ) : null}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {overview?.channels && overview.channels.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <SectionTitle title="渠道配额" description="各上游渠道的总配额与使用量。" />
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
+              <Table className="min-w-[900px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>渠道</TableHead>
+                    <TableHead>模型数</TableHead>
+                    <TableHead>Token 配额</TableHead>
+                    <TableHead>请求配额</TableHead>
+                    {overview.channels.some((c) => c.period_label) ? <TableHead>周期配额</TableHead> : null}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {overview.channels.map((c) => (
+                    <TableRow key={c.id}>
+                      <TableCell className="font-medium">{c.name}</TableCell>
+                      <TableCell>{formatNumber(c.model_count)}</TableCell>
+                      <TableCell>
+                        {c.quota_tokens !== null ? (
+                          <div className="space-y-1">
+                            <QuotaProgress remaining={c.remaining_tokens} quota={c.quota_tokens} />
+                            <p className="text-xs text-[var(--color-foreground-muted)]">
+                              {formatTokenCount(c.used_tokens ?? 0)} / {formatTokenCount(c.quota_tokens)}
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-[var(--color-foreground-muted)]">不限制</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {c.quota_requests !== null ? (
+                          <div className="space-y-1">
+                            <QuotaProgress remaining={c.remaining_requests} quota={c.quota_requests} />
+                            <p className="text-xs text-[var(--color-foreground-muted)]">
+                              {formatNumber(c.used_requests ?? 0)} / {formatNumber(c.quota_requests)}
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-[var(--color-foreground-muted)]">不限制</span>
+                        )}
+                      </TableCell>
+                      {overview.channels.some((c) => c.period_label) ? (
+                        <TableCell>
+                          {c.period_label && (c.period_quota_tokens !== null || c.period_quota_requests !== null) ? (
+                            <div className="space-y-1">
+                              <Badge variant="outline" className="text-xs">{c.period_label}</Badge>
+                              {c.period_quota_tokens !== null ? (
+                                <p className="text-xs text-[var(--color-foreground-muted)]">
+                                  Token: {formatTokenCount(c.period_used_tokens ?? 0)} / {formatTokenCount(c.period_quota_tokens)}
+                                </p>
+                              ) : null}
+                              {c.period_quota_requests !== null ? (
+                                <p className="text-xs text-[var(--color-foreground-muted)]">
+                                  请求: {formatNumber(c.period_used_requests ?? 0)} / {formatNumber(c.period_quota_requests)}
                                 </p>
                               ) : null}
                             </div>
