@@ -44,6 +44,7 @@ const enabledModelAliasStmt = gatewayDb.prepare(
      AND m.enabled = 1
      AND c.enabled = 1
      AND m.deleted_at IS NULL
+     AND c.deleted_at IS NULL
    LIMIT 1`,
 );
 
@@ -54,6 +55,7 @@ const accessibleModelRowsStmt = gatewayDb.prepare(
    WHERE m.enabled = 1
      AND c.enabled = 1
      AND m.deleted_at IS NULL
+     AND c.deleted_at IS NULL
      AND m.alias != '*'
    ORDER BY m.alias ASC, m.id ASC`,
 );

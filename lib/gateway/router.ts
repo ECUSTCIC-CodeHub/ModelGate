@@ -58,7 +58,7 @@ const listEnabledAliasesStmt = gatewayDb.prepare(
   `SELECT DISTINCT m.alias
    FROM models m
    JOIN channels c ON c.id = m.channel_id
-   WHERE m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL AND m.alias != '*'
+   WHERE m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL AND c.deleted_at IS NULL AND m.alias != '*'
    ORDER BY m.alias ASC`,
 );
 
