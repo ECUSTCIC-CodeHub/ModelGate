@@ -2,8 +2,8 @@ import { gatewayDb } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
 
 export function addUsage(userId: number, keyId: number, tokens: number, requests = 1, tokenMultiplier = 1, requestMultiplier = 1, channelId?: number, modelId?: number, quotaMode?: string) {
-  const billedTokens = Math.max(0, tokens * tokenMultiplier);
-  const billedRequests = Math.max(0, requests * requestMultiplier);
+  const billedTokens = Math.round(Math.max(0, tokens * tokenMultiplier));
+  const billedRequests = Math.round(Math.max(0, requests * requestMultiplier));
   const countUserUsage = quotaMode === "follow_group" || quotaMode == null;
   const tx = gatewayDb.transaction(() => {
     if (countUserUsage) {
