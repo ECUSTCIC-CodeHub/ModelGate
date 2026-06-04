@@ -74,6 +74,8 @@ export async function GET(request: Request) {
     model_count: number;
   }>;
 
+  const now = new Date();
+
   const channels = channelRows.map((c) => {
     let periodUsedTokens = c.period_used_tokens;
     let periodUsedRequests = c.period_used_requests;
@@ -146,7 +148,6 @@ export async function GET(request: Request) {
     channel_name: string;
   }>;
 
-  const now = new Date();
   const models = modelRows.map((m) => {
     let periodUsedTokens = m.period_used_tokens;
     let periodUsedRequests = m.period_used_requests;
