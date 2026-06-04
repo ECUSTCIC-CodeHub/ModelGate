@@ -19,3 +19,10 @@ export function markTotpCodeUsed(userId: number, code: string): void {
   const key = `${userId}:${code}`;
   usedCodes.set(key, Date.now());
 }
+
+export function checkAndMarkTotpCode(userId: number, code: string): boolean {
+  const key = `${userId}:${code}`;
+  if (usedCodes.has(key)) return false;
+  usedCodes.set(key, Date.now());
+  return true;
+}

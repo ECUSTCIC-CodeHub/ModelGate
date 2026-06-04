@@ -1,6 +1,6 @@
 import { TOTP, Secret } from "otpauth";
 import { encryptTotpSecret, decryptTotpSecret } from "@/lib/auth/totp-crypto";
-import { isTotpCodeReplayed, markTotpCodeUsed } from "@/lib/auth/totp-replay";
+import { checkAndMarkTotpCode } from "@/lib/auth/totp-replay";
 
 const ISSUER = "ModelGate";
 const PERIOD = 30;
@@ -27,7 +27,7 @@ export function encryptAndEncodeSecret(plaintextSecret: string): string {
 }
 
 export function verifyTotpCode(encryptedSecret: string, code: string, userId: number): boolean {
-  if (isTotpCodeReplayed(userId, code)) return false;
+  if (!checkAndMarkTotpCode(userId, code)) return false;
 
   const plaintextSecret = decryptTotpSecret(encryptedSecret);
   const totp = new TOTP({
@@ -39,8 +39,5 @@ export function verifyTotpCode(encryptedSecret: string, code: string, userId: nu
   });
 
   const delta = totp.validate({ token: code, window: 1 });
-  if (delta === null) return false;
-
-  markTotpCodeUsed(userId, code);
-  return true;
+  return delta !== null;
 }
