@@ -48,6 +48,62 @@ export async function GET(request: Request) {
     user_count: number;
   }>;
 
+  const channelRows = gatewayDb.prepare(
+    `SELECT c.id, c.name, c.quota_tokens, c.quota_requests, c.quota_period,
+            c.period_quota_tokens, c.period_quota_requests,
+            c.period_used_tokens, c.period_used_requests, c.period_reset_at,
+            COALESCE(m_stats.model_count, 0) AS model_count
+     FROM channels c
+     LEFT JOIN (
+       SELECT channel_id, COUNT(*) AS model_count
+       FROM models WHERE deleted_at IS NULL AND enabled = 1
+       GROUP BY channel_id
+     ) m_stats ON m_stats.channel_id = c.id
+     WHERE c.deleted_at IS NULL AND c.enabled = 1`,
+  ).all() as Array<{
+    id: number;
+    name: string;
+    quota_tokens: number | null;
+    quota_requests: number | null;
+    quota_period: number | null;
+    period_quota_tokens: number | null;
+    period_quota_requests: number | null;
+    period_used_tokens: number;
+    period_used_requests: number;
+    period_reset_at: string | null;
+    model_count: number;
+  }>;
+
+  const channels = channelRows.map((c) => {
+    let periodUsedTokens = c.period_used_tokens;
+    let periodUsedRequests = c.period_used_requests;
+    if (c.quota_period && c.period_reset_at && new Date(c.period_reset_at) <= now) {
+      periodUsedTokens = 0;
+      periodUsedRequests = 0;
+    }
+
+    return {
+      id: c.id,
+      name: c.name,
+      model_count: c.model_count,
+      quota_tokens: c.quota_tokens,
+      quota_requests: c.quota_requests,
+      used_tokens: c.quota_tokens !== null ? periodUsedTokens : null,
+      used_requests: c.quota_requests !== null ? periodUsedRequests : null,
+      remaining_tokens: c.quota_tokens !== null ? Math.max(0, c.quota_tokens - periodUsedTokens) : null,
+      remaining_requests: c.quota_requests !== null ? Math.max(0, c.quota_requests - periodUsedRequests) : null,
+      quota_period: modelGateFeatures.periodQuota ? c.quota_period : null,
+      period_label: modelGateFeatures.periodQuota && c.quota_period ? formatPeriodLabel(c.quota_period) : null,
+      period_quota_tokens: modelGateFeatures.periodQuota ? c.period_quota_tokens : null,
+      period_quota_requests: modelGateFeatures.periodQuota ? c.period_quota_requests : null,
+      period_used_tokens: modelGateFeatures.periodQuota && c.period_quota_tokens != null ? periodUsedTokens : null,
+      period_used_requests: modelGateFeatures.periodQuota && c.period_quota_requests != null ? periodUsedRequests : null,
+      period_remaining_tokens: modelGateFeatures.periodQuota && c.period_quota_tokens != null ? Math.max(0, c.period_quota_tokens - periodUsedTokens) : null,
+      period_remaining_requests: modelGateFeatures.periodQuota && c.period_quota_requests != null ? Math.max(0, c.period_quota_requests - periodUsedRequests) : null,
+      period_reset_at: modelGateFeatures.periodQuota && c.quota_period ? c.period_reset_at : null,
+    };
+  });
+
   const groups = groupRows.map((g) => ({
     id: g.id,
     name: g.name,
@@ -127,6 +183,7 @@ export async function GET(request: Request) {
     total_users: totalUsers,
     total_keys: totalKeys,
     groups,
+    channels,
     models,
   });
 }
