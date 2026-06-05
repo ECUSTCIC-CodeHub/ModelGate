@@ -27,6 +27,8 @@ const REQUEST_KEYS = [
   "tools",
   "tool_choice",
   "thinking",
+  "metadata",
+  "store",
 ];
 
 export function anthropicRequestToIntermediate(body: JsonRecord, realModel: string): IntermediateRequest {
@@ -42,6 +44,7 @@ export function anthropicRequestToIntermediate(body: JsonRecord, realModel: stri
     tools: body.tools !== undefined ? anthropicToolsToIntermediate(body.tools) : undefined,
     tool_choice: body.tool_choice !== undefined ? anthropicToolChoiceToIntermediate(body.tool_choice) : undefined,
     thinking: body.thinking,
+    metadata: body.metadata,
     extra: omitKeys(body, REQUEST_KEYS),
   };
 }
@@ -103,6 +106,7 @@ export function anthropicRequestFromIntermediate(request: IntermediateRequest): 
   }
   if (request.tools !== undefined) next.tools = toolsFromIntermediateForAnthropic(request.tools);
   if (request.tool_choice !== undefined) next.tool_choice = toolChoiceFromIntermediateForAnthropic(request.tool_choice);
+  if (request.metadata !== undefined) { next.metadata = request.metadata; next.store = true; }
 
   return next;
 }

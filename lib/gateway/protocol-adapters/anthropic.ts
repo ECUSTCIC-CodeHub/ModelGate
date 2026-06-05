@@ -28,4 +28,10 @@ export const anthropicGatewayAdapter = createBodyProtocolGatewayAdapter({
   getMaxOutputTokens(body) {
     return body.max_tokens;
   },
+  prepareOutboundRequestBody(body) {
+    if (body.metadata !== undefined && body.store !== true) {
+      return { ...body, store: true };
+    }
+    return body;
+  },
 });
