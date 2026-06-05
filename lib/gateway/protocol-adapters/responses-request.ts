@@ -4,6 +4,26 @@ import {
   normalizedPartsToResponseContent,
   type JsonRecord,
 } from "@/lib/gateway/normalized-message";
+
+function normalizeResponsesContextManagement(value: unknown) {
+  if (value === undefined) return undefined;
+
+  const items = Array.isArray(value) ? value : [value];
+  return items.map((item) => {
+    if (typeof item === "string") {
+      return { type: item };
+    }
+
+    if (typeof item === "object" && item !== null) {
+      const record = item as JsonRecord;
+      if (typeof record.type === "string") {
+        return record;
+      }
+    }
+
+    return { type: "auto" };
+  });
+}
 import {
   omitKeys,
   type IntermediateRequest,
@@ -110,9 +130,7 @@ export function responsesRequestFromIntermediate(request: IntermediateRequest): 
   if (request.metadata !== undefined) { next.metadata = request.metadata; next.store = true; }
   if (request.text !== undefined) next.text = request.text;
   if (request.context_management !== undefined) {
-    next.context_management = Array.isArray(request.context_management)
-      ? request.context_management
-      : [request.context_management];
+    next.context_management = normalizeResponsesContextManagement(request.context_management);
   }
 
   return next;
