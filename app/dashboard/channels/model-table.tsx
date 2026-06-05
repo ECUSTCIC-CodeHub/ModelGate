@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { ModelRow, ModelWithChannel } from "./channel-model";
-import { shortProtocolLabel } from "./channel-model";
+import { parseSupportedProtocols, shortProtocolLabel } from "./channel-model";
 
 export function ModelTable({
   models,
@@ -63,7 +63,11 @@ export function ModelTable({
               <TableCell className="max-w-72 truncate">{model.real_model}</TableCell>
               <TableCell className="whitespace-nowrap">{model.channel_name}</TableCell>
               <TableCell>
-                <Badge variant="outline">{shortProtocolLabel(model.upstream_protocol)}</Badge>
+                <div className="flex flex-wrap gap-1">
+                  {parseSupportedProtocols(model.supported_protocols).map((p) => (
+                    <Badge key={p} variant={p === model.upstream_protocol ? "default" : "outline"}>{shortProtocolLabel(p)}</Badge>
+                  ))}
+                </div>
               </TableCell>
               <TableCell>
                 <Badge variant={model.enabled ? "default" : "secondary"}>{model.enabled ? "启用" : "禁用"}</Badge>

@@ -19,6 +19,7 @@ type CandidateRow = {
   real_model: string;
   channel_id: number;
   upstream_protocol: GatewayProtocol;
+  model_supported_protocols: string | null;
   is_public: number;
   model_enabled: number;
   model_weight: number;
@@ -74,6 +75,7 @@ const listModelRoutesStmt = gatewayDb.prepare(
       m.real_model,
       m.channel_id,
       m.upstream_protocol,
+      m.supported_protocols as model_supported_protocols,
       m.is_public,
       m.enabled as model_enabled,
       m.weight as model_weight,
@@ -128,10 +130,10 @@ function effectiveMaxConcurrency(channelMax: number, modelMax: number): number {
 
 function mapRowToRoute(row: CandidateRow, inboundProtocol?: GatewayProtocol): RoutedModel {
   const channelProtocols = parseSupportedProtocols(row.supported_protocols);
-  // If the channel natively supports the inbound protocol, use it directly
-  // to avoid protocol conversion (preserves protocol-specific features like
-  // Anthropic beta tools, Responses native tools, etc.).
-  const effectiveUpstreamProtocol = inboundProtocol && channelProtocols.includes(inboundProtocol)
+  const modelProtocols = row.model_supported_protocols
+    ? parseSupportedProtocols(row.model_supported_protocols)
+    : channelProtocols;
+  const effectiveUpstreamProtocol = inboundProtocol && modelProtocols.includes(inboundProtocol) && channelProtocols.includes(inboundProtocol)
     ? inboundProtocol
     : row.upstream_protocol;
   return {
@@ -141,6 +143,7 @@ function mapRowToRoute(row: CandidateRow, inboundProtocol?: GatewayProtocol): Ro
       real_model: row.real_model,
       channel_id: row.channel_id,
       upstream_protocol: row.upstream_protocol,
+      supported_protocols: row.model_supported_protocols ?? "",
       is_public: row.is_public,
       enabled: row.model_enabled,
       weight: row.model_weight,
@@ -188,7 +191,9 @@ function mapRowToRoute(row: CandidateRow, inboundProtocol?: GatewayProtocol): Ro
 
 const PASSTHROUGH_PROTOCOLS: GatewayProtocol[] = ["embeddings", "images"];
 
-function isProtocolCompatible(inboundProtocol: GatewayProtocol, upstreamProtocol: GatewayProtocol) {
+function isProtocolCompatible(inboundProtocol: GatewayProtocol, upstreamProtocol: GatewayProtocol, modelProtocols: GatewayProtocol[], channelProtocols: GatewayProtocol[]) {
+  if (!channelProtocols.includes(upstreamProtocol)) return false;
+  if (!modelProtocols.includes(upstreamProtocol)) return false;
   if (PASSTHROUGH_PROTOCOLS.includes(inboundProtocol)) return inboundProtocol === upstreamProtocol;
   return !PASSTHROUGH_PROTOCOLS.includes(upstreamProtocol);
 }
@@ -201,11 +206,18 @@ export function listModelRoutes(alias: string, options?: { excludeChannelIds?: n
     : null;
   const findRows = (targetAlias: string) => listModelRoutesStmt.all(targetAlias) as CandidateRow[];
 
-  const filterRows = (rows: CandidateRow[]) => rows.filter((row) =>
-    !exclude.has(row.channel_id_2)
-    && (!allowSet || allowSet.has(row.channel_id_2))
-    && (!protocol || isProtocolCompatible(protocol, row.upstream_protocol)),
-  );
+  const filterRows = (rows: CandidateRow[]) => rows.filter((row) => {
+    if (exclude.has(row.channel_id_2)) return false;
+    if (allowSet && !allowSet.has(row.channel_id_2)) return false;
+    if (protocol) {
+      const channelProtocols = parseSupportedProtocols(row.supported_protocols);
+      const modelProtocols = row.model_supported_protocols
+        ? parseSupportedProtocols(row.model_supported_protocols)
+        : channelProtocols;
+      if (!isProtocolCompatible(protocol, row.upstream_protocol, modelProtocols, channelProtocols)) return false;
+    }
+    return true;
+  });
 
   const exactRows = filterRows(findRows(alias));
   const candidateRows = exactRows.length > 0

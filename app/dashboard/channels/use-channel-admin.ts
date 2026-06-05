@@ -45,7 +45,7 @@ export function useChannelAdmin() {
   function openCreateChannel() {
     setChannelEditingId(null);
     setChannelForm({ ...initialChannelForm });
-    setChannelModels([{ ...initialModelDraft, upstream_protocol: initialChannelForm.supported_protocols[0] }]);
+    setChannelModels([{ ...initialModelDraft, upstream_protocol: initialChannelForm.supported_protocols[0], supported_protocols: [...initialChannelForm.supported_protocols] }]);
     setChannelDrawerOpen(true);
   }
 
@@ -69,7 +69,7 @@ export function useChannelAdmin() {
       period_quota_requests: row.period_quota_requests != null ? String(row.period_quota_requests) : "",
       force_include_usage: row.force_include_usage === 1,
     });
-    setChannelModels([{ ...initialModelDraft, upstream_protocol: supportedProtocols[0] }]);
+    setChannelModels([{ ...initialModelDraft, upstream_protocol: supportedProtocols[0], supported_protocols: [...supportedProtocols] }]);
     setChannelDrawerOpen(true);
   }
 
@@ -80,14 +80,19 @@ export function useChannelAdmin() {
   function updateSupportedProtocols(protocols: Protocol[]) {
     const nextProtocols: Protocol[] = protocols.length > 0 ? protocols : ["chat_completions"];
     setChannelForm((prev) => ({ ...prev, supported_protocols: nextProtocols }));
-    setChannelModels((prev) => prev.map((item) => ({
-      ...item,
-      upstream_protocol: nextProtocols.includes(item.upstream_protocol) ? item.upstream_protocol : nextProtocols[0],
-    })));
+    setChannelModels((prev) => prev.map((item) => {
+      const filtered = item.supported_protocols.filter((p) => nextProtocols.includes(p));
+      const nextSupported = filtered.length > 0 ? filtered : [nextProtocols[0]];
+      return {
+        ...item,
+        supported_protocols: nextSupported,
+        upstream_protocol: nextSupported.includes(item.upstream_protocol) ? item.upstream_protocol : nextSupported[0],
+      };
+    }));
   }
 
   function addChannelModelDraft(protocols = channelForm.supported_protocols) {
-    setChannelModels((prev) => [...prev, { ...initialModelDraft, upstream_protocol: protocols[0] ?? "chat_completions" }]);
+    setChannelModels((prev) => [...prev, { ...initialModelDraft, upstream_protocol: protocols[0] ?? "chat_completions", supported_protocols: [...protocols] }]);
   }
 
   function removeChannelModelDraft(index: number) {
@@ -122,6 +127,7 @@ export function useChannelAdmin() {
           alias: item.alias.trim(),
           real_model: item.real_model.trim(),
           upstream_protocol: item.upstream_protocol,
+          supported_protocols: item.supported_protocols,
           is_public: item.is_public,
           enabled: item.enabled,
         }))
@@ -257,18 +263,21 @@ export function useChannelAdmin() {
       ...initialModelForm,
       channel_id: channelId,
       upstream_protocol: supportedProtocols[0] ?? "chat_completions",
+      supported_protocols: [...supportedProtocols],
     });
-    setChannelModels([{ ...initialModelDraft, upstream_protocol: supportedProtocols[0] ?? "chat_completions" }]);
+    setChannelModels([{ ...initialModelDraft, upstream_protocol: supportedProtocols[0] ?? "chat_completions", supported_protocols: [...supportedProtocols] }]);
     setModelDrawerOpen(true);
   }
 
   function openEditModel(row: ModelRow) {
+    const modelProtocols = parseSupportedProtocols(row.supported_protocols);
     setModelEditingId(row.id);
     setModelForm({
       alias: row.alias,
       real_model: row.real_model,
       channel_id: row.channel_id,
       upstream_protocol: row.upstream_protocol,
+      supported_protocols: modelProtocols,
       is_public: row.is_public === 1,
       weight: row.weight,
       token_multiplier: row.token_multiplier ?? 1,
@@ -293,13 +302,18 @@ export function useChannelAdmin() {
   function updateModelChannel(channelId: number) {
     const channel = channels.find((item) => item.id === channelId);
     const protocols = parseSupportedProtocols(channel?.supported_protocols);
-    setModelForm((prev) => ({
-      ...prev,
-      channel_id: channelId,
-      upstream_protocol: protocols.includes(prev.upstream_protocol) ? prev.upstream_protocol : protocols[0],
-    }));
+    setModelForm((prev) => {
+      const filtered = prev.supported_protocols.filter((p) => protocols.includes(p));
+      const nextSupported = filtered.length > 0 ? filtered : [protocols[0]];
+      return {
+        ...prev,
+        channel_id: channelId,
+        supported_protocols: nextSupported,
+        upstream_protocol: nextSupported.includes(prev.upstream_protocol) ? prev.upstream_protocol : nextSupported[0],
+      };
+    });
     if (modelEditingId === null) {
-      setChannelModels([{ ...initialModelDraft, upstream_protocol: protocols[0] ?? "chat_completions" }]);
+      setChannelModels([{ ...initialModelDraft, upstream_protocol: protocols[0] ?? "chat_completions", supported_protocols: [...protocols] }]);
     }
   }
 
@@ -329,6 +343,7 @@ export function useChannelAdmin() {
           real_model: item.real_model.trim(),
           channel_id: modelForm.channel_id,
           upstream_protocol: item.upstream_protocol,
+          supported_protocols: item.supported_protocols,
           is_public: item.is_public,
           weight: item.weight,
           token_multiplier: item.token_multiplier,
@@ -377,6 +392,7 @@ export function useChannelAdmin() {
               alias: draft.alias,
               real_model: draft.real_model,
               upstream_protocol: draft.upstream_protocol,
+              supported_protocols: draft.supported_protocols,
               is_public: draft.is_public,
               weight: draft.weight,
               token_multiplier: draft.token_multiplier,
@@ -393,6 +409,7 @@ export function useChannelAdmin() {
             alias: draft.alias,
             real_model: draft.real_model,
             upstream_protocol: draft.upstream_protocol,
+            supported_protocols: draft.supported_protocols,
             is_public: draft.is_public,
             weight: draft.weight,
             token_multiplier: draft.token_multiplier,
@@ -415,7 +432,7 @@ export function useChannelAdmin() {
         description: `已创建 ${successCount} 个模型，${failures.length} 个失败：${failures.slice(0, 3).join("；")}${failures.length > 3 ? " 等" : ""}。`,
         durationMs: 6000,
       });
-      setChannelModels(failedDrafts.length > 0 ? failedDrafts : [{ ...initialModelDraft, upstream_protocol: selectedChannelProtocols[0] ?? "chat_completions" }]);
+      setChannelModels(failedDrafts.length > 0 ? failedDrafts : [{ ...initialModelDraft, upstream_protocol: selectedChannelProtocols[0] ?? "chat_completions", supported_protocols: [...selectedChannelProtocols] }]);
       if (successCount > 0) await loadChannels();
       return;
     }

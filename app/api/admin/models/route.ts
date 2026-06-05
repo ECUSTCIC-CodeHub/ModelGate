@@ -4,7 +4,7 @@ import { z } from "zod";
 import { gatewayDb } from "@/lib/core/db";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
-import { GATEWAY_PROTOCOLS, supportsProtocol } from "@/lib/gateway/protocols";
+import { GATEWAY_PROTOCOLS, normalizeSupportedProtocols, parseSupportedProtocols, stringifySupportedProtocols, supportsProtocol } from "@/lib/gateway/protocols";
 
 const QUOTA_MODES = ["follow_group", "bypass_group", "independent"] as const;
 
@@ -13,6 +13,7 @@ const createSchema = z.object({
   real_model: z.string().min(1),
   channel_id: z.number().int().positive(),
   upstream_protocol: z.enum(GATEWAY_PROTOCOLS).optional(),
+  supported_protocols: z.array(z.enum(GATEWAY_PROTOCOLS)).optional(),
   is_public: z.boolean().optional(),
   enabled: z.boolean().optional(),
   weight: z.number().int().min(1).optional(),
@@ -60,6 +61,16 @@ export async function POST(request: Request) {
   if (!supportsProtocol(channel.supported_protocols, upstreamProtocol)) {
     return jsonError("所选渠道不支持该上游协议", 400);
   }
+  const channelProtocols = parseSupportedProtocols(channel.supported_protocols);
+  const modelProtocols = normalizeSupportedProtocols(parsed.data.supported_protocols);
+  const validModelProtocols = modelProtocols.filter((p) => channelProtocols.includes(p));
+  if (validModelProtocols.length === 0) {
+    return jsonError("至少需要一个渠道支持的可用协议", 400);
+  }
+  if (!validModelProtocols.includes(upstreamProtocol)) {
+    return jsonError("默认上游协议必须在可用协议中", 400);
+  }
+  const supportedProtocolsJson = stringifySupportedProtocols(validModelProtocols);
   const modelEnabled = parsed.data.enabled === false ? 0 : 1;
   if (modelEnabled === 1 && channel.enabled !== 1) {
     return jsonError("禁用渠道下不能启用模型", 400);
@@ -67,14 +78,15 @@ export async function POST(request: Request) {
 
   const result = gatewayDb
     .prepare(
-      `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       parsed.data.alias,
       parsed.data.real_model,
       parsed.data.channel_id,
       upstreamProtocol,
+      supportedProtocolsJson,
       parsed.data.is_public === false ? 0 : 1,
       modelEnabled,
       parsed.data.weight ?? 1,

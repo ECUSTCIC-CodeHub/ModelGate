@@ -4,7 +4,7 @@ import { z } from "zod";
 import { gatewayDb } from "@/lib/core/db";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
-import { GATEWAY_PROTOCOLS, type GatewayProtocol, supportsProtocol } from "@/lib/gateway/protocols";
+import { GATEWAY_PROTOCOLS, type GatewayProtocol, normalizeSupportedProtocols, parseSupportedProtocols, stringifySupportedProtocols, supportsProtocol } from "@/lib/gateway/protocols";
 import type { ModelQuotaMode } from "@/lib/core/db/types";
 import { softDeleteModel } from "@/lib/services/soft-delete-service";
 
@@ -15,6 +15,7 @@ const updateSchema = z.object({
   real_model: z.string().min(1).optional(),
   channel_id: z.number().int().positive().optional(),
   upstream_protocol: z.enum(GATEWAY_PROTOCOLS).optional(),
+  supported_protocols: z.array(z.enum(GATEWAY_PROTOCOLS)).optional(),
   is_public: z.boolean().optional(),
   enabled: z.boolean().optional(),
   weight: z.number().int().min(1).optional(),
@@ -62,6 +63,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         real_model: string;
         channel_id: number;
         upstream_protocol: GatewayProtocol;
+        supported_protocols: string | null;
         is_public: number;
         enabled: number;
         weight: number;
@@ -93,6 +95,16 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   if (!supportsProtocol(channel.supported_protocols, targetProtocol)) {
     return jsonError("所选渠道不支持该上游协议", 400);
   }
+  const channelProtocols = parseSupportedProtocols(channel.supported_protocols);
+  const rawModelProtocols = parsed.data.supported_protocols ?? normalizeSupportedProtocols(existing.supported_protocols);
+  const validModelProtocols = rawModelProtocols.filter((p) => channelProtocols.includes(p));
+  if (validModelProtocols.length === 0) {
+    return jsonError("至少需要一个渠道支持的可用协议", 400);
+  }
+  if (!validModelProtocols.includes(targetProtocol)) {
+    return jsonError("默认上游协议必须在可用协议中", 400);
+  }
+  const targetSupportedProtocols = stringifySupportedProtocols(validModelProtocols);
   if (targetEnabled === 1 && channel.enabled !== 1) {
     return jsonError("禁用渠道下不能启用模型", 400);
   }
@@ -113,11 +125,11 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   gatewayDb
     .prepare(
       `UPDATE models
-       SET alias = ?, real_model = ?, channel_id = ?, upstream_protocol = ?, is_public = ?, enabled = ?, weight = ?, token_multiplier = ?, request_multiplier = ?, max_concurrency = ?,
+       SET alias = ?, real_model = ?, channel_id = ?, upstream_protocol = ?, supported_protocols = ?, is_public = ?, enabled = ?, weight = ?, token_multiplier = ?, request_multiplier = ?, max_concurrency = ?,
            quota_mode = ?, quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?
        WHERE id = ?`,
     )
-    .run(merged.alias, merged.real_model, merged.channel_id, merged.upstream_protocol, merged.is_public, merged.enabled, merged.weight, merged.token_multiplier, merged.request_multiplier, merged.max_concurrency,
+    .run(merged.alias, merged.real_model, merged.channel_id, merged.upstream_protocol, targetSupportedProtocols, merged.is_public, merged.enabled, merged.weight, merged.token_multiplier, merged.request_multiplier, merged.max_concurrency,
       merged.quota_mode ?? existing.quota_mode ?? "follow_group",
       merged.quota_tokens ?? existing.quota_tokens ?? null,
       merged.quota_requests ?? existing.quota_requests ?? null,

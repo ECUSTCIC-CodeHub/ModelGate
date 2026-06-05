@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -81,16 +82,47 @@ export function ModelDraftCard({
                 </div>
               </div>
             ) : null}
-            <Select value={item.upstream_protocol} onValueChange={(value) => onUpdateDraft(index, { upstream_protocol: value as Protocol })}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {protocols.map((protocol) => (
-                  <SelectItem key={protocol} value={protocol}>{protocolLabel(protocol)}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="space-y-1">
+              <span className="text-xs text-[var(--color-foreground-muted)]">可用协议</span>
+              <div className="flex flex-wrap gap-2">
+                {protocols.map((protocol) => {
+                  const checked = item.supported_protocols.includes(protocol);
+                  return (
+                    <label key={protocol} className="flex items-center gap-1.5 rounded-md border border-[var(--color-border)] px-2 py-1 text-xs">
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(next) => {
+                          const enabled = next === true;
+                          const current = item.supported_protocols;
+                          const nextProtocols = enabled
+                            ? [...new Set([...current, protocol])]
+                            : current.filter((p) => p !== protocol);
+                          const finalProtocols = nextProtocols.length > 0 ? nextProtocols : [protocol];
+                          const nextUpstream = finalProtocols.includes(item.upstream_protocol)
+                            ? item.upstream_protocol
+                            : finalProtocols[0];
+                          onUpdateDraft(index, { supported_protocols: finalProtocols, upstream_protocol: nextUpstream });
+                        }}
+                      />
+                      {protocolLabel(protocol)}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="space-y-1">
+              <span className="text-xs text-[var(--color-foreground-muted)]">默认上游协议</span>
+              <Select value={item.upstream_protocol} onValueChange={(value) => onUpdateDraft(index, { upstream_protocol: value as Protocol })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {item.supported_protocols.map((protocol) => (
+                    <SelectItem key={protocol} value={protocol}>{protocolLabel(protocol)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid gap-3 md:grid-cols-3">
               <Select value={item.quota_mode} onValueChange={(value) => onUpdateDraft(index, { quota_mode: value as ChannelModelDraft["quota_mode"] })}>
                 <SelectTrigger>

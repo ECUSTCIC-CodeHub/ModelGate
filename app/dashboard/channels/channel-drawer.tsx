@@ -115,7 +115,7 @@ export function ChannelDrawer({
               </div>
               {form.supported_protocols.length > 1 && (
                 <p className="text-xs text-[var(--color-foreground-muted)]">
-                  勾选多种协议后，当入站请求协议与渠道一致时将直接透传，无需协议转换，保留协议特有功能（如 Anthropic beta 工具、Responses 原生工具等）。
+                  勾选多种协议后，模型可选择这些协议进行透传，当入站请求协议匹配时将直接透传，无需协议转换。
                 </p>
               )}
             </div>

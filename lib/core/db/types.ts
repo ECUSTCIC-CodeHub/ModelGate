@@ -32,6 +32,7 @@ export type DbModel = {
   real_model: string;
   channel_id: number;
   upstream_protocol: GatewayProtocol;
+  supported_protocols: string;
   is_public: number;
   enabled: number;
   weight: number;

@@ -63,6 +63,7 @@ export type ModelRow = {
   real_model: string;
   channel_id: number;
   upstream_protocol: Protocol;
+  supported_protocols: string;
   is_public: number;
   enabled: number;
   weight: number;
@@ -101,6 +102,7 @@ export type ChannelModelDraft = {
   alias: string;
   real_model: string;
   upstream_protocol: Protocol;
+  supported_protocols: Protocol[];
   is_public: boolean;
   weight: number;
   token_multiplier: number;
@@ -133,6 +135,7 @@ export type ModelForm = {
   real_model: string;
   channel_id: number;
   upstream_protocol: Protocol;
+  supported_protocols: Protocol[];
   is_public: boolean;
   weight: number;
   token_multiplier: number;
@@ -180,6 +183,7 @@ export const initialModelDraft: ChannelModelDraft = {
   alias: "",
   real_model: "",
   upstream_protocol: "chat_completions",
+  supported_protocols: ["chat_completions"],
   is_public: true,
   weight: 1,
   token_multiplier: 1,
@@ -194,6 +198,7 @@ export const initialModelForm: ModelForm = {
   real_model: "",
   channel_id: 0,
   upstream_protocol: "chat_completions",
+  supported_protocols: ["chat_completions"],
   is_public: true,
   weight: 1,
   token_multiplier: 1,

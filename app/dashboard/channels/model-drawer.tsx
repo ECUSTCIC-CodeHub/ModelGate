@@ -137,22 +137,51 @@ export function ModelDrawer({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>上游协议</Label>
+                <Label>可用协议</Label>
+                <div className="grid gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-3 md:grid-cols-2">
+                  {selectedChannelProtocols.map((option) => {
+                    const checked = form.supported_protocols.includes(option);
+                    return (
+                      <label key={option} className="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] px-3 py-2">
+                        <span className="text-sm text-[var(--color-foreground)]">{protocolLabel(option)}</span>
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(next) => {
+                            const enabled = next === true;
+                            const current = form.supported_protocols;
+                            const protocols = enabled
+                              ? [...new Set([...current, option])]
+                              : current.filter((item) => item !== option);
+                            const nextProtocols = protocols.length > 0 ? protocols : [option];
+                            const nextUpstream = nextProtocols.includes(form.upstream_protocol)
+                              ? form.upstream_protocol
+                              : nextProtocols[0];
+                            onFormChange({ supported_protocols: nextProtocols, upstream_protocol: nextUpstream });
+                          }}
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-[var(--color-foreground-muted)]">
+                  勾选的协议在入站请求匹配时将直接透传，无需协议转换。至少勾选一个。
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>默认上游协议</Label>
                 <Select value={form.upstream_protocol} onValueChange={(value) => onFormChange({ upstream_protocol: value as Protocol })}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {selectedChannelProtocols.map((protocol) => (
+                    {form.supported_protocols.map((protocol) => (
                       <SelectItem key={protocol} value={protocol}>{protocolLabel(protocol)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {selectedChannel && selectedChannelProtocols.length > 1 && (
-                  <p className="text-xs text-[var(--color-foreground-muted)]">
-                    渠道支持多种协议时，入站协议若与渠道协议一致，将直接透传无需转换，保留协议特有功能。
-                  </p>
-                )}
+                <p className="text-xs text-[var(--color-foreground-muted)]">
+                  当入站协议不在可用协议中时，使用此协议与上游通信。
+                </p>
               </div>
               <div className="grid gap-3 md:grid-cols-4">
                 <div className="space-y-2">
