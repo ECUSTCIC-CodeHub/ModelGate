@@ -1,11 +1,12 @@
 import { countTextTokens } from "@/lib/gateway/tokenizer";
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 import type { JsonRecord, NormalizedMessage } from "@/lib/gateway/normalized-message";
-import type {
-  IntermediateResponse,
-  IntermediateUsage,
-  ProtocolBodyAdapter,
-  ResponseAdapterOptions,
+import {
+  omitKeys,
+  type IntermediateResponse,
+  type IntermediateUsage,
+  type ProtocolBodyAdapter,
+  type ResponseAdapterOptions,
 } from "@/lib/gateway/protocol-adapters/intermediate";
 
 export type GatewayProtocolAdapter = {
@@ -65,7 +66,7 @@ export function createBodyProtocolGatewayAdapter(options: {
             return { ...prepared, stream_options: { ...streamOptions, include_usage: true } };
           }
           if ("include_usage" in streamOptions) {
-            const { include_usage: _includeUsage, ...rest } = streamOptions;
+            const rest = omitKeys(streamOptions, ["include_usage"]);
             return { ...prepared, stream_options: Object.keys(rest).length > 0 ? rest : undefined };
           }
         }

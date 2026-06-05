@@ -11,7 +11,6 @@ import {
   chatCompletionsResponseFromIntermediate,
   chatCompletionsResponseToIntermediate,
 } from "@/lib/gateway/protocol-adapters/chat-completions-response";
-import type { JsonRecord } from "@/lib/gateway/normalized-message";
 
 export {
   extractChatMessageText,

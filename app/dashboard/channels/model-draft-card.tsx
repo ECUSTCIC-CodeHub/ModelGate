@@ -18,7 +18,6 @@ export function ModelDraftCard({
   drafts,
   probing,
   probeDisabled,
-  periodQuotaEnabled,
   onProbe,
   onAddDraft,
   onRemoveDraft,
@@ -31,7 +30,6 @@ export function ModelDraftCard({
   drafts: ChannelModelDraft[];
   probing: boolean;
   probeDisabled?: boolean;
-  periodQuotaEnabled: boolean;
   onProbe: () => void;
   onAddDraft: (protocols: Protocol[]) => void;
   onRemoveDraft: (index: number) => void;
