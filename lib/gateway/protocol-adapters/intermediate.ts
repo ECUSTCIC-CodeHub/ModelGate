@@ -45,6 +45,7 @@ export type IntermediateRequest = {
   response_format?: unknown;
   text?: unknown;
   thinking?: unknown;
+  context_management?: unknown;
   extra: JsonRecord;
 };
 

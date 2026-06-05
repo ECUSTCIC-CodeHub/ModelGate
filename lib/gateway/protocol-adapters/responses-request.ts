@@ -30,6 +30,7 @@ const REQUEST_KEYS = [
   "user",
   "metadata",
   "text",
+  "context_management",
 ];
 
 export function responsesRequestToIntermediate(body: JsonRecord, realModel: string): IntermediateRequest {
@@ -48,6 +49,7 @@ export function responsesRequestToIntermediate(body: JsonRecord, realModel: stri
     user: body.user,
     metadata: body.metadata,
     text: body.text,
+    context_management: body.context_management,
     extra: omitKeys(body, REQUEST_KEYS),
   };
 }
@@ -107,6 +109,11 @@ export function responsesRequestFromIntermediate(request: IntermediateRequest): 
   if (request.user !== undefined) next.user = request.user;
   if (request.metadata !== undefined) { next.metadata = request.metadata; next.store = true; }
   if (request.text !== undefined) next.text = request.text;
+  if (request.context_management !== undefined) {
+    next.context_management = Array.isArray(request.context_management)
+      ? request.context_management
+      : [request.context_management];
+  }
 
   return next;
 }

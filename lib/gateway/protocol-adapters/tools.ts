@@ -25,7 +25,11 @@ export function responsesToolsToIntermediate(tools: unknown): IntermediateTool[]
     const record = asRecord(tool);
     if (!record) return acc;
     if (record.type !== "function") {
-      throw new Error(`Responses tools[${index}] 暂不支持 ${String(record.type)} 类型工具`);
+      throw new Error(
+        `Responses tools[${index}] 使用了 ${String(record.type)} 类型工具，但当前路由只支持 function 工具转换。` +
+        " 如果当前模型渠道的上游协议是 chat_completions，请改用仅包含 function tools 的请求；" +
+        "如果需要 custom tools，请切换到原生支持 Responses 的上游渠道。",
+      );
     }
     acc.push({
       type: "function",
