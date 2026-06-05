@@ -186,6 +186,11 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     estimatedTokens,
     buildRequestBody: adaptRequestBodyForRoute,
   });
+  const buildFailureMessage = (stage: string, message: string, upstreamUrl?: string | null) => {
+    const parts = [`阶段=${stage}`, message];
+    if (upstreamUrl) parts.push(`upstream=${upstreamUrl}`);
+    return parts.join(" | ");
+  };
   if (!picked.ok) {
     if (picked.route) {
       const cq = checkChannelQuota(picked.route.channel.id, estimatedTokens);
@@ -195,6 +200,9 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       }
     }
     const failureStatus = picked.lastUpstreamStatus > 0 ? picked.lastUpstreamStatus : 502;
+    const failureMessage = picked.failure
+      ? buildFailureMessage(picked.failure.stage, picked.failure.message, picked.failure.upstreamUrl)
+      : "上游请求失败";
     insertChatLog({
       user_id: auth.user.id,
       key_id: auth.key.id,
@@ -213,11 +221,11 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       output_tps: null,
       route_attempts: Math.max(1, picked.attemptedChannels.length),
       attempted_channels: picked.attemptedChannelNames.join(" -> "),
-      error_message: "上游请求失败",
+      error_message: failureMessage,
       client_ip: clientIp,
       user_agent: clientUserAgent,
     });
-    return withQuotaHeaders(jsonError("上游请求失败", failureStatus, {
+    return withQuotaHeaders(jsonError(failureMessage, failureStatus, {
       type: "upstream_error",
       param: "None",
       code: String(failureStatus),

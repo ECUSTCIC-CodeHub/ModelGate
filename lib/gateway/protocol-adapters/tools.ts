@@ -21,11 +21,11 @@ export function chatToolsToIntermediate(tools: unknown): IntermediateTool[] | un
 }
 
 export function responsesToolsToIntermediate(tools: unknown): IntermediateTool[] | undefined {
-  const converted = asArray(tools).reduce<IntermediateTool[]>((acc, tool) => {
+  const converted = asArray(tools).reduce<IntermediateTool[]>((acc, tool, index) => {
     const record = asRecord(tool);
     if (!record) return acc;
     if (record.type !== "function") {
-      throw new Error(`当前暂不支持将 ${String(record.type)} 工具转换为中间协议`);
+      throw new Error(`Responses tools[${index}] 暂不支持 ${String(record.type)} 类型工具`);
     }
     acc.push({
       type: "function",

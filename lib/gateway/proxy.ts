@@ -26,7 +26,7 @@ const PROTOCOL_PATH: Record<GatewayProtocol, string> = {
 const OPENAI_NODE_SDK_USER_AGENT = "OpenAI/JS 6.39.0";
 const CLAUDE_CODE_USER_AGENT = process.env.CLAUDE_CODE_USER_AGENT || "claude-cli/2.1.148";
 
-function buildUpstreamUrl(baseUrl: string, protocol: GatewayProtocol) {
+export function buildUpstreamUrl(baseUrl: string, protocol: GatewayProtocol) {
   return `${normalizeProviderBaseUrl(baseUrl)}/${PROTOCOL_PATH[protocol]}`;
 }
 

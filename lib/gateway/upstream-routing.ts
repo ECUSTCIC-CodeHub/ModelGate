@@ -1,11 +1,20 @@
 import { acquireChannel, type ChannelLease, makeModelRuntimeKey } from "@/lib/gateway/channel-runtime";
 import { checkChannelQuota } from "@/lib/gateway/channel-quota";
-import { fetchUpstreamRequest } from "@/lib/gateway/proxy";
+import { buildUpstreamUrl, fetchUpstreamRequest } from "@/lib/gateway/proxy";
 import { selectModelRoute, type RoutedModel } from "@/lib/gateway/router";
 import { shouldRetryUpstreamStatus } from "@/lib/gateway/upstream-error";
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 
 type ChannelAcquireResult = Awaited<ReturnType<typeof acquireChannel>>;
+
+export type UpstreamFailureStage = "request_body_build" | "fetch_network";
+
+type UpstreamFailureInfo = {
+  stage: UpstreamFailureStage;
+  message: string;
+  name: string | null;
+  upstreamUrl: string | null;
+};
 
 export type UpstreamPickResult =
   | {
@@ -30,10 +39,25 @@ export type UpstreamPickResult =
       lastUpstreamStatus: number;
       attemptedChannels: number[];
       attemptedChannelNames: string[];
+      failure: UpstreamFailureInfo | null;
     };
 
 function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
   return typeof value === "object" && value !== null && "then" in value;
+}
+
+function summarizeError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      message: error.message || error.name || "未知错误",
+      name: error.name || null,
+    };
+  }
+
+  return {
+    message: typeof error === "string" && error.trim() ? error : "未知错误",
+    name: null,
+  };
 }
 
 export async function requestUpstreamWithFallback({
@@ -65,6 +89,7 @@ export async function requestUpstreamWithFallback({
   let lastNetworkRoute: RoutedModel | null = null;
   let lastUpstreamStatus = 0;
   let lastRoute: RoutedModel | null = null;
+  let lastFailure: UpstreamFailureInfo | null = null;
 
   while (attempt < maxRouteAttempts) {
     const route = selectModelRoute(resolvedAlias, {
@@ -98,21 +123,41 @@ export async function requestUpstreamWithFallback({
       try {
         attempt += 1;
         const upstreamBody = buildRequestBody(lastRoute);
-        const upstream = await fetchUpstreamRequest(lastRoute, upstreamBody, lastRoute.model.upstream_protocol, inboundHeaders);
-        lastUpstreamStatus = upstream.status;
-        if (shouldRetryUpstreamStatus(upstream.status) && attempt < maxRouteAttempts) {
+        try {
+          const upstream = await fetchUpstreamRequest(lastRoute, upstreamBody, lastRoute.model.upstream_protocol, inboundHeaders);
+          lastUpstreamStatus = upstream.status;
+          lastFailure = null;
+          if (shouldRetryUpstreamStatus(upstream.status) && attempt < maxRouteAttempts) {
+            lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+            continue;
+          }
+          return {
+            ok: true,
+            route: lastRoute,
+            upstream,
+            lease,
+            attemptedChannels: [...attemptedChannels],
+            attemptedChannelNames: [...attemptedChannelNames],
+          };
+        } catch (error) {
+          const summary = summarizeError(error);
+          lastFailure = {
+            stage: "fetch_network",
+            message: summary.message,
+            name: summary.name,
+            upstreamUrl: buildUpstreamUrl(lastRoute.channel.base_url, lastRoute.model.upstream_protocol),
+          };
           lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
-          continue;
+          if (attempt >= maxRouteAttempts) break;
         }
-        return {
-          ok: true,
-          route: lastRoute,
-          upstream,
-          lease,
-          attemptedChannels: [...attemptedChannels],
-          attemptedChannelNames: [...attemptedChannelNames],
+      } catch (error) {
+        const summary = summarizeError(error);
+        lastFailure = {
+          stage: "request_body_build",
+          message: summary.message,
+          name: summary.name,
+          upstreamUrl: buildUpstreamUrl(lastRoute.channel.base_url, lastRoute.model.upstream_protocol),
         };
-      } catch {
         lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
         if (attempt >= maxRouteAttempts) break;
       }
@@ -150,21 +195,41 @@ export async function requestUpstreamWithFallback({
 
     try {
       const upstreamBody = buildRequestBody(route);
-      const upstream = await fetchUpstreamRequest(route, upstreamBody, route.model.upstream_protocol, inboundHeaders);
-      lastUpstreamStatus = upstream.status;
-      if (shouldRetryUpstreamStatus(upstream.status) && attempt < maxRouteAttempts) {
+      try {
+        const upstream = await fetchUpstreamRequest(route, upstreamBody, route.model.upstream_protocol, inboundHeaders);
+        lastUpstreamStatus = upstream.status;
+        lastFailure = null;
+        if (shouldRetryUpstreamStatus(upstream.status) && attempt < maxRouteAttempts) {
+          lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+          continue;
+        }
+        return {
+          ok: true,
+          route,
+          upstream,
+          lease,
+          attemptedChannels: [...attemptedChannels],
+          attemptedChannelNames: [...attemptedChannelNames],
+        };
+      } catch (error) {
+        const summary = summarizeError(error);
+        lastFailure = {
+          stage: "fetch_network",
+          message: summary.message,
+          name: summary.name,
+          upstreamUrl: buildUpstreamUrl(route.channel.base_url, route.model.upstream_protocol),
+        };
         lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
-        continue;
+        if (attempt >= maxRouteAttempts) break;
       }
-      return {
-        ok: true,
-        route,
-        upstream,
-        lease,
-        attemptedChannels: [...attemptedChannels],
-        attemptedChannelNames: [...attemptedChannelNames],
+    } catch (error) {
+      const summary = summarizeError(error);
+      lastFailure = {
+        stage: "request_body_build",
+        message: summary.message,
+        name: summary.name,
+        upstreamUrl: buildUpstreamUrl(route.channel.base_url, route.model.upstream_protocol),
       };
-    } catch {
       lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
       if (attempt >= maxRouteAttempts) break;
     }
@@ -176,5 +241,6 @@ export async function requestUpstreamWithFallback({
     lastUpstreamStatus,
     attemptedChannels: [...attemptedChannels],
     attemptedChannelNames: [...attemptedChannelNames],
+    failure: lastFailure,
   };
 }
