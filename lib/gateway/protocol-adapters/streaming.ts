@@ -16,7 +16,20 @@ export function createTransformedStream(
   const inboundProtocol = inboundAdapter.protocol;
   if (outboundProtocol === inboundProtocol) {
     const passthroughAdapter = getStreamAdapter(outboundProtocol);
-    return createPassthroughStream(upstream, passthroughAdapter?.trackPassthroughEvent ?? (() => null));
+    if (!passthroughAdapter) {
+      return createPassthroughStream(upstream, () => null);
+    }
+    if (outboundProtocol === "responses") {
+      const decoded = passthroughAdapter.decode(upstream);
+      return {
+        stream: passthroughAdapter.encode(decoded.stream, options),
+        completionText: decoded.completionText,
+        reasoningText: decoded.reasoningText,
+        firstTokenAt: decoded.firstTokenAt,
+        usage: decoded.usage,
+      };
+    }
+    return createPassthroughStream(upstream, passthroughAdapter.trackPassthroughEvent);
   }
 
   const outboundStreamAdapter = getStreamAdapter(outboundProtocol);
