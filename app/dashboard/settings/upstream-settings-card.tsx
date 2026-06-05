@@ -9,16 +9,20 @@ import { ToggleRow } from "./settings-card-utils";
 export function UpstreamSettingsCard({
   upstreamRetryEnabled,
   upstreamRetryMaxAttempts,
+  upstreamRetrySameChannel,
   circuitBreakerEnabled,
   setUpstreamRetryEnabled,
   setUpstreamRetryMaxAttempts,
+  setUpstreamRetrySameChannel,
   setCircuitBreakerEnabled,
 }: {
   upstreamRetryEnabled: boolean;
   upstreamRetryMaxAttempts: number;
+  upstreamRetrySameChannel: boolean;
   circuitBreakerEnabled: boolean;
   setUpstreamRetryEnabled: (value: boolean) => void;
   setUpstreamRetryMaxAttempts: (value: number) => void;
+  setUpstreamRetrySameChannel: (value: boolean) => void;
   setCircuitBreakerEnabled: (value: boolean) => void;
 }) {
   return (
@@ -35,6 +39,12 @@ export function UpstreamSettingsCard({
           description="命中 401、429 或 5xx 时尝试其他渠道。"
           checked={upstreamRetryEnabled}
           onCheckedChange={setUpstreamRetryEnabled}
+        />
+        <ToggleRow
+          title="同渠道重试"
+          description="没有其他渠道时，429 仍对当前渠道重试。关闭则 429 直接返回。"
+          checked={upstreamRetrySameChannel}
+          onCheckedChange={setUpstreamRetrySameChannel}
         />
         <ToggleRow
           title="上游熔断"

@@ -458,6 +458,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
     "password_login_enabled": 1,
     "upstream_retry_enabled": 1,
     "upstream_retry_max_attempts": 3,
+    "upstream_retry_same_channel": 0,
     "upstream_circuit_breaker_enabled": 1,
     "oidc_enabled": 0,
     "oidc_issuer_url": "",
@@ -487,6 +488,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "password_login_enabled": true,
   "upstream_retry_enabled": true,
   "upstream_retry_max_attempts": 3,
+  "upstream_retry_same_channel": false,
   "upstream_circuit_breaker_enabled": true,
   "oidc_enabled": true,
   "oidc_issuer_url": "https://idp.example.com",
@@ -508,6 +510,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | password_login_enabled | boolean | 是否允许密码登录 |
 | upstream_retry_enabled | boolean | 是否开启上游自动重试 |
 | upstream_retry_max_attempts | 1-10 | 最大重试次数 |
+| upstream_retry_same_channel | boolean | 没有其他渠道时是否对当前渠道重试（429 场景） |
 | upstream_circuit_breaker_enabled | boolean | 是否开启上游熔断 |
 | oidc_enabled | boolean | 是否开启 OIDC 登录 |
 | oidc_issuer_url | string | OIDC Issuer URL |

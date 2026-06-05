@@ -27,6 +27,7 @@ export type UpstreamPickResult =
   | {
       ok: false;
       route: RoutedModel | null;
+      lastUpstreamStatus: number;
       attemptedChannels: number[];
       attemptedChannelNames: string[];
     };
@@ -39,6 +40,7 @@ export async function requestUpstreamWithFallback({
   resolvedAlias,
   inboundProtocol,
   maxRouteAttempts,
+  sameChannelRetry,
   requestSignal,
   inboundHeaders,
   allowedChannelIds,
@@ -49,6 +51,7 @@ export async function requestUpstreamWithFallback({
   resolvedAlias: string;
   inboundProtocol: GatewayProtocol;
   maxRouteAttempts: number;
+  sameChannelRetry: boolean;
   requestSignal: AbortSignal;
   inboundHeaders: Headers;
   allowedChannelIds?: number[] | null;
@@ -60,6 +63,8 @@ export async function requestUpstreamWithFallback({
   const attemptedChannelNames: string[] = [];
   let attempt = 0;
   let lastNetworkRoute: RoutedModel | null = null;
+  let lastUpstreamStatus = 0;
+  let lastRoute: RoutedModel | null = null;
 
   while (attempt < maxRouteAttempts) {
     const route = selectModelRoute(resolvedAlias, {
@@ -68,9 +73,54 @@ export async function requestUpstreamWithFallback({
       allowedChannelIds,
     });
 
-    if (!route) break;
+    if (!route) {
+      if (!lastRoute || !sameChannelRetry) break;
+      // 没有其他渠道了，用最后一个渠道继续重试（适用于 429 同渠道重试）
+      const runtimeKey = makeModelRuntimeKey(lastRoute.channel.id, lastRoute.model.real_model);
+      const leaseResult = acquireChannel(runtimeKey, lastRoute.channel.max_concurrency, requestSignal);
+      if (isPromiseLike(leaseResult)) {
+        return {
+          ok: true,
+          queued: true,
+          route: lastRoute,
+          acquirePromise: leaseResult,
+          attemptedChannels: [...attemptedChannels],
+          attemptedChannelNames: [...attemptedChannelNames],
+        };
+      }
+      if (!leaseResult.ok) break;
+      const lease = leaseResult.lease;
+      const channelQuota = checkChannelQuota(lastRoute.channel.id, estimatedTokens);
+      if (!channelQuota.ok) {
+        lease.abandon();
+        break;
+      }
+      try {
+        attempt += 1;
+        const upstreamBody = buildRequestBody(lastRoute);
+        const upstream = await fetchUpstreamRequest(lastRoute, upstreamBody, lastRoute.model.upstream_protocol, inboundHeaders);
+        lastUpstreamStatus = upstream.status;
+        if (shouldRetryUpstreamStatus(upstream.status) && attempt < maxRouteAttempts) {
+          lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+          continue;
+        }
+        return {
+          ok: true,
+          route: lastRoute,
+          upstream,
+          lease,
+          attemptedChannels: [...attemptedChannels],
+          attemptedChannelNames: [...attemptedChannelNames],
+        };
+      } catch {
+        lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+        if (attempt >= maxRouteAttempts) break;
+      }
+      continue;
+    }
 
     lastNetworkRoute = route;
+    lastRoute = route;
     attempt += 1;
     attemptedChannels.add(route.channel.id);
     attemptedChannelNames.push(route.channel.name);
@@ -101,6 +151,7 @@ export async function requestUpstreamWithFallback({
     try {
       const upstreamBody = buildRequestBody(route);
       const upstream = await fetchUpstreamRequest(route, upstreamBody, route.model.upstream_protocol, inboundHeaders);
+      lastUpstreamStatus = upstream.status;
       if (shouldRetryUpstreamStatus(upstream.status) && attempt < maxRouteAttempts) {
         lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
         continue;
@@ -122,6 +173,7 @@ export async function requestUpstreamWithFallback({
   return {
     ok: false,
     route: lastNetworkRoute,
+    lastUpstreamStatus,
     attemptedChannels: [...attemptedChannels],
     attemptedChannelNames: [...attemptedChannelNames],
   };

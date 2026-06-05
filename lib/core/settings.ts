@@ -4,6 +4,7 @@ const DEFAULTS = {
   registration_enabled: 1,
   upstream_retry_enabled: 1,
   upstream_retry_max_attempts: 3,
+  upstream_retry_same_channel: 0,
 } as const;
 
 const GATEWAY_SETTINGS_CACHE_TTL_MS = 30_000;
@@ -13,6 +14,7 @@ export type GatewaySettings = {
   password_login_enabled: number;
   upstream_retry_enabled: number;
   upstream_retry_max_attempts: number;
+  upstream_retry_same_channel: number;
   upstream_circuit_breaker_enabled: number;
   oidc_enabled: number;
   oidc_issuer_url: string;
@@ -51,6 +53,7 @@ const GATEWAY_KEYS = [
   "password_login_enabled",
   "upstream_retry_enabled",
   "upstream_retry_max_attempts",
+  "upstream_retry_same_channel",
   "upstream_circuit_breaker_enabled",
   ...OIDC_KEYS,
   "announcement_content",
@@ -76,6 +79,7 @@ function readGatewaySettingsFromDb(): GatewaySettings {
       map.get("upstream_retry_max_attempts"),
       DEFAULTS.upstream_retry_max_attempts,
     ),
+    upstream_retry_same_channel: map.get("upstream_retry_same_channel") === "1" ? 1 : DEFAULTS.upstream_retry_same_channel,
     oidc_enabled: map.get("oidc_enabled") === "1" ? 1 : 0,
     oidc_issuer_url: map.get("oidc_issuer_url") ?? "",
     oidc_client_id: map.get("oidc_client_id") ?? "",
@@ -106,6 +110,7 @@ export function setGatewaySettings(input: {
   password_login_enabled: boolean;
   upstream_retry_enabled: boolean;
   upstream_retry_max_attempts: number;
+  upstream_retry_same_channel: boolean;
   upstream_circuit_breaker_enabled: boolean;
   oidc_enabled?: boolean;
   oidc_issuer_url?: string;
@@ -125,6 +130,7 @@ export function setGatewaySettings(input: {
     upstream_retry_enabled: input.upstream_retry_enabled ? "1" : "0",
     upstream_circuit_breaker_enabled: input.upstream_circuit_breaker_enabled ? "1" : "0",
     upstream_retry_max_attempts: String(Math.max(1, Math.trunc(input.upstream_retry_max_attempts))),
+    upstream_retry_same_channel: input.upstream_retry_same_channel ? "1" : "0",
   };
 
   if (input.oidc_enabled !== undefined) values.oidc_enabled = input.oidc_enabled ? "1" : "0";

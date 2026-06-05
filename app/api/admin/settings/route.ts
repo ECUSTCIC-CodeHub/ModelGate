@@ -11,6 +11,7 @@ const schema = z.object({
   password_login_enabled: z.boolean(),
   upstream_retry_enabled: z.boolean(),
   upstream_retry_max_attempts: z.number().int().min(1).max(10),
+  upstream_retry_same_channel: z.boolean(),
   upstream_circuit_breaker_enabled: z.boolean(),
   oidc_enabled: z.boolean().optional(),
   oidc_issuer_url: z.string().optional(),

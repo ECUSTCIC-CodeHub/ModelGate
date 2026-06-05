@@ -33,6 +33,7 @@ export default function AdminSettingsPage() {
   const [passwordLoginEnabled, setPasswordLoginEnabled] = useState(true);
   const [upstreamRetryEnabled, setUpstreamRetryEnabled] = useState(true);
   const [upstreamRetryMaxAttempts, setUpstreamRetryMaxAttempts] = useState(3);
+  const [upstreamRetrySameChannel, setUpstreamRetrySameChannel] = useState(false);
   const [circuitBreakerEnabled, setCircuitBreakerEnabled] = useState(true);
   const [oidcEnabled, setOidcEnabled] = useState(false);
   const [oidcIssuerUrl, setOidcIssuerUrl] = useState("");
@@ -55,6 +56,7 @@ export default function AdminSettingsPage() {
     setPasswordLoginEnabled(settings.password_login_enabled !== 0);
     setUpstreamRetryEnabled(settings.upstream_retry_enabled !== 0);
     setUpstreamRetryMaxAttempts(Number(settings.upstream_retry_max_attempts ?? 3));
+    setUpstreamRetrySameChannel(settings.upstream_retry_same_channel === 1);
     setCircuitBreakerEnabled(settings.upstream_circuit_breaker_enabled !== 0);
     if (oidcFeatureEnabled) {
       setOidcEnabled(settings.oidc_enabled === 1);
@@ -102,6 +104,7 @@ export default function AdminSettingsPage() {
       password_login_enabled: passwordLoginEnabled,
       upstream_retry_enabled: upstreamRetryEnabled,
       upstream_retry_max_attempts: upstreamRetryMaxAttempts,
+      upstream_retry_same_channel: upstreamRetrySameChannel,
       upstream_circuit_breaker_enabled: circuitBreakerEnabled,
       ...(oidcFeatureEnabled ? {
         oidc_enabled: oidcEnabled,
@@ -156,9 +159,11 @@ export default function AdminSettingsPage() {
           <UpstreamSettingsCard
             upstreamRetryEnabled={upstreamRetryEnabled}
             upstreamRetryMaxAttempts={upstreamRetryMaxAttempts}
+            upstreamRetrySameChannel={upstreamRetrySameChannel}
             circuitBreakerEnabled={circuitBreakerEnabled}
             setUpstreamRetryEnabled={setUpstreamRetryEnabled}
             setUpstreamRetryMaxAttempts={setUpstreamRetryMaxAttempts}
+            setUpstreamRetrySameChannel={setUpstreamRetrySameChannel}
             setCircuitBreakerEnabled={setCircuitBreakerEnabled}
           />
         </div>

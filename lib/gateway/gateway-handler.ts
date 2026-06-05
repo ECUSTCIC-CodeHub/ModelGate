@@ -178,6 +178,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     resolvedAlias,
     inboundProtocol,
     maxRouteAttempts,
+    sameChannelRetry: settings.upstream_retry_same_channel === 1,
     requestSignal: request.signal,
     inboundHeaders: request.headers,
     allowedChannelIds,
@@ -193,6 +194,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
         appendChannelQuotaHeaders(channelQuotaHeaders, cq.quota);
       }
     }
+    const failureStatus = picked.lastUpstreamStatus > 0 ? picked.lastUpstreamStatus : 502;
     insertChatLog({
       user_id: auth.user.id,
       key_id: auth.key.id,
@@ -200,7 +202,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       model_alias: alias,
       real_model: picked.route?.model.real_model ?? null,
       stream,
-      status_code: 502,
+      status_code: failureStatus,
       estimated_tokens: estimatedTokens,
       prompt_tokens: null,
       completion_tokens: 0,
@@ -215,10 +217,10 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       client_ip: clientIp,
       user_agent: clientUserAgent,
     });
-    return withQuotaHeaders(jsonError("上游请求失败", 502, {
+    return withQuotaHeaders(jsonError("上游请求失败", failureStatus, {
       type: "upstream_error",
       param: "None",
-      code: "502",
+      code: String(failureStatus),
     }));
   }
 

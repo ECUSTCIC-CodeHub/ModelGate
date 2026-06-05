@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS: Array<[string, string]> = [
   ["default_tpm", "-1"],
   ["upstream_retry_enabled", "1"],
   ["upstream_retry_max_attempts", "3"],
+  ["upstream_retry_same_channel", "0"],
   ["upstream_circuit_breaker_enabled", "1"],
   ["oidc_enabled", "0"],
   ["oidc_issuer_url", ""],
