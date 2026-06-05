@@ -105,7 +105,7 @@ export function responsesRequestFromIntermediate(request: IntermediateRequest): 
   if (request.parallel_tool_calls !== undefined) next.parallel_tool_calls = request.parallel_tool_calls;
   if (request.stream_options !== undefined) next.stream_options = request.stream_options;
   if (request.user !== undefined) next.user = request.user;
-  if (request.metadata !== undefined) next.metadata = request.metadata;
+  if (request.metadata !== undefined) { next.metadata = request.metadata; next.store = true; }
   if (request.text !== undefined) next.text = request.text;
 
   return next;

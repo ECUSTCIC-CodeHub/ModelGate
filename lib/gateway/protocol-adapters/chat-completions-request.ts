@@ -153,7 +153,7 @@ export function chatCompletionsRequestFromIntermediate(request: IntermediateRequ
   if (request.parallel_tool_calls !== undefined) next.parallel_tool_calls = request.parallel_tool_calls;
   if (request.stream_options !== undefined) next.stream_options = request.stream_options;
   if (request.user !== undefined) next.user = request.user;
-  if (request.metadata !== undefined) next.metadata = request.metadata;
+  if (request.metadata !== undefined) { next.metadata = request.metadata; next.store = true; }
   if (request.tools !== undefined) next.tools = toolsFromIntermediateForChat(request.tools);
   if (request.tool_choice !== undefined) next.tool_choice = toolChoiceFromIntermediateForChat(request.tool_choice);
 
