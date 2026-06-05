@@ -1,5 +1,56 @@
-import { asArray, asRecord } from "@/lib/gateway/normalized-message";
+import { asArray, asRecord, type JsonRecord } from "@/lib/gateway/normalized-message";
+import type { GatewayProtocol } from "@/lib/gateway/protocols";
 import type { IntermediateTool, IntermediateToolChoice } from "@/lib/gateway/protocol-adapters/intermediate";
+
+function collectResponsesFunctionTools(tools: unknown): JsonRecord[] {
+  return asArray(tools).reduce<JsonRecord[]>((acc, tool) => {
+    const record = asRecord(tool);
+    if (!record || record.type !== "function") return acc;
+    acc.push(record);
+    return acc;
+  }, []);
+}
+
+export function downgradeResponsesRequestForRoute(body: Record<string, unknown>, upstreamProtocol: GatewayProtocol): Record<string, unknown> {
+  if (upstreamProtocol !== "chat_completions") return body;
+
+  const functionTools = collectResponsesFunctionTools(body.tools);
+  const next: Record<string, unknown> = { ...body };
+
+  if (body.tools !== undefined) {
+    next.tools = functionTools.length > 0 ? functionTools : undefined;
+  }
+
+  if (body.tool_choice !== undefined) {
+    next.tool_choice = reconcileResponsesToolChoice(body.tool_choice, next.tools);
+  }
+
+  return next;
+}
+
+export function getResponsesRouteCompatibilityNote(body: Record<string, unknown>, upstreamProtocol: GatewayProtocol) {
+  if (upstreamProtocol !== "chat_completions" || body.tools === undefined) return null;
+  const totalTools = asArray(body.tools).length;
+  const functionTools = collectResponsesFunctionTools(body.tools);
+  if (totalTools === 0 || totalTools === functionTools.length) return null;
+  return `当前 chat_completions 路由已忽略 ${totalTools - functionTools.length} 个非 function Responses tools，仅保留可映射的 function tools。`;
+}
+
+function reconcileResponsesToolChoice(toolChoice: unknown, tools: unknown): unknown {
+  if (toolChoice === undefined) return undefined;
+  if (toolChoice === "auto" || toolChoice === "none") return toolChoice;
+
+  const functionTools = collectResponsesFunctionTools(tools);
+  if (functionTools.length === 0) return undefined;
+  if (toolChoice === "required") return "required";
+
+  const record = asRecord(toolChoice);
+  const requestedName = record?.type === "function" && typeof record.name === "string" ? record.name : null;
+  if (!requestedName) return "auto";
+
+  const availableNames = new Set(functionTools.map((tool) => (typeof tool.name === "string" ? tool.name : "")).filter(Boolean));
+  return availableNames.has(requestedName) ? toolChoice : "auto";
+}
 
 export function chatToolsToIntermediate(tools: unknown): IntermediateTool[] | undefined {
   const converted = asArray(tools).reduce<IntermediateTool[]>((acc, tool) => {
@@ -21,16 +72,9 @@ export function chatToolsToIntermediate(tools: unknown): IntermediateTool[] | un
 }
 
 export function responsesToolsToIntermediate(tools: unknown): IntermediateTool[] | undefined {
-  const converted = asArray(tools).reduce<IntermediateTool[]>((acc, tool, index) => {
+  const converted = asArray(tools).reduce<IntermediateTool[]>((acc, tool) => {
     const record = asRecord(tool);
-    if (!record) return acc;
-    if (record.type !== "function") {
-      throw new Error(
-        `Responses tools[${index}] 使用了 ${String(record.type)} 类型工具，但当前路由只支持 function 工具转换。` +
-        " 如果当前模型渠道的上游协议是 chat_completions，请改用仅包含 function tools 的请求；" +
-        "如果需要 custom tools，请切换到原生支持 Responses 的上游渠道。",
-      );
-    }
+    if (!record || record.type !== "function") return acc;
     acc.push({
       type: "function",
       name: typeof record.name === "string" ? record.name : "",

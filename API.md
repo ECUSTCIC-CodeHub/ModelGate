@@ -1812,6 +1812,17 @@ OpenAI Responses API 兼容端点。
 
 **认证:** API Key
 
+**路由与工具兼容性:**
+
+- 该端点会按模型配置路由到 `responses`、`chat_completions` 或其他可兼容的上游协议。
+- 当实际命中的上游协议为原生 `responses` 时，保留 Responses 原生工具能力。
+- 当实际命中的上游协议为 `chat_completions` 时，网关会尽量兼容：仅转发可映射为 OpenAI function calling 的 `function tools`，忽略 `namespace`、`custom` 等无法映射的 Responses 原生 tools。
+- 若 `tool_choice` 在过滤后已不再有效，网关会自动降级为 chat 上游可接受的形式（如 `auto` 或省略）。
+
+**流式响应说明:**
+
+- 流式 Responses 响应在上游正常 EOF 但缺少最终 `response.completed` 时，会由网关补齐标准完成事件，避免客户端因缺少 `response.completed` 而报流提前结束。
+
 ---
 
 ### POST /api/v1/embeddings

@@ -8,6 +8,7 @@ import {
   type ProtocolBodyAdapter,
   type ResponseAdapterOptions,
 } from "@/lib/gateway/protocol-adapters/intermediate";
+import { downgradeResponsesRequestForRoute } from "@/lib/gateway/protocol-adapters/tools";
 
 export type GatewayProtocolAdapter = {
   protocol: GatewayProtocol;
@@ -83,7 +84,10 @@ export function createBodyProtocolGatewayAdapter(options: {
         throw new Error(`${protocol} 协议不能转换为 ${outbound.protocol} 请求`);
       }
 
-      const intermediate = bodyAdapter.requestToIntermediate(body, realModel);
+      const adaptedInput = protocol === "responses"
+        ? downgradeResponsesRequestForRoute(body, outbound.protocol)
+        : body;
+      const intermediate = bodyAdapter.requestToIntermediate(adaptedInput, realModel);
       return prepare(outbound.bodyAdapter.requestFromIntermediate(intermediate));
     },
     adaptResponseBody(text, outbound, responseOptions) {
