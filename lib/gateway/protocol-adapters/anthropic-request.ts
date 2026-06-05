@@ -32,6 +32,16 @@ const REQUEST_KEYS = [
 ];
 
 export function anthropicRequestToIntermediate(body: JsonRecord, realModel: string): IntermediateRequest {
+  const tools = body.tools !== undefined ? anthropicToolsToIntermediate(body.tools) : undefined;
+  let toolChoice = body.tool_choice !== undefined ? anthropicToolChoiceToIntermediate(body.tool_choice) : undefined;
+  // If tool_choice points to a specific function that was filtered out
+  // (e.g. an Anthropic beta tool like computer_*), downgrade to "auto".
+  if (toolChoice && typeof toolChoice === "object" && toolChoice.type === "function") {
+    const availableNames = new Set((tools ?? []).map((t) => t.name));
+    if (!availableNames.has(toolChoice.name)) {
+      toolChoice = "auto";
+    }
+  }
   return {
     sourceProtocol: "anthropic_messages",
     model: realModel,
@@ -41,8 +51,8 @@ export function anthropicRequestToIntermediate(body: JsonRecord, realModel: stri
     temperature: body.temperature,
     top_p: body.top_p,
     stop_sequences: body.stop_sequences,
-    tools: body.tools !== undefined ? anthropicToolsToIntermediate(body.tools) : undefined,
-    tool_choice: body.tool_choice !== undefined ? anthropicToolChoiceToIntermediate(body.tool_choice) : undefined,
+    tools,
+    tool_choice: toolChoice,
     thinking: body.thinking,
     metadata: body.metadata,
     extra: omitKeys(body, REQUEST_KEYS),

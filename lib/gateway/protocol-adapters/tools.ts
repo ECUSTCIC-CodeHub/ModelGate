@@ -88,10 +88,27 @@ export function responsesToolsToIntermediate(tools: unknown): IntermediateTool[]
   return converted.length > 0 ? converted : undefined;
 }
 
+const ANTHROPIC_BETA_TOOL_TYPES = new Set([
+  "computer",
+  "bash",
+  "text_editor",
+]);
+
+function isAnthropicBetaTool(record: JsonRecord): boolean {
+  const type = typeof record.type === "string" ? record.type : "";
+  if (ANTHROPIC_BETA_TOOL_TYPES.has(type)) return true;
+  // Anthropic beta tools also have type matching patterns like computer_20241022
+  if (/^(computer|bash|text_editor)_\d{8}$/.test(type)) return true;
+  return false;
+}
+
 export function anthropicToolsToIntermediate(tools: unknown): IntermediateTool[] | undefined {
   const converted = asArray(tools).reduce<IntermediateTool[]>((acc, tool) => {
     const record = asRecord(tool);
     if (!record || typeof record.name !== "string") return acc;
+    // Skip Anthropic beta tools (computer_*, bash_*, text_editor_*) that
+    // cannot be mapped to standard function calling in other protocols.
+    if (isAnthropicBetaTool(record)) return acc;
     acc.push({
       type: "function",
       name: record.name,
@@ -161,6 +178,7 @@ export function anthropicToolChoiceToIntermediate(toolChoice: unknown): Intermed
   if (!record || typeof record.type !== "string") return undefined;
   if (record.type === "auto") return "auto";
   if (record.type === "any") return "required";
+  if (record.type === "none") return "none";
   if (record.type === "tool" && typeof record.name === "string") {
     return { type: "function", name: record.name };
   }
@@ -188,6 +206,6 @@ export function toolChoiceFromIntermediateForAnthropic(toolChoice: IntermediateT
   if (!toolChoice) return undefined;
   if (toolChoice === "auto") return { type: "auto" };
   if (toolChoice === "required") return { type: "any" };
-  if (toolChoice === "none") return undefined;
+  if (toolChoice === "none") return { type: "none" };
   return { type: "tool", name: toolChoice.name };
 }
