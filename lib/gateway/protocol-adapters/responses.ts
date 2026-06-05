@@ -4,6 +4,7 @@ import {
 } from "@/lib/gateway/protocol-adapters/intermediate";
 import { createBodyProtocolGatewayAdapter, inputTextFromMessages } from "@/lib/gateway/protocol-adapters/runtime";
 import {
+  normalizeResponsesContextManagement,
   responsesRequestFromIntermediate,
   responsesRequestToIntermediate,
 } from "@/lib/gateway/protocol-adapters/responses-request";
@@ -33,6 +34,13 @@ export const responsesGatewayAdapter = createBodyProtocolGatewayAdapter({
     return body.max_output_tokens;
   },
   prepareOutboundRequestBody(body) {
-    return body;
+    if (body.context_management === undefined) {
+      return body;
+    }
+
+    return {
+      ...body,
+      context_management: normalizeResponsesContextManagement(body.context_management),
+    };
   },
 });

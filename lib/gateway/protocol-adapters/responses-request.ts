@@ -5,7 +5,7 @@ import {
   type JsonRecord,
 } from "@/lib/gateway/normalized-message";
 
-function normalizeResponsesContextManagement(value: unknown) {
+export function normalizeResponsesContextManagement(value: unknown) {
   if (value === undefined) return undefined;
 
   const items = Array.isArray(value) ? value : [value];
@@ -75,8 +75,9 @@ export function responsesRequestToIntermediate(body: JsonRecord, realModel: stri
 }
 
 export function responsesRequestFromIntermediate(request: IntermediateRequest): JsonRecord {
+  const extra = omitKeys(request.extra, ["context_management"]);
   const next: JsonRecord = {
-    ...request.extra,
+    ...extra,
     model: request.model,
     input: request.messages.flatMap((message) => {
       const items: JsonRecord[] = [];
