@@ -74,7 +74,7 @@ export function ModelDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="sm:max-w-xl"
+        className="sm:max-w-2xl"
         onInteractOutside={(event) => {
           if (dismissBlocked) event.preventDefault();
         }}

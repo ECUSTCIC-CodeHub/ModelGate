@@ -65,10 +65,22 @@ export function ModelDraftCard({
             <Input placeholder="真实模型" value={item.real_model} onChange={(e) => onUpdateDraft(index, { real_model: e.target.value })} />
             {showAdvancedFields ? (
               <div className="grid gap-2 md:grid-cols-4">
-                <Input type="number" min={1} placeholder="权重" value={item.weight} onChange={(e) => onUpdateDraft(index, { weight: Number(e.target.value) || 1 })} />
-                <Input type="number" min={0} step={0.1} placeholder="Token倍率" value={item.token_multiplier} onChange={(e) => onUpdateDraft(index, { token_multiplier: Number(e.target.value) || 1 })} />
-                <Input type="number" min={0} step={0.1} placeholder="请求倍率" value={item.request_multiplier} onChange={(e) => onUpdateDraft(index, { request_multiplier: Number(e.target.value) || 1 })} />
-                <Input type="number" min={0} placeholder="最大并发" value={item.max_concurrency} onChange={(e) => onUpdateDraft(index, { max_concurrency: Number(e.target.value) || 0 })} />
+                <div className="space-y-1">
+                  <span className="text-xs text-[var(--color-foreground-muted)]">权重</span>
+                  <Input type="number" min={1} placeholder="1" value={item.weight} onChange={(e) => onUpdateDraft(index, { weight: Number(e.target.value) || 1 })} />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-xs text-[var(--color-foreground-muted)]">Token 倍率</span>
+                  <Input type="number" min={0} step={0.1} placeholder="1" value={item.token_multiplier} onChange={(e) => onUpdateDraft(index, { token_multiplier: Number(e.target.value) || 1 })} />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-xs text-[var(--color-foreground-muted)]">请求倍率</span>
+                  <Input type="number" min={0} step={0.1} placeholder="1" value={item.request_multiplier} onChange={(e) => onUpdateDraft(index, { request_multiplier: Number(e.target.value) || 1 })} />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-xs text-[var(--color-foreground-muted)]">最大并发</span>
+                  <Input type="number" min={0} placeholder="0" value={item.max_concurrency} onChange={(e) => onUpdateDraft(index, { max_concurrency: Number(e.target.value) || 0 })} />
+                </div>
               </div>
             ) : null}
             <Select value={item.upstream_protocol} onValueChange={(value) => onUpdateDraft(index, { upstream_protocol: value as Protocol })}>
