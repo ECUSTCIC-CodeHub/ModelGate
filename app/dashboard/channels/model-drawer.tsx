@@ -106,7 +106,6 @@ export function ModelDrawer({
                 drafts={modelDrafts}
                 probing={probingModels}
                 probeDisabled={!selectedChannel}
-                periodQuotaEnabled={periodQuotaEnabled}
                 onProbe={onProbeModels}
                 onAddDraft={onAddModelDraft}
                 onRemoveDraft={onRemoveModelDraft}
