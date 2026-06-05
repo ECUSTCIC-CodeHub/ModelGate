@@ -113,6 +113,11 @@ export function ChannelDrawer({
                   );
                 })}
               </div>
+              {form.supported_protocols.length > 1 && (
+                <p className="text-xs text-[var(--color-foreground-muted)]">
+                  勾选多种协议后，当入站请求协议与渠道一致时将直接透传，无需协议转换，保留协议特有功能（如 Anthropic beta 工具、Responses 原生工具等）。
+                </p>
+              )}
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label>API Key</Label>

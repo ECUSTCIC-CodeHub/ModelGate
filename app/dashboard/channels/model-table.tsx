@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { ModelRow, ModelWithChannel } from "./channel-model";
+import { shortProtocolLabel } from "./channel-model";
 
 export function ModelTable({
   models,
@@ -45,6 +46,7 @@ export function ModelTable({
             <TableHead>别名</TableHead>
             <TableHead>真实模型</TableHead>
             <TableHead>所属渠道</TableHead>
+            <TableHead>上游协议</TableHead>
             <TableHead>状态</TableHead>
             <TableHead>可见性</TableHead>
             <TableHead>权重</TableHead>
@@ -60,6 +62,9 @@ export function ModelTable({
               <TableCell className="max-w-72 truncate font-mono">{model.alias}</TableCell>
               <TableCell className="max-w-72 truncate">{model.real_model}</TableCell>
               <TableCell className="whitespace-nowrap">{model.channel_name}</TableCell>
+              <TableCell>
+                <Badge variant="outline">{shortProtocolLabel(model.upstream_protocol)}</Badge>
+              </TableCell>
               <TableCell>
                 <Badge variant={model.enabled ? "default" : "secondary"}>{model.enabled ? "启用" : "禁用"}</Badge>
               </TableCell>

@@ -148,6 +148,11 @@ export function ModelDrawer({
                     ))}
                   </SelectContent>
                 </Select>
+                {selectedChannel && selectedChannelProtocols.length > 1 && (
+                  <p className="text-xs text-[var(--color-foreground-muted)]">
+                    渠道支持多种协议时，入站协议若与渠道协议一致，将直接透传无需转换，保留协议特有功能。
+                  </p>
+                )}
               </div>
               <div className="grid gap-3 md:grid-cols-4">
                 <div className="space-y-2">
