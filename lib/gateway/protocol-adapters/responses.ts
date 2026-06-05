@@ -32,4 +32,13 @@ export const responsesGatewayAdapter = createBodyProtocolGatewayAdapter({
   getMaxOutputTokens(body) {
     return body.max_output_tokens;
   },
+  prepareOutboundRequestBody(body) {
+    if (body.context_management !== undefined && !Array.isArray(body.context_management)) {
+      return {
+        ...body,
+        context_management: [body.context_management],
+      };
+    }
+    return body;
+  },
 });
