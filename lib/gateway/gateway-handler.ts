@@ -154,7 +154,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   const retryEnabled = settings.upstream_retry_enabled === 1;
   const maxRouteAttempts = retryEnabled ? Math.max(1, settings.upstream_retry_max_attempts) : 1;
   const stream = inboundAdapter.getStreamFlag(body);
-  const getRouteAdapter = (route: RoutedModel) => getGatewayProtocolAdapter(route.model.upstream_protocol);
+  const getRouteAdapter = (route: RoutedModel) => getGatewayProtocolAdapter(route.effective_upstream_protocol);
   const countPromptTokensForRoute = (route: RoutedModel) => inboundAdapter.countPromptTokens(body, route.model.real_model);
   const adaptRequestBodyForRoute = (route: RoutedModel) =>
     inboundAdapter.adaptRequestBody(
@@ -306,7 +306,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       client_ip: clientIp,
       user_agent: clientUserAgent,
       });
-      const errorBody = route.model.upstream_protocol === inboundProtocol
+      const errorBody = route.effective_upstream_protocol === inboundProtocol
         ? text
         : buildErrorResponseBody(upstreamError.message, upstream.status, inboundProtocol, upstreamError.type, upstreamError.code);
       return withQuotaHeaders(new Response(errorBody, {
@@ -343,7 +343,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       client_ip: clientIp,
       user_agent: clientUserAgent,
         });
-        const errorBody = route.model.upstream_protocol === inboundProtocol
+        const errorBody = route.effective_upstream_protocol === inboundProtocol
           ? rawText
           : buildErrorResponseBody(upstreamError.message, upstream.status, inboundProtocol, upstreamError.type, upstreamError.code);
         return withQuotaHeaders(new Response(errorBody, {
@@ -509,7 +509,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       client_ip: clientIp,
       user_agent: clientUserAgent,
     });
-    const errorBody = route.model.upstream_protocol === inboundProtocol
+    const errorBody = route.effective_upstream_protocol === inboundProtocol
       ? rawText
       : buildErrorResponseBody(upstreamError.message, upstream.status, inboundProtocol, upstreamError.type, upstreamError.code);
     return withQuotaHeaders(new Response(errorBody, {

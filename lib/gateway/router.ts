@@ -1,11 +1,16 @@
 import { gatewayDb, type DbChannel, type DbModel } from "@/lib/core/db";
 import type { ModelQuotaMode } from "@/lib/core/db/types";
 import { makeModelRuntimeKey, scoreChannel } from "@/lib/gateway/channel-runtime";
-import type { GatewayProtocol } from "@/lib/gateway/protocols";
+import { parseSupportedProtocols, type GatewayProtocol } from "@/lib/gateway/protocols";
 
 export type RoutedModel = {
   model: DbModel;
   channel: DbChannel;
+  /** The protocol actually used to talk upstream. When the channel natively
+   *  supports the inbound protocol, this equals the inbound protocol so the
+   *  request can be forwarded without any protocol conversion. Otherwise it
+   *  falls back to the model's configured upstream_protocol. */
+  effective_upstream_protocol: GatewayProtocol;
 };
 
 type CandidateRow = {
@@ -121,7 +126,14 @@ function effectiveMaxConcurrency(channelMax: number, modelMax: number): number {
   return channelMax;
 }
 
-function mapRowToRoute(row: CandidateRow): RoutedModel {
+function mapRowToRoute(row: CandidateRow, inboundProtocol?: GatewayProtocol): RoutedModel {
+  const channelProtocols = parseSupportedProtocols(row.supported_protocols);
+  // If the channel natively supports the inbound protocol, use it directly
+  // to avoid protocol conversion (preserves protocol-specific features like
+  // Anthropic beta tools, Responses native tools, etc.).
+  const effectiveUpstreamProtocol = inboundProtocol && channelProtocols.includes(inboundProtocol)
+    ? inboundProtocol
+    : row.upstream_protocol;
   return {
     model: {
       id: row.model_id,
@@ -170,6 +182,7 @@ function mapRowToRoute(row: CandidateRow): RoutedModel {
       deleted_at: row.channel_deleted_at,
       force_include_usage: row.channel_force_include_usage ?? 1,
     },
+    effective_upstream_protocol: effectiveUpstreamProtocol,
   };
 }
 
@@ -201,7 +214,7 @@ export function listModelRoutes(alias: string, options?: { excludeChannelIds?: n
 
   return candidateRows
     .map((row) => ({
-      route: mapRowToRoute(row),
+      route: mapRowToRoute(row, protocol),
       score: scoreChannel(
         makeModelRuntimeKey(row.channel_id_2, row.real_model),
         Math.max(1, row.model_weight) * Math.max(1, row.channel_weight),

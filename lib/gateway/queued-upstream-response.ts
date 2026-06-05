@@ -110,7 +110,7 @@ export function createQueuedUpstreamResponse({
           }
 
           try {
-            const upstream = await fetchUpstreamRequest(route, upstreamBody, route.model.upstream_protocol, requestHeaders);
+            const upstream = await fetchUpstreamRequest(route, upstreamBody, route.effective_upstream_protocol, requestHeaders);
 
             if (upstream.status >= 400) {
               const text = await upstream.text().catch(() => "");
@@ -138,7 +138,7 @@ export function createQueuedUpstreamResponse({
                 user_agent: clientUserAgent,
               });
 
-              const errorBody = route.model.upstream_protocol === inboundProtocol
+              const errorBody = route.effective_upstream_protocol === inboundProtocol
                 ? text
                 : buildErrorResponseBody(upstreamError.message, upstream.status, inboundProtocol, upstreamError.type, upstreamError.code);
               controller.enqueue(toSseDataBlock(errorBody));
@@ -329,7 +329,7 @@ export function createQueuedUpstreamResponse({
         }
 
         try {
-          const upstream = await fetchUpstreamRequest(route, upstreamBody, route.model.upstream_protocol, requestHeaders);
+          const upstream = await fetchUpstreamRequest(route, upstreamBody, route.effective_upstream_protocol, requestHeaders);
           const rawText = await upstream.text().catch(() => "");
 
           if (upstream.status >= 400) {
@@ -355,7 +355,7 @@ export function createQueuedUpstreamResponse({
               client_ip: clientIp,
               user_agent: clientUserAgent,
             });
-            const errorBody = route.model.upstream_protocol === inboundProtocol
+            const errorBody = route.effective_upstream_protocol === inboundProtocol
               ? rawText
               : buildErrorResponseBody(upstreamError.message, upstream.status, inboundProtocol, upstreamError.type, upstreamError.code);
             controller.enqueue(encoder.encode(errorBody));
