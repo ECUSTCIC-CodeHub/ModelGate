@@ -27,6 +27,7 @@ const createSchema = z.object({
         alias: z.string().min(1),
         real_model: z.string().min(1),
         upstream_protocol: z.enum(GATEWAY_PROTOCOLS).optional(),
+        supported_protocols: z.array(z.enum(GATEWAY_PROTOCOLS)).optional(),
         is_public: z.boolean().optional(),
         enabled: z.boolean().optional(),
         weight: z.number().int().min(1).optional(),
@@ -41,13 +42,14 @@ export async function GET(request: Request) {
 
   const channels = gatewayDb.prepare("SELECT * FROM channels WHERE deleted_at IS NULL ORDER BY id DESC").all() as Array<Record<string, unknown> & { id: number }>;
   const models = gatewayDb
-    .prepare("SELECT id, alias, real_model, channel_id, upstream_protocol, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, created_at FROM models WHERE deleted_at IS NULL ORDER BY id DESC")
+    .prepare("SELECT id, alias, real_model, channel_id, upstream_protocol, supported_protocols, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, created_at FROM models WHERE deleted_at IS NULL ORDER BY id DESC")
     .all() as Array<{
     id: number;
     alias: string;
     real_model: string;
     channel_id: number;
     upstream_protocol: string;
+    supported_protocols: string | null;
     is_public: number;
     enabled: number;
     weight: number;
@@ -120,16 +122,20 @@ export async function POST(request: Request) {
     const channelId = Number(result.lastInsertRowid);
     for (const model of parsed.data.models ?? []) {
       const upstreamProtocol = model.upstream_protocol ?? supportedProtocols[0] ?? "chat_completions";
+      const modelProtocols = normalizeSupportedProtocols(model.supported_protocols);
+      const validModelProtocols = modelProtocols.filter((p) => supportedProtocols.includes(p));
+      const finalModelProtocols = validModelProtocols.length > 0 ? validModelProtocols : [upstreamProtocol];
       gatewayDb
         .prepare(
-          `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, is_public, enabled, weight)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, is_public, enabled, weight)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           model.alias,
           model.real_model,
           channelId,
           upstreamProtocol,
+          stringifySupportedProtocols(finalModelProtocols),
           model.is_public === false ? 0 : 1,
           channelEnabled === 1 && model.enabled !== false ? 1 : 0,
           model.weight ?? 1,
