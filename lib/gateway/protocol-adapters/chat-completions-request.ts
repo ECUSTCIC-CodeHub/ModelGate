@@ -3,11 +3,13 @@ import {
   normalizeChatMessages,
   normalizedPartsToChatContent,
   type JsonRecord,
+  type NormalizedMessage,
 } from "@/lib/gateway/normalized-message";
 import {
   omitKeys,
   type IntermediateRequest,
 } from "@/lib/gateway/protocol-adapters/intermediate";
+
 import {
   chatToolChoiceToIntermediate,
   chatToolsToIntermediate,
@@ -104,14 +106,31 @@ export function chatCompletionsRequestToIntermediate(body: JsonRecord, realModel
   };
 }
 
+function normalizeResponsesInstructions(messages: NormalizedMessage[], instructions: unknown): NormalizedMessage[] {
+  if (typeof instructions !== "string" || !instructions.trim()) {
+    return messages;
+  }
+
+  const prefix: NormalizedMessage = {
+    role: "system",
+    content: [{ type: "text", text: instructions }],
+  };
+  return [prefix, ...messages];
+}
+
 export function chatCompletionsRequestFromIntermediate(request: IntermediateRequest): JsonRecord {
-  const messages = request.messages.map((message) => {
+  const extra = request.sourceProtocol === "responses"
+    ? {}
+    : omitKeys(request.extra, ["instructions", "context_management"]);
+  const messages = normalizeResponsesInstructions(request.messages, request.extra.instructions).map((message) => {
     const reasoningText = extractThinkingText(message.content);
     const preserveThinking = request.sourceProtocol === "anthropic_messages" && message.role === "assistant";
     if (message.role === "assistant" && message.tool_calls && message.tool_calls.length > 0) {
       return {
         role: "assistant",
-        content: normalizedPartsToChatContent(message.content, { preserveThinking }),
+        content: normalizedPartsToChatContent(message.content, {
+          preserveThinking: request.sourceProtocol === "responses" ? true : preserveThinking,
+        }),
         reasoning: reasoningText || undefined,
         tool_calls: message.tool_calls.map((toolCall) => ({
           id: toolCall.id,
@@ -134,13 +153,15 @@ export function chatCompletionsRequestFromIntermediate(request: IntermediateRequ
 
     return {
       role: message.role,
-      content: normalizedPartsToChatContent(message.content, { preserveThinking }),
+      content: normalizedPartsToChatContent(message.content, {
+        preserveThinking: request.sourceProtocol === "responses" ? true : preserveThinking,
+      }),
       reasoning: message.role === "assistant" && reasoningText ? reasoningText : undefined,
     };
   });
 
   const next: JsonRecord = {
-    ...request.extra,
+    ...extra,
     model: request.model,
     messages,
     stream: request.stream,
