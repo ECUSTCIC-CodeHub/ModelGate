@@ -50,6 +50,7 @@ const REQUEST_KEYS = [
   "user",
   "metadata",
   "text",
+  "reasoning_effort",
   "context_management",
 ];
 
@@ -69,6 +70,7 @@ export function responsesRequestToIntermediate(body: JsonRecord, realModel: stri
     user: body.user,
     metadata: body.metadata,
     text: body.text,
+    reasoning_effort: typeof body.reasoning_effort === "string" ? body.reasoning_effort : undefined,
     context_management: body.context_management,
     extra: omitKeys(body, REQUEST_KEYS),
   };
@@ -130,6 +132,7 @@ export function responsesRequestFromIntermediate(request: IntermediateRequest): 
   if (request.user !== undefined) next.user = request.user;
   if (request.metadata !== undefined) { next.metadata = request.metadata; next.store = true; }
   if (request.text !== undefined) next.text = request.text;
+  if (request.reasoning_effort !== undefined) next.reasoning_effort = request.reasoning_effort;
   if (request.context_management !== undefined) {
     next.context_management = normalizeResponsesContextManagement(request.context_management);
   }
