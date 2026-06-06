@@ -2,23 +2,38 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Copy } from "lucide-react";
+import { ChevronDown, Copy } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { useAuthProfile } from "@/components/providers/auth-provider";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/shared/api-message";
 import { authedFetch, ensureLoggedIn, getCachedProfile } from "@/lib/auth/client-auth";
+
+type ChannelMultiplier = {
+  channel_id: number;
+  channel_name: string;
+  token_multiplier: number;
+  request_multiplier: number;
+  effective_weight: number;
+};
 
 type ModelItem = {
   id: string;
   object: "model";
   token_multiplier: number;
   request_multiplier: number;
+  token_multiplier_min: number;
+  token_multiplier_max: number;
+  request_multiplier_min: number;
+  request_multiplier_max: number;
+  max_effective_weight: number;
+  channels: ChannelMultiplier[];
 };
 
 const ENDPOINTS = [
@@ -168,26 +183,94 @@ export default function AvailableModelsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {rows.map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell className="font-mono text-sm">{row.id}</TableCell>
-                        <TableCell className="text-center">
-                          <span className={`font-mono text-sm ${row.token_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}`}>
-                            {row.token_multiplier}x
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className={`font-mono text-sm ${row.request_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}`}>
-                            {row.request_multiplier}x
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <Button size="sm" variant="ghost" onClick={() => copyText(row.id)}>
-                            <Copy className="h-3.5 w-3.5" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {rows.map((row) => {
+                      const hasTokenRange = row.token_multiplier_min !== row.token_multiplier_max;
+                      const hasRequestRange = row.request_multiplier_min !== row.request_multiplier_max;
+                      const hasMultipleChannels = row.channels.length > 1;
+
+                      return (
+                        <TableRow key={row.id}>
+                          <TableCell className="font-mono text-sm">{row.id}</TableCell>
+                          <TableCell className="text-center">
+                            {hasMultipleChannels ? (
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <button className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-mono hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer">
+                                    <span className={hasTokenRange ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}>
+                                      {hasTokenRange ? `${row.token_multiplier_min}x ~ ${row.token_multiplier_max}x` : `${row.token_multiplier}x`}
+                                    </span>
+                                    <ChevronDown className="h-3.5 w-3.5 text-[var(--color-foreground-muted)]" />
+                                  </button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-72 p-3" align="center">
+                                  <div className="space-y-2">
+                                    <p className="text-xs font-medium text-[var(--color-foreground-muted)]">各渠道 Token 倍率</p>
+                                    <div className="space-y-1">
+                                      {row.channels.map((ch) => (
+                                        <div key={ch.channel_id} className="flex items-center justify-between text-xs">
+                                          <span className="text-[var(--color-foreground-secondary)] truncate max-w-[120px]">{ch.channel_name}</span>
+                                          <div className="flex items-center gap-2">
+                                            <span className="font-mono text-[var(--color-foreground-muted)]">W{ch.effective_weight}</span>
+                                            <span className={`font-mono ${ch.token_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}`}>
+                                              {ch.token_multiplier}x
+                                            </span>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            ) : (
+                              <span className={`font-mono text-sm ${row.token_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}`}>
+                                {row.token_multiplier}x
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {hasMultipleChannels ? (
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <button className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-mono hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer">
+                                    <span className={hasRequestRange ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}>
+                                      {hasRequestRange ? `${row.request_multiplier_min}x ~ ${row.request_multiplier_max}x` : `${row.request_multiplier}x`}
+                                    </span>
+                                    <ChevronDown className="h-3.5 w-3.5 text-[var(--color-foreground-muted)]" />
+                                  </button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-72 p-3" align="center">
+                                  <div className="space-y-2">
+                                    <p className="text-xs font-medium text-[var(--color-foreground-muted)]">各渠道请求倍率</p>
+                                    <div className="space-y-1">
+                                      {row.channels.map((ch) => (
+                                        <div key={ch.channel_id} className="flex items-center justify-between text-xs">
+                                          <span className="text-[var(--color-foreground-secondary)] truncate max-w-[120px]">{ch.channel_name}</span>
+                                          <div className="flex items-center gap-2">
+                                            <span className="font-mono text-[var(--color-foreground-muted)]">W{ch.effective_weight}</span>
+                                            <span className={`font-mono ${ch.request_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}`}>
+                                              {ch.request_multiplier}x
+                                            </span>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            ) : (
+                              <span className={`font-mono text-sm ${row.request_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}`}>
+                                {row.request_multiplier}x
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Button size="sm" variant="ghost" onClick={() => copyText(row.id)}>
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
