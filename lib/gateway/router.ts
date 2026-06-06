@@ -225,15 +225,20 @@ export function listModelRoutes(alias: string, options?: { excludeChannelIds?: n
     : filterRows(findRows("*"));
 
   return candidateRows
-    .map((row) => ({
-      route: mapRowToRoute(row, protocol),
-      score: scoreChannel(
+    .map((row) => {
+      const route = mapRowToRoute(row, protocol);
+      const baseScore = scoreChannel(
         makeModelRuntimeKey(row.channel_id_2, row.real_model),
         Math.max(1, row.model_weight) * Math.max(1, row.channel_weight),
         effectiveMaxConcurrency(row.channel_max_concurrency, row.model_max_concurrency),
-      ),
-      jitter: Math.random() * 0.001,
-    }))
+      );
+      const passthroughBonus = protocol && route.effective_upstream_protocol === protocol ? 1.05 : 1;
+      return {
+        route,
+        score: baseScore * passthroughBonus,
+        jitter: Math.random() * 0.001,
+      };
+    })
     .filter((item) => item.score > 0)
     .sort((a, b) => (b.score + b.jitter) - (a.score + a.jitter))
     .map((item) => item.route);
