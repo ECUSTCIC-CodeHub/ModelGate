@@ -17,6 +17,10 @@ import { resolveTokenUsage, tokenUsageMetadata } from "@/lib/gateway/token-usage
 import { buildErrorResponseBody, parseUpstreamError } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
 import { requestUpstreamWithFallback } from "@/lib/gateway/upstream-routing";
+import {
+  applyCopilotCompatibilityToChatStream,
+  normalizeCopilotChatCompletionText,
+} from "@/lib/gateway/copilot-compat";
 
 export async function handleGatewayProtocolRequest(request: Request, inboundAdapter: GatewayProtocolAdapter) {
   const inboundProtocol = inboundAdapter.protocol;
@@ -163,16 +167,26 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       route.model.real_model,
       route.channel.force_include_usage !== 0,
     );
-  const adaptResponseBodyForRoute = (rawText: string, route: RoutedModel) =>
-    inboundAdapter.adaptResponseBody(rawText, getRouteAdapter(route), responseOptions);
+  const shouldApplyCopilotCompatibility = (route: RoutedModel) =>
+    inboundProtocol === "chat_completions" && route.model.copilot_compatibility === 1;
+  const adaptResponseBodyForRoute = (rawText: string, route: RoutedModel) => {
+    const adapted = inboundAdapter.adaptResponseBody(rawText, getRouteAdapter(route), responseOptions);
+    return shouldApplyCopilotCompatibility(route)
+      ? normalizeCopilotChatCompletionText(adapted, body)
+      : adapted;
+  };
   const getUsageForRoute = (rawText: string, route: RoutedModel) =>
     getRouteAdapter(route).getUsageFromBody(rawText);
   const extractCompletionTextForRoute = (rawText: string, route: RoutedModel) =>
     getRouteAdapter(route).extractCompletionTextFromBody(rawText);
   const extractReasoningTextForRoute = (rawText: string, route: RoutedModel) =>
     getRouteAdapter(route).extractReasoningTextFromBody(rawText);
-  const createTransformedStreamForRoute = (upstreamBody: ReadableStream<Uint8Array>, route: RoutedModel) =>
-    createTransformedStream(upstreamBody, getRouteAdapter(route), inboundAdapter, responseOptions);
+  const createTransformedStreamForRoute = (upstreamBody: ReadableStream<Uint8Array>, route: RoutedModel) => {
+    const transformed = createTransformedStream(upstreamBody, getRouteAdapter(route), inboundAdapter, responseOptions);
+    return shouldApplyCopilotCompatibility(route)
+      ? applyCopilotCompatibilityToChatStream(transformed, body)
+      : transformed;
+  };
 
   const picked = await requestUpstreamWithFallback({
     resolvedAlias,

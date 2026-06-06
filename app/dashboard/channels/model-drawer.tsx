@@ -299,6 +299,14 @@ export function ModelDrawer({
 
               <div className="flex items-center justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
                 <div>
+                  <p className="text-sm font-medium text-[var(--color-foreground)]">Copilot 兼容模式</p>
+                  <p className="text-xs text-[var(--color-foreground-muted)]">启用后规范化 tool_calls 返回并过滤未声明的工具调用，修复 GitHub Copilot 兼容性问题。</p>
+                </div>
+                <Checkbox checked={form.copilot_compatibility} onCheckedChange={(checked) => onFormChange({ copilot_compatibility: checked === true })} />
+              </div>
+
+              <div className="flex items-center justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+                <div>
                   <p className="text-sm font-medium text-[var(--color-foreground)]">公开模型</p>
                   <p className="text-xs text-[var(--color-foreground-muted)]">关闭后仅被授权用户可以访问该 alias。</p>
                 </div>

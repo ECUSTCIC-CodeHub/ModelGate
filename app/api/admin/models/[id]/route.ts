@@ -16,6 +16,7 @@ const updateSchema = z.object({
   channel_id: z.number().int().positive().optional(),
   upstream_protocol: z.enum(GATEWAY_PROTOCOLS).optional(),
   supported_protocols: z.array(z.enum(GATEWAY_PROTOCOLS)).optional(),
+  copilot_compatibility: z.boolean().optional(),
   is_public: z.boolean().optional(),
   enabled: z.boolean().optional(),
   weight: z.number().int().min(1).optional(),
@@ -64,6 +65,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         channel_id: number;
         upstream_protocol: GatewayProtocol;
         supported_protocols: string | null;
+        copilot_compatibility: number;
         is_public: number;
         enabled: number;
         weight: number;
@@ -125,11 +127,11 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   gatewayDb
     .prepare(
       `UPDATE models
-       SET alias = ?, real_model = ?, channel_id = ?, upstream_protocol = ?, supported_protocols = ?, is_public = ?, enabled = ?, weight = ?, token_multiplier = ?, request_multiplier = ?, max_concurrency = ?,
+       SET alias = ?, real_model = ?, channel_id = ?, upstream_protocol = ?, supported_protocols = ?, copilot_compatibility = ?, is_public = ?, enabled = ?, weight = ?, token_multiplier = ?, request_multiplier = ?, max_concurrency = ?,
            quota_mode = ?, quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?
        WHERE id = ?`,
     )
-    .run(merged.alias, merged.real_model, merged.channel_id, merged.upstream_protocol, targetSupportedProtocols, merged.is_public, merged.enabled, merged.weight, merged.token_multiplier, merged.request_multiplier, merged.max_concurrency,
+    .run(merged.alias, merged.real_model, merged.channel_id, merged.upstream_protocol, targetSupportedProtocols, parsed.data.copilot_compatibility === true ? 1 : parsed.data.copilot_compatibility === false ? 0 : existing.copilot_compatibility ?? 0, merged.is_public, merged.enabled, merged.weight, merged.token_multiplier, merged.request_multiplier, merged.max_concurrency,
       merged.quota_mode ?? existing.quota_mode ?? "follow_group",
       merged.quota_tokens ?? existing.quota_tokens ?? null,
       merged.quota_requests ?? existing.quota_requests ?? null,

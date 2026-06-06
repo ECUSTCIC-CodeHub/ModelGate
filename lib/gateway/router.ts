@@ -26,6 +26,7 @@ type CandidateRow = {
   token_multiplier: number;
   request_multiplier: number;
   model_max_concurrency: number;
+  copilot_compatibility: number;
   model_quota_mode: ModelQuotaMode;
   model_quota_tokens: number | null;
   model_quota_requests: number | null;
@@ -82,6 +83,7 @@ const listModelRoutesStmt = gatewayDb.prepare(
       m.token_multiplier,
       m.request_multiplier,
       m.max_concurrency as model_max_concurrency,
+      m.copilot_compatibility,
       m.quota_mode as model_quota_mode,
       m.quota_tokens as model_quota_tokens,
       m.quota_requests as model_quota_requests,
@@ -150,6 +152,7 @@ function mapRowToRoute(row: CandidateRow, inboundProtocol?: GatewayProtocol): Ro
       token_multiplier: row.token_multiplier ?? 1,
       request_multiplier: row.request_multiplier ?? 1,
       max_concurrency: row.model_max_concurrency,
+      copilot_compatibility: row.copilot_compatibility ?? 0,
       quota_mode: row.model_quota_mode ?? "follow_group",
       quota_tokens: row.model_quota_tokens,
       quota_requests: row.model_quota_requests,

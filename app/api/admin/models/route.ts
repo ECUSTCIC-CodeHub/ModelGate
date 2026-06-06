@@ -14,6 +14,7 @@ const createSchema = z.object({
   channel_id: z.number().int().positive(),
   upstream_protocol: z.enum(GATEWAY_PROTOCOLS).optional(),
   supported_protocols: z.array(z.enum(GATEWAY_PROTOCOLS)).optional(),
+  copilot_compatibility: z.boolean().optional(),
   is_public: z.boolean().optional(),
   enabled: z.boolean().optional(),
   weight: z.number().int().min(1).optional(),
@@ -78,8 +79,8 @@ export async function POST(request: Request) {
 
   const result = gatewayDb
     .prepare(
-      `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       parsed.data.alias,
@@ -87,6 +88,7 @@ export async function POST(request: Request) {
       parsed.data.channel_id,
       upstreamProtocol,
       supportedProtocolsJson,
+      parsed.data.copilot_compatibility === true ? 1 : 0,
       parsed.data.is_public === false ? 0 : 1,
       modelEnabled,
       parsed.data.weight ?? 1,
