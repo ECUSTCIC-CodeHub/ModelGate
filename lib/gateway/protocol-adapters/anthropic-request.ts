@@ -112,7 +112,10 @@ export function anthropicRequestFromIntermediate(request: IntermediateRequest): 
   if (request.top_p !== undefined) next.top_p = request.top_p;
   if (request.stop_sequences !== undefined) next.stop_sequences = request.stop_sequences;
   if (request.stop !== undefined && request.stop_sequences === undefined) {
-    next.stop_sequences = Array.isArray(request.stop) ? request.stop : [request.stop];
+    const stop = request.stop;
+    if (stop !== null) {
+      next.stop_sequences = Array.isArray(stop) ? stop : [stop];
+    }
   }
   if (request.tools !== undefined) next.tools = toolsFromIntermediateForAnthropic(request.tools);
   if (request.tool_choice !== undefined) next.tool_choice = toolChoiceFromIntermediateForAnthropic(request.tool_choice);
