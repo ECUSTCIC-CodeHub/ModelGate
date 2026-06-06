@@ -111,7 +111,7 @@ export function normalizedPartsToResponseContent(parts: NormalizedContentPart[],
       return [{ type: textType, text: part.text }];
     }
     if (part.type === "thinking") {
-      return [];
+      return [{ type: "thinking", thinking: part.thinking, signature: part.signature ?? null, redacted: part.redacted ?? false }];
     }
     if (part.type === "image") {
       return [{ type: "input_image", image_url: part.image_url, detail: part.detail ?? undefined }];

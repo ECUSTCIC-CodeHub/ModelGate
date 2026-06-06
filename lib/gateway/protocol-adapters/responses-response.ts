@@ -3,6 +3,7 @@ import {
   asRecord,
   normalizeContentParts,
   type JsonRecord,
+  type NormalizedContentPart,
 } from "@/lib/gateway/normalized-message";
 import {
   omitKeys,
@@ -68,9 +69,8 @@ export function responsesResponseToIntermediate(body: JsonRecord): IntermediateR
 }
 
 export function responsesResponseFromIntermediate(response: IntermediateResponse): JsonRecord {
-  const reasoningText = response.content
-    .flatMap((part) => part.type === "thinking" && !part.redacted ? [part.thinking] : [])
-    .join("");
+  const thinkingBlocks = response.content.filter((part): part is Extract<NormalizedContentPart, { type: "thinking" }> => part.type === "thinking");
+  const reasoningText = thinkingBlocks.filter((part) => !part.redacted).map((part) => part.thinking).join("");
   const textContent = response.content
     .filter((part) => part.type === "text")
     .map((part) => part.text)
