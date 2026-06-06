@@ -28,6 +28,7 @@ const createSchema = z.object({
         real_model: z.string().min(1),
         upstream_protocol: z.enum(GATEWAY_PROTOCOLS).optional(),
         supported_protocols: z.array(z.enum(GATEWAY_PROTOCOLS)).optional(),
+        copilot_compatibility: z.boolean().optional(),
         is_public: z.boolean().optional(),
         enabled: z.boolean().optional(),
         weight: z.number().int().min(1).optional(),
@@ -127,8 +128,8 @@ export async function POST(request: Request) {
       const finalModelProtocols = validModelProtocols.length > 0 ? validModelProtocols : [upstreamProtocol];
       gatewayDb
         .prepare(
-          `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, is_public, enabled, weight)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, is_public, enabled, weight)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           model.alias,
@@ -136,6 +137,7 @@ export async function POST(request: Request) {
           channelId,
           upstreamProtocol,
           stringifySupportedProtocols(finalModelProtocols),
+          model.copilot_compatibility === true ? 1 : 0,
           model.is_public === false ? 0 : 1,
           channelEnabled === 1 && model.enabled !== false ? 1 : 0,
           model.weight ?? 1,

@@ -123,6 +123,13 @@ export function ModelDraftCard({
                 </SelectContent>
               </Select>
             </div>
+            <div className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 md:col-span-2">
+              <div>
+                <p className="text-sm font-medium text-[var(--color-foreground)]">GitHub Copilot 兼容</p>
+                <p className="text-xs text-[var(--color-foreground-muted)]">规范化 tool_calls 返回，并过滤未声明的工具调用。</p>
+              </div>
+              <Checkbox checked={item.copilot_compatibility} onCheckedChange={(checked) => onUpdateDraft(index, { copilot_compatibility: checked === true })} />
+            </div>
             <div className="grid gap-3 md:grid-cols-3">
               <Select value={item.quota_mode} onValueChange={(value) => onUpdateDraft(index, { quota_mode: value as ChannelModelDraft["quota_mode"] })}>
                 <SelectTrigger>

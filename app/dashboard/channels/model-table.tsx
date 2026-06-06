@@ -39,7 +39,7 @@ export function ModelTable({
 
   return (
     <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-      <Table className="min-w-[1080px]">
+      <Table className="min-w-[1160px]">
         <TableHeader>
           <TableRow>
             <TableHead>序号</TableHead>
@@ -49,6 +49,7 @@ export function ModelTable({
             <TableHead>上游协议</TableHead>
             <TableHead>状态</TableHead>
             <TableHead>可见性</TableHead>
+            <TableHead>Copilot</TableHead>
             <TableHead>权重</TableHead>
             <TableHead>倍率</TableHead>
             <TableHead>最大并发</TableHead>
@@ -74,6 +75,9 @@ export function ModelTable({
               </TableCell>
               <TableCell>
                 <Badge variant={model.is_public ? "default" : "secondary"}>{model.is_public ? "公开" : "白名单"}</Badge>
+              </TableCell>
+              <TableCell>
+                <Badge variant={model.copilot_compatibility ? "default" : "secondary"}>{model.copilot_compatibility ? "兼容" : "默认"}</Badge>
               </TableCell>
               <TableCell className="whitespace-nowrap">{model.weight}</TableCell>
               <TableCell className="whitespace-nowrap">
