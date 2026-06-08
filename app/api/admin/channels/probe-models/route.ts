@@ -3,10 +3,15 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
+import { isValidProxyUrl, normalizeProxyUrl, withUpstreamProxy } from "@/lib/gateway/upstream-proxy";
+
+const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
 
 const bodySchema = z.object({
   base_url: z.string().url(),
   api_key: z.string().min(1),
+  user_agent: z.string().max(500).optional(),
+  proxy_url: proxyUrlSchema,
 });
 
 export async function POST(request: Request) {
@@ -19,18 +24,27 @@ export async function POST(request: Request) {
 
   const baseUrl = parsed.data.base_url.replace(/\/+$/, "");
   const apiKey = parsed.data.api_key;
+  const userAgent = parsed.data.user_agent?.trim();
+  const proxyUrl = normalizeProxyUrl(parsed.data.proxy_url);
   const url = `${baseUrl}/models`;
 
   let upstream: Response;
   try {
-    upstream = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "x-api-key": apiKey,
-        Accept: "application/json",
-      },
-      signal: AbortSignal.timeout(15_000),
-    });
+    upstream = await fetch(
+      url,
+      withUpstreamProxy(
+        {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "x-api-key": apiKey,
+            Accept: "application/json",
+            ...(userAgent ? { "User-Agent": userAgent } : {}),
+          },
+          signal: AbortSignal.timeout(15_000),
+        },
+        proxyUrl,
+      ),
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "未知错误";
     return jsonError(`请求上游失败：${message}`, 502);

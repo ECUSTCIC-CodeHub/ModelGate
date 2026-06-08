@@ -44,6 +44,7 @@ type CandidateRow = {
   api_key: string;
   supported_protocols: string;
   user_agent: string;
+  proxy_url: string;
   channel_enabled: number;
   channel_weight: number;
   channel_max_concurrency: number;
@@ -101,6 +102,7 @@ const listModelRoutesStmt = gatewayDb.prepare(
       c.api_key,
       c.supported_protocols,
       c.user_agent,
+      c.proxy_url,
       c.enabled as channel_enabled,
       c.weight as channel_weight,
       c.max_concurrency as channel_max_concurrency,
@@ -172,6 +174,7 @@ function mapRowToRoute(row: CandidateRow, inboundProtocol?: GatewayProtocol): Ro
       api_key: row.api_key,
       supported_protocols: row.supported_protocols,
       user_agent: row.user_agent ?? "",
+      proxy_url: row.proxy_url ?? "",
       enabled: row.channel_enabled,
       weight: row.channel_weight,
       max_concurrency: effectiveMaxConcurrency(row.channel_max_concurrency, row.model_max_concurrency),

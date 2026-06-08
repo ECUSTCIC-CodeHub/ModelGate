@@ -34,12 +34,13 @@ export function ChannelTable({
 
   return (
     <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-      <Table className="min-w-[960px]">
+      <Table className="min-w-[1040px]">
         <TableHeader>
           <TableRow>
             <TableHead>序号</TableHead>
             <TableHead>名称</TableHead>
             <TableHead>Base URL</TableHead>
+            <TableHead>代理</TableHead>
             <TableHead>状态</TableHead>
             <TableHead>协议</TableHead>
             <TableHead>权重</TableHead>
@@ -56,6 +57,11 @@ export function ChannelTable({
               <TableCell>{channelIndex + 1}</TableCell>
               <TableCell>{row.name}</TableCell>
               <TableCell className="max-w-72 truncate">{row.base_url}</TableCell>
+              <TableCell>
+                <Badge variant={row.proxy_url?.trim() ? "outline" : "secondary"}>
+                  {row.proxy_url?.trim() ? "已配置" : "直连"}
+                </Badge>
+              </TableCell>
               <TableCell>
                 <Badge variant={row.enabled ? "default" : "secondary"}>{row.enabled ? "启用" : "禁用"}</Badge>
               </TableCell>

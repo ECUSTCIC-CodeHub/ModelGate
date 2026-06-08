@@ -5,12 +5,17 @@ import { gatewayDb } from "@/lib/core/db";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { GATEWAY_PROTOCOLS, normalizeSupportedProtocols, stringifySupportedProtocols } from "@/lib/gateway/protocols";
+import { isValidProxyUrl, normalizeProxyUrl } from "@/lib/gateway/upstream-proxy";
+
+const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
 
 const createSchema = z.object({
   name: z.string().min(1),
   base_url: z.string().url(),
   api_key: z.string().min(1),
   supported_protocols: z.array(z.enum(GATEWAY_PROTOCOLS)).min(1).optional(),
+  user_agent: z.string().max(500).optional(),
+  proxy_url: proxyUrlSchema,
   enabled: z.boolean().optional(),
   weight: z.number().int().min(1).optional(),
   max_concurrency: z.number().int().min(1).optional(),
@@ -100,14 +105,16 @@ export async function POST(request: Request) {
     const channelEnabled = parsed.data.enabled === false ? 0 : 1;
     const result = gatewayDb
       .prepare(
-        `INSERT INTO channels (name, base_url, api_key, supported_protocols, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, force_include_usage)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, force_include_usage)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         parsed.data.name,
         parsed.data.base_url,
         parsed.data.api_key,
         stringifySupportedProtocols(supportedProtocols),
+        parsed.data.user_agent?.trim() ?? "",
+        normalizeProxyUrl(parsed.data.proxy_url),
         channelEnabled,
         parsed.data.weight ?? 1,
         parsed.data.max_concurrency ?? 64,

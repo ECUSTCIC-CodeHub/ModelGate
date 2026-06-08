@@ -12,7 +12,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
   const { id } = await context.params;
   const channel = gatewayDb
-    .prepare("SELECT id, name, base_url, api_key, user_agent, timeout FROM channels WHERE id = ?")
+    .prepare("SELECT id, name, base_url, api_key, user_agent, proxy_url, timeout FROM channels WHERE id = ?")
     .get(id) as
     | {
         id: number;
@@ -20,6 +20,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         base_url: string;
         api_key: string;
         user_agent: string;
+        proxy_url: string;
         timeout: number;
       }
     | undefined;

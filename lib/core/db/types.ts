@@ -7,6 +7,7 @@ export type DbChannel = {
   api_key: string;
   supported_protocols: string;
   user_agent: string;
+  proxy_url: string;
   enabled: number;
   weight: number;
   max_concurrency: number;

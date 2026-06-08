@@ -83,7 +83,7 @@ export default function AdminChannelsPage() {
         onSubmit={admin.submitChannel}
         onFormChange={admin.updateChannelForm}
         onSupportedProtocolsChange={admin.updateSupportedProtocols}
-        onProbeModels={() => void admin.probeUpstreamModels(admin.channelForm.base_url, admin.channelForm.api_key, admin.channelForm.user_agent)}
+        onProbeModels={() => void admin.probeUpstreamModels(admin.channelForm.base_url, admin.channelForm.api_key, admin.channelForm.user_agent, admin.channelForm.proxy_url)}
         onAddModelDraft={admin.addChannelModelDraft}
         onRemoveModelDraft={admin.removeChannelModelDraft}
         onUpdateModelDraft={admin.updateChannelModelDraft}
@@ -104,7 +104,7 @@ export default function AdminChannelsPage() {
         onSubmit={admin.submitModel}
         onFormChange={admin.updateModelForm}
         onChannelChange={admin.updateModelChannel}
-        onProbeModels={() => void admin.probeUpstreamModels(admin.selectedChannel?.base_url ?? "", admin.selectedChannel?.api_key ?? "", admin.selectedChannel?.user_agent ?? "", admin.selectedChannel?.models ?? [])}
+        onProbeModels={() => void admin.probeUpstreamModels(admin.selectedChannel?.base_url ?? "", admin.selectedChannel?.api_key ?? "", admin.selectedChannel?.user_agent ?? "", admin.selectedChannel?.proxy_url ?? "", admin.selectedChannel?.models ?? [])}
         onAddModelDraft={admin.addChannelModelDraft}
         onRemoveModelDraft={admin.removeChannelModelDraft}
         onUpdateModelDraft={admin.updateChannelModelDraft}

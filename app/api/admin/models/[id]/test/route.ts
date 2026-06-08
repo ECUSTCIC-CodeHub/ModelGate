@@ -23,6 +23,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
          c.base_url,
          c.api_key,
          c.user_agent,
+         c.proxy_url,
          c.timeout
        FROM models m
        JOIN channels c ON c.id = m.channel_id
@@ -39,6 +40,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         base_url: string;
         api_key: string;
         user_agent: string;
+        proxy_url: string;
         timeout: number;
       }
     | undefined;
@@ -50,6 +52,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       base_url: row.base_url,
       api_key: row.api_key,
       user_agent: row.user_agent,
+      proxy_url: row.proxy_url,
       timeout: row.timeout,
     },
     model: {

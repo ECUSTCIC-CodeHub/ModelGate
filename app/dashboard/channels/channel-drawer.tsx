@@ -135,6 +135,17 @@ export function ChannelDrawer({
               </p>
             </div>
             <div className="space-y-2 md:col-span-2">
+              <Label>代理地址</Label>
+              <Input
+                placeholder="http://127.0.0.1:7890"
+                value={form.proxy_url}
+                onChange={(e) => onFormChange({ proxy_url: e.target.value })}
+              />
+              <p className="text-xs text-[var(--color-foreground-muted)]">
+                留空直连；支持 http:// 或 https:// 代理地址。
+              </p>
+            </div>
+            <div className="space-y-2 md:col-span-2">
               <Label className="flex items-center gap-2">
                 <Checkbox
                   checked={form.force_include_usage}

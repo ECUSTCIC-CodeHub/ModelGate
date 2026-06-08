@@ -5,12 +5,17 @@ import { gatewayDb } from "@/lib/core/db";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { GATEWAY_PROTOCOLS, normalizeSupportedProtocols, parseSupportedProtocols, stringifySupportedProtocols } from "@/lib/gateway/protocols";
+import { isValidProxyUrl, normalizeProxyUrl } from "@/lib/gateway/upstream-proxy";
+
+const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
   base_url: z.string().url().optional(),
   api_key: z.string().min(1).optional(),
   supported_protocols: z.array(z.enum(GATEWAY_PROTOCOLS)).min(1).optional(),
+  user_agent: z.string().max(500).optional(),
+  proxy_url: proxyUrlSchema,
   enabled: z.boolean().optional(),
   weight: z.number().int().min(1).optional(),
   max_concurrency: z.number().int().min(1).optional(),
@@ -68,6 +73,14 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       parsed.data.supported_protocols === undefined
         ? (existing as { supported_protocols: string }).supported_protocols
         : nextProtocols,
+    user_agent:
+      parsed.data.user_agent === undefined
+        ? (existing as { user_agent?: string | null }).user_agent ?? ""
+        : parsed.data.user_agent.trim(),
+    proxy_url:
+      parsed.data.proxy_url === undefined
+        ? (existing as { proxy_url?: string | null }).proxy_url ?? ""
+        : normalizeProxyUrl(parsed.data.proxy_url),
     enabled: nextEnabled,
   };
 
@@ -75,7 +88,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     gatewayDb
       .prepare(
         `UPDATE channels
-         SET name = ?, base_url = ?, api_key = ?, supported_protocols = ?, enabled = ?, weight = ?, max_concurrency = ?, timeout = ?,
+         SET name = ?, base_url = ?, api_key = ?, supported_protocols = ?, user_agent = ?, proxy_url = ?, enabled = ?, weight = ?, max_concurrency = ?, timeout = ?,
              quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, force_include_usage = ?
          WHERE id = ?`,
       )
@@ -84,6 +97,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         (merged as { base_url: string }).base_url,
         (merged as { api_key: string }).api_key,
         (merged as { supported_protocols: string }).supported_protocols,
+        (merged as { user_agent: string }).user_agent,
+        (merged as { proxy_url: string }).proxy_url,
         (merged as { enabled: number }).enabled,
         (merged as { weight: number }).weight,
         (merged as { max_concurrency: number }).max_concurrency,
