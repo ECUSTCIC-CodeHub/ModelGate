@@ -19,6 +19,7 @@ import { addUsage } from "@/lib/gateway/usage-accounting";
 import { requestUpstreamWithFallback } from "@/lib/gateway/upstream-routing";
 import {
   applyCopilotCompatibilityToChatStream,
+  normalizeCopilotChatCompletionRequest,
   normalizeCopilotChatCompletionText,
 } from "@/lib/gateway/copilot-compat";
 
@@ -160,13 +161,17 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   const stream = inboundAdapter.getStreamFlag(body);
   const getRouteAdapter = (route: RoutedModel) => getGatewayProtocolAdapter(route.effective_upstream_protocol);
   const countPromptTokensForRoute = (route: RoutedModel) => inboundAdapter.countPromptTokens(body, route.model.real_model);
-  const adaptRequestBodyForRoute = (route: RoutedModel) =>
-    inboundAdapter.adaptRequestBody(
+  const adaptRequestBodyForRoute = (route: RoutedModel) => {
+    const adapted = inboundAdapter.adaptRequestBody(
       body,
       getRouteAdapter(route),
       route.model.real_model,
       route.channel.force_include_usage !== 0,
     );
+    return shouldApplyCopilotCompatibility(route)
+      ? normalizeCopilotChatCompletionRequest(adapted)
+      : adapted;
+  };
   const shouldApplyCopilotCompatibility = (route: RoutedModel) =>
     inboundProtocol === "chat_completions" && route.model.copilot_compatibility === 1;
   const adaptResponseBodyForRoute = (rawText: string, route: RoutedModel) => {
