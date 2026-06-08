@@ -76,15 +76,16 @@ export async function POST(request: Request) {
       .prepare("UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL WHERE oidc_issuer = ? AND oidc_subject = ? AND id != ?")
       .run(pending.issuer, pending.sub, user.id);
 
+    const linkEmail = pending.email?.toLowerCase() ?? null;
     const claimGroupId = resolveGroupFromClaims(pending.rawClaims);
     if (claimGroupId !== null) {
       gatewayDb
-        .prepare("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, group_id = ? WHERE id = ?")
-        .run(pending.issuer, pending.sub, claimGroupId, user.id);
+        .prepare("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, email = COALESCE(?, email), group_id = ? WHERE id = ?")
+        .run(pending.issuer, pending.sub, linkEmail, claimGroupId, user.id);
     } else {
       gatewayDb
-        .prepare("UPDATE users SET oidc_issuer = ?, oidc_subject = ? WHERE id = ?")
-        .run(pending.issuer, pending.sub, user.id);
+        .prepare("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, email = COALESCE(?, email) WHERE id = ?")
+        .run(pending.issuer, pending.sub, linkEmail, user.id);
     }
 
     const tokens = issueAuthTokens(user);
@@ -107,6 +108,32 @@ export async function POST(request: Request) {
     gatewayDb
       .prepare("UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL WHERE oidc_issuer = ? AND oidc_subject = ?")
       .run(pending.issuer, pending.sub);
+
+    const createEmail = pending.email?.toLowerCase() ?? null;
+
+    if (createEmail) {
+      const emailUser = gatewayDb
+        .prepare("SELECT * FROM users WHERE email = ? AND deleted_at IS NULL")
+        .get(createEmail) as DbUser | undefined;
+      if (emailUser) {
+        gatewayDb
+          .prepare("UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL WHERE oidc_issuer = ? AND oidc_subject = ? AND id != ?")
+          .run(pending.issuer, pending.sub, emailUser.id);
+        gatewayDb
+          .prepare("UPDATE users SET oidc_issuer = ?, oidc_subject = ? WHERE id = ?")
+          .run(pending.issuer, pending.sub, emailUser.id);
+
+        const user = gatewayDb
+          .prepare("SELECT * FROM users WHERE id = ? AND deleted_at IS NULL")
+          .get(emailUser.id) as DbUser | undefined;
+        if (!user) return jsonError("账号绑定失败", 500);
+
+        const tokens = issueAuthTokens(user);
+        const payload = { message: "绑定成功。", user: sanitizeUser(user), ...tokens };
+        const res = applyAuthCookies(jsonOk(payload), payload);
+        return clearPendingCookie(res);
+      }
+    }
 
     const adminCount = gatewayDb
       .prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL")
@@ -134,11 +161,11 @@ export async function POST(request: Request) {
 
     gatewayDb
       .prepare(
-        `INSERT INTO users (username, password_hash, role, group_id, oidc_issuer, oidc_subject,
+        `INSERT INTO users (username, password_hash, role, group_id, oidc_issuer, oidc_subject, email,
            rpm, qps, tpm, quota_tokens, quota_requests, enabled)
-         VALUES (?, ?, ?, ?, ?, ?, -1, -1, -1, NULL, NULL, 1)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, -1, -1, -1, NULL, NULL, 1)`,
       )
-      .run(username, placeholderHash, role, groupId, pending.issuer, pending.sub);
+      .run(username, placeholderHash, role, groupId, pending.issuer, pending.sub, createEmail);
 
     const user = gatewayDb
       .prepare("SELECT * FROM users WHERE oidc_issuer = ? AND oidc_subject = ? AND deleted_at IS NULL")

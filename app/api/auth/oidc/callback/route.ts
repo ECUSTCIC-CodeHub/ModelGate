@@ -154,15 +154,16 @@ export async function GET(request: Request) {
       return clearStateCookie(redirectWithError(origin, "该 OIDC 账号已被其他用户绑定", true));
     }
 
+    const email = userInfo.email?.toLowerCase() ?? null;
     const claimGroupId = resolveGroupFromClaims(rawClaims);
     if (claimGroupId !== null) {
       gatewayDb
-        .prepare("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, group_id = ? WHERE id = ?")
-        .run(issuer, userInfo.sub, claimGroupId, auth.user.id);
+        .prepare("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, email = COALESCE(?, email), group_id = ? WHERE id = ?")
+        .run(issuer, userInfo.sub, email, claimGroupId, auth.user.id);
     } else {
       gatewayDb
-        .prepare("UPDATE users SET oidc_issuer = ?, oidc_subject = ? WHERE id = ?")
-        .run(issuer, userInfo.sub, auth.user.id);
+        .prepare("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, email = COALESCE(?, email) WHERE id = ?")
+        .run(issuer, userInfo.sub, email, auth.user.id);
     }
 
     const res = NextResponse.redirect(`${origin}/dashboard?oidc_bound=1`, 302);
@@ -213,6 +214,24 @@ export async function GET(request: Request) {
     }
 
     const claimGroupId = resolveGroupFromClaims(rawClaims);
+    const email = userInfo.email?.toLowerCase() ?? null;
+
+    if (email) {
+      const emailUser = gatewayDb
+        .prepare("SELECT * FROM users WHERE email = ? AND deleted_at IS NULL")
+        .get(email) as DbUser | undefined;
+      if (emailUser) {
+        gatewayDb
+          .prepare("UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL WHERE oidc_issuer = ? AND oidc_subject = ? AND id != ?")
+          .run(issuer, userInfo.sub, emailUser.id);
+        gatewayDb
+          .prepare("UPDATE users SET oidc_issuer = ?, oidc_subject = ? WHERE id = ?")
+          .run(issuer, userInfo.sub, emailUser.id);
+        user = emailUser;
+      }
+    }
+
+    if (!user) {
     const placeholderHash = await hashPassword(randomBytes(32).toString("hex"));
 
     const registerUser = gatewayDb.transaction(() => {
@@ -236,11 +255,11 @@ export async function GET(request: Request) {
 
       gatewayDb
         .prepare(
-          `INSERT INTO users (username, password_hash, role, group_id, oidc_issuer, oidc_subject,
+          `INSERT INTO users (username, password_hash, role, group_id, oidc_issuer, oidc_subject, email,
              rpm, qps, tpm, quota_tokens, quota_requests, enabled)
-           VALUES (?, ?, ?, ?, ?, ?, -1, -1, -1, NULL, NULL, 1)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, -1, -1, -1, NULL, NULL, 1)`,
         )
-        .run(username, placeholderHash, role, groupId, issuer, userInfo.sub);
+        .run(username, placeholderHash, role, groupId, issuer, userInfo.sub, email);
 
       return gatewayDb
         .prepare("SELECT * FROM users WHERE oidc_issuer = ? AND oidc_subject = ? AND deleted_at IS NULL")
@@ -252,14 +271,16 @@ export async function GET(request: Request) {
     if (!user) {
       return clearStateCookie(redirectWithError(origin, "自动注册失败"));
     }
+    }
   }
 
   {
     const claimGroupId = resolveGroupFromClaims(rawClaims);
-    if (claimGroupId !== null && claimGroupId !== user.group_id) {
+    const email = userInfo.email?.toLowerCase() ?? null;
+    if ((claimGroupId !== null && claimGroupId !== user.group_id) || (email && email !== user.email)) {
       gatewayDb
-        .prepare("UPDATE users SET group_id = ? WHERE id = ?")
-        .run(claimGroupId, user.id);
+        .prepare("UPDATE users SET group_id = COALESCE(?, group_id), email = COALESCE(?, email) WHERE id = ?")
+        .run(claimGroupId, email, user.id);
     }
   }
 

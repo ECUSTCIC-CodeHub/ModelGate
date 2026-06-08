@@ -88,6 +88,7 @@ export function ensureModernColumns(db: BetterSqlite3.Database): ColumnMigration
   ensureColumn(db, "users", "webhook_tags", "webhook_tags TEXT DEFAULT '[]'");
   ensureColumn(db, "users", "totp_secret", "totp_secret TEXT");
   ensureColumn(db, "users", "totp_enabled", "totp_enabled INTEGER DEFAULT 0");
+  ensureColumn(db, "users", "email", "email TEXT");
 
   db.exec(`UPDATE users SET used_tokens = ROUND(used_tokens, 6), used_requests = ROUND(used_requests, 6),
            period_used_tokens = ROUND(period_used_tokens, 6), period_used_requests = ROUND(period_used_requests, 6)
