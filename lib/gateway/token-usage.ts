@@ -43,7 +43,10 @@ export function resolveTokenUsage(options: {
   if (options.usage) {
     const promptTokens = normalizeTokenCount(options.usage.prompt_tokens, options.localPromptTokens);
     const remoteCompletionTokens = normalizeTokenCount(options.usage.completion_tokens, 0);
-    const totalTokens = normalizeTokenCount(options.usage.total_tokens, promptTokens + remoteCompletionTokens);
+    const totalTokens = Math.max(
+      normalizeTokenCount(options.usage.total_tokens, promptTokens + remoteCompletionTokens),
+      promptTokens + remoteCompletionTokens,
+    );
     const remoteReasoningTokens = options.usage.reasoning_tokens === undefined
       ? null
       : normalizeTokenCount(options.usage.reasoning_tokens, 0);

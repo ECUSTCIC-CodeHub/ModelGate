@@ -116,7 +116,7 @@ export function normalizeUsage(
   return {
     prompt_tokens: promptTokens,
     completion_tokens: completionTokens,
-    total_tokens: totalTokens ?? promptTokens + completionTokens,
+    total_tokens: Math.max(totalTokens ?? 0, promptTokens + completionTokens),
     ...(details?.text_tokens !== undefined ? { text_tokens: details.text_tokens } : {}),
     ...(details?.reasoning_tokens !== undefined ? { reasoning_tokens: details.reasoning_tokens } : {}),
     ...(details?.cache_read_tokens !== undefined ? { cache_read_tokens: details.cache_read_tokens } : {}),
