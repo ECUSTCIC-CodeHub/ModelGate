@@ -68,11 +68,8 @@ export function normalizeCopilotChatCompletionRequest(body: Record<string, unkno
   return next;
 }
 
-function stripReasoningDelta(delta: JsonRecord) {
-  const nextDelta: JsonRecord = { ...delta };
-  delete nextDelta.reasoning;
-  delete nextDelta.reasoning_content;
-  return nextDelta;
+function preserveReasoningDelta(delta: JsonRecord) {
+  return { ...delta };
 }
 
 function decodeXmlEntities(value: string) {
@@ -332,7 +329,7 @@ export function normalizeCopilotChatCompletionText(text: string, requestBody: Re
       .filter((toolCall): toolCall is JsonRecord => Boolean(toolCall)),
       ...normalizePseudoResponseToolCalls(normalizedPseudoToolText.toolCalls),
     ];
-    const nextMessage: JsonRecord = stripReasoningDelta(message);
+    const nextMessage: JsonRecord = preserveReasoningDelta(message);
     nextMessage.content = normalizedPseudoToolText.content;
     delete nextMessage.function_call;
 
@@ -418,7 +415,7 @@ function normalizeStreamToolCall(
 }
 
 function normalizeStreamDelta(delta: JsonRecord, state: StreamChoiceState, policy: ToolNamePolicy) {
-  const nextDelta: JsonRecord = stripReasoningDelta(delta);
+  const nextDelta: JsonRecord = preserveReasoningDelta(delta);
   const rawToolCalls = [...asArray(delta.tool_calls)];
   const content = typeof nextDelta.content === "string" ? nextDelta.content : "";
   const pseudoToolText = content ? normalizePseudoStreamToolText(content, state, policy) : { visibleContent: "", toolCalls: [] };
