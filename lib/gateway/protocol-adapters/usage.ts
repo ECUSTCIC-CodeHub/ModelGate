@@ -81,47 +81,24 @@ function normalizeRemoteUsage(usage: Record<string, unknown>, fields: UsageField
     hasNestedTokenField(promptDetails, ["cache_creation"]);
   const hasCacheMissTokens = hasTokenField(usage, cacheMissKeys) || hasTokenField(promptDetails, cacheMissKeys);
 
-  const cacheReadTokens =
-    sumTokenFields(usage, [
-      "cached_tokens",
-      "cache_read_tokens",
-      "cache_read_input_tokens",
-      "prompt_cache_hit_tokens",
-      "cachedContentTokenCount",
-    ]) +
-    sumTokenFields(promptDetails, [
-      "cached_tokens",
-      "cache_read_tokens",
-      "cache_read_input_tokens",
-      "prompt_cache_hit_tokens",
-      "cachedContentTokenCount",
-    ]);
+  // Use promptDetails first (OpenAI puts cache info in prompt_tokens_details);
+  // fall back to top-level usage (Anthropic puts cache info directly on usage).
+  // Never sum both – that would double-count the same value.
+  const cacheReadTokens = hasTokenField(promptDetails, cacheReadKeys)
+    ? sumTokenFields(promptDetails, cacheReadKeys)
+    : sumTokenFields(usage, cacheReadKeys);
 
-  const cacheCreationTokens =
-    sumTokenFields(usage, [
-      "cache_creation_tokens",
-      "cache_creation_input_tokens",
-      "prompt_cache_creation_tokens",
-    ]) +
-    sumTokenFields(promptDetails, [
-      "cache_creation_tokens",
-      "cache_creation_input_tokens",
-      "prompt_cache_creation_tokens",
-    ]) +
-    sumNestedTokenFields(usage, ["cache_creation"]) +
-    sumNestedTokenFields(promptDetails, ["cache_creation"]);
+  const cacheCreationTokens = hasTokenField(promptDetails, cacheCreationKeys)
+    ? sumTokenFields(promptDetails, cacheCreationKeys)
+    : hasNestedTokenField(promptDetails, ["cache_creation"])
+      ? sumNestedTokenFields(promptDetails, ["cache_creation"])
+      : hasTokenField(usage, cacheCreationKeys)
+        ? sumTokenFields(usage, cacheCreationKeys)
+        : sumNestedTokenFields(usage, ["cache_creation"]);
 
-  const cacheMissTokens =
-    sumTokenFields(usage, [
-      "cache_miss_tokens",
-      "cache_miss_input_tokens",
-      "prompt_cache_miss_tokens",
-    ]) +
-    sumTokenFields(promptDetails, [
-      "cache_miss_tokens",
-      "cache_miss_input_tokens",
-      "prompt_cache_miss_tokens",
-    ]);
+  const cacheMissTokens = hasTokenField(promptDetails, cacheMissKeys)
+    ? sumTokenFields(promptDetails, cacheMissKeys)
+    : sumTokenFields(usage, cacheMissKeys);
 
   return normalizeUsage(promptTokens, completionTokens, totalTokens, {
     ...(textTokens > 0 ? { text_tokens: textTokens } : {}),
