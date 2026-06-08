@@ -158,7 +158,7 @@ function UserQuotaContent({ quota, modelQuotas }: { quota: QuotaData | null; mod
       {bypassModels.length > 0 ? (
         <Card>
           <CardHeader>
-            <SectionTitle title="绕过用户组限制的模型" description="以下模型不受用户组配额和速率限制约束，使用量不计入账户总额，仅受渠道侧限制。" />
+            <SectionTitle title="绕过用户组限制的模型" description="以下模型不受用户组配额和速率限制约束，使用量仍计入账户总用量，但配额检查仅受渠道侧或模型自身限制。" />
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
@@ -185,7 +185,7 @@ function UserQuotaContent({ quota, modelQuotas }: { quota: QuotaData | null; mod
                         <Badge variant="outline" className="text-xs">绕过用户组</Badge>
                       </TableCell>
                       <TableCell>
-                        <span className="text-xs text-[var(--color-foreground-muted)]">不受账户配额与速率限制，使用量不计入账户总额</span>
+                        <span className="text-xs text-[var(--color-foreground-muted)]">不受用户组配额与速率限制，使用量计入账户总用量</span>
                       </TableCell>
                     </TableRow>
                   ))}
