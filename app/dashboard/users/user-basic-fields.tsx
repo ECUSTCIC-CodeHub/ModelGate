@@ -32,6 +32,15 @@ export function UserBasicFields({ form, editingId, groupOptions, onChange }: Use
             onChange={(e) => onChange({ username: e.target.value })}
           />
         </div>
+        <div className="space-y-2">
+          <Label>邮箱</Label>
+          <Input
+            type="email"
+            placeholder="用于 OIDC 账号关联"
+            value={form.email}
+            onChange={(e) => onChange({ email: e.target.value })}
+          />
+        </div>
         {editingId === null ? (
           <div className="space-y-2">
             <Label>密码</Label>

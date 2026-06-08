@@ -1,6 +1,7 @@
 export type UserRow = {
   id: number;
   username: string;
+  email: string | null;
   note: string | null;
   role: "admin" | "user";
   group_id: number | null;
@@ -102,6 +103,7 @@ export function formatPeriodLabel(v: number | null): string {
 
 export type UserForm = {
   username: string;
+  email: string;
   password: string;
   new_password: string;
   role: "admin" | "user";
@@ -122,6 +124,7 @@ export type UserForm = {
 
 export const initialForm: UserForm = {
   username: "",
+  email: "",
   password: "",
   new_password: "",
   role: "user",

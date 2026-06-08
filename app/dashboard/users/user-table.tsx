@@ -40,10 +40,11 @@ export function UserTable({
 
   return (
     <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-      <Table className={periodQuotaEnabled ? "min-w-[1720px] table-fixed" : "min-w-[1540px] table-fixed"}>
+      <Table className={periodQuotaEnabled ? "min-w-[1940px] table-fixed" : "min-w-[1760px] table-fixed"}>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[180px]">用户名</TableHead>
+            <TableHead className="w-[160px]">用户名</TableHead>
+            <TableHead className="w-[220px]">邮箱</TableHead>
             <TableHead className="w-[180px]">标签</TableHead>
             <TableHead className="w-[120px]">用户组</TableHead>
             <TableHead className="w-[220px]">备注</TableHead>
@@ -59,6 +60,11 @@ export function UserTable({
             <TableRow key={row.id}>
               <TableCell className="font-medium text-[var(--color-foreground)]">
                 <span className="block truncate" title={row.username}>{row.username}</span>
+              </TableCell>
+              <TableCell>
+                <span className="block truncate text-sm text-[var(--color-foreground-secondary)]" title={row.email ?? ""}>
+                  {row.email || "-"}
+                </span>
               </TableCell>
               <TableCell>
                 <div className="flex flex-wrap gap-1">

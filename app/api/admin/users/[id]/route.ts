@@ -12,6 +12,7 @@ import { USERNAME_SCHEMA } from "@/lib/auth/username";
 
 const updateSchema = z.object({
   username: USERNAME_SCHEMA.optional(),
+  email: z.string().email().nullable().optional(),
   role: z.enum(["admin", "user"]).optional(),
   group_id: z.number().int().positive().nullable().optional(),
   enabled: z.boolean().optional(),
@@ -49,7 +50,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
   const existing = gatewayDb
     .prepare(
-      `SELECT id, username, role, group_id, enabled, rpm, qps, tpm,
+      `SELECT id, username, email, role, group_id, enabled, rpm, qps, tpm,
               quota_tokens, quota_requests,
               quota_period, period_quota_tokens, period_quota_requests,
               allowed_model_aliases, note
@@ -59,6 +60,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     | {
         id: number;
         username: string;
+        email: string | null;
         role: "admin" | "user";
         group_id: number | null;
         enabled: number;
@@ -107,6 +109,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const merged = {
     ...existing,
     ...parsed.data,
+    email:
+      parsed.data.email === undefined
+        ? existing.email
+        : parsed.data.email?.trim() || null,
     group_id:
       parsed.data.group_id === undefined
         ? existing.group_id
@@ -163,7 +169,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     gatewayDb
       .prepare(
         `UPDATE users
-         SET username = ?, role = ?, group_id = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?,
+         SET username = ?, email = ?, role = ?, group_id = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?,
              quota_tokens = ?, quota_requests = ?,
              quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?,
              allowed_model_aliases = ?, note = ?, password_hash = ?
@@ -171,6 +177,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       )
       .run(
         merged.username,
+        merged.email,
         merged.role,
         merged.group_id,
         merged.enabled,
@@ -191,7 +198,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     gatewayDb
       .prepare(
         `UPDATE users
-         SET username = ?, role = ?, group_id = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?,
+         SET username = ?, email = ?, role = ?, group_id = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?,
              quota_tokens = ?, quota_requests = ?,
              quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?,
              allowed_model_aliases = ?, note = ?
@@ -199,6 +206,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       )
       .run(
         merged.username,
+        merged.email,
         merged.role,
         merged.group_id,
         merged.enabled,
@@ -232,7 +240,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
   const row = gatewayDb
     .prepare(
-      `SELECT u.id, u.username, u.role, u.group_id, g.name AS group_name,
+      `SELECT u.id, u.username, u.email, u.role, u.group_id, g.name AS group_name,
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
               u.quota_period, u.period_quota_tokens, u.period_quota_requests,
               u.period_used_tokens, u.period_used_requests, u.period_reset_at,

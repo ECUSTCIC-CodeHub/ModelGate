@@ -14,6 +14,7 @@ import { friendlyCredentialPayloadError } from "@/lib/auth/validation";
 const createSchema = z.object({
   username: USERNAME_SCHEMA,
   password: z.string().min(8),
+  email: z.string().email().nullable().optional(),
   role: z.enum(["admin", "user"]).optional(),
   group_id: z.number().int().positive().nullable().optional(),
   enabled: z.boolean().optional(),
@@ -85,7 +86,7 @@ export async function GET(request: Request) {
 
   const rows = gatewayDb
     .prepare(
-      `SELECT u.id, u.username, u.role, u.group_id, g.name AS group_name,
+      `SELECT u.id, u.username, u.email, u.role, u.group_id, g.name AS group_name,
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
               u.quota_period, u.period_quota_tokens, u.period_quota_requests,
               u.period_used_tokens, u.period_used_requests, u.period_reset_at,
@@ -183,15 +184,16 @@ export async function POST(request: Request) {
   const result = gatewayDb
     .prepare(
       `INSERT INTO users (
-         username, password_hash, role, group_id, enabled,
+         username, password_hash, email, role, group_id, enabled,
          rpm, qps, tpm, quota_tokens, quota_requests,
          quota_period, period_quota_tokens, period_quota_requests,
          allowed_model_aliases, note
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       parsed.data.username,
       passwordHash,
+      parsed.data.email?.trim() || null,
       parsed.data.role ?? "user",
       groupId,
       parsed.data.enabled === false ? 0 : 1,
@@ -209,7 +211,7 @@ export async function POST(request: Request) {
 
   const row = gatewayDb
     .prepare(
-      `SELECT u.id, u.username, u.role, u.group_id, g.name AS group_name,
+      `SELECT u.id, u.username, u.email, u.role, u.group_id, g.name AS group_name,
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
               u.quota_period, u.period_quota_tokens, u.period_quota_requests,
               u.period_used_tokens, u.period_used_requests, u.period_reset_at,

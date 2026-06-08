@@ -50,6 +50,7 @@ function buildUserForm(row: UserRow): UserForm {
   const preset = periodToPreset(row.quota_period);
   return {
     username: row.username,
+    email: row.email ?? "",
     password: "",
     new_password: "",
     note: row.note ?? "",
@@ -76,6 +77,7 @@ function buildUserPayload(form: UserForm, periodQuotaEnabled: boolean) {
 
   return {
     username: form.username,
+    email: form.email.trim() === "" ? null : form.email.trim(),
     role: form.role,
     group_id: form.group_id ? Number(form.group_id) : null,
     enabled: form.enabled,
