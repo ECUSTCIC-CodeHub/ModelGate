@@ -10,6 +10,7 @@ import { modelGateFeatures } from "@/lib/core/features";
 import {
   AnnouncementSettingsCard,
   CorsSettingsCard,
+  FilingSettingsCard,
   LoginSettingsCard,
   OidcSettingsCard,
   SaveSettingsCard,
@@ -46,6 +47,8 @@ export default function AdminSettingsPage() {
   const [announcementContent, setAnnouncementContent] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
   const [corsEnabled, setCorsEnabled] = useState(false);
+  const [icpFilingNumber, setIcpFilingNumber] = useState("");
+  const [publicSecurityFilingNumber, setPublicSecurityFilingNumber] = useState("");
   const { toast } = useToast();
   const oidcFeatureEnabled = modelGateFeatures.oidc;
   const announcementFeatureEnabled = modelGateFeatures.announcement;
@@ -73,6 +76,8 @@ export default function AdminSettingsPage() {
     if (announcementFeatureEnabled) setAnnouncementContent(stringValue(settings.announcement_content));
     if (webhookFeatureEnabled) setWebhookSecret(stringValue(settings.webhook_secret));
     setCorsEnabled(settings.cors_enabled === 1);
+    setIcpFilingNumber(stringValue(settings.icp_filing_number));
+    setPublicSecurityFilingNumber(stringValue(settings.public_security_filing_number));
   }, [announcementFeatureEnabled, oidcFeatureEnabled, webhookFeatureEnabled]);
 
   const load = useCallback(async () => {
@@ -119,6 +124,8 @@ export default function AdminSettingsPage() {
       ...(announcementFeatureEnabled ? { announcement_content: announcementContent } : {}),
       ...(webhookFeatureEnabled ? { webhook_secret: webhookSecret } : {}),
       cors_enabled: corsEnabled,
+      icp_filing_number: icpFilingNumber,
+      public_security_filing_number: publicSecurityFilingNumber,
     };
 
     const response = await authedFetch("/api/admin/settings", {
@@ -207,6 +214,13 @@ export default function AdminSettingsPage() {
             setAnnouncementContent={setAnnouncementContent}
           />
         ) : null}
+
+        <FilingSettingsCard
+          icpFilingNumber={icpFilingNumber}
+          publicSecurityFilingNumber={publicSecurityFilingNumber}
+          setIcpFilingNumber={setIcpFilingNumber}
+          setPublicSecurityFilingNumber={setPublicSecurityFilingNumber}
+        />
 
         <SaveSettingsCard onSave={() => void save()} />
       </div>

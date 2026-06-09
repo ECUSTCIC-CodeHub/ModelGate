@@ -18,6 +18,8 @@ const DEFAULT_SETTINGS: Array<[string, string]> = [
   ["oidc_auto_register", "1"],
   ["oidc_button_text", "OIDC 登录"],
   ["announcement_content", ""],
+  ["icp_filing_number", ""],
+  ["public_security_filing_number", ""],
 ];
 
 export function seedDefaultSettings(db: BetterSqlite3.Database) {

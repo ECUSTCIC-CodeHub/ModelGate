@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { ArrowRight, ExternalLink, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Footer } from "@/components/footer";
 
-const REPO_URL = "https://cnb.cool/Bring/Tools/ModelGate";
+export const dynamic = "force-dynamic";
+
+const REPO_URL = "https://cnb.cool/ecustcic/ModelGate";
 
 export const metadata = {
   title: "ModelGate | 多租户 LLM 网关",
@@ -63,6 +66,7 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+      <Footer />
     </main>
   );
 }

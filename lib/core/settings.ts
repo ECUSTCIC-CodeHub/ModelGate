@@ -27,6 +27,8 @@ export type GatewaySettings = {
   announcement_content: string;
   webhook_secret: string;
   cors_enabled: number;
+  icp_filing_number: string;
+  public_security_filing_number: string;
 };
 
 let cachedGatewaySettings: { value: GatewaySettings; expiresAt: number } | null = null;
@@ -59,6 +61,8 @@ const GATEWAY_KEYS = [
   "announcement_content",
   "webhook_secret",
   "cors_enabled",
+  "icp_filing_number",
+  "public_security_filing_number",
 ] as const;
 
 const settingsSelect = gatewayDb.prepare(
@@ -91,6 +95,8 @@ function readGatewaySettingsFromDb(): GatewaySettings {
     announcement_content: map.get("announcement_content") ?? "",
     webhook_secret: map.get("webhook_secret") ?? "",
     cors_enabled: map.get("cors_enabled") === "1" ? 1 : 0,
+    icp_filing_number: map.get("icp_filing_number") ?? "",
+    public_security_filing_number: map.get("public_security_filing_number") ?? "",
   };
 }
 
@@ -123,6 +129,8 @@ export function setGatewaySettings(input: {
   announcement_content?: string;
   webhook_secret?: string;
   cors_enabled?: boolean;
+  icp_filing_number?: string;
+  public_security_filing_number?: string;
 }) {
   const values: Record<string, string> = {
     registration_enabled: input.registration_enabled ? "1" : "0",
@@ -144,6 +152,8 @@ export function setGatewaySettings(input: {
   if (input.announcement_content !== undefined) values.announcement_content = input.announcement_content;
   if (input.webhook_secret !== undefined) values.webhook_secret = input.webhook_secret.trim();
   if (input.cors_enabled !== undefined) values.cors_enabled = input.cors_enabled ? "1" : "0";
+  if (input.icp_filing_number !== undefined) values.icp_filing_number = input.icp_filing_number.trim();
+  if (input.public_security_filing_number !== undefined) values.public_security_filing_number = input.public_security_filing_number.trim();
 
   const upsert = gatewayDb.prepare(
     `INSERT INTO settings (key, value, updated_at)
