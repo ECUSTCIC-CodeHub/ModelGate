@@ -1,11 +1,31 @@
-import { unstable_noStore } from "next/cache";
-import { getGatewaySettings } from "@/lib/core/settings";
+"use client";
+
+import { useEffect, useState } from "react";
+
+interface SiteInfo {
+  icp_filing_number: string;
+  public_security_filing_number: string;
+}
 
 export function Footer() {
-  unstable_noStore();
-  const settings = getGatewaySettings();
-  const icp = settings.icp_filing_number?.trim();
-  const ps = settings.public_security_filing_number?.trim();
+  const [info, setInfo] = useState<SiteInfo | null>(null);
+
+  useEffect(() => {
+    fetch("/api/site-info", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        const d = data?.data;
+        if (d && typeof d === "object") {
+          setInfo(d as SiteInfo);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  if (!info) return null;
+
+  const icp = info.icp_filing_number?.trim();
+  const ps = info.public_security_filing_number?.trim();
 
   if (!icp && !ps) return null;
 

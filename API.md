@@ -470,7 +470,9 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
     "public_base_url": "",
     "announcement_content": "",
     "webhook_secret": "",
-    "cors_enabled": 0
+    "cors_enabled": 0,
+    "icp_filing_number": "",
+    "public_security_filing_number": ""
   }
 }
 ```
@@ -523,8 +525,28 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | announcement_content | string | 系统公告内容（支持 Markdown，最长 5000 字符） |
 | webhook_secret | string | Webhook 回调密钥（最长 200 字符） |
 | cors_enabled | boolean | 是否允许所有来源跨域访问网关 API（开启后 `/api/v1/*` 和 `/api/ollama/*` 返回 `Access-Control-Allow-Origin: *` 并响应 OPTIONS 预检） |
+| icp_filing_number | string | ICP 备案号，留空则不展示（最长 200 字符） |
+| public_security_filing_number | string | 公安联网备案号，留空则不展示（最长 200 字符） |
 
 > 精简版固定保留账号密码登录；返回时会隐藏 OIDC 配置、公告内容和 Webhook 密钥，更新时忽略 `oidc_*`、`announcement_content` 与 `webhook_secret` 字段。
+
+---
+
+## 站点信息
+
+### GET /api/site-info
+
+获取首页展示所需的公开站点信息（备案号等），无需认证。
+
+**响应 (200):**
+```json
+{
+  "data": {
+    "icp_filing_number": "苏ICP备2023000758号-3",
+    "public_security_filing_number": "沪公网安备31012102000146号"
+  }
+}
+```
 
 ---
 
