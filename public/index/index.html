@@ -227,6 +227,38 @@
         height: 1rem;
       }
 
+      .site-footer {
+        border-top: 1px solid var(--color-border);
+        padding: 1.25rem 1rem;
+        text-align: center;
+        font-size: 0.75rem;
+        color: var(--color-foreground-muted);
+      }
+
+      .site-footer-inner {
+        margin: 0 auto;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem 1.5rem;
+        padding: 0 1rem;
+      }
+
+      .site-footer a {
+        transition: color 150ms ease;
+      }
+
+      .site-footer a:hover {
+        color: var(--color-accent);
+      }
+
+      .site-footer .ghs-img {
+        float: left;
+        margin-right: 0.25rem;
+        height: 20px;
+      }
+
       @media (min-width: 640px) {
         .cards {
           grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -289,6 +321,47 @@
           </div>
         </div>
       </section>
+      <footer class="site-footer">
+        <div class="site-footer-inner" id="site-footer-inner">
+          <span style="color:var(--color-foreground-muted);">加载中…</span>
+        </div>
+      </footer>
     </main>
+    <script>
+      (function () {
+        var footer = document.getElementById("site-footer-inner");
+        if (!footer) return;
+        fetch("/api/site-info", { cache: "no-store" })
+          .then(function (r) { return r.json(); })
+          .then(function (payload) {
+            var d = payload && payload.data ? payload.data : {};
+            var icp = (d.icp_filing_number || "").trim();
+            var ps = (d.public_security_filing_number || "").trim();
+            if (!icp && !ps) {
+              footer.innerHTML = "";
+              footer.parentElement.style.display = "none";
+              return;
+            }
+            var html = "";
+            if (icp) {
+              html += '<a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">' + icp + '</a>';
+            }
+            if (ps) {
+              var code = ps.replace(/\D/g, "");
+              if (code) {
+                html += '<a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=' + code + '" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;height:20px;line-height:20px;">'
+                  + '<img class="ghs-img" src="https://beian.mps.gov.cn/img/ghs.png" alt="" />' + ps + '</a>';
+              } else {
+                html += ps;
+              }
+            }
+            footer.innerHTML = html;
+          })
+          .catch(function () {
+            footer.innerHTML = "";
+            footer.parentElement.style.display = "none";
+          });
+      })();
+    </script>
   </body>
 </html>
