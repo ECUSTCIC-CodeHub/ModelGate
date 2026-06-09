@@ -1,6 +1,8 @@
+import { unstable_noStore } from "next/cache";
 import { getGatewaySettings } from "@/lib/core/settings";
 
 export function Footer() {
+  unstable_noStore();
   const settings = getGatewaySettings();
   const icp = settings.icp_filing_number?.trim();
   const ps = settings.public_security_filing_number?.trim();
