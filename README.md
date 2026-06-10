@@ -54,8 +54,8 @@ docker compose up -d
 
 | 镜像 | 说明 |
 |------|------|
-| `docker.cnb.cool/bring/tools/modelgate:latest` | 完整版 |
-| `docker.cnb.cool/bring/tools/modelgate:lite` | 精简版 |
+| `docker.cnb.cool/ecustcic/modelgate:latest` | 完整版 |
+| `docker.cnb.cool/ecustcic/modelgate:lite` | 精简版 |
 
 按需修改 `docker-compose.yml` 中的 `image` 字段即可切换版本。
 

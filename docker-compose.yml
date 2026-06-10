@@ -1,6 +1,6 @@
 services:
   modelgate:
-    image: docker.cnb.cool/bring/tools/modelgate:latest
+    image: docker.cnb.cool/ecustcic/modelgate:latest
     container_name: modelgate
     restart: unless-stopped
     ports:
