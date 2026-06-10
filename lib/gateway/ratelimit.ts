@@ -25,8 +25,8 @@ function takeToken(bucketKey: string, capacity: number, refillPerWindow: number,
   return true;
 }
 
-export function checkUserRateLimit(user: DbUser, estimatedTokens: number) {
-  const limits = getEffectiveLimits(user);
+export async function checkUserRateLimit(user: DbUser, estimatedTokens: number) {
+  const limits = await getEffectiveLimits(user);
   const userPrefix = `user:${user.id}`;
 
   if (limits.rpm >= 0) {

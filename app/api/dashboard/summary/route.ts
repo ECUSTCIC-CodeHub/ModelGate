@@ -49,15 +49,23 @@ function estimateConcurrency(rows: Array<{ end_ms: number; latency_ms: number }>
 }
 
 export async function GET(request: Request) {
-  const guard = ensureWebUser(request);
+  const guard = await ensureWebUser(request);
   if ("error" in guard) return guard.error;
 
   const isAdmin = guard.auth.user.role === "admin";
   const whereSql = isAdmin ? "" : "WHERE user_id = ?";
   const whereArgs = isAdmin ? [] : [guard.auth.user.id];
 
-  const summary = gatewayDb
-    .prepare(
+  const summary = await gatewayDb
+    .queryOne<{
+    total_requests: number;
+    total_tokens: number;
+    failed_requests: number;
+    rate_limited_requests: number;
+    avg_latency_ms: number;
+    avg_output_tps: number;
+    retry_requests: number;
+  }>(
       `SELECT
          COUNT(*) AS total_requests,
          COALESCE(SUM(total_tokens), 0) AS total_tokens,
@@ -68,8 +76,8 @@ export async function GET(request: Request) {
          COALESCE(SUM(CASE WHEN route_attempts > 1 THEN 1 ELSE 0 END), 0) AS retry_requests
        FROM logs
        ${whereSql}`,
-    )
-    .get(...whereArgs) as {
+      whereArgs,
+    ) as {
     total_requests: number;
     total_tokens: number;
     failed_requests: number;
@@ -80,22 +88,19 @@ export async function GET(request: Request) {
   };
 
   const activeUsers = isAdmin
-    ? ((gatewayDb
-        .prepare(
+    ? (((await gatewayDb
+        .queryOne<{ active_users: number }>(
           `SELECT COUNT(DISTINCT user_id) AS active_users
            FROM logs`,
-        )
-        .get() as { active_users: number }).active_users ?? 0)
+        ))!)?.active_users ?? 0)
     : 1;
 
-  const keyQuery = isAdmin
-    ? gatewayDb.prepare("SELECT COUNT(*) AS total_keys FROM keys WHERE deleted_at IS NULL")
-    : gatewayDb.prepare("SELECT COUNT(*) AS total_keys FROM keys WHERE user_id = ? AND deleted_at IS NULL");
+  const keyData = (await (isAdmin
+    ? gatewayDb.queryOne<{ total_keys: number }>("SELECT COUNT(*) AS total_keys FROM `keys` WHERE deleted_at IS NULL")
+    : gatewayDb.queryOne<{ total_keys: number }>("SELECT COUNT(*) AS total_keys FROM `keys` WHERE user_id = ? AND deleted_at IS NULL", [guard.auth.user.id])))!;
 
-  const keyData = (isAdmin ? keyQuery.get() : keyQuery.get(guard.auth.user.id)) as { total_keys: number };
-
-  const hourlyRows = gatewayDb
-    .prepare(
+  const hourlyRows = await gatewayDb
+    .query<{ hour_bucket: string; tokens: number }>(
       `SELECT
          strftime('%Y-%m-%dT%H:00:00', created_at) AS hour_bucket,
          COALESCE(SUM(total_tokens), 0) AS tokens
@@ -103,8 +108,8 @@ export async function GET(request: Request) {
        ${whereSql ? `${whereSql} AND` : "WHERE"} created_at >= datetime('now', '-23 hours')
        GROUP BY hour_bucket
        ORDER BY hour_bucket ASC`,
-    )
-    .all(...whereArgs) as Array<{ hour_bucket: string; tokens: number }>;
+      whereArgs,
+    );
 
   const hourlyMap = new Map(hourlyRows.map((row) => [row.hour_bucket, row.tokens]));
   const hourlyTokens = Array.from({ length: 24 }, (_, index) => {
@@ -120,8 +125,8 @@ export async function GET(request: Request) {
     };
   });
 
-  const topModels = gatewayDb
-    .prepare(
+  const topModels = await gatewayDb
+    .query(
       `SELECT
          COALESCE(model_alias, real_model, '-') AS model_name,
          COUNT(*) AS request_count,
@@ -131,15 +136,15 @@ export async function GET(request: Request) {
        GROUP BY model_name
        ORDER BY total_tokens DESC, request_count DESC
        LIMIT 5`,
-    )
-    .all(...whereArgs);
+      whereArgs,
+    );
 
   const topChannelWhereSql = isAdmin
     ? "WHERE l.status_code < 400 AND l.channel_id IS NOT NULL"
     : "WHERE l.user_id = ? AND l.status_code < 400 AND l.channel_id IS NOT NULL";
 
-  const topChannels = gatewayDb
-    .prepare(
+  const topChannels = await gatewayDb
+    .query(
       `SELECT
          COALESCE(c.name, '-') AS channel_name,
          COUNT(*) AS request_count,
@@ -150,11 +155,11 @@ export async function GET(request: Request) {
        GROUP BY channel_name
        ORDER BY total_tokens DESC, request_count DESC
        LIMIT 5`,
-    )
-    .all(...whereArgs);
+      whereArgs,
+    );
 
-  const concurrencyRows = gatewayDb
-    .prepare(
+  const concurrencyRows = await gatewayDb
+    .query<{ end_ms: number; latency_ms: number }>(
       `SELECT
          CAST(unixepoch(created_at) * 1000 AS INTEGER) AS end_ms,
          latency_ms
@@ -163,28 +168,27 @@ export async function GET(request: Request) {
          AND latency_ms IS NOT NULL
          AND latency_ms > 0
          AND created_at >= datetime('now', '-24 hours')`,
-    )
-    .all(...whereArgs) as Array<{ end_ms: number; latency_ms: number }>;
+      whereArgs,
+    );
 
   const concurrency = estimateConcurrency(concurrencyRows);
   const successRateBase = Math.max(0, (summary.total_requests ?? 0) - (summary.rate_limited_requests ?? 0));
   const successCount = Math.max(0, successRateBase - ((summary.failed_requests ?? 0) - (summary.rate_limited_requests ?? 0)));
 
   const recentFailed = isAdmin
-    ? ((gatewayDb
-        .prepare(
+    ? (((await gatewayDb
+        .queryOne<{ recent_failed_requests: number }>(
           `SELECT COALESCE(SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END), 0) AS recent_failed_requests
            FROM logs
            WHERE created_at >= datetime('now', '-30 days')`,
-        )
-        .get() as { recent_failed_requests: number }).recent_failed_requests ?? 0)
-    : ((gatewayDb
-        .prepare(
+        ))!)?.recent_failed_requests ?? 0)
+    : (((await gatewayDb
+        .queryOne<{ recent_failed_requests: number }>(
           `SELECT COALESCE(SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END), 0) AS recent_failed_requests
            FROM logs
            WHERE user_id = ? AND created_at >= datetime('now', '-30 days')`,
-        )
-        .get(guard.auth.user.id) as { recent_failed_requests: number }).recent_failed_requests ?? 0);
+          [guard.auth.user.id],
+        ))!)?.recent_failed_requests ?? 0);
 
   return jsonOk({
     data: {

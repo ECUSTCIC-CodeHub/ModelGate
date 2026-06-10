@@ -34,16 +34,14 @@ function serializeMetadata(value: unknown) {
   }
 }
 
-export function createLog(input: CreateLogInput) {
-  gatewayDb
-    .prepare(
-      `INSERT INTO logs (
+export async function createLog(input: CreateLogInput) {
+  await gatewayDb.execute(
+    `INSERT INTO logs (
          user_id, key_id, channel_id, model_alias, real_model,
          stream, status_code, estimated_tokens, prompt_tokens, completion_tokens, total_tokens,
          token_source, metadata, latency_ms, first_token_latency_ms, output_tps, route_attempts, attempted_channels, error_message, client_ip, user_agent
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
+    [
       input.user_id,
       input.key_id,
       input.channel_id,
@@ -65,5 +63,6 @@ export function createLog(input: CreateLogInput) {
       input.error_message ?? null,
       input.client_ip ?? null,
       input.user_agent ?? null,
-    );
+    ],
+  );
 }

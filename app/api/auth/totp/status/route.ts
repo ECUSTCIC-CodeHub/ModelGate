@@ -5,13 +5,12 @@ import { jsonOk } from "@/lib/core/http";
 import { gatewayDb } from "@/lib/core/db";
 
 export async function GET(request: Request) {
-  const guard = ensureWebUser(request);
+  const guard = await ensureWebUser(request);
   if ("error" in guard) return guard.error;
 
   const user = guard.auth.user;
-  const row = gatewayDb
-    .prepare("SELECT totp_enabled FROM users WHERE id = ? AND deleted_at IS NULL")
-    .get(user.id) as { totp_enabled: number } | undefined;
+  const row = await gatewayDb
+    .queryOne<{ totp_enabled: number }>("SELECT totp_enabled FROM users WHERE id = ? AND deleted_at IS NULL", [user.id]);
 
   return jsonOk({
     totp_enabled: row?.totp_enabled === 1,

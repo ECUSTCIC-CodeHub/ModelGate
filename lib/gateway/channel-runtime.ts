@@ -1,7 +1,19 @@
 import { getGatewaySettings } from "@/lib/core/settings";
 
+let circuitBreakerCache: { enabled: boolean; ts: number } | null = null;
+const CACHE_TTL_MS = 5_000;
+
+function refreshCircuitBreakerSetting() {
+  getGatewaySettings().then((s) => {
+    circuitBreakerCache = { enabled: s.upstream_circuit_breaker_enabled === 1, ts: Date.now() };
+  }).catch(() => {});
+}
+
 function isCircuitBreakerEnabled(): boolean {
-  return getGatewaySettings().upstream_circuit_breaker_enabled === 1;
+  if (!circuitBreakerCache || Date.now() - circuitBreakerCache.ts > CACHE_TTL_MS) {
+    refreshCircuitBreakerSetting();
+  }
+  return circuitBreakerCache?.enabled ?? false;
 }
 
 type ModelRuntimeState = {

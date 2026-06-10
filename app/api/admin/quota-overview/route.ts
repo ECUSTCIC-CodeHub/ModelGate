@@ -16,25 +16,13 @@ function formatPeriodLabel(seconds: number): string {
 }
 
 export async function GET(request: Request) {
-  const guard = ensureAdmin(request);
+  const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
-  const totalUsers = (gatewayDb.prepare("SELECT COUNT(*) AS count FROM users WHERE deleted_at IS NULL AND enabled = 1").get() as { count: number }).count;
-  const totalKeys = (gatewayDb.prepare("SELECT COUNT(*) AS count FROM keys WHERE deleted_at IS NULL").get() as { count: number }).count;
+  const totalUsers = ((await gatewayDb.queryOne<{ count: number }>("SELECT COUNT(*) AS count FROM users WHERE deleted_at IS NULL AND enabled = 1"))!).count;
+  const totalKeys = ((await gatewayDb.queryOne<{ count: number }>("SELECT COUNT(*) AS count FROM `keys` WHERE deleted_at IS NULL"))!).count;
 
-  const groupRows = gatewayDb.prepare(
-    `SELECT g.id, g.name, g.qps, g.rpm, g.tpm,
-            g.quota_tokens, g.quota_requests, g.quota_period,
-            g.period_quota_tokens, g.period_quota_requests,
-            COALESCE(u_stats.user_count, 0) AS user_count
-     FROM groups g
-     LEFT JOIN (
-       SELECT group_id, COUNT(*) AS user_count
-       FROM users WHERE deleted_at IS NULL AND enabled = 1
-       GROUP BY group_id
-     ) u_stats ON u_stats.group_id = g.id
-     WHERE g.deleted_at IS NULL AND g.enabled = 1`,
-  ).all() as Array<{
+  const groupRows = await gatewayDb.query<{
     id: number;
     name: string;
     qps: number;
@@ -46,21 +34,21 @@ export async function GET(request: Request) {
     period_quota_tokens: number | null;
     period_quota_requests: number | null;
     user_count: number;
-  }>;
-
-  const channelRows = gatewayDb.prepare(
-    `SELECT c.id, c.name, c.quota_tokens, c.quota_requests, c.quota_period,
-            c.period_quota_tokens, c.period_quota_requests,
-            c.period_used_tokens, c.period_used_requests, c.period_reset_at,
-            COALESCE(m_stats.model_count, 0) AS model_count
-     FROM channels c
+  }>(
+    `SELECT g.id, g.name, g.qps, g.rpm, g.tpm,
+            g.quota_tokens, g.quota_requests, g.quota_period,
+            g.period_quota_tokens, g.period_quota_requests,
+            COALESCE(u_stats.user_count, 0) AS user_count
+     FROM \`groups\` g
      LEFT JOIN (
-       SELECT channel_id, COUNT(*) AS model_count
-       FROM models WHERE deleted_at IS NULL AND enabled = 1
-       GROUP BY channel_id
-     ) m_stats ON m_stats.channel_id = c.id
-     WHERE c.deleted_at IS NULL AND c.enabled = 1`,
-  ).all() as Array<{
+       SELECT group_id, COUNT(*) AS user_count
+       FROM users WHERE deleted_at IS NULL AND enabled = 1
+       GROUP BY group_id
+     ) u_stats ON u_stats.group_id = g.id
+     WHERE g.deleted_at IS NULL AND g.enabled = 1`,
+  );
+
+  const channelRows = await gatewayDb.query<{
     id: number;
     name: string;
     quota_tokens: number | null;
@@ -72,7 +60,19 @@ export async function GET(request: Request) {
     period_used_requests: number;
     period_reset_at: string | null;
     model_count: number;
-  }>;
+  }>(
+    `SELECT c.id, c.name, c.quota_tokens, c.quota_requests, c.quota_period,
+            c.period_quota_tokens, c.period_quota_requests,
+            c.period_used_tokens, c.period_used_requests, c.period_reset_at,
+            COALESCE(m_stats.model_count, 0) AS model_count
+     FROM channels c
+     LEFT JOIN (
+       SELECT channel_id, COUNT(*) AS model_count
+       FROM models WHERE deleted_at IS NULL AND enabled = 1
+       GROUP BY channel_id
+     ) m_stats ON m_stats.channel_id = c.id
+     WHERE c.deleted_at IS NULL AND c.enabled = 1`,
+  );
 
   const now = new Date();
 
@@ -121,18 +121,7 @@ export async function GET(request: Request) {
     period_quota_requests: modelGateFeatures.periodQuota ? g.period_quota_requests : null,
   }));
 
-  const modelRows = gatewayDb.prepare(
-    `SELECT m.id, m.alias, m.real_model, m.quota_mode,
-            m.quota_tokens, m.quota_requests, m.quota_period,
-            m.period_quota_tokens, m.period_quota_requests,
-            m.period_used_tokens, m.period_used_requests, m.period_reset_at,
-            c.name AS channel_name
-     FROM models m
-     JOIN channels c ON c.id = m.channel_id
-     WHERE (m.quota_mode = 'independent' OR m.quota_mode = 'bypass_group')
-       AND m.enabled = 1 AND c.enabled = 1
-       AND m.deleted_at IS NULL AND c.deleted_at IS NULL`,
-  ).all() as Array<{
+  const modelRows = await gatewayDb.query<{
     id: number;
     alias: string;
     real_model: string;
@@ -146,7 +135,18 @@ export async function GET(request: Request) {
     period_used_requests: number;
     period_reset_at: string | null;
     channel_name: string;
-  }>;
+  }>(
+    `SELECT m.id, m.alias, m.real_model, m.quota_mode,
+            m.quota_tokens, m.quota_requests, m.quota_period,
+            m.period_quota_tokens, m.period_quota_requests,
+            m.period_used_tokens, m.period_used_requests, m.period_reset_at,
+            c.name AS channel_name
+     FROM models m
+     JOIN channels c ON c.id = m.channel_id
+     WHERE (m.quota_mode = 'independent' OR m.quota_mode = 'bypass_group')
+       AND m.enabled = 1 AND c.enabled = 1
+       AND m.deleted_at IS NULL AND c.deleted_at IS NULL`,
+  );
 
   const models = modelRows.map((m) => {
     let periodUsedTokens = m.period_used_tokens;

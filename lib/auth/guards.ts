@@ -2,11 +2,11 @@ import { type AuthContext, requireRole, requireWebAuth, sanitizeUser } from "@/l
 import { checkApiKeyAuth } from "@/lib/auth/api-key-auth";
 import { jsonError } from "@/lib/core/http";
 
-function resolveAuth(request: Request): AuthContext | null {
-  const webAuth = requireWebAuth(request);
+async function resolveAuth(request: Request): Promise<AuthContext | null> {
+  const webAuth = await requireWebAuth(request);
   if (webAuth) return webAuth;
 
-  const apiKeyResult = checkApiKeyAuth(request);
+  const apiKeyResult = await checkApiKeyAuth(request);
   if (apiKeyResult.ok) {
     return {
       user: sanitizeUser(apiKeyResult.context.user),
@@ -17,8 +17,8 @@ function resolveAuth(request: Request): AuthContext | null {
   return null;
 }
 
-export function ensureAdmin(request: Request) {
-  const auth = resolveAuth(request);
+export async function ensureAdmin(request: Request) {
+  const auth = await resolveAuth(request);
   if (!auth) {
     return { error: jsonError("未登录或登录已过期", 401) };
   }
@@ -28,16 +28,16 @@ export function ensureAdmin(request: Request) {
   return { auth };
 }
 
-export function ensureWebUser(request: Request) {
-  const auth = resolveAuth(request);
+export async function ensureWebUser(request: Request) {
+  const auth = await resolveAuth(request);
   if (!auth) {
     return { error: jsonError("未登录或登录已过期", 401) };
   }
   return { auth };
 }
 
-export function ensureUser(request: Request) {
-  const auth = resolveAuth(request);
+export async function ensureUser(request: Request) {
+  const auth = await resolveAuth(request);
   if (!auth) {
     return { error: jsonError("未登录或登录已过期", 401) };
   }

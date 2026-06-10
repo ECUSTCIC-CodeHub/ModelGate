@@ -2,6 +2,6 @@ import { createLog, type CreateLogInput } from "@/lib/data/repositories/log-repo
 
 export type ChatLogInput = CreateLogInput;
 
-export function insertChatLog(input: ChatLogInput) {
-  createLog(input);
+export async function insertChatLog(input: ChatLogInput) {
+  await createLog(input);
 }

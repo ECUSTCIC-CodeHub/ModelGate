@@ -92,7 +92,7 @@ export async function requestUpstreamWithFallback({
   let lastFailure: UpstreamFailureInfo | null = null;
 
   while (attempt < maxRouteAttempts) {
-    const route = selectModelRoute(resolvedAlias, {
+    const route = await selectModelRoute(resolvedAlias, {
       excludeChannelIds: [...attemptedChannels],
       protocol: inboundProtocol,
       allowedChannelIds,
@@ -115,7 +115,7 @@ export async function requestUpstreamWithFallback({
       }
       if (!leaseResult.ok) break;
       const lease = leaseResult.lease;
-      const channelQuota = checkChannelQuota(lastRoute.channel.id, estimatedTokens);
+      const channelQuota = await checkChannelQuota(lastRoute.channel.id, estimatedTokens);
       if (!channelQuota.ok) {
         lease.abandon();
         break;
@@ -187,7 +187,7 @@ export async function requestUpstreamWithFallback({
 
     const lease = leaseResult.lease;
 
-    const channelQuota = checkChannelQuota(route.channel.id, estimatedTokens);
+    const channelQuota = await checkChannelQuota(route.channel.id, estimatedTokens);
     if (!channelQuota.ok) {
       lease.abandon();
       continue;

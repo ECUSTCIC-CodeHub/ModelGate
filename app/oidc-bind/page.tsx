@@ -14,20 +14,21 @@ export default async function OidcBindPage() {
   if (!modelGateFeatures.oidc) notFound();
   if (AUTH_DISABLED) redirect("/dashboard");
 
-  const status = getAuthStatus();
+  const status = await getAuthStatus();
   if (!status.oidc_enabled) redirect("/login");
 
   const cookieStore = await cookies();
   const pending = cookieStore.get(OIDC_PENDING_COOKIE_NAME);
   if (!pending) redirect("/login");
 
-  const config = getOidcConfig();
-  const allowCreate = config.autoRegister || (() => {
-    const adminCount = gatewayDb
-      .prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL")
-      .get() as { count: number };
-    return adminCount.count === 0;
-  })();
+  const config = await getOidcConfig();
+  let allowCreate = config.autoRegister;
+  if (!allowCreate) {
+    const adminCount = (await gatewayDb.queryOne<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL",
+    ))!;
+    allowCreate = adminCount.count === 0;
+  }
 
   return <BindForm allowCreate={allowCreate} />;
 }

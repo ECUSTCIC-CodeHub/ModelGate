@@ -17,7 +17,7 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }>) {
   const cookieStore = await cookies();
-  const profile = getServerProfileFromCookieStore(cookieStore);
+  const profile = await getServerProfileFromCookieStore(cookieStore);
 
   if (!profile) {
     // 未登录直接跳登录页；不要走 /api/auth/logout，
@@ -25,7 +25,7 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  const effective = getEffectiveLimits(profile as DbUser);
+  const effective = await getEffectiveLimits(profile as DbUser);
   const enrichedProfile = {
     ...profile,
     rpm: effective.rpm,
@@ -38,7 +38,7 @@ export default async function DashboardLayout({
     period_quota_requests: effective.period_quota_requests,
   };
 
-  const authStatus = getAuthStatus();
+  const authStatus = await getAuthStatus();
 
   return (
     <ThemeProvider>

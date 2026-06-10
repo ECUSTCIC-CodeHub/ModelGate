@@ -25,9 +25,8 @@ export async function POST(request: Request) {
     return jsonError("验证尝试过于频繁，请稍后再试", 429);
   }
 
-  const user = gatewayDb
-    .prepare("SELECT * FROM users WHERE id = ? AND enabled = 1 AND deleted_at IS NULL")
-    .get(Number(payload.sub)) as DbUser | undefined;
+  const user = await gatewayDb
+    .queryOne<DbUser>("SELECT * FROM users WHERE id = ? AND enabled = 1 AND deleted_at IS NULL", [Number(payload.sub)]);
 
   if (!user) return jsonError("用户不存在或已禁用", 401);
   if (user.totp_enabled !== 1 || !user.totp_secret) {

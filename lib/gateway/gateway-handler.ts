@@ -28,7 +28,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   const startedAt = Date.now();
   const clientIp = resolveClientIp(request.headers);
   const clientUserAgent = normalizeUserAgent(request.headers.get("user-agent"));
-  const authResult = checkApiKeyAuth(request);
+  const authResult = await checkApiKeyAuth(request);
   if (!authResult.ok) {
     return jsonError(authResult.reason === "missing" ? "认证失败，未提供 API Key。" : "认证失败，API Key 无效或已禁用。", 401, {
       type: "auth_error",
@@ -37,7 +37,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     });
   }
   const auth = authResult.context;
-  const allowedChannelIds = getUserAllowedChannelIds(auth.user);
+  const allowedChannelIds = await getUserAllowedChannelIds(auth.user);
 
   const logRejected = (statusCode: number, message: string, alias: string | null, estimatedTokens?: number) => {
     insertChatLog({
@@ -81,7 +81,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   }
 
   const estimatedTokens = inboundAdapter.estimateRequestTokens(body);
-  const resolved = resolveAccessibleModelAlias(auth.user, alias);
+  const resolved = await resolveAccessibleModelAlias(auth.user, alias);
   if (!resolved.ok) {
     if (resolved.reason === "forbidden") {
       logRejected(403, "当前用户无权访问该模型", alias, estimatedTokens);
@@ -92,11 +92,14 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   }
   const resolvedAlias = resolved.alias;
 
-  const existingRoute = selectModelRoute(resolvedAlias, { protocol: inboundProtocol, allowedChannelIds });
+  const existingRoute = await selectModelRoute(resolvedAlias, { protocol: inboundProtocol, allowedChannelIds });
   if (!existingRoute) {
-    if (allowedChannelIds && selectModelRoute(resolvedAlias, { protocol: inboundProtocol }) !== null) {
-      logRejected(403, "当前用户组无可用渠道", alias, estimatedTokens);
-      return jsonError("当前用户组无可用渠道", 403);
+    if (allowedChannelIds) {
+      const withoutRestriction = await selectModelRoute(resolvedAlias, { protocol: inboundProtocol });
+      if (withoutRestriction !== null) {
+        logRejected(403, "当前用户组无可用渠道", alias, estimatedTokens);
+        return jsonError("当前用户组无可用渠道", 403);
+      }
     }
     logRejected(404, "模型别名不存在或已禁用", alias);
     return jsonError("模型别名不存在或已禁用", 404);
@@ -110,7 +113,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   let modelQuotaHeaders: Record<string, string> | null = null;
 
   if (!bypassUserLimits) {
-    const quotaResult = checkQuota(auth.user.id, estimatedTokens);
+    const quotaResult = await checkQuota(auth.user.id, estimatedTokens);
     if (!quotaResult.ok) {
       logRejected(429, quotaResult.reason, alias, estimatedTokens);
       const headers: Record<string, string> = {};
@@ -121,7 +124,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     }
     appendQuotaHeaders(quotaHeaders, quotaResult.quota);
 
-    const rate = checkUserRateLimit(auth.user, estimatedTokens);
+    const rate = await checkUserRateLimit(auth.user, estimatedTokens);
     if (!rate.ok) {
       logRejected(429, rate.reason, alias, estimatedTokens);
       return jsonError(rate.reason, 429);
@@ -129,7 +132,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   }
 
   if (quotaMode === "independent") {
-    const modelQuotaResult = checkModelQuota(existingRoute.model.id, estimatedTokens);
+    const modelQuotaResult = await checkModelQuota(existingRoute.model.id, estimatedTokens);
     if (!modelQuotaResult.ok) {
       logRejected(429, modelQuotaResult.reason, alias, estimatedTokens);
       return jsonError(modelQuotaResult.reason, 429);
@@ -155,7 +158,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     return resp;
   };
 
-  const settings = getGatewaySettings();
+  const settings = await getGatewaySettings();
   const retryEnabled = settings.upstream_retry_enabled === 1;
   const maxRouteAttempts = retryEnabled ? Math.max(1, settings.upstream_retry_max_attempts) : 1;
   const stream = inboundAdapter.getStreamFlag(body);
@@ -212,7 +215,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   };
   if (!picked.ok) {
     if (picked.route) {
-      const cq = checkChannelQuota(picked.route.channel.id, estimatedTokens);
+      const cq = await checkChannelQuota(picked.route.channel.id, estimatedTokens);
       if (cq.ok) {
         channelQuotaHeaders = {};
         appendChannelQuotaHeaders(channelQuotaHeaders, cq.quota);
@@ -253,7 +256,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
 
   if ("queued" in picked && picked.queued) {
     const { route } = picked;
-    const cq = checkChannelQuota(route.channel.id, estimatedTokens);
+    const cq = await checkChannelQuota(route.channel.id, estimatedTokens);
     if (cq.ok) {
       channelQuotaHeaders = {};
       appendChannelQuotaHeaders(channelQuotaHeaders, cq.quota);
@@ -292,7 +295,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   }
 
   const { route, upstream, lease, attemptedChannels, attemptedChannelNames } = picked;
-  const cq = checkChannelQuota(route.channel.id, estimatedTokens);
+  const cq = await checkChannelQuota(route.channel.id, estimatedTokens);
   if (cq.ok) {
     channelQuotaHeaders = {};
     appendChannelQuotaHeaders(channelQuotaHeaders, cq.quota);

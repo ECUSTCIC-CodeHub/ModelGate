@@ -7,14 +7,12 @@ import { testUpstreamModel } from "@/lib/gateway/proxy";
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
-  const guard = ensureAdmin(request);
+  const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
   const { id } = await context.params;
-  const channel = gatewayDb
-    .prepare("SELECT id, name, base_url, api_key, user_agent, proxy_url, timeout FROM channels WHERE id = ?")
-    .get(id) as
-    | {
+  const channel = await gatewayDb
+    .queryOne<{
         id: number;
         name: string;
         base_url: string;
@@ -22,27 +20,27 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         user_agent: string;
         proxy_url: string;
         timeout: number;
-      }
-    | undefined;
+      }>(
+        "SELECT id, name, base_url, api_key, user_agent, proxy_url, timeout FROM channels WHERE id = ?",
+        [id],
+      );
 
   if (!channel) return jsonError("渠道不存在", 404);
 
-  const model = gatewayDb
-    .prepare(
-      `SELECT id, alias, real_model, upstream_protocol
-       FROM models
-       WHERE channel_id = ? AND enabled = 1 AND deleted_at IS NULL
-       ORDER BY id ASC
-       LIMIT 1`,
-    )
-    .get(id) as
-    | {
+  const model = await gatewayDb
+    .queryOne<{
         id: number;
         alias: string;
         real_model: string;
         upstream_protocol: GatewayProtocol;
-      }
-    | undefined;
+      }>(
+        `SELECT id, alias, real_model, upstream_protocol
+       FROM models
+       WHERE channel_id = ? AND enabled = 1 AND deleted_at IS NULL
+       ORDER BY id ASC
+       LIMIT 1`,
+        [id],
+      );
 
   if (!model) return jsonError("该渠道下没有可测试的启用模型", 400);
 

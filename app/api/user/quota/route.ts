@@ -16,19 +16,18 @@ function formatPeriodLabel(seconds: number): string {
 }
 
 export async function GET(request: Request) {
-  const guard = ensureUser(request);
+  const guard = await ensureUser(request);
   if ("error" in guard) return guard.error;
 
   const userId = guard.auth.user.id;
-  const user = gatewayDb
-    .prepare(`SELECT * FROM users WHERE id = ? AND deleted_at IS NULL`)
-    .get(userId) as DbUser | undefined;
+  const user = await gatewayDb
+    .queryOne<DbUser>(`SELECT * FROM users WHERE id = ? AND deleted_at IS NULL`, [userId]);
 
   if (!user) {
     return jsonOk({ error: "用户不存在" }, 404);
   }
 
-  const limits = getEffectiveLimits(user);
+  const limits = await getEffectiveLimits(user);
 
   const now = new Date();
   let periodUsedTokens = user.period_used_tokens;

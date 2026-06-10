@@ -3,8 +3,8 @@ export const dynamic = "force-dynamic";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { jsonOk } from "@/lib/core/http";
 
-export function GET() {
-  const settings = getGatewaySettings();
+export async function GET() {
+  const settings = await getGatewaySettings();
   return jsonOk({
     data: {
       icp_filing_number: settings.icp_filing_number ?? "",

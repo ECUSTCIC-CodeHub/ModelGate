@@ -1,5 +1,5 @@
-import type BetterSqlite3 from "better-sqlite3";
-import { initializeGatewayDb } from "@/lib/core/db/init";
+import type { DatabaseAdapter } from "@/lib/core/db/adapter";
+import { initializeGatewayDbAsync } from "@/lib/core/db/init";
 
 export type {
   DbChannel,
@@ -10,18 +10,37 @@ export type {
   DbUser,
 } from "@/lib/core/db/types";
 
-let gatewayDbInstance: BetterSqlite3.Database | null = null;
+export type { DatabaseAdapter, TransactionContext, ExecuteResult } from "@/lib/core/db/adapter";
 
-const getGatewayDb = () => {
-  if (!gatewayDbInstance) {
-    gatewayDbInstance = initializeGatewayDb();
+let gatewayDbInstance: DatabaseAdapter | null = null;
+let initPromise: Promise<DatabaseAdapter> | null = null;
+
+const getGatewayDb = (): DatabaseAdapter => {
+  if (gatewayDbInstance) return gatewayDbInstance;
+  if (!initPromise) {
+    initPromise = initializeGatewayDbAsync().then((db) => {
+      gatewayDbInstance = db;
+      return db;
+    });
   }
-  return gatewayDbInstance;
+  throw initPromise;
 };
 
-export const gatewayDb = new Proxy({} as BetterSqlite3.Database, {
+export const gatewayDb: DatabaseAdapter = new Proxy({} as DatabaseAdapter, {
   get(_target, prop) {
-    const value = getGatewayDb()[prop as keyof BetterSqlite3.Database];
-    return typeof value === "function" ? value.bind(getGatewayDb()) : value;
+    const db = getGatewayDb();
+    const value = db[prop as keyof DatabaseAdapter];
+    return typeof value === "function" ? (value as Function).bind(db) : value;
   },
 });
+
+export async function ensureDbReady(): Promise<DatabaseAdapter> {
+  if (gatewayDbInstance) return gatewayDbInstance;
+  if (!initPromise) {
+    initPromise = initializeGatewayDbAsync().then((db) => {
+      gatewayDbInstance = db;
+      return db;
+    });
+  }
+  return initPromise;
+}

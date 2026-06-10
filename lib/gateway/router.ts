@@ -6,10 +6,6 @@ import { parseSupportedProtocols, type GatewayProtocol } from "@/lib/gateway/pro
 export type RoutedModel = {
   model: DbModel;
   channel: DbChannel;
-  /** The protocol actually used to talk upstream. When the channel natively
-   *  supports the inbound protocol, this equals the inbound protocol so the
-   *  request can be forwarded without any protocol conversion. Otherwise it
-   *  falls back to the model's configured upstream_protocol. */
   effective_upstream_protocol: GatewayProtocol;
 };
 
@@ -62,16 +58,13 @@ type CandidateRow = {
   channel_force_include_usage: number;
 };
 
-const listEnabledAliasesStmt = gatewayDb.prepare(
-  `SELECT DISTINCT m.alias
+const LIST_ENABLED_ALIASES_SQL = `SELECT DISTINCT m.alias
    FROM models m
    JOIN channels c ON c.id = m.channel_id
    WHERE m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL AND c.deleted_at IS NULL AND m.alias != '*'
-   ORDER BY m.alias ASC`,
-);
+   ORDER BY m.alias ASC`;
 
-const listModelRoutesStmt = gatewayDb.prepare(
-  `SELECT
+const LIST_MODEL_ROUTES_SQL = `SELECT
       m.id as model_id,
       m.alias,
       m.real_model,
@@ -120,11 +113,10 @@ const listModelRoutesStmt = gatewayDb.prepare(
       c.force_include_usage as channel_force_include_usage
    FROM models m
    JOIN channels c ON c.id = m.channel_id
-   WHERE m.alias = ? AND m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL AND c.deleted_at IS NULL`,
-);
+   WHERE m.alias = ? AND m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL AND c.deleted_at IS NULL`;
 
-export function listEnabledAliases() {
-  return listEnabledAliasesStmt.all() as { alias: string }[];
+export async function listEnabledAliases() {
+  return gatewayDb.query<{ alias: string }>(LIST_ENABLED_ALIASES_SQL);
 }
 
 function effectiveMaxConcurrency(channelMax: number, modelMax: number): number {
@@ -204,13 +196,13 @@ function isProtocolCompatible(inboundProtocol: GatewayProtocol, upstreamProtocol
   return !PASSTHROUGH_PROTOCOLS.includes(upstreamProtocol);
 }
 
-export function listModelRoutes(alias: string, options?: { excludeChannelIds?: number[]; protocol?: GatewayProtocol; allowedChannelIds?: number[] | null }): RoutedModel[] {
+export async function listModelRoutes(alias: string, options?: { excludeChannelIds?: number[]; protocol?: GatewayProtocol; allowedChannelIds?: number[] | null }): Promise<RoutedModel[]> {
   const exclude = new Set(options?.excludeChannelIds ?? []);
   const protocol = options?.protocol;
   const allowSet = options?.allowedChannelIds && options.allowedChannelIds.length > 0
     ? new Set(options.allowedChannelIds)
     : null;
-  const findRows = (targetAlias: string) => listModelRoutesStmt.all(targetAlias) as CandidateRow[];
+  const findRows = async (targetAlias: string) => gatewayDb.query<CandidateRow>(LIST_MODEL_ROUTES_SQL, [targetAlias]);
 
   const filterRows = (rows: CandidateRow[]) => rows.filter((row) => {
     if (exclude.has(row.channel_id_2)) return false;
@@ -225,10 +217,10 @@ export function listModelRoutes(alias: string, options?: { excludeChannelIds?: n
     return true;
   });
 
-  const exactRows = filterRows(findRows(alias));
+  const exactRows = filterRows(await findRows(alias));
   const candidateRows = exactRows.length > 0
     ? exactRows
-    : filterRows(findRows("*"));
+    : filterRows(await findRows("*"));
 
   return candidateRows
     .map((row) => {
@@ -250,6 +242,7 @@ export function listModelRoutes(alias: string, options?: { excludeChannelIds?: n
     .map((item) => item.route);
 }
 
-export function selectModelRoute(alias: string, options?: { excludeChannelIds?: number[]; protocol?: GatewayProtocol; allowedChannelIds?: number[] | null }): RoutedModel | null {
-  return listModelRoutes(alias, options)[0] ?? null;
+export async function selectModelRoute(alias: string, options?: { excludeChannelIds?: number[]; protocol?: GatewayProtocol; allowedChannelIds?: number[] | null }): Promise<RoutedModel | null> {
+  const routes = await listModelRoutes(alias, options);
+  return routes[0] ?? null;
 }

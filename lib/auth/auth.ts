@@ -141,10 +141,8 @@ export function sanitizeUser(user: DbUser): Omit<DbUser, "password_hash" | "totp
   return rest as Omit<DbUser, "password_hash" | "totp_secret">;
 }
 
-function findEnabledUserById(id: number) {
-  return gatewayDb
-    .prepare("SELECT * FROM users WHERE id = ? AND enabled = 1 AND deleted_at IS NULL")
-    .get(id) as DbUser | undefined;
+async function findEnabledUserById(id: number) {
+  return gatewayDb.queryOne<DbUser>("SELECT * FROM users WHERE id = ? AND enabled = 1 AND deleted_at IS NULL", [id]);
 }
 
 function parseCookie(cookieHeader: string | null, name: string) {
@@ -167,20 +165,20 @@ export function getRefreshTokenFromRequest(request: Request) {
   return parseCookie(request.headers.get("cookie"), REFRESH_COOKIE_NAME);
 }
 
-export function getAuthContextFromAccessToken(token: string): AuthContext | null {
+export async function getAuthContextFromAccessToken(token: string): Promise<AuthContext | null> {
   const payload = verifyAccessToken(token);
   if (payload.type !== "access") return null;
-  const user = findEnabledUserById(Number(payload.sub));
+  const user = await findEnabledUserById(Number(payload.sub));
   if (!user) return null;
   return { user: sanitizeUser(user), token };
 }
 
-function noAuthContext(): AuthContext {
-  const { user } = getNoAuthContext();
+async function noAuthContext(): Promise<AuthContext> {
+  const { user } = await getNoAuthContext();
   return { user: sanitizeUser(user), token: "noauth" };
 }
 
-export function requireWebAuth(request: Request): AuthContext | null {
+export async function requireWebAuth(request: Request): Promise<AuthContext | null> {
   if (AUTH_DISABLED) return noAuthContext();
 
   try {
@@ -192,10 +190,10 @@ export function requireWebAuth(request: Request): AuthContext | null {
   }
 }
 
-export function requireWebAuthWithRefresh(request: Request): AuthContext | null {
+export async function requireWebAuthWithRefresh(request: Request): Promise<AuthContext | null> {
   if (AUTH_DISABLED) return noAuthContext();
 
-  const auth = requireWebAuth(request);
+  const auth = await requireWebAuth(request);
   if (auth) return auth;
 
   try {
@@ -203,7 +201,7 @@ export function requireWebAuthWithRefresh(request: Request): AuthContext | null 
     if (!refreshToken) return null;
     const payload = verifyRefreshToken(refreshToken);
     if (payload.type !== "refresh") return null;
-    const user = findEnabledUserById(Number(payload.sub));
+    const user = await findEnabledUserById(Number(payload.sub));
     if (!user) return null;
     return { user: sanitizeUser(user), token: refreshToken };
   } catch {
@@ -250,15 +248,15 @@ export function clearAuthCookies(response: NextResponse) {
   return response;
 }
 
-export function getServerProfileFromCookieStore(cookieStore: { get: (name: string) => { value: string } | undefined }) {
-  if (AUTH_DISABLED) return noAuthContext().user;
+export async function getServerProfileFromCookieStore(cookieStore: { get: (name: string) => { value: string } | undefined }) {
+  if (AUTH_DISABLED) return (await noAuthContext()).user;
 
   const accessToken = cookieStore.get(ACCESS_COOKIE_NAME)?.value;
   const refreshToken = cookieStore.get(REFRESH_COOKIE_NAME)?.value;
 
   try {
     if (accessToken) {
-      const accessUser = getAuthContextFromAccessToken(accessToken)?.user;
+      const accessUser = (await getAuthContextFromAccessToken(accessToken))?.user;
       if (accessUser) return accessUser;
     }
   } catch {}
@@ -267,7 +265,7 @@ export function getServerProfileFromCookieStore(cookieStore: { get: (name: strin
     if (!refreshToken) return null;
     const payload = verifyRefreshToken(refreshToken);
     if (payload.type !== "refresh") return null;
-    const user = findEnabledUserById(Number(payload.sub));
+    const user = await findEnabledUserById(Number(payload.sub));
     return user ? sanitizeUser(user) : null;
   } catch {
     return null;

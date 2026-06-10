@@ -34,17 +34,17 @@ function normalizeQuota(value: number | null | undefined) {
 }
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
-  const guard = ensureAdmin(_request);
+  const guard = await ensureAdmin(_request);
   if ("error" in guard) return guard.error;
 
   const { id } = await context.params;
-  const row = gatewayDb
-    .prepare(
+  const row = await gatewayDb
+    .queryOne<(Record<string, unknown> & { allowed_model_aliases: string; allowed_channel_ids: string })>(
       `SELECT g.*, (SELECT COUNT(*) FROM users u WHERE u.group_id = g.id AND u.deleted_at IS NULL) AS user_count
-       FROM groups g
+       FROM \`groups\` g
        WHERE g.id = ? AND g.deleted_at IS NULL`,
-    )
-    .get(id) as (Record<string, unknown> & { allowed_model_aliases: string; allowed_channel_ids: string }) | undefined;
+      [id],
+    );
 
   if (!row) return jsonError("用户组不存在", 404);
 
@@ -58,7 +58,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
 }
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
-  const guard = ensureAdmin(request);
+  const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
   const { id } = await context.params;
@@ -72,10 +72,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     if (!result.valid) return jsonError(`Claim 表达式语法错误: ${result.error}`, 400);
   }
 
-  const existing = gatewayDb
-    .prepare("SELECT * FROM groups WHERE id = ? AND deleted_at IS NULL")
-    .get(id) as
-    | {
+  const existing = await gatewayDb
+    .queryOne<{
         id: number;
         name: string;
         description: string | null;
@@ -93,15 +91,13 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         oidc_claim_priority: number;
         is_default: number;
         enabled: number;
-      }
-    | undefined;
+      }>("SELECT * FROM `groups` WHERE id = ? AND deleted_at IS NULL", [id]);
 
   if (!existing) return jsonError("用户组不存在", 404);
 
   if (parsed.data.name !== undefined && parsed.data.name !== existing.name) {
-    const dup = gatewayDb
-      .prepare("SELECT id FROM groups WHERE name = ? AND id != ? AND deleted_at IS NULL")
-      .get(parsed.data.name, id) as { id: number } | undefined;
+    const dup = await gatewayDb
+      .queryOne<{ id: number }>("SELECT id FROM `groups` WHERE name = ? AND id != ? AND deleted_at IS NULL", [parsed.data.name, id]);
     if (dup) return jsonError("组名已存在", 409);
   }
 
@@ -149,7 +145,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     allowed_channel_ids:
       parsed.data.allowed_channel_ids === undefined
         ? existing.allowed_channel_ids
-        : stringifyAllowedChannelIds(listExistingChannelIds(parsed.data.allowed_channel_ids)),
+        : stringifyAllowedChannelIds(await listExistingChannelIds(parsed.data.allowed_channel_ids)),
     oidc_claim_expr:
       parsed.data.oidc_claim_expr === undefined || !modelGateFeatures.oidc
         ? existing.oidc_claim_expr
@@ -164,50 +160,49 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         : parsed.data.enabled ? 1 : 0,
   };
 
-  const tx = gatewayDb.transaction(() => {
+  await gatewayDb.transaction(async (tx) => {
     if (setDefault) {
-      gatewayDb.prepare("UPDATE groups SET is_default = 0 WHERE is_default = 1").run();
+      await tx.execute("UPDATE `groups` SET is_default = 0 WHERE is_default = 1");
     }
 
-    gatewayDb
-      .prepare(
-        `UPDATE groups
+    await tx
+      .execute(
+        `UPDATE \`groups\`
          SET name = ?, description = ?, qps = ?, rpm = ?, tpm = ?,
              quota_requests = ?, quota_tokens = ?,
              quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?,
              allowed_model_aliases = ?, allowed_channel_ids = ?,
              oidc_claim_expr = ?, oidc_claim_priority = ?, is_default = ?, enabled = ?
          WHERE id = ?`,
-      )
-      .run(
-        merged.name,
-        merged.description,
-        merged.qps,
-        merged.rpm,
-        merged.tpm,
-        merged.quota_requests,
-        merged.quota_tokens,
-        merged.quota_period,
-        merged.period_quota_tokens,
-        merged.period_quota_requests,
-        merged.allowed_model_aliases,
-        merged.allowed_channel_ids,
-        merged.oidc_claim_expr,
-        merged.oidc_claim_priority,
-        merged.is_default,
-        merged.enabled,
-        id,
+        [
+          merged.name,
+          merged.description,
+          merged.qps,
+          merged.rpm,
+          merged.tpm,
+          merged.quota_requests,
+          merged.quota_tokens,
+          merged.quota_period,
+          merged.period_quota_tokens,
+          merged.period_quota_requests,
+          merged.allowed_model_aliases,
+          merged.allowed_channel_ids,
+          merged.oidc_claim_expr,
+          merged.oidc_claim_priority,
+          merged.is_default,
+          merged.enabled,
+          id,
+        ],
       );
   });
-  tx();
 
-  const row = gatewayDb
-    .prepare(
+  const row = (await gatewayDb
+    .queryOne<Record<string, unknown> & { allowed_model_aliases: string; allowed_channel_ids: string }>(
       `SELECT g.*, (SELECT COUNT(*) FROM users u WHERE u.group_id = g.id AND u.deleted_at IS NULL) AS user_count
-       FROM groups g
+       FROM \`groups\` g
        WHERE g.id = ?`,
-    )
-    .get(id) as Record<string, unknown> & { allowed_model_aliases: string; allowed_channel_ids: string };
+      [id],
+    ))!;
 
   return jsonOk({
     message: "用户组更新成功。",
@@ -220,29 +215,26 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 }
 
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
-  const guard = ensureAdmin(request);
+  const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
   const { id } = await context.params;
 
-  const group = gatewayDb
-    .prepare("SELECT id, is_default FROM groups WHERE id = ? AND deleted_at IS NULL")
-    .get(id) as { id: number; is_default: number } | undefined;
+  const group = await gatewayDb
+    .queryOne<{ id: number; is_default: number }>("SELECT id, is_default FROM `groups` WHERE id = ? AND deleted_at IS NULL", [id]);
 
   if (!group) return jsonError("用户组不存在", 404);
   if (group.is_default === 1) return jsonError("不能删除默认用户组", 400);
 
-  const userCount = gatewayDb
-    .prepare("SELECT COUNT(*) AS count FROM users WHERE group_id = ? AND deleted_at IS NULL")
-    .get(id) as { count: number };
+  const userCount = (await gatewayDb
+    .queryOne<{ count: number }>("SELECT COUNT(*) AS count FROM users WHERE group_id = ? AND deleted_at IS NULL", [id]))!;
 
   if (userCount.count > 0) {
     return jsonError(`该组下仍有 ${userCount.count} 个用户，请先移除或转移用户`, 400);
   }
 
-  gatewayDb
-    .prepare("UPDATE groups SET enabled = 0, deleted_at = CURRENT_TIMESTAMP WHERE id = ?")
-    .run(id);
+  await gatewayDb
+    .execute("UPDATE `groups` SET enabled = 0, deleted_at = CURRENT_TIMESTAMP WHERE id = ?", [id]);
 
   return jsonOk({ ok: true, message: "用户组删除成功。" });
 }

@@ -32,24 +32,24 @@ const updateSchema = z.object({
 });
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
-  const guard = ensureAdmin(request);
+  const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
   const { id } = await context.params;
-  const row = gatewayDb
-    .prepare(
+  const row = await gatewayDb
+    .queryOne(
       `SELECT m.*, c.name AS channel_name
        FROM models m
        JOIN channels c ON c.id = m.channel_id
        WHERE m.id = ? AND m.deleted_at IS NULL`,
-    )
-    .get(id);
+      [id],
+    );
   if (!row) return jsonError("模型不存在", 404);
   return jsonOk({ message: "模型更新成功。", data: row });
 }
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
-  const guard = ensureAdmin(request);
+  const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
   const { id } = await context.params;
@@ -57,8 +57,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
-  const existing = gatewayDb.prepare("SELECT * FROM models WHERE id = ? AND deleted_at IS NULL").get(id) as
-    | {
+  const existing = await gatewayDb.queryOne<{
         id: number;
         alias: string;
         real_model: string;
@@ -78,8 +77,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         quota_period: number | null;
         period_quota_tokens: number | null;
         period_quota_requests: number | null;
-      }
-    | undefined;
+      }>("SELECT * FROM models WHERE id = ? AND deleted_at IS NULL", [id]);
   if (!existing) return jsonError("模型不存在", 404);
 
   const targetChannelId = parsed.data.channel_id ?? existing.channel_id;
@@ -90,9 +88,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       : parsed.data.enabled
         ? 1
         : 0;
-  const channel = gatewayDb
-    .prepare("SELECT id, supported_protocols, enabled FROM channels WHERE id = ? AND deleted_at IS NULL")
-    .get(targetChannelId) as { id: number; supported_protocols: string; enabled: number } | undefined;
+  const channel = await gatewayDb
+    .queryOne<{ id: number; supported_protocols: string; enabled: number }>("SELECT id, supported_protocols, enabled FROM channels WHERE id = ? AND deleted_at IS NULL", [targetChannelId]);
   if (!channel) return jsonError("渠道不存在", 404);
   if (!supportsProtocol(channel.supported_protocols, targetProtocol)) {
     return jsonError("所选渠道不支持该上游协议", 400);
@@ -124,34 +121,34 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     enabled: targetEnabled,
   };
 
-  gatewayDb
-    .prepare(
+  await gatewayDb
+    .execute(
       `UPDATE models
        SET alias = ?, real_model = ?, channel_id = ?, upstream_protocol = ?, supported_protocols = ?, copilot_compatibility = ?, is_public = ?, enabled = ?, weight = ?, token_multiplier = ?, request_multiplier = ?, max_concurrency = ?,
            quota_mode = ?, quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?
        WHERE id = ?`,
-    )
-    .run(merged.alias, merged.real_model, merged.channel_id, merged.upstream_protocol, targetSupportedProtocols, parsed.data.copilot_compatibility === true ? 1 : parsed.data.copilot_compatibility === false ? 0 : existing.copilot_compatibility ?? 0, merged.is_public, merged.enabled, merged.weight, merged.token_multiplier, merged.request_multiplier, merged.max_concurrency,
-      merged.quota_mode ?? existing.quota_mode ?? "follow_group",
-      merged.quota_tokens ?? existing.quota_tokens ?? null,
-      merged.quota_requests ?? existing.quota_requests ?? null,
-      merged.quota_period ?? existing.quota_period ?? null,
-      merged.period_quota_tokens ?? existing.period_quota_tokens ?? null,
-      merged.period_quota_requests ?? existing.period_quota_requests ?? null,
-      id);
+      [merged.alias, merged.real_model, merged.channel_id, merged.upstream_protocol, targetSupportedProtocols, parsed.data.copilot_compatibility === true ? 1 : parsed.data.copilot_compatibility === false ? 0 : existing.copilot_compatibility ?? 0, merged.is_public, merged.enabled, merged.weight, merged.token_multiplier, merged.request_multiplier, merged.max_concurrency,
+        merged.quota_mode ?? existing.quota_mode ?? "follow_group",
+        merged.quota_tokens ?? existing.quota_tokens ?? null,
+        merged.quota_requests ?? existing.quota_requests ?? null,
+        merged.quota_period ?? existing.quota_period ?? null,
+        merged.period_quota_tokens ?? existing.period_quota_tokens ?? null,
+        merged.period_quota_requests ?? existing.period_quota_requests ?? null,
+        id],
+    );
 
-  const row = gatewayDb.prepare("SELECT * FROM models WHERE id = ? AND deleted_at IS NULL").get(id);
+  const row = await gatewayDb.queryOne("SELECT * FROM models WHERE id = ? AND deleted_at IS NULL", [id]);
   return jsonOk({ data: row });
 }
 
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
-  const guard = ensureAdmin(request);
+  const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
   const { id } = await context.params;
-  const existing = gatewayDb.prepare("SELECT id FROM models WHERE id = ? AND deleted_at IS NULL").get(id) as { id: number } | undefined;
+  const existing = await gatewayDb.queryOne<{ id: number }>("SELECT id FROM models WHERE id = ? AND deleted_at IS NULL", [id]);
   if (!existing) return jsonError("模型不存在", 404);
 
-  softDeleteModel(id);
+  await softDeleteModel(id);
   return jsonOk({ ok: true, message: "模型删除成功。" });
 }

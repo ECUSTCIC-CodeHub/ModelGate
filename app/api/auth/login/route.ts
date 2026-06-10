@@ -13,7 +13,7 @@ const schema = z.object({
 });
 
 export async function POST(request: Request) {
-  const settings = getGatewaySettings();
+  const settings = await getGatewaySettings();
   if (settings.password_login_enabled !== 1) {
     return jsonError("账号密码登录已关闭", 403);
   }
@@ -28,9 +28,7 @@ export async function POST(request: Request) {
 
   if (!parsed.success) return jsonError("用户名或密码错误", 401);
 
-  const user = gatewayDb
-    .prepare("SELECT * FROM users WHERE username = ? AND deleted_at IS NULL")
-    .get(parsed.data.username) as DbUser | undefined;
+  const user = await gatewayDb.queryOne<DbUser>("SELECT * FROM users WHERE username = ? AND deleted_at IS NULL", [parsed.data.username]);
 
   if (!user || user.enabled !== 1) return jsonError("用户名或密码错误", 401);
 

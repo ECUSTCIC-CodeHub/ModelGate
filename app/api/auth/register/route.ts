@@ -24,48 +24,34 @@ export async function POST(request: Request) {
     return jsonError("注册尝试过于频繁，请稍后再试", 429);
   }
 
-  const settings = getGatewaySettings();
+  const settings = await getGatewaySettings();
 
-  const adminCount = gatewayDb.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL").get() as {
-    count: number;
-  };
+  const adminCount = await gatewayDb.queryOne<{ count: number }>("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL");
 
-  if (settings.registration_enabled !== 1 && adminCount.count > 0) {
+  if (settings.registration_enabled !== 1 && (adminCount?.count ?? 0) > 0) {
     return jsonError("注册功能已关闭", 403);
   }
 
-  if (settings.password_login_enabled === 0 && adminCount.count > 0) {
+  if (settings.password_login_enabled === 0 && (adminCount?.count ?? 0) > 0) {
     return jsonError("当前仅支持 OIDC 登录，注册功能已关闭", 403);
   }
 
-  const existing = gatewayDb
-    .prepare("SELECT id FROM users WHERE username = ?")
-    .get(parsed.data.username) as { id: number } | undefined;
+  const existing = await gatewayDb.queryOne<{ id: number }>("SELECT id FROM users WHERE username = ?", [parsed.data.username]);
 
   if (existing) return jsonError("注册失败，请检查输入", 400);
 
-  const role: "admin" | "user" = adminCount.count === 0 ? "admin" : "user";
+  const role: "admin" | "user" = (adminCount?.count ?? 0) === 0 ? "admin" : "user";
   const passwordHash = await hashPassword(parsed.data.password);
 
-  const defaultGroup = gatewayDb
-    .prepare("SELECT id FROM groups WHERE is_default = 1 AND deleted_at IS NULL")
-    .get() as { id: number } | undefined;
+  const defaultGroup = await gatewayDb.queryOne<{ id: number }>("SELECT id FROM groups WHERE is_default = 1 AND deleted_at IS NULL");
 
-  const result = gatewayDb
-    .prepare(
-      `INSERT INTO users (username, password_hash, role, group_id, rpm, qps, tpm, quota_tokens, quota_requests, enabled)
+  const result = await gatewayDb.execute(
+    `INSERT INTO users (username, password_hash, role, group_id, rpm, qps, tpm, quota_tokens, quota_requests, enabled)
        VALUES (?, ?, ?, ?, -1, -1, -1, NULL, NULL, 1)`,
-    )
-    .run(
-      parsed.data.username,
-      passwordHash,
-      role,
-      defaultGroup?.id ?? null,
-    );
+    [parsed.data.username, passwordHash, role, defaultGroup?.id ?? null],
+  );
 
-  const user = gatewayDb
-    .prepare("SELECT * FROM users WHERE id = ? AND deleted_at IS NULL")
-    .get(result.lastInsertRowid) as DbUser;
+  const user = await gatewayDb.queryOne<DbUser>("SELECT * FROM users WHERE id = ? AND deleted_at IS NULL", [result.lastInsertRowid]) as DbUser;
 
   const payload = {
     message: "注册成功。",

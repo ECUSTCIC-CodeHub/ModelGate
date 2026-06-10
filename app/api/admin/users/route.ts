@@ -47,7 +47,7 @@ const USER_SORT_COLUMNS = {
 } as const;
 
 export async function GET(request: Request) {
-  const guard = ensureAdmin(request);
+  const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
   const url = new URL(request.url);
@@ -84,20 +84,20 @@ export async function GET(request: Request) {
   }
   const whereSql = `WHERE ${whereParts.join(" AND ")}`;
 
-  const rows = gatewayDb
-    .prepare(
+  const rows = await gatewayDb
+    .query<DbUser & { group_name: string | null; allowed_model_aliases: string }>(
       `SELECT u.id, u.username, u.email, u.role, u.group_id, g.name AS group_name,
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
               u.quota_period, u.period_quota_tokens, u.period_quota_requests,
               u.period_used_tokens, u.period_used_requests, u.period_reset_at,
               u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.totp_enabled, u.enabled, u.created_at
        FROM users u
-       LEFT JOIN groups g ON g.id = u.group_id AND g.deleted_at IS NULL
+       LEFT JOIN \`groups\` g ON g.id = u.group_id AND g.deleted_at IS NULL
        ${whereSql}
        ORDER BY ${orderColumn} ${sortDir}, u.id DESC
        LIMIT ? OFFSET ?`,
-    )
-    .all(...whereArgs, limit, offset) as Array<DbUser & { group_name: string | null; allowed_model_aliases: string }>;
+      [...whereArgs, limit, offset],
+    );
 
   const totalWhereParts = ["deleted_at IS NULL"];
   const totalWhereArgs: Array<string | number> = [];
@@ -113,39 +113,42 @@ export async function GET(request: Request) {
     totalWhereParts.push("role = ?");
     totalWhereArgs.push(roleParam);
   }
-  const total = gatewayDb
-    .prepare(
+  const total = (await gatewayDb
+    .queryOne<{ total: number }>(
       `SELECT COUNT(*) AS total
        FROM users
        WHERE ${totalWhereParts.join(" AND ")}`,
-    )
-    .get(...totalWhereArgs) as { total: number };
+      totalWhereArgs,
+    ))!;
+
+  const data = [];
+  for (const row of rows) {
+    const group = await getUserGroup(row.group_id ?? null);
+    const effective = await getEffectiveLimits(row);
+    data.push({
+      ...row,
+      allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases),
+      group_rpm: group?.rpm ?? null,
+      group_qps: group?.qps ?? null,
+      group_tpm: group?.tpm ?? null,
+      group_quota_requests: group?.quota_requests ?? null,
+      group_quota_tokens: group?.quota_tokens ?? null,
+      group_quota_period: group?.quota_period ?? null,
+      group_period_quota_tokens: group?.period_quota_tokens ?? null,
+      group_period_quota_requests: group?.period_quota_requests ?? null,
+      effective_rpm: effective.rpm,
+      effective_qps: effective.qps,
+      effective_tpm: effective.tpm,
+      effective_quota_requests: effective.quota_requests,
+      effective_quota_tokens: effective.quota_tokens,
+      effective_quota_period: effective.quota_period,
+      effective_period_quota_tokens: effective.period_quota_tokens,
+      effective_period_quota_requests: effective.period_quota_requests,
+    });
+  }
 
   return jsonOk({
-    data: rows.map((row) => {
-      const group = getUserGroup(row.group_id ?? null);
-      const effective = getEffectiveLimits(row);
-      return {
-        ...row,
-        allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases),
-        group_rpm: group?.rpm ?? null,
-        group_qps: group?.qps ?? null,
-        group_tpm: group?.tpm ?? null,
-        group_quota_requests: group?.quota_requests ?? null,
-        group_quota_tokens: group?.quota_tokens ?? null,
-        group_quota_period: group?.quota_period ?? null,
-        group_period_quota_tokens: group?.period_quota_tokens ?? null,
-        group_period_quota_requests: group?.period_quota_requests ?? null,
-        effective_rpm: effective.rpm,
-        effective_qps: effective.qps,
-        effective_tpm: effective.tpm,
-        effective_quota_requests: effective.quota_requests,
-        effective_quota_tokens: effective.quota_tokens,
-        effective_quota_period: effective.quota_period,
-        effective_period_quota_tokens: effective.period_quota_tokens,
-        effective_period_quota_requests: effective.period_quota_requests,
-      };
-    }),
+    data,
     paging: { limit, offset, total: total.total ?? 0 },
     sorting: {
       sort_by: sortBy in USER_SORT_COLUMNS ? sortBy : "created_at",
@@ -155,72 +158,69 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const guard = ensureAdmin(request);
+  const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
   const body = await request.json().catch(() => null);
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return jsonError(friendlyCredentialPayloadError(parsed.error), 400);
 
-  const existing = gatewayDb
-    .prepare("SELECT id FROM users WHERE username = ?")
-    .get(parsed.data.username) as { id: number } | undefined;
+  const existing = await gatewayDb
+    .queryOne<{ id: number }>("SELECT id FROM users WHERE username = ?", [parsed.data.username]);
   if (existing) return jsonError("用户名已存在", 409);
 
   let groupId = parsed.data.group_id ?? null;
   if (groupId === null) {
-    const defaultGroup = gatewayDb
-      .prepare("SELECT id FROM groups WHERE is_default = 1 AND deleted_at IS NULL")
-      .get() as { id: number } | undefined;
+    const defaultGroup = await gatewayDb
+      .queryOne<{ id: number }>("SELECT id FROM `groups` WHERE is_default = 1 AND deleted_at IS NULL");
     groupId = defaultGroup?.id ?? null;
   } else {
-    const group = gatewayDb
-      .prepare("SELECT id FROM groups WHERE id = ? AND deleted_at IS NULL")
-      .get(groupId) as { id: number } | undefined;
+    const group = await gatewayDb
+      .queryOne<{ id: number }>("SELECT id FROM `groups` WHERE id = ? AND deleted_at IS NULL", [groupId]);
     if (!group) return jsonError("用户组不存在", 400);
   }
 
   const passwordHash = await hashPassword(parsed.data.password);
-  const result = gatewayDb
-    .prepare(
+  const result = await gatewayDb
+    .execute(
       `INSERT INTO users (
          username, password_hash, email, role, group_id, enabled,
          rpm, qps, tpm, quota_tokens, quota_requests,
          quota_period, period_quota_tokens, period_quota_requests,
          allowed_model_aliases, note
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
-      parsed.data.username,
-      passwordHash,
-      parsed.data.email?.trim() || null,
-      parsed.data.role ?? "user",
-      groupId,
-      parsed.data.enabled === false ? 0 : 1,
-      parsed.data.rpm ?? -1,
-      parsed.data.qps ?? -1,
-      parsed.data.tpm ?? -1,
-      normalizeQuota(parsed.data.quota_tokens),
-      normalizeQuota(parsed.data.quota_requests),
-      modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.quota_period) : null,
-      modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_tokens) : null,
-      modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_requests) : null,
-      stringifyAllowedModelAliases(parsed.data.allowed_model_aliases ?? []),
-      parsed.data.note?.trim() ? parsed.data.note.trim() : null,
+      [
+        parsed.data.username,
+        passwordHash,
+        parsed.data.email?.trim() || null,
+        parsed.data.role ?? "user",
+        groupId,
+        parsed.data.enabled === false ? 0 : 1,
+        parsed.data.rpm ?? -1,
+        parsed.data.qps ?? -1,
+        parsed.data.tpm ?? -1,
+        normalizeQuota(parsed.data.quota_tokens),
+        normalizeQuota(parsed.data.quota_requests),
+        modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.quota_period) : null,
+        modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_tokens) : null,
+        modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_requests) : null,
+        stringifyAllowedModelAliases(parsed.data.allowed_model_aliases ?? []),
+        parsed.data.note?.trim() ? parsed.data.note.trim() : null,
+      ],
     );
 
-  const row = gatewayDb
-    .prepare(
+  const row = (await gatewayDb
+    .queryOne<{ allowed_model_aliases: string } & Record<string, unknown>>(
       `SELECT u.id, u.username, u.email, u.role, u.group_id, g.name AS group_name,
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
               u.quota_period, u.period_quota_tokens, u.period_quota_requests,
               u.period_used_tokens, u.period_used_requests, u.period_reset_at,
               u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.totp_enabled, u.enabled, u.created_at
        FROM users u
-       LEFT JOIN groups g ON g.id = u.group_id AND g.deleted_at IS NULL
+       LEFT JOIN \`groups\` g ON g.id = u.group_id AND g.deleted_at IS NULL
        WHERE u.id = ? AND u.deleted_at IS NULL`,
-    )
-    .get(result.lastInsertRowid) as { allowed_model_aliases: string } & Record<string, unknown>;
+      [result.lastInsertRowid],
+    ))!;
 
   return jsonOk({
     message: "用户创建成功。",

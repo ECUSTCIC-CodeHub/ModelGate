@@ -21,23 +21,20 @@ export function stringifyAllowedModelAliases(aliases: string[]) {
   return JSON.stringify(normalized);
 }
 
-export function getEffectiveAllowedAliases(user: Pick<DbUser, "group_id" | "allowed_model_aliases">): string[] {
+export async function getEffectiveAllowedAliases(user: Pick<DbUser, "group_id" | "allowed_model_aliases">): Promise<string[]> {
   const userAliases = parseAllowedModelAliases(user.allowed_model_aliases);
-  const group = getUserGroup(user.group_id ?? null);
+  const group = await getUserGroup(user.group_id ?? null);
   if (!group) return userAliases;
   const groupAliases = parseAllowedModelAliases(group.allowed_model_aliases);
   return [...new Set([...userAliases, ...groupAliases])];
 }
 
-const modelPublicByAliasStmt = gatewayDb.prepare(
-  `SELECT is_public
+const MODEL_PUBLIC_BY_ALIAS_SQL = `SELECT is_public
    FROM models
    WHERE alias = ? AND enabled = 1 AND deleted_at IS NULL
-   LIMIT 1`,
-);
+   LIMIT 1`;
 
-const enabledModelAliasStmt = gatewayDb.prepare(
-  `SELECT 1
+const ENABLED_MODEL_ALIAS_SQL = `SELECT 1
    FROM models m
    JOIN channels c ON c.id = m.channel_id
    WHERE m.alias = ?
@@ -45,11 +42,9 @@ const enabledModelAliasStmt = gatewayDb.prepare(
      AND c.enabled = 1
      AND m.deleted_at IS NULL
      AND c.deleted_at IS NULL
-   LIMIT 1`,
-);
+   LIMIT 1`;
 
-const accessibleModelRowsStmt = gatewayDb.prepare(
-  `SELECT m.alias, m.is_public, m.created_at, m.token_multiplier, m.request_multiplier,
+const ACCESSIBLE_MODEL_ROWS_SQL = `SELECT m.alias, m.is_public, m.created_at, m.token_multiplier, m.request_multiplier,
           m.weight AS model_weight,
           c.id AS channel_id, c.name AS channel_name, c.weight AS channel_weight
    FROM models m
@@ -59,37 +54,36 @@ const accessibleModelRowsStmt = gatewayDb.prepare(
      AND m.deleted_at IS NULL
      AND c.deleted_at IS NULL
      AND m.alias != '*'
-   ORDER BY m.alias ASC, m.id ASC`,
-);
+   ORDER BY m.alias ASC, m.id ASC`;
 
-export function canUserAccessModelAlias(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">, alias: string) {
+export async function canUserAccessModelAlias(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">, alias: string) {
   if (user.role === "admin") return true;
 
-  const model = modelPublicByAliasStmt.get(alias) as { is_public: number } | undefined;
+  const model = await gatewayDb.queryOne<{ is_public: number }>(MODEL_PUBLIC_BY_ALIAS_SQL, [alias]);
 
   if (!model) return false;
   if (model.is_public === 1) return true;
 
-  return getEffectiveAllowedAliases(user).includes(alias);
+  const effective = await getEffectiveAllowedAliases(user);
+  return effective.includes(alias);
 }
 
-export function hasEnabledModelAlias(alias: string) {
-  const row = enabledModelAliasStmt.get(alias) as { 1: number } | undefined;
-
+export async function hasEnabledModelAlias(alias: string) {
+  const row = await gatewayDb.queryOne<{ 1: number }>(ENABLED_MODEL_ALIAS_SQL, [alias]);
   return Boolean(row);
 }
 
-export function resolveAccessibleModelAlias(
+export async function resolveAccessibleModelAlias(
   user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">,
   requestedAlias: string,
-): { ok: true; alias: string } | { ok: false; reason: "not_found" | "forbidden" } {
-  const requestedAliasExists = hasEnabledModelAlias(requestedAlias);
-  if (requestedAliasExists && canUserAccessModelAlias(user, requestedAlias)) {
+): Promise<{ ok: true; alias: string } | { ok: false; reason: "not_found" | "forbidden" }> {
+  const requestedAliasExists = await hasEnabledModelAlias(requestedAlias);
+  if (requestedAliasExists && await canUserAccessModelAlias(user, requestedAlias)) {
     return { ok: true, alias: requestedAlias };
   }
 
-  const wildcardAliasExists = hasEnabledModelAlias("*");
-  if (wildcardAliasExists && canUserAccessModelAlias(user, "*")) {
+  const wildcardAliasExists = await hasEnabledModelAlias("*");
+  if (wildcardAliasExists && await canUserAccessModelAlias(user, "*")) {
     return { ok: true, alias: "*" };
   }
 
@@ -117,13 +111,14 @@ export type AccessibleModel = {
   channels: AccessibleModelChannel[];
 };
 
-export function listAccessibleModelAliases(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">) {
-  return listAccessibleModels(user).map((row) => row.alias);
+export async function listAccessibleModelAliases(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">) {
+  const models = await listAccessibleModels(user);
+  return models.map((row) => row.alias);
 }
 
-export function listAccessibleModels(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">): AccessibleModel[] {
-  const rows = accessibleModelRowsStmt.all() as Array<{ alias: string; is_public: number; created_at: string | null; token_multiplier: number; request_multiplier: number; model_weight: number; channel_id: number; channel_name: string; channel_weight: number }>;
-  const allowedChannelIds = getUserAllowedChannelIds(user);
+export async function listAccessibleModels(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">): Promise<AccessibleModel[]> {
+  const rows = await gatewayDb.query<{ alias: string; is_public: number; created_at: string | null; token_multiplier: number; request_multiplier: number; model_weight: number; channel_id: number; channel_name: string; channel_weight: number }>(ACCESSIBLE_MODEL_ROWS_SQL);
+  const allowedChannelIds = await getUserAllowedChannelIds(user);
   const allowedChannelSet = allowedChannelIds ? new Set(allowedChannelIds) : null;
 
   type Accumulator = { alias: string; created_at: string | null; channels: AccessibleModelChannel[] };
@@ -145,7 +140,7 @@ export function listAccessibleModels(user: Pick<DbUser, "role" | "group_id" | "a
   if (user.role === "admin") {
     for (const row of rows) processRow(row);
   } else {
-    const allowed = new Set(getEffectiveAllowedAliases(user));
+    const allowed = new Set(await getEffectiveAllowedAliases(user));
     for (const row of rows) {
       if (allowedChannelSet && !allowedChannelSet.has(row.channel_id)) continue;
       if (row.is_public !== 1 && !allowed.has(row.alias)) continue;

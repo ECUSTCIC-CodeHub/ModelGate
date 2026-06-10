@@ -55,7 +55,7 @@ function parseLogMetadata(value: unknown) {
 }
 
 export async function GET(request: Request) {
-  const guard = ensureWebUser(request);
+  const guard = await ensureWebUser(request);
   if ("error" in guard) return guard.error;
 
   const isAdmin = guard.auth.user.role === "admin";
@@ -135,8 +135,8 @@ export async function GET(request: Request) {
 
   const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
 
-  const rows = gatewayDb
-    .prepare(
+  const rows = await gatewayDb
+    .query<Record<string, unknown>>(
       `SELECT
          l.id, l.user_id, u.username, l.key_id, l.channel_id,
          c.name AS channel_name,
@@ -148,12 +148,12 @@ export async function GET(request: Request) {
        FROM logs l
        LEFT JOIN users u ON u.id = l.user_id
        LEFT JOIN channels c ON c.id = l.channel_id
-       LEFT JOIN keys k ON k.id = l.key_id
+       LEFT JOIN \`keys\` k ON k.id = l.key_id
        ${whereSql}
        ORDER BY l.id DESC
        LIMIT ? OFFSET ?`,
-    )
-    .all(...whereArgs, limit, offset) as Array<Record<string, unknown>>;
+      [...whereArgs, limit, offset],
+    );
 
   const data = rows.map((row) => {
     const next = { ...row };
@@ -169,19 +169,26 @@ export async function GET(request: Request) {
     return next;
   });
 
-  const total = gatewayDb
-    .prepare(
+  const total = (await gatewayDb
+    .queryOne<{ total: number }>(
       `SELECT COUNT(*) AS total
        FROM logs l
        LEFT JOIN users u ON u.id = l.user_id
        LEFT JOIN channels c ON c.id = l.channel_id
-       LEFT JOIN keys k ON k.id = l.key_id
+       LEFT JOIN \`keys\` k ON k.id = l.key_id
        ${whereSql}`,
-    )
-    .get(...whereArgs) as { total: number };
+      whereArgs,
+    ))!;
 
-  const summary = gatewayDb
-    .prepare(
+  const summary = (await gatewayDb
+    .queryOne<{
+    total_requests: number;
+    failed_requests: number;
+    total_tokens: number;
+    avg_latency_ms: number;
+    avg_first_token_latency_ms: number;
+    avg_output_tps: number;
+  }>(
       `SELECT
          COUNT(*) AS total_requests,
          SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) AS failed_requests,
@@ -192,17 +199,10 @@ export async function GET(request: Request) {
        FROM logs l
        LEFT JOIN users u ON u.id = l.user_id
        LEFT JOIN channels c ON c.id = l.channel_id
-       LEFT JOIN keys k ON k.id = l.key_id
+       LEFT JOIN \`keys\` k ON k.id = l.key_id
        ${whereSql}`,
-    )
-    .get(...whereArgs) as {
-    total_requests: number;
-    failed_requests: number;
-    total_tokens: number;
-    avg_latency_ms: number;
-    avg_first_token_latency_ms: number;
-    avg_output_tps: number;
-  };
+      whereArgs,
+    ))!;
 
   return jsonOk({
     summary,

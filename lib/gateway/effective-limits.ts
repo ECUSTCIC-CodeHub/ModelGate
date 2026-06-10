@@ -30,16 +30,14 @@ function pickPeriod(userVal: number | null, groupVal: number | null): number | n
   return null;
 }
 
-const groupByIdStmt = gatewayDb.prepare("SELECT * FROM groups WHERE id = ? AND enabled = 1 AND deleted_at IS NULL");
-
-export function getUserGroup(groupId: number | null): DbGroup | null {
+export async function getUserGroup(groupId: number | null): Promise<DbGroup | null> {
   if (groupId === null) return null;
-  const group = groupByIdStmt.get(groupId) as DbGroup | undefined;
+  const group = await gatewayDb.queryOne<DbGroup>("SELECT * FROM groups WHERE id = ? AND enabled = 1 AND deleted_at IS NULL", [groupId]);
   return group ?? null;
 }
 
-export function getEffectiveLimits(user: DbUser): EffectiveLimits {
-  const group = getUserGroup(user.group_id);
+export async function getEffectiveLimits(user: DbUser): Promise<EffectiveLimits> {
+  const group = await getUserGroup(user.group_id);
 
   const period = modelGateFeatures.periodQuota
     ? pickPeriod(user.quota_period ?? null, group?.quota_period ?? null)

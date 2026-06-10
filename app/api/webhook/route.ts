@@ -53,35 +53,33 @@ type UserSnapshot = {
   webhook_tags: string;
 };
 
-function findUser(oidcSubject: string): UserSnapshot | undefined {
-  return gatewayDb
-    .prepare(
-      "SELECT id, group_id, webhook_role, webhook_tags FROM users WHERE oidc_subject = ? AND enabled = 1 AND deleted_at IS NULL",
-    )
-    .get(oidcSubject) as UserSnapshot | undefined;
+async function findUser(oidcSubject: string): Promise<UserSnapshot | undefined> {
+  return gatewayDb.queryOne<UserSnapshot>(
+    "SELECT id, group_id, webhook_role, webhook_tags FROM users WHERE oidc_subject = ? AND enabled = 1 AND deleted_at IS NULL",
+    [oidcSubject],
+  );
 }
 
-function getDefaultGroupId(): number | null {
-  const row = gatewayDb
-    .prepare(
-      "SELECT id FROM groups WHERE is_default = 1 AND enabled = 1 AND deleted_at IS NULL LIMIT 1",
-    )
-    .get() as { id: number } | undefined;
+async function getDefaultGroupId(): Promise<number | null> {
+  const row = await gatewayDb.queryOne<{ id: number }>(
+    "SELECT id FROM `groups` WHERE is_default = 1 AND enabled = 1 AND deleted_at IS NULL LIMIT 1",
+  );
   return row?.id ?? null;
 }
 
-function resolveAndUpdate(userId: number, role: string, tags: string[]) {
+async function resolveAndUpdate(userId: number, role: string, tags: string[]) {
   const claims: Record<string, unknown> = {};
   if (role) claims.role = role;
   if (tags.length) claims.tags = tags;
 
   const groupId = Object.keys(claims).length
-    ? (resolveGroupFromClaims(claims) ?? getDefaultGroupId())
-    : getDefaultGroupId();
+    ? ((await resolveGroupFromClaims(claims)) ?? (await getDefaultGroupId()))
+    : await getDefaultGroupId();
 
-  gatewayDb
-    .prepare("UPDATE users SET webhook_role = ?, webhook_tags = ?, group_id = ? WHERE id = ?")
-    .run(role, JSON.stringify(tags), groupId, userId);
+  await gatewayDb.execute(
+    "UPDATE users SET webhook_role = ?, webhook_tags = ?, group_id = ? WHERE id = ?",
+    [role, JSON.stringify(tags), groupId, userId],
+  );
 
   return groupId;
 }
@@ -95,17 +93,17 @@ function parseTags(raw: string): string[] {
   }
 }
 
-function handleRoleChange(data: RoleChangeData): string {
-  const user = findUser(data.user_id);
+async function handleRoleChange(data: RoleChangeData): Promise<string> {
+  const user = await findUser(data.user_id);
   if (!user) return "用户不存在，已忽略";
 
   const tags = parseTags(user.webhook_tags);
-  const groupId = resolveAndUpdate(user.id, data.new_role, tags);
+  const groupId = await resolveAndUpdate(user.id, data.new_role, tags);
   return `已将用户分组更新为 ${groupId ?? "默认"}`;
 }
 
-function handleTagsChanged(data: TagsChangedData): string {
-  const user = findUser(data.user_id);
+async function handleTagsChanged(data: TagsChangedData): Promise<string> {
+  const user = await findUser(data.user_id);
   if (!user) return "用户不存在，已忽略";
 
   let tags: string[];
@@ -125,7 +123,7 @@ function handleTagsChanged(data: TagsChangedData): string {
       tags = data.tags;
   }
 
-  const groupId = resolveAndUpdate(user.id, user.webhook_role, tags);
+  const groupId = await resolveAndUpdate(user.id, user.webhook_role, tags);
   return `已将用户分组更新为 ${groupId ?? "默认"}`;
 }
 
@@ -133,7 +131,7 @@ export async function POST(request: Request) {
   const unavailable = requireFeature("webhook");
   if (unavailable) return unavailable;
 
-  const settings = getGatewaySettings();
+  const settings = await getGatewaySettings();
   if (!settings.webhook_secret) {
     return jsonError("Webhook 未配置密钥", 503);
   }
@@ -164,10 +162,10 @@ export async function POST(request: Request) {
   let result: string;
   switch (payload.type) {
     case "user.role_change":
-      result = handleRoleChange(payload.data as RoleChangeData);
+      result = await handleRoleChange(payload.data as RoleChangeData);
       break;
     case "user.tags_changed":
-      result = handleTagsChanged(payload.data as TagsChangedData);
+      result = await handleTagsChanged(payload.data as TagsChangedData);
       break;
     case "user.identity_change":
       result = `身份变更通知已接收 (field: ${(payload.data as IdentityChangeData).field})`;

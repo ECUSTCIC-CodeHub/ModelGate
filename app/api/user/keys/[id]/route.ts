@@ -12,7 +12,7 @@ const updateSchema = z.object({
 });
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
-  const guard = ensureUser(request);
+  const guard = await ensureUser(request);
   if ("error" in guard) return guard.error;
 
   const { id } = await context.params;
@@ -20,9 +20,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
-  const existing = gatewayDb
-    .prepare("SELECT * FROM keys WHERE id = ? AND user_id = ? AND deleted_at IS NULL")
-    .get(id, guard.auth.user.id);
+  const existing = await gatewayDb
+    .queryOne("SELECT * FROM `keys` WHERE id = ? AND user_id = ? AND deleted_at IS NULL", [id, guard.auth.user.id]);
   if (!existing) return jsonError("密钥不存在", 404);
 
   const sets: string[] = [];
@@ -37,22 +36,21 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   }
   if (sets.length === 0) return jsonError("没有可更新的字段", 400);
   params.push(id);
-  gatewayDb.prepare(`UPDATE keys SET ${sets.join(", ")} WHERE id = ?`).run(...params);
+  await gatewayDb.execute(`UPDATE \`keys\` SET ${sets.join(", ")} WHERE id = ?`, params);
 
-  const row = gatewayDb.prepare("SELECT * FROM keys WHERE id = ? AND deleted_at IS NULL").get(id);
+  const row = await gatewayDb.queryOne("SELECT * FROM `keys` WHERE id = ? AND deleted_at IS NULL", [id]);
   return jsonOk({ message: "密钥更新成功。", data: row });
 }
 
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
-  const guard = ensureUser(request);
+  const guard = await ensureUser(request);
   if ("error" in guard) return guard.error;
 
   const { id } = await context.params;
-  const existing = gatewayDb
-    .prepare("SELECT * FROM keys WHERE id = ? AND user_id = ? AND deleted_at IS NULL")
-    .get(id, guard.auth.user.id);
+  const existing = await gatewayDb
+    .queryOne("SELECT * FROM `keys` WHERE id = ? AND user_id = ? AND deleted_at IS NULL", [id, guard.auth.user.id]);
   if (!existing) return jsonError("密钥不存在", 404);
 
-  softDeleteKey(id);
+  await softDeleteKey(id);
   return jsonOk({ ok: true, message: "密钥删除成功。" });
 }

@@ -30,33 +30,31 @@ const createSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const guard = ensureAdmin(request);
+  const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
-  const rows = gatewayDb
-    .prepare(
+  const rows = await gatewayDb
+    .query(
       `SELECT m.*, c.name AS channel_name
        FROM models m
        JOIN channels c ON c.id = m.channel_id
        WHERE m.deleted_at IS NULL
        ORDER BY m.id DESC`,
-    )
-    .all();
+    );
 
   return jsonOk({ data: rows });
 }
 
 export async function POST(request: Request) {
-  const guard = ensureAdmin(request);
+  const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
   const body = await request.json().catch(() => null);
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
-  const channel = gatewayDb
-    .prepare("SELECT id, supported_protocols, enabled FROM channels WHERE id = ? AND deleted_at IS NULL")
-    .get(parsed.data.channel_id) as { id: number; supported_protocols: string; enabled: number } | undefined;
+  const channel = await gatewayDb
+    .queryOne<{ id: number; supported_protocols: string; enabled: number }>("SELECT id, supported_protocols, enabled FROM channels WHERE id = ? AND deleted_at IS NULL", [parsed.data.channel_id]);
   if (!channel) return jsonError("渠道不存在", 404);
   const upstreamProtocol = parsed.data.upstream_protocol ?? "chat_completions";
   if (!supportsProtocol(channel.supported_protocols, upstreamProtocol)) {
@@ -77,32 +75,32 @@ export async function POST(request: Request) {
     return jsonError("禁用渠道下不能启用模型", 400);
   }
 
-  const result = gatewayDb
-    .prepare(
+  const result = await gatewayDb
+    .execute(
       `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
-      parsed.data.alias,
-      parsed.data.real_model,
-      parsed.data.channel_id,
-      upstreamProtocol,
-      supportedProtocolsJson,
-      parsed.data.copilot_compatibility === true ? 1 : 0,
-      parsed.data.is_public === false ? 0 : 1,
-      modelEnabled,
-      parsed.data.weight ?? 1,
-      parsed.data.token_multiplier ?? 1,
-      parsed.data.request_multiplier ?? 1,
-      parsed.data.max_concurrency ?? 0,
-      parsed.data.quota_mode ?? "follow_group",
-      parsed.data.quota_tokens ?? null,
-      parsed.data.quota_requests ?? null,
-      parsed.data.quota_period ?? null,
-      parsed.data.period_quota_tokens ?? null,
-      parsed.data.period_quota_requests ?? null,
+      [
+        parsed.data.alias,
+        parsed.data.real_model,
+        parsed.data.channel_id,
+        upstreamProtocol,
+        supportedProtocolsJson,
+        parsed.data.copilot_compatibility === true ? 1 : 0,
+        parsed.data.is_public === false ? 0 : 1,
+        modelEnabled,
+        parsed.data.weight ?? 1,
+        parsed.data.token_multiplier ?? 1,
+        parsed.data.request_multiplier ?? 1,
+        parsed.data.max_concurrency ?? 0,
+        parsed.data.quota_mode ?? "follow_group",
+        parsed.data.quota_tokens ?? null,
+        parsed.data.quota_requests ?? null,
+        parsed.data.quota_period ?? null,
+        parsed.data.period_quota_tokens ?? null,
+        parsed.data.period_quota_requests ?? null,
+      ],
     );
 
-  const row = gatewayDb.prepare("SELECT * FROM models WHERE id = ? AND deleted_at IS NULL").get(result.lastInsertRowid);
+  const row = await gatewayDb.queryOne("SELECT * FROM models WHERE id = ? AND deleted_at IS NULL", [result.lastInsertRowid]);
   return jsonOk({ message: "模型创建成功。", data: row }, 201);
 }

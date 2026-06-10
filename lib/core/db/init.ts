@@ -1,23 +1,19 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { ensureModernColumns } from "@/lib/core/db/columns";
-import {
-  backfillKeyUsage,
-  cleanupModelUserUsage,
-  ensureDefaultGroup,
-  migrateLegacyChatLogs,
-  migrateLegacySettingsTable,
-  migrateLegacyUsers,
-  migrateOidcClaimValue,
-  migrateUnlimitedLimitSemantics,
-} from "@/lib/core/db/migrations";
+import type { DatabaseAdapter } from "@/lib/core/db/adapter";
+import { SqliteAdapter } from "@/lib/core/db/sqlite-adapter";
+import { MysqlAdapter } from "@/lib/core/db/mysql-adapter";
 import {
   BASE_SCHEMA_SQL,
   DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL,
   POST_MIGRATION_INDEXES_SQL,
 } from "@/lib/core/db/schema";
-import { seedDefaultSettings } from "@/lib/core/db/settings-seed";
+import {
+  MYSQL_BASE_SCHEMA_SQL,
+  MYSQL_DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL,
+  MYSQL_POST_MIGRATION_INDEXES_SQL,
+} from "@/lib/core/db/mysql-schema";
 
 const dataDir = path.join(process.cwd(), "data");
 const dbPath = path.join(dataDir, "gateway.db");
@@ -34,11 +30,17 @@ function ensurePathMode(targetPath: string, mode: number) {
       fs.chmodSync(targetPath, mode);
     }
   } catch {
-    // Best-effort only; avoid failing DB init on chmod issues.
+    // best-effort
   }
 }
 
-export const initializeGatewayDb = () => {
+function getDbDriver(): "sqlite" | "mysql" {
+  const driver = process.env.DB_DRIVER?.toLowerCase();
+  if (driver === "mysql") return "mysql";
+  return "sqlite";
+}
+
+async function initSqlite(): Promise<DatabaseAdapter> {
   const Database = require("better-sqlite3") as typeof import("better-sqlite3");
 
   if (!fs.existsSync(dataDir)) {
@@ -46,30 +48,410 @@ export const initializeGatewayDb = () => {
   }
   ensurePathMode(dataDir, DATA_DIR_MODE);
 
-  const db = new Database(dbPath, { timeout: SQLITE_BUSY_TIMEOUT_MS });
+  const raw = new Database(dbPath, { timeout: SQLITE_BUSY_TIMEOUT_MS });
   ensurePathMode(dbPath, DB_FILE_MODE);
-  db.pragma(`busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
+  raw.pragma(`busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
 
-  const journalMode = db.pragma("journal_mode", { simple: true });
+  const journalMode = raw.pragma("journal_mode", { simple: true });
   if (journalMode !== "wal") {
-    db.pragma("journal_mode = WAL");
+    raw.pragma("journal_mode = WAL");
   }
 
-  db.exec(BASE_SCHEMA_SQL);
-  migrateLegacyUsers(db);
-  const columnMigrations = ensureModernColumns(db);
-  db.exec(POST_MIGRATION_INDEXES_SQL);
-  db.exec(DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL);
-  migrateOidcClaimValue(db);
-  if (columnMigrations.addedKeyUsedTokens || columnMigrations.addedKeyUsedRequests) {
-    backfillKeyUsage(db);
-  }
-  migrateLegacyChatLogs(db);
-  migrateLegacySettingsTable(db);
-  seedDefaultSettings(db);
-  migrateUnlimitedLimitSemantics(db);
-  ensureDefaultGroup(db);
-  cleanupModelUserUsage(db);
+  const db = new SqliteAdapter(raw);
+
+  await db.exec(BASE_SCHEMA_SQL);
+  await runSqliteMigrations(db);
+  await ensureAllColumns(db);
+  await db.exec(POST_MIGRATION_INDEXES_SQL);
+  await db.exec(DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL);
+  await seedDefaultSettings(db);
+  await migrateUnlimitedLimitSemantics(db);
+  await ensureDefaultGroup(db);
+  await cleanupModelUserUsage(db);
 
   return db;
-};
+}
+
+async function runSqliteMigrations(db: DatabaseAdapter) {
+  // migrateLegacyUsers
+  const userCols = await db.query<{ name: string }>("PRAGMA table_info(users)");
+  const hasNameColumn = userCols.some((col) => col.name === "name");
+  const hasQpmColumn = userCols.some((col) => col.name === "qpm");
+  const hasQpsColumn = userCols.some((col) => col.name === "qps");
+  if (hasNameColumn || hasQpmColumn || !hasQpsColumn) {
+    const hasUsername = userCols.some((col) => col.name === "username");
+    if (!hasUsername) {
+      throw new Error("users 表必须包含 username 列");
+    }
+
+    const qpsExpr = hasQpmColumn
+      ? "CASE WHEN qpm IS NULL THEN -1 WHEN qpm < 0 THEN -1 ELSE CAST((qpm + 59) / 60 AS INTEGER) END"
+      : "CASE WHEN qps IS NULL THEN -1 WHEN qps < -1 THEN -1 ELSE qps END";
+
+    await db.exec("PRAGMA foreign_keys = OFF");
+    try {
+      await db.exec(`
+      BEGIN;
+      CREATE TABLE users_new (
+        id INTEGER PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL CHECK(length(username) >= 3 AND username NOT GLOB '*[^A-Za-z0-9]*'),
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL CHECK(role IN ('admin', 'user')),
+        rpm INTEGER DEFAULT -1,
+        qps INTEGER DEFAULT -1,
+        tpm INTEGER DEFAULT -1,
+        quota_tokens INTEGER,
+        quota_requests INTEGER,
+        used_tokens INTEGER DEFAULT 0,
+        used_requests INTEGER DEFAULT 0,
+        enabled INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        deleted_at DATETIME
+      );
+
+      INSERT INTO users_new (
+        id, username, password_hash, role, rpm, qps, tpm,
+        quota_tokens, quota_requests, used_tokens, used_requests, enabled, created_at, deleted_at
+      )
+      SELECT
+        id,
+        CASE
+          WHEN username IS NULL OR length(username) < 3 OR username GLOB '*[^A-Za-z0-9]*' THEN 'user' || id
+          ELSE username
+        END,
+        password_hash, role, rpm, ${qpsExpr}, tpm,
+        quota_tokens, quota_requests, used_tokens, used_requests, enabled, created_at, NULL
+      FROM users;
+
+      DROP TABLE users;
+      ALTER TABLE users_new RENAME TO users;
+      CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+      CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+      COMMIT;
+      `);
+    } catch {
+      await db.exec("ROLLBACK;");
+    } finally {
+      await db.exec("PRAGMA foreign_keys = ON");
+    }
+  }
+
+  // migrateOidcClaimValue
+  const migrated = await db.queryOne<{ value: string }>("SELECT value FROM settings WHERE key = 'oidc_claim_expr_migrated'");
+  if (!migrated) {
+    const groupClaimRow = await db.queryOne<{ value: string }>("SELECT value FROM settings WHERE key = 'oidc_group_claim'");
+    const groupClaim = groupClaimRow?.value || "";
+    if (groupClaim) {
+      const rows = await db.query<{ id: number; oidc_claim_value: string }>(
+        "SELECT id, oidc_claim_value FROM groups WHERE oidc_claim_value IS NOT NULL AND oidc_claim_value != ''",
+      );
+      for (const row of rows) {
+        const escaped = row.oidc_claim_value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+        await db.execute("UPDATE groups SET oidc_claim_expr = ? WHERE id = ?", [`${groupClaim} == "${escaped}"`, row.id]);
+      }
+    }
+    await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["oidc_claim_expr_migrated", "1"]);
+  }
+
+  // backfillKeyUsage (only if new columns were added)
+  // migrateLegacyChatLogs
+  const tableRow = await db.queryOne<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'chat_logs'");
+  if (tableRow) {
+    await db.exec(`
+    INSERT OR IGNORE INTO logs (
+      id, user_id, key_id, channel_id, model_alias, real_model, stream, status_code,
+      estimated_tokens, prompt_tokens, completion_tokens, total_tokens, latency_ms,
+      first_token_latency_ms, output_tps, route_attempts, attempted_channels, error_message, created_at
+    )
+    SELECT
+      id, user_id, key_id, channel_id, model_alias, real_model, stream, status_code,
+      estimated_tokens, prompt_tokens, completion_tokens, total_tokens, latency_ms,
+      first_token_latency_ms, output_tps, COALESCE(route_attempts, 1), attempted_channels, error_message, created_at
+    FROM chat_logs;
+    `);
+    await db.exec("DROP INDEX IF EXISTS idx_chat_logs_created_at");
+    await db.exec("DROP INDEX IF EXISTS idx_chat_logs_user_id");
+    await db.exec("DROP TABLE chat_logs");
+  }
+
+  // migrateLegacySettingsTable
+  const settingsColumns = await db.query<{ name: string }>("PRAGMA table_info(settings)");
+  const isKvSettings = settingsColumns.some((col) => col.name === "key") && settingsColumns.some((col) => col.name === "value");
+  if (!isKvSettings) {
+    const legacy = await db.queryOne<{
+      registration_enabled: number | null;
+      default_qps: number | null;
+      default_rpm: number | null;
+      default_tpm: number | null;
+    }>("SELECT registration_enabled, default_qps, default_rpm, default_tpm FROM settings LIMIT 1");
+
+    await db.exec(`
+    BEGIN;
+    CREATE TABLE settings_new (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    INSERT INTO settings_new (key, value) VALUES
+      ('registration_enabled', '${legacy?.registration_enabled === 0 ? "0" : "1"}'),
+      ('default_qps', '${Math.max(-1, legacy?.default_qps ?? -1)}'),
+      ('default_rpm', '${Math.max(-1, legacy?.default_rpm ?? -1)}'),
+      ('default_tpm', '${Math.max(-1, legacy?.default_tpm ?? -1)}');
+    DROP TABLE settings;
+    ALTER TABLE settings_new RENAME TO settings;
+    COMMIT;
+    `);
+  }
+}
+
+async function ensureAllColumns(db: DatabaseAdapter) {
+  await db.ensureColumn("users", "deleted_at", "deleted_at DATETIME");
+  await db.ensureColumn("users", "allowed_model_aliases", "allowed_model_aliases TEXT DEFAULT '[]'");
+  await db.ensureColumn("users", "note", "note TEXT");
+  await db.ensureColumn("users", "group_id", "group_id INTEGER REFERENCES groups(id)");
+  await db.ensureColumn("users", "oidc_issuer", "oidc_issuer TEXT");
+  await db.ensureColumn("users", "oidc_subject", "oidc_subject TEXT");
+  await db.ensureColumn("groups", "oidc_claim_value", "oidc_claim_value TEXT");
+  await db.ensureColumn("groups", "oidc_claim_expr", "oidc_claim_expr TEXT");
+  await db.ensureColumn("groups", "oidc_claim_priority", "oidc_claim_priority INTEGER DEFAULT 0");
+  await db.ensureColumn("groups", "quota_period", "quota_period INTEGER");
+  await db.ensureColumn("groups", "period_quota_tokens", "period_quota_tokens INTEGER");
+  await db.ensureColumn("groups", "period_quota_requests", "period_quota_requests INTEGER");
+  await db.ensureColumn("groups", "allowed_channel_ids", "allowed_channel_ids TEXT DEFAULT '[]'");
+  await db.ensureColumn("users", "quota_period", "quota_period INTEGER");
+  await db.ensureColumn("users", "period_quota_tokens", "period_quota_tokens INTEGER");
+  await db.ensureColumn("users", "period_quota_requests", "period_quota_requests INTEGER");
+  await db.ensureColumn("users", "period_used_tokens", "period_used_tokens INTEGER DEFAULT 0");
+  await db.ensureColumn("users", "period_used_requests", "period_used_requests INTEGER DEFAULT 0");
+  await db.ensureColumn("users", "period_reset_at", "period_reset_at DATETIME");
+  await db.ensureColumn("keys", "deleted_at", "deleted_at DATETIME");
+  await db.ensureColumn("keys", "name", "name TEXT DEFAULT ''");
+  await db.ensureColumn("keys", "used_tokens", "used_tokens INTEGER DEFAULT 0");
+  await db.ensureColumn("keys", "used_requests", "used_requests INTEGER DEFAULT 0");
+  await db.ensureColumn("logs", "client_ip", "client_ip TEXT");
+  await db.ensureColumn("channels", "supported_protocols", `supported_protocols TEXT DEFAULT '["chat_completions"]'`);
+  await db.ensureColumn("channels", "user_agent", "user_agent TEXT DEFAULT ''");
+  await db.ensureColumn("channels", "proxy_url", "proxy_url TEXT DEFAULT ''");
+  await db.ensureColumn("channels", "max_concurrency", "max_concurrency INTEGER DEFAULT 64");
+  await db.ensureColumn("channels", "quota_tokens", "quota_tokens INTEGER");
+  await db.ensureColumn("channels", "quota_requests", "quota_requests INTEGER");
+  await db.ensureColumn("channels", "quota_period", "quota_period INTEGER");
+  await db.ensureColumn("channels", "period_quota_tokens", "period_quota_tokens INTEGER");
+  await db.ensureColumn("channels", "period_quota_requests", "period_quota_requests INTEGER");
+  await db.ensureColumn("channels", "period_used_tokens", "period_used_tokens INTEGER DEFAULT 0");
+  await db.ensureColumn("channels", "period_used_requests", "period_used_requests INTEGER DEFAULT 0");
+  await db.ensureColumn("channels", "period_reset_at", "period_reset_at DATETIME");
+  await db.ensureColumn("channels", "deleted_at", "deleted_at DATETIME");
+  await db.ensureColumn("channels", "force_include_usage", "force_include_usage INTEGER DEFAULT 1");
+  await db.ensureColumn("models", "deleted_at", "deleted_at DATETIME");
+  await db.ensureColumn("models", "is_public", "is_public INTEGER DEFAULT 1");
+  await db.ensureColumn("models", "upstream_protocol", `upstream_protocol TEXT DEFAULT 'chat_completions'`);
+  await db.ensureColumn("models", "token_multiplier", "token_multiplier REAL DEFAULT 1");
+  await db.ensureColumn("models", "request_multiplier", "request_multiplier REAL DEFAULT 1");
+  await db.ensureColumn("models", "max_concurrency", "max_concurrency INTEGER DEFAULT 0");
+  await db.ensureColumn("models", "quota_mode", `quota_mode TEXT DEFAULT 'follow_group'`);
+  await db.ensureColumn("models", "quota_tokens", "quota_tokens INTEGER");
+  await db.ensureColumn("models", "quota_requests", "quota_requests INTEGER");
+  await db.ensureColumn("models", "quota_period", "quota_period INTEGER");
+  await db.ensureColumn("models", "period_quota_tokens", "period_quota_tokens INTEGER");
+  await db.ensureColumn("models", "period_quota_requests", "period_quota_requests INTEGER");
+  await db.ensureColumn("models", "period_used_tokens", "period_used_tokens INTEGER DEFAULT 0");
+  await db.ensureColumn("models", "period_used_requests", "period_used_requests INTEGER DEFAULT 0");
+  await db.ensureColumn("models", "period_reset_at", "period_reset_at DATETIME");
+  await db.ensureColumn("models", "supported_protocols", "supported_protocols TEXT");
+  await db.ensureColumn("models", "copilot_compatibility", "copilot_compatibility INTEGER DEFAULT 0");
+  await db.ensureColumn("logs", "first_token_latency_ms", "first_token_latency_ms INTEGER");
+  await db.ensureColumn("logs", "output_tps", "output_tps REAL");
+  await db.ensureColumn("logs", "token_source", "token_source TEXT");
+  await db.ensureColumn("logs", "metadata", "metadata TEXT");
+  await db.ensureColumn("logs", "route_attempts", "route_attempts INTEGER DEFAULT 1");
+  await db.ensureColumn("logs", "attempted_channels", "attempted_channels TEXT");
+  await db.ensureColumn("logs", "user_agent", "user_agent TEXT");
+  await db.ensureColumn("users", "webhook_role", "webhook_role TEXT DEFAULT ''");
+  await db.ensureColumn("users", "webhook_tags", "webhook_tags TEXT DEFAULT '[]'");
+  await db.ensureColumn("users", "totp_secret", "totp_secret TEXT");
+  await db.ensureColumn("users", "totp_enabled", "totp_enabled INTEGER DEFAULT 0");
+  await db.ensureColumn("users", "email", "email TEXT");
+
+  if (db.driver === "sqlite") {
+    await db.exec(`UPDATE users SET used_tokens = ROUND(used_tokens, 6), used_requests = ROUND(used_requests, 6),
+             period_used_tokens = ROUND(period_used_tokens, 6), period_used_requests = ROUND(period_used_requests, 6)
+             WHERE used_tokens != ROUND(used_tokens, 6) OR used_requests != ROUND(used_requests, 6)
+                OR period_used_tokens != ROUND(period_used_tokens, 6) OR period_used_requests != ROUND(period_used_requests, 6)`);
+    await db.exec(`UPDATE keys SET used_tokens = ROUND(used_tokens, 6), used_requests = ROUND(used_requests, 6)
+             WHERE used_tokens != ROUND(used_tokens, 6) OR used_requests != ROUND(used_requests, 6)`);
+    await db.exec(`UPDATE channels SET period_used_tokens = ROUND(period_used_tokens, 6), period_used_requests = ROUND(period_used_requests, 6)
+             WHERE period_used_tokens != ROUND(period_used_tokens, 6) OR period_used_requests != ROUND(period_used_requests, 6)`);
+    await db.exec(`UPDATE models SET period_used_tokens = ROUND(period_used_tokens, 6), period_used_requests = ROUND(period_used_requests, 6)
+             WHERE period_used_tokens != ROUND(period_used_tokens, 6) OR period_used_requests != ROUND(period_used_requests, 6)`);
+  }
+}
+
+async function initMysql(): Promise<DatabaseAdapter> {
+  const db = new MysqlAdapter({
+    host: process.env.MYSQL_HOST || "localhost",
+    port: Number(process.env.MYSQL_PORT) || 3306,
+    user: process.env.MYSQL_USER || "root",
+    password: process.env.MYSQL_PASSWORD || "",
+    database: process.env.MYSQL_DATABASE || "modelgate",
+    poolSize: Number(process.env.MYSQL_POOL_SIZE) || 10,
+  });
+
+  await db.exec(MYSQL_BASE_SCHEMA_SQL);
+  await db.exec(MYSQL_POST_MIGRATION_INDEXES_SQL);
+  await db.exec(MYSQL_DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL);
+  await seedDefaultSettings(db);
+  await ensureDefaultGroup(db);
+
+  return db;
+}
+
+async function seedDefaultSettings(db: DatabaseAdapter) {
+  const defaults: Array<[string, string]> = [
+    ["registration_enabled", "1"],
+    ["password_login_enabled", "1"],
+    ["default_qps", "-1"],
+    ["default_rpm", "-1"],
+    ["default_tpm", "-1"],
+    ["upstream_retry_enabled", "1"],
+    ["upstream_retry_max_attempts", "3"],
+    ["upstream_retry_same_channel", "0"],
+    ["upstream_circuit_breaker_enabled", "1"],
+    ["oidc_enabled", "0"],
+    ["oidc_issuer_url", ""],
+    ["oidc_client_id", ""],
+    ["oidc_client_secret", ""],
+    ["oidc_scopes", "openid profile email"],
+    ["oidc_auto_register", "1"],
+    ["oidc_button_text", "OIDC 登录"],
+    ["announcement_content", ""],
+    ["icp_filing_number", ""],
+    ["public_security_filing_number", ""],
+  ];
+
+  for (const [key, value] of defaults) {
+    if (db.driver === "mysql") {
+      await db.execute(
+        `INSERT INTO settings (\`key\`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = value`,
+        [key, value],
+      );
+    } else {
+      await db.execute(
+        `INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING`,
+        [key, value],
+      );
+    }
+  }
+}
+
+async function migrateUnlimitedLimitSemantics(db: DatabaseAdapter) {
+  const migrated = await db.queryOne<{ value: string }>("SELECT value FROM settings WHERE key = 'limit_unlimited_value_migrated'");
+  if (migrated) return;
+
+  await db.exec(`
+  UPDATE settings SET value = '-1' WHERE key IN ('default_qps', 'default_rpm', 'default_tpm') AND value = '0';
+  UPDATE users SET qps = -1 WHERE qps = 0;
+  UPDATE users SET rpm = -1 WHERE rpm = 0;
+  UPDATE users SET tpm = -1 WHERE tpm = 0;
+  `);
+
+  if (db.driver === "mysql") {
+    await db.execute(
+      `INSERT INTO settings (\`key\`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = value`,
+      ["limit_unlimited_value_migrated", "1"],
+    );
+  } else {
+    await db.execute(
+      `INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING`,
+      ["limit_unlimited_value_migrated", "1"],
+    );
+  }
+}
+
+async function ensureDefaultGroup(db: DatabaseAdapter) {
+  const defaultGroup = await db.queryOne<{ id: number }>(
+    "SELECT id FROM groups WHERE is_default = 1 AND deleted_at IS NULL",
+  );
+  if (defaultGroup) return;
+
+  if (db.driver === "mysql") {
+    await db.exec(`
+    INSERT IGNORE INTO \`groups\` (name, description, is_default, qps, rpm, tpm)
+    VALUES ('default', '默认用户组', 1, -1, -1, -1);
+    `);
+  } else {
+    await db.exec(`
+    INSERT OR IGNORE INTO groups (name, description, is_default, qps, rpm, tpm)
+    VALUES ('default', '默认用户组', 1, -1, -1, -1);
+    `);
+  }
+
+  const newDefault = await db.queryOne<{ id: number }>(
+    "SELECT id FROM groups WHERE is_default = 1 AND deleted_at IS NULL",
+  );
+  if (newDefault) {
+    await db.execute("UPDATE users SET group_id = ? WHERE group_id IS NULL", [newDefault.id]);
+  }
+}
+
+async function cleanupModelUserUsage(db: DatabaseAdapter) {
+  if (db.driver === "sqlite") {
+    const tableRow = await db.queryOne<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'model_user_usage'");
+    if (tableRow) {
+      await db.exec("DROP TABLE IF EXISTS model_user_usage");
+    }
+    try {
+      const perUserColumns = [
+        "per_user_quota_requests",
+        "per_user_quota_tokens",
+        "per_user_quota_period",
+        "per_user_period_quota_requests",
+        "per_user_period_quota_tokens",
+      ];
+      const existing = (await db.query<{ name: string }>("PRAGMA table_info(models)")).map((c) => c.name);
+      for (const col of perUserColumns) {
+        if (existing.includes(col)) {
+          await db.exec(`ALTER TABLE models DROP COLUMN ${col}`);
+        }
+      }
+    } catch {
+      // skip
+    }
+  } else {
+    const tableRow = await db.queryOne<{ TABLE_NAME: string }>(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'model_user_usage'`,
+    );
+    if (tableRow) {
+      await db.exec("DROP TABLE IF EXISTS model_user_usage");
+    }
+    try {
+      const perUserColumns = [
+        "per_user_quota_requests",
+        "per_user_quota_tokens",
+        "per_user_quota_period",
+        "per_user_period_quota_requests",
+        "per_user_period_quota_tokens",
+      ];
+      const existing = (await db.query<{ COLUMN_NAME: string }>(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'models'`,
+      )).map((c) => c.COLUMN_NAME);
+      for (const col of perUserColumns) {
+        if (existing.includes(col)) {
+          await db.exec(`ALTER TABLE models DROP COLUMN ${col}`);
+        }
+      }
+    } catch {
+      // skip
+    }
+  }
+}
+
+let initPromise: Promise<DatabaseAdapter> | null = null;
+
+export async function initializeGatewayDbAsync(): Promise<DatabaseAdapter> {
+  if (!initPromise) {
+    const driver = getDbDriver();
+    initPromise = driver === "mysql" ? initMysql() : initSqlite();
+  }
+  return initPromise;
+}

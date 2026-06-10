@@ -12,49 +12,47 @@ const createSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const guard = ensureUser(request);
+  const guard = await ensureUser(request);
   if ("error" in guard) return guard.error;
 
-  const rows = gatewayDb
-    .prepare(
-      `SELECT id, key, name, user_id, used_tokens, used_requests, enabled, created_at,
+  const rows = await gatewayDb
+    .query<{ key: string; [k: string]: unknown }>(
+      `SELECT id, \`key\`, name, user_id, used_tokens, used_requests, enabled, created_at,
               (SELECT MAX(created_at) FROM logs WHERE logs.key_id = keys.id) AS last_used_at
-       FROM keys
+       FROM \`keys\`
        WHERE user_id = ? AND deleted_at IS NULL
        ORDER BY id DESC`,
-    )
-    .all(guard.auth.user.id) as { key: string; [k: string]: unknown }[];
+      [guard.auth.user.id],
+    );
 
   return jsonOk({ data: rows });
 }
 
 export async function POST(request: Request) {
-  const guard = ensureUser(request);
+  const guard = await ensureUser(request);
   if ("error" in guard) return guard.error;
 
   const body = await request.json().catch(() => ({}));
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
-  const keyCount = gatewayDb
-    .prepare("SELECT COUNT(*) AS count FROM keys WHERE user_id = ? AND deleted_at IS NULL")
-    .get(guard.auth.user.id) as { count: number };
+  const keyCount = (await gatewayDb
+    .queryOne<{ count: number }>("SELECT COUNT(*) AS count FROM `keys` WHERE user_id = ? AND deleted_at IS NULL", [guard.auth.user.id]))!;
   if (keyCount.count >= 50) {
     return jsonError("密钥数量已达上限", 400);
   }
 
   const apiKey = generateGatewayKey();
-  const result = gatewayDb
-    .prepare("INSERT INTO keys (key, name, user_id, enabled) VALUES (?, ?, ?, ?)")
-    .run(apiKey, parsed.data.name?.trim() || "", guard.auth.user.id, parsed.data.enabled === false ? 0 : 1);
+  const result = await gatewayDb
+    .execute("INSERT INTO `keys` (`key`, name, user_id, enabled) VALUES (?, ?, ?, ?)", [apiKey, parsed.data.name?.trim() || "", guard.auth.user.id, parsed.data.enabled === false ? 0 : 1]);
 
-  const row = gatewayDb
-    .prepare(
-      `SELECT id, key, name, user_id, used_tokens, used_requests, enabled, created_at,
+  const row = await gatewayDb
+    .queryOne(
+      `SELECT id, \`key\`, name, user_id, used_tokens, used_requests, enabled, created_at,
               (SELECT MAX(created_at) FROM logs WHERE logs.key_id = keys.id) AS last_used_at
-       FROM keys
+       FROM \`keys\`
        WHERE id = ? AND deleted_at IS NULL`,
-    )
-    .get(result.lastInsertRowid);
+      [result.lastInsertRowid],
+    );
   return jsonOk({ message: "密钥创建成功。", data: row }, 201);
 }

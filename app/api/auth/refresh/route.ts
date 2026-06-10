@@ -20,9 +20,8 @@ export async function POST(request: Request) {
     const payload = verifyRefreshToken(refreshToken);
     if (payload.type !== "refresh") return clearAuthCookies(jsonError("刷新令牌无效", 401));
 
-    const user = gatewayDb
-      .prepare("SELECT * FROM users WHERE id = ? AND enabled = 1 AND deleted_at IS NULL")
-      .get(Number(payload.sub)) as DbUser | undefined;
+    const user = await gatewayDb
+      .queryOne<DbUser>("SELECT * FROM users WHERE id = ? AND enabled = 1 AND deleted_at IS NULL", [Number(payload.sub)]);
 
     if (!user) return clearAuthCookies(jsonError("刷新令牌无效", 401));
 

@@ -35,9 +35,9 @@ export async function GET(request: Request, context: RouteContext) {
   const endpoint = path.join("/");
   const authedRequest = withPathToken(request, token);
 
-  if (endpoint === "version") return applyCorsHeaders(handleOllamaVersionRequest(authedRequest));
-  if (endpoint === "tags") return applyCorsHeaders(handleOllamaTagsRequest(authedRequest));
-  return applyCorsHeaders(notFound());
+  if (endpoint === "version") return await applyCorsHeaders(await handleOllamaVersionRequest(authedRequest));
+  if (endpoint === "tags") return await applyCorsHeaders(await handleOllamaTagsRequest(authedRequest));
+  return await applyCorsHeaders(notFound());
 }
 
 export async function POST(request: Request, context: RouteContext) {
@@ -45,11 +45,11 @@ export async function POST(request: Request, context: RouteContext) {
   const endpoint = path.join("/");
   const authedRequest = withPathToken(request, token);
 
-  if (endpoint === "chat") return applyCorsHeaders(await handleOllamaChatRequest(authedRequest));
-  if (endpoint === "show") return applyCorsHeaders(await handleOllamaShowRequest(authedRequest));
-  return applyCorsHeaders(notFound());
+  if (endpoint === "chat") return await applyCorsHeaders(await handleOllamaChatRequest(authedRequest));
+  if (endpoint === "show") return await applyCorsHeaders(await handleOllamaShowRequest(authedRequest));
+  return await applyCorsHeaders(notFound());
 }
 
-export function OPTIONS() {
-  return handleCorsPreflight();
+export async function OPTIONS() {
+  return await handleCorsPreflight();
 }
