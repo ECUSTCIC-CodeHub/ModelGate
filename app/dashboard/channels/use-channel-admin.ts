@@ -129,8 +129,14 @@ export function useChannelAdmin() {
           real_model: item.real_model.trim(),
           upstream_protocol: item.upstream_protocol,
           supported_protocols: item.supported_protocols,
+          copilot_compatibility: item.copilot_compatibility,
           is_public: item.is_public,
           enabled: item.enabled,
+          weight: item.weight,
+          token_multiplier: item.token_multiplier,
+          request_multiplier: item.request_multiplier,
+          max_concurrency: item.max_concurrency,
+          quota_mode: item.quota_mode,
         }))
         .filter((item) => item.alias && item.real_model);
 

@@ -1037,8 +1037,15 @@ email matches ".*@company\\.com"
       "alias": "gpt-4",
       "real_model": "gpt-4-turbo",
       "upstream_protocol": "chat_completions",
+      "supported_protocols": ["chat_completions"],
+      "copilot_compatibility": false,
       "is_public": true,
-      "enabled": true
+      "enabled": true,
+      "weight": 1,
+      "token_multiplier": 1,
+      "request_multiplier": 1,
+      "max_concurrency": 0,
+      "quota_mode": "follow_group"
     }
   ]
 }
@@ -1071,11 +1078,14 @@ email matches ".*@company\\.com"
 | real_model | string | 是 | | 上游真实模型名 |
 | upstream_protocol | enum | 否 | 渠道第一个协议 | `chat_completions` / `anthropic_messages` / `responses` / `embeddings` |
 | supported_protocols | string[] | 否 | 渠道全部协议 | 模型可用协议，须为渠道 `supported_protocols` 的子集。入站协议在可用协议中时直接透传，否则使用 `upstream_protocol` |
+| copilot_compatibility | bool | 否 | false | 启用 GitHub Copilot 兼容模式，规范化 tool_calls 返回并过滤未声明的工具调用 |
 | is_public | bool | 否 | true | false 时仅白名单用户可访问 |
 | enabled | bool | 否 | true | 是否启用 |
-| weight | int | 否 | 1 | 初始模型权重；前端创建流程默认不配置，创建后可在模型管理中调整 |
-
-Token 倍率、请求倍率和模型级并发需在模型管理接口中配置。
+| weight | int | 否 | 1 | 路由权重 |
+| token_multiplier | number | 否 | 1 | Token 用量倍率（0~100） |
+| request_multiplier | number | 否 | 1 | 请求次数倍率（0~100） |
+| max_concurrency | int | 否 | 0 | 模型级最大并发数，0 表示不限制 |
+| quota_mode | enum | 否 | "follow_group" | 配额模式：`follow_group`（跟随用户组）/ `bypass_group`（绕过用户组）/ `independent`（独立配额） |
 
 ### PUT /api/admin/channels/:id
 

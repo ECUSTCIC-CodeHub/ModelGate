@@ -37,6 +37,10 @@ const createSchema = z.object({
         is_public: z.boolean().optional(),
         enabled: z.boolean().optional(),
         weight: z.number().int().min(1).optional(),
+        token_multiplier: z.number().min(0).max(100).optional(),
+        request_multiplier: z.number().min(0).max(100).optional(),
+        max_concurrency: z.number().int().min(0).optional(),
+        quota_mode: z.enum(["follow_group", "bypass_group", "independent"]).optional(),
       }),
     )
     .optional(),
@@ -135,8 +139,8 @@ export async function POST(request: Request) {
       const finalModelProtocols = validModelProtocols.length > 0 ? validModelProtocols : [upstreamProtocol];
       gatewayDb
         .prepare(
-          `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, is_public, enabled, weight)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           model.alias,
@@ -148,6 +152,10 @@ export async function POST(request: Request) {
           model.is_public === false ? 0 : 1,
           channelEnabled === 1 && model.enabled !== false ? 1 : 0,
           model.weight ?? 1,
+          model.token_multiplier ?? 1,
+          model.request_multiplier ?? 1,
+          model.max_concurrency ?? 0,
+          model.quota_mode ?? "follow_group",
         );
     }
 
