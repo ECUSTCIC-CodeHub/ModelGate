@@ -235,9 +235,9 @@ export default function QuotaPage() {
           authedFetch("/api/user/model-quotas"),
         ]);
         if (cancelled) return;
-        const quotaData = (await quotaRes.json().catch(() => null)) as { data?: QuotaData } | null;
+        const quotaData = (await quotaRes.json().catch(() => null)) as QuotaData | null;
         const modelData = (await modelRes.json().catch(() => null)) as { data?: ModelQuota[] } | null;
-        if (quotaData?.data) setQuota(quotaData.data);
+        if (quotaData) setQuota(quotaData);
         if (modelData?.data) setModelQuotas(modelData.data);
       }
 

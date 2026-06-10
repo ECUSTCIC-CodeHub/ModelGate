@@ -3,7 +3,7 @@ import { cn } from "@/lib/shared/utils";
 
 type SectionTitleProps = {
   title: string;
-  description?: string;
+  description?: ReactNode;
   action?: ReactNode;
   className?: string;
 };

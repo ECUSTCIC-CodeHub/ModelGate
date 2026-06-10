@@ -27,7 +27,7 @@ function QuotaProgress({ remaining, quota }: { remaining: number | null; quota: 
 
 export function DashboardQuotaCard({ quota }: DashboardQuotaCardProps) {
   const period = quota?.period;
-  if (!quota || !period) return null;
+  if (!quota) return null;
 
   return (
     <Card>
@@ -78,7 +78,7 @@ export function DashboardQuotaCard({ quota }: DashboardQuotaCardProps) {
             </div>
           ) : null}
 
-          {period.quota_requests !== null ? (
+          {period && period.quota_requests !== null ? (
             <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
               <p className="text-xs text-[var(--color-foreground-muted)]">{period.period_label}请求配额</p>
               <p className="text-lg font-semibold text-[var(--color-foreground)]">
@@ -92,7 +92,7 @@ export function DashboardQuotaCard({ quota }: DashboardQuotaCardProps) {
             </div>
           ) : null}
 
-          {period.quota_tokens !== null ? (
+          {period && period.quota_tokens !== null ? (
             <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
               <p className="text-xs text-[var(--color-foreground-muted)]">{period.period_label} Token 配额</p>
               <p className="text-lg font-semibold text-[var(--color-foreground)]">
