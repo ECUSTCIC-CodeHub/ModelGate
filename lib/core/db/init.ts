@@ -11,8 +11,9 @@ import {
 } from "@/lib/core/db/schema";
 import {
   MYSQL_BASE_SCHEMA_SQL,
+  MYSQL_BASE_INDEXES,
   MYSQL_DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL,
-  MYSQL_POST_MIGRATION_INDEXES_SQL,
+  MYSQL_POST_MIGRATION_INDEXES,
 } from "@/lib/core/db/mysql-schema";
 
 const dataDir = path.join(process.cwd(), "data");
@@ -287,6 +288,15 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   }
 }
 
+async function createIndexIdempotent(db: MysqlAdapter, index: { name: string; table: string; expr: string }) {
+  try {
+    await db.exec(`CREATE INDEX ${index.name} ON ${index.table} ${index.expr}`);
+  } catch (err) {
+    if (err instanceof Error && /duplicate key name/i.test(err.message)) return;
+    throw err;
+  }
+}
+
 async function initMysql(): Promise<DatabaseAdapter> {
   const host = process.env.MYSQL_HOST || "localhost";
   const port = Number(process.env.MYSQL_PORT) || 3306;
@@ -303,8 +313,9 @@ async function initMysql(): Promise<DatabaseAdapter> {
 
   try {
     await db.exec(MYSQL_BASE_SCHEMA_SQL);
+    for (const idx of MYSQL_BASE_INDEXES) await createIndexIdempotent(db, idx);
     await ensureAllColumns(db);
-    await db.exec(MYSQL_POST_MIGRATION_INDEXES_SQL);
+    for (const idx of MYSQL_POST_MIGRATION_INDEXES) await createIndexIdempotent(db, idx);
     await db.exec(MYSQL_DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL);
     await seedDefaultSettings(db);
     await migrateUnlimitedLimitSemantics(db);

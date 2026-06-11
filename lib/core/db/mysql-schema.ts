@@ -153,24 +153,26 @@ CREATE TABLE IF NOT EXISTS logs (
   user_agent TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE INDEX idx_models_alias_enabled ON models(alias, enabled);
-CREATE INDEX idx_models_channel_id ON models(channel_id);
-CREATE INDEX idx_users_username ON users(username);
-CREATE INDEX idx_users_role ON users(role);
-CREATE INDEX idx_logs_created_at ON logs(created_at);
-CREATE INDEX idx_logs_user_id ON logs(user_id);
-CREATE INDEX idx_logs_user_created_at ON logs(user_id, created_at);
-CREATE INDEX idx_logs_user_id_id ON logs(user_id, id);
-CREATE INDEX idx_logs_channel_created_at ON logs(channel_id, created_at);
-CREATE INDEX idx_logs_key_id ON logs(key_id);
-CREATE INDEX idx_keys_key ON \`keys\`(\`key\`);
 `;
 
-export const MYSQL_POST_MIGRATION_INDEXES_SQL = `
-CREATE INDEX idx_models_alias_enabled_deleted ON models(alias, enabled, deleted_at, channel_id);
-CREATE INDEX idx_channels_enabled_deleted ON channels(enabled, deleted_at);
-`;
+export const MYSQL_BASE_INDEXES = [
+  { name: "idx_models_alias_enabled", table: "models", expr: "(alias, enabled)" },
+  { name: "idx_models_channel_id", table: "models", expr: "(channel_id)" },
+  { name: "idx_users_username", table: "users", expr: "(username)" },
+  { name: "idx_users_role", table: "users", expr: "(role)" },
+  { name: "idx_logs_created_at", table: "logs", expr: "(created_at)" },
+  { name: "idx_logs_user_id", table: "logs", expr: "(user_id)" },
+  { name: "idx_logs_user_created_at", table: "logs", expr: "(user_id, created_at)" },
+  { name: "idx_logs_user_id_id", table: "logs", expr: "(user_id, id)" },
+  { name: "idx_logs_channel_created_at", table: "logs", expr: "(channel_id, created_at)" },
+  { name: "idx_logs_key_id", table: "logs", expr: "(key_id)" },
+  { name: "idx_keys_key", table: "`keys`", expr: "(`key`)" },
+] as const;
+
+export const MYSQL_POST_MIGRATION_INDEXES = [
+  { name: "idx_models_alias_enabled_deleted", table: "models", expr: "(alias, enabled, deleted_at, channel_id)" },
+  { name: "idx_channels_enabled_deleted", table: "channels", expr: "(enabled, deleted_at)" },
+] as const;
 
 export const MYSQL_DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL = `
   UPDATE models
