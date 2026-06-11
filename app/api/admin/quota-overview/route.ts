@@ -4,6 +4,7 @@ import { gatewayDb } from "@/lib/core/db";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
 import { modelGateFeatures } from "@/lib/core/features";
+import { toShanghaiDatetimeNoMs } from "@/lib/core/db/datetime";
 
 function formatPeriodLabel(seconds: number): string {
   if (seconds === 3600) return "每小时";
@@ -79,7 +80,7 @@ export async function GET(request: Request) {
   const channels = channelRows.map((c) => {
     let periodUsedTokens = c.period_used_tokens;
     let periodUsedRequests = c.period_used_requests;
-    if (c.quota_period && c.period_reset_at && new Date(c.period_reset_at) <= now) {
+    if (c.quota_period && c.period_reset_at && String(c.period_reset_at).slice(0, 19) <= toShanghaiDatetimeNoMs(now)) {
       periodUsedTokens = 0;
       periodUsedRequests = 0;
     }
@@ -151,7 +152,7 @@ export async function GET(request: Request) {
   const models = modelRows.map((m) => {
     let periodUsedTokens = m.period_used_tokens;
     let periodUsedRequests = m.period_used_requests;
-    if (m.quota_period && m.period_reset_at && new Date(m.period_reset_at) <= now) {
+    if (m.quota_period && m.period_reset_at && String(m.period_reset_at).slice(0, 19) <= toShanghaiDatetimeNoMs(now)) {
       periodUsedTokens = 0;
       periodUsedRequests = 0;
     }
