@@ -371,11 +371,13 @@ async function seedDefaultSettings(db: DatabaseAdapter) {
 }
 
 async function migrateUnlimitedLimitSemantics(db: DatabaseAdapter) {
-  const migrated = await db.queryOne<{ value: string }>("SELECT value FROM settings WHERE key = 'limit_unlimited_value_migrated'");
+  const migrated = await db.queryOne<{ value: string }>("SELECT value FROM settings WHERE `key` = 'limit_unlimited_value_migrated'");
   if (migrated) return;
 
+  const isMysql = db.driver === "mysql";
+  const keyCol = isMysql ? "`key`" : "key";
   await db.exec(`
-  UPDATE settings SET value = '-1' WHERE key IN ('default_qps', 'default_rpm', 'default_tpm') AND value = '0';
+  UPDATE settings SET value = '-1' WHERE ${keyCol} IN ('default_qps', 'default_rpm', 'default_tpm') AND value = '0';
   UPDATE users SET qps = -1 WHERE qps = 0;
   UPDATE users SET rpm = -1 WHERE rpm = 0;
   UPDATE users SET tpm = -1 WHERE tpm = 0;
