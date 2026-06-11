@@ -31,18 +31,19 @@ ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 ENV TZ=Asia/Shanghai
 
-RUN apk add --no-cache tzdata libstdc++ \
+RUN apk add --no-cache tzdata libstdc++ su-exec \
   && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
   && echo $TZ > /etc/timezone
 
 COPY --chown=node:node --from=build /app/.next/standalone ./
 COPY --chown=node:node --from=build /app/.next/static ./.next/static
 COPY --chown=node:node --from=build /app/public ./public
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 RUN mkdir -p /app/data && chown node:node /app/data
 VOLUME ["/app/data"]
 
 EXPOSE 3000
-USER node
-
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "server.js"]
