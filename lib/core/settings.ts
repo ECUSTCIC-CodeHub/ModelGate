@@ -153,7 +153,8 @@ export async function setGatewaySettings(input: {
   if (input.icp_filing_number !== undefined) values.icp_filing_number = input.icp_filing_number.trim();
   if (input.public_security_filing_number !== undefined) values.public_security_filing_number = input.public_security_filing_number.trim();
 
-  const upsertSql = gatewayDb.driver === "mysql"
+  const isMysql = await gatewayDb.getDriver() === "mysql";
+  const upsertSql = isMysql
     ? `INSERT INTO settings (\`key\`, value, updated_at)
        VALUES (?, ?, CURRENT_TIMESTAMP)
        ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at = CURRENT_TIMESTAMP`

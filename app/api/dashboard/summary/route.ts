@@ -99,7 +99,7 @@ export async function GET(request: Request) {
     ? gatewayDb.queryOne<{ total_keys: number }>("SELECT COUNT(*) AS total_keys FROM `keys` WHERE deleted_at IS NULL")
     : gatewayDb.queryOne<{ total_keys: number }>("SELECT COUNT(*) AS total_keys FROM `keys` WHERE user_id = ? AND deleted_at IS NULL", [guard.auth.user.id])))!;
 
-  const isMysql = gatewayDb.driver === "mysql";
+  const isMysql = await gatewayDb.getDriver() === "mysql";
   const hourBucketExpr = isMysql
     ? "DATE_FORMAT(created_at, '%Y-%m-%dT%H:00:00')"
     : "strftime('%Y-%m-%dT%H:00:00', created_at)";

@@ -36,6 +36,7 @@ function makeTxContext(conn: PoolConnection): TransactionContext {
 
 export class MysqlAdapter implements DatabaseAdapter {
   readonly driver = "mysql" as const;
+  async getDriver() { return this.driver; }
   private pool: Pool;
 
   constructor(config: {

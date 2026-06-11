@@ -288,23 +288,35 @@ async function ensureAllColumns(db: DatabaseAdapter) {
 }
 
 async function initMysql(): Promise<DatabaseAdapter> {
+  const host = process.env.MYSQL_HOST || "localhost";
+  const port = Number(process.env.MYSQL_PORT) || 3306;
+  const user = process.env.MYSQL_USER || "root";
+  const database = process.env.MYSQL_DATABASE || "modelgate";
   const db = new MysqlAdapter({
-    host: process.env.MYSQL_HOST || "localhost",
-    port: Number(process.env.MYSQL_PORT) || 3306,
-    user: process.env.MYSQL_USER || "root",
+    host,
+    port,
+    user,
     password: process.env.MYSQL_PASSWORD || "",
-    database: process.env.MYSQL_DATABASE || "modelgate",
+    database,
     poolSize: Number(process.env.MYSQL_POOL_SIZE) || 10,
   });
 
-  await db.exec(MYSQL_BASE_SCHEMA_SQL);
-  await ensureAllColumns(db);
-  await db.exec(MYSQL_POST_MIGRATION_INDEXES_SQL);
-  await db.exec(MYSQL_DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL);
-  await seedDefaultSettings(db);
-  await migrateUnlimitedLimitSemantics(db);
-  await ensureDefaultGroup(db);
-  await cleanupModelUserUsage(db);
+  try {
+    await db.exec(MYSQL_BASE_SCHEMA_SQL);
+    await ensureAllColumns(db);
+    await db.exec(MYSQL_POST_MIGRATION_INDEXES_SQL);
+    await db.exec(MYSQL_DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL);
+    await seedDefaultSettings(db);
+    await migrateUnlimitedLimitSemantics(db);
+    await ensureDefaultGroup(db);
+    await cleanupModelUserUsage(db);
+  } catch (err) {
+    await db.close();
+    const msg = err instanceof Error ? err.message : String(err);
+    const code = err instanceof Error && "code" in err ? ` (${(err as Error & { code: string }).code})` : "";
+    console.error(`[ModelGate] MySQL 初始化失败: 无法连接 ${host}:${port}/${database} (用户: ${user})${code} - ${msg}`);
+    throw new Error(`MySQL 数据库初始化失败: ${msg}`);
+  }
 
   return db;
 }
@@ -454,7 +466,10 @@ let initPromise: Promise<DatabaseAdapter> | null = null;
 export async function initializeGatewayDbAsync(): Promise<DatabaseAdapter> {
   if (!initPromise) {
     const driver = getDbDriver();
-    initPromise = driver === "mysql" ? initMysql() : initSqlite();
+    initPromise = (driver === "mysql" ? initMysql() : initSqlite()).catch((err) => {
+      initPromise = null;
+      throw err;
+    });
   }
   return initPromise;
 }

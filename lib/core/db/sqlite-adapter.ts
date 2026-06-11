@@ -60,6 +60,7 @@ function makeTxContext(db: BetterSqlite3.Database, prepare: (sql: string) => Bet
 
 export class SqliteAdapter implements DatabaseAdapter {
   readonly driver = "sqlite" as const;
+  async getDriver() { return this.driver; }
   private prepare: (sql: string) => BetterSqlite3.Statement;
 
   constructor(private db: BetterSqlite3.Database) {

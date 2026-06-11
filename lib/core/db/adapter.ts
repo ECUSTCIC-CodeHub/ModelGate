@@ -19,4 +19,5 @@ export interface DatabaseAdapter {
   ensureColumn(table: string, column: string, ddl: string): Promise<boolean>;
   close(): Promise<void>;
   readonly driver: "sqlite" | "mysql";
+  getDriver(): Promise<"sqlite" | "mysql">;
 }
