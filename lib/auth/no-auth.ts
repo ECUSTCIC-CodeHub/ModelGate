@@ -14,7 +14,7 @@ export async function getNoAuthContext(): Promise<{ user: DbUser; key: DbKey }> 
   let user = await gatewayDb.queryOne<DbUser>("SELECT * FROM users WHERE username = ? AND deleted_at IS NULL", [NOAUTH_USERNAME]);
 
   if (!user) {
-    const defaultGroup = await gatewayDb.queryOne<{ id: number }>("SELECT id FROM groups WHERE is_default = 1 AND deleted_at IS NULL");
+    const defaultGroup = await gatewayDb.queryOne<{ id: number }>("SELECT id FROM `groups` WHERE is_default = 1 AND deleted_at IS NULL");
 
     await gatewayDb.execute(
       `INSERT INTO users (username, password_hash, role, group_id, rpm, qps, tpm, enabled)

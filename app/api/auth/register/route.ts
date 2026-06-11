@@ -43,7 +43,7 @@ export async function POST(request: Request) {
   const role: "admin" | "user" = (adminCount?.count ?? 0) === 0 ? "admin" : "user";
   const passwordHash = await hashPassword(parsed.data.password);
 
-  const defaultGroup = await gatewayDb.queryOne<{ id: number }>("SELECT id FROM groups WHERE is_default = 1 AND deleted_at IS NULL");
+  const defaultGroup = await gatewayDb.queryOne<{ id: number }>("SELECT id FROM `groups` WHERE is_default = 1 AND deleted_at IS NULL");
 
   const result = await gatewayDb.execute(
     `INSERT INTO users (username, password_hash, role, group_id, rpm, qps, tpm, quota_tokens, quota_requests, enabled)

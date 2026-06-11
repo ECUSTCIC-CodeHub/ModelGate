@@ -289,7 +289,7 @@ export async function resolveGroupFromClaims(
   claims: Record<string, unknown>,
 ): Promise<number | null> {
   const groups = await gatewayDb.query<{ id: number; oidc_claim_expr: string }>(
-    "SELECT id, oidc_claim_expr FROM groups WHERE oidc_claim_expr IS NOT NULL AND oidc_claim_expr != '' AND enabled = 1 AND deleted_at IS NULL ORDER BY oidc_claim_priority DESC, id ASC",
+    "SELECT id, oidc_claim_expr FROM `groups` WHERE oidc_claim_expr IS NOT NULL AND oidc_claim_expr != '' AND enabled = 1 AND deleted_at IS NULL ORDER BY oidc_claim_priority DESC, id ASC",
   );
 
   for (const group of groups) {

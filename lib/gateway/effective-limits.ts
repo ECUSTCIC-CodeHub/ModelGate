@@ -32,7 +32,7 @@ function pickPeriod(userVal: number | null, groupVal: number | null): number | n
 
 export async function getUserGroup(groupId: number | null): Promise<DbGroup | null> {
   if (groupId === null) return null;
-  const group = await gatewayDb.queryOne<DbGroup>("SELECT * FROM groups WHERE id = ? AND enabled = 1 AND deleted_at IS NULL", [groupId]);
+  const group = await gatewayDb.queryOne<DbGroup>("SELECT * FROM `groups` WHERE id = ? AND enabled = 1 AND deleted_at IS NULL", [groupId]);
   return group ?? null;
 }
 

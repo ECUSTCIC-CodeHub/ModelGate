@@ -144,11 +144,11 @@ async function runSqliteMigrations(db: DatabaseAdapter) {
     const groupClaim = groupClaimRow?.value || "";
     if (groupClaim) {
       const rows = await db.query<{ id: number; oidc_claim_value: string }>(
-        "SELECT id, oidc_claim_value FROM groups WHERE oidc_claim_value IS NOT NULL AND oidc_claim_value != ''",
+        "SELECT id, oidc_claim_value FROM `groups` WHERE oidc_claim_value IS NOT NULL AND oidc_claim_value != ''",
       );
       for (const row of rows) {
         const escaped = row.oidc_claim_value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-        await db.execute("UPDATE groups SET oidc_claim_expr = ? WHERE id = ?", [`${groupClaim} == "${escaped}"`, row.id]);
+        await db.execute("UPDATE `groups` SET oidc_claim_expr = ? WHERE id = ?", [`${groupClaim} == "${escaped}"`, row.id]);
       }
     }
     await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ["oidc_claim_expr_migrated", "1"]);
@@ -422,7 +422,7 @@ async function migrateUnlimitedLimitSemantics(db: DatabaseAdapter) {
 
 async function ensureDefaultGroup(db: DatabaseAdapter) {
   const defaultGroup = await db.queryOne<{ id: number }>(
-    "SELECT id FROM groups WHERE is_default = 1 AND deleted_at IS NULL",
+    "SELECT id FROM `groups` WHERE is_default = 1 AND deleted_at IS NULL",
   );
   if (defaultGroup) return;
 
@@ -433,13 +433,13 @@ async function ensureDefaultGroup(db: DatabaseAdapter) {
     `);
   } else {
     await db.exec(`
-    INSERT OR IGNORE INTO groups (name, description, is_default, qps, rpm, tpm)
+    INSERT OR IGNORE INTO \`groups\` (name, description, is_default, qps, rpm, tpm)
     VALUES ('default', '默认用户组', 1, -1, -1, -1);
     `);
   }
 
   const newDefault = await db.queryOne<{ id: number }>(
-    "SELECT id FROM groups WHERE is_default = 1 AND deleted_at IS NULL",
+    "SELECT id FROM `groups` WHERE is_default = 1 AND deleted_at IS NULL",
   );
   if (newDefault) {
     await db.execute("UPDATE users SET group_id = ? WHERE group_id IS NULL", [newDefault.id]);
