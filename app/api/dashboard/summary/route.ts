@@ -136,7 +136,7 @@ export async function GET(request: Request) {
     const g = (t: Intl.DateTimeFormatPartTypes) =>
       parts.find((p) => p.type === t)?.value ?? "00";
     const hour = g("hour") === "24" ? "00" : g("hour");
-    return `${g("year")}-${g("month")}-${g("day")}T${hour}:${g("minute")}:${g("second")}`;
+    return `${g("year")}-${g("month")}-${g("day")}T${hour}:00:00`;
   };
 
   const hourlyMap = new Map(hourlyRows.map((row) => [row.hour_bucket, row.tokens]));
