@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { toShanghaiDatetime } from "@/lib/core/db/datetime";
 
 const UTC_TIMESTAMP_KEYS = new Set([
   "created_at",
@@ -15,15 +16,7 @@ function toShanghaiIsoString(value: string) {
   const withZone = /(?:Z|[+-]\d{2}:\d{2})$/.test(normalized) ? normalized : `${normalized}Z`;
   const date = new Date(withZone);
   if (Number.isNaN(date.getTime())) return value;
-
-  const shifted = new Date(date.getTime() + 8 * 60 * 60 * 1000);
-  const year = shifted.getUTCFullYear();
-  const month = String(shifted.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(shifted.getUTCDate()).padStart(2, "0");
-  const hours = String(shifted.getUTCHours()).padStart(2, "0");
-  const minutes = String(shifted.getUTCMinutes()).padStart(2, "0");
-  const seconds = String(shifted.getUTCSeconds()).padStart(2, "0");
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  return toShanghaiDatetime(date);
 }
 
 function normalizeTimeFields<T>(input: T): T {
