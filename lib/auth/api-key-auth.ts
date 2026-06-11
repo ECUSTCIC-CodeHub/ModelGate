@@ -32,7 +32,7 @@ export async function checkApiKeyAuth(request: Request): Promise<ApiKeyAuthResul
     ?? parseQueryApiKey(request.url);
   if (!raw) return { ok: false, reason: "missing" };
 
-  const key = await gatewayDb.queryOne<DbKey>("SELECT * FROM keys WHERE `key` = ? AND enabled = 1 AND deleted_at IS NULL", [raw]);
+  const key = await gatewayDb.queryOne<DbKey>("SELECT * FROM `keys` WHERE `key` = ? AND enabled = 1 AND deleted_at IS NULL", [raw]);
 
   if (!key) return { ok: false, reason: "invalid" };
 

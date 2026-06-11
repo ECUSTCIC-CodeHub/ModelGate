@@ -25,13 +25,13 @@ export async function getNoAuthContext(): Promise<{ user: DbUser; key: DbKey }> 
     user = await gatewayDb.queryOne<DbUser>("SELECT * FROM users WHERE username = ? AND deleted_at IS NULL", [NOAUTH_USERNAME]) as DbUser;
   }
 
-  let key = await gatewayDb.queryOne<DbKey>("SELECT * FROM keys WHERE user_id = ? AND enabled = 1 AND deleted_at IS NULL", [user.id]);
+  let key = await gatewayDb.queryOne<DbKey>("SELECT * FROM `keys` WHERE user_id = ? AND enabled = 1 AND deleted_at IS NULL", [user.id]);
 
   if (!key) {
     const keyValue = `sk-gw-noauth-${randomBytes(16).toString("hex")}`;
-    await gatewayDb.execute("INSERT INTO keys (`key`, user_id, enabled) VALUES (?, ?, 1)", [keyValue, user.id]);
+    await gatewayDb.execute("INSERT INTO `keys` (`key`, user_id, enabled) VALUES (?, ?, 1)", [keyValue, user.id]);
 
-    key = await gatewayDb.queryOne<DbKey>("SELECT * FROM keys WHERE user_id = ? AND enabled = 1 AND deleted_at IS NULL", [user.id]) as DbKey;
+    key = await gatewayDb.queryOne<DbKey>("SELECT * FROM `keys` WHERE user_id = ? AND enabled = 1 AND deleted_at IS NULL", [user.id]) as DbKey;
   }
 
   cached = { user, key };

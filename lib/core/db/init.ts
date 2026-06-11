@@ -279,7 +279,7 @@ async function ensureAllColumns(db: DatabaseAdapter) {
              period_used_tokens = ROUND(period_used_tokens, 6), period_used_requests = ROUND(period_used_requests, 6)
              WHERE used_tokens != ROUND(used_tokens, 6) OR used_requests != ROUND(used_requests, 6)
                 OR period_used_tokens != ROUND(period_used_tokens, 6) OR period_used_requests != ROUND(period_used_requests, 6)`);
-    await db.exec(`UPDATE keys SET used_tokens = ROUND(used_tokens, 6), used_requests = ROUND(used_requests, 6)
+    await db.exec(`UPDATE \`keys\` SET used_tokens = ROUND(used_tokens, 6), used_requests = ROUND(used_requests, 6)
              WHERE used_tokens != ROUND(used_tokens, 6) OR used_requests != ROUND(used_requests, 6)`);
     await db.exec(`UPDATE channels SET period_used_tokens = ROUND(period_used_tokens, 6), period_used_requests = ROUND(period_used_requests, 6)
              WHERE period_used_tokens != ROUND(period_used_tokens, 6) OR period_used_requests != ROUND(period_used_requests, 6)`);
