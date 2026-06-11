@@ -297,6 +297,29 @@ async function createIndexIdempotent(db: MysqlAdapter, index: { name: string; ta
   }
 }
 
+async function normalizeMysqlDatetimes(db: DatabaseAdapter) {
+  const tables: Array<{ table: string; columns: string[] }> = [
+    { table: "logs", columns: ["created_at"] },
+    { table: "users", columns: ["created_at", "deleted_at", "period_reset_at"] },
+    { table: "keys", columns: ["created_at", "deleted_at"] },
+    { table: "channels", columns: ["created_at", "deleted_at", "period_reset_at"] },
+    { table: "models", columns: ["created_at", "deleted_at", "period_reset_at"] },
+    { table: "groups", columns: ["created_at", "deleted_at"] },
+    { table: "settings", columns: ["updated_at"] },
+  ];
+
+  for (const { table, columns } of tables) {
+    for (const col of columns) {
+      const safeCol = "`" + col + "`";
+      await db.exec(`
+        UPDATE \`${table}\`
+        SET ${safeCol} = REPLACE(REPLACE(REPLACE(REPLACE(${safeCol}, 'T', ' '), '.000Z', ''), '.000', ''), 'Z', '')
+        WHERE ${safeCol} IS NOT NULL AND ${safeCol} LIKE '%T%'
+      `);
+    }
+  }
+}
+
 async function initMysql(): Promise<DatabaseAdapter> {
   const host = process.env.MYSQL_HOST || "localhost";
   const port = Number(process.env.MYSQL_PORT) || 3306;
@@ -319,6 +342,7 @@ async function initMysql(): Promise<DatabaseAdapter> {
     await db.exec(MYSQL_DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL);
     await seedDefaultSettings(db);
     await migrateUnlimitedLimitSemantics(db);
+    await normalizeMysqlDatetimes(db);
     await ensureDefaultGroup(db);
     await cleanupModelUserUsage(db);
   } catch (err) {

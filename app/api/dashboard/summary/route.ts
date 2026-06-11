@@ -110,7 +110,7 @@ export async function GET(request: Request) {
     ? `DATE_SUB(NOW(), INTERVAL ${n} DAY)`
     : `datetime('now', '-${n} days')`;
   const endMsExpr = isMysql
-    ? "CAST(UNIX_TIMESTAMP(created_at) * 1000 AS UNSIGNED)"
+    ? "UNIX_TIMESTAMP(created_at) * 1000"
     : "CAST(unixepoch(created_at) * 1000 AS INTEGER)";
 
   const hourlyRows = await gatewayDb
