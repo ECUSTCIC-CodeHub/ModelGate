@@ -314,7 +314,7 @@ async function normalizeMysqlDatetimes(db: DatabaseAdapter) {
       await db.exec(`
         UPDATE \`${table}\`
         SET ${safeCol} = REPLACE(REPLACE(REPLACE(REPLACE(${safeCol}, 'T', ' '), '.000Z', ''), '.000', ''), 'Z', '')
-        WHERE ${safeCol} IS NOT NULL AND ${safeCol} LIKE '%T%'
+        WHERE ${safeCol} IS NOT NULL AND CAST(${safeCol} AS BINARY) LIKE '%T%'
       `);
     }
   }
