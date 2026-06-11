@@ -99,13 +99,27 @@ export async function GET(request: Request) {
     ? gatewayDb.queryOne<{ total_keys: number }>("SELECT COUNT(*) AS total_keys FROM `keys` WHERE deleted_at IS NULL")
     : gatewayDb.queryOne<{ total_keys: number }>("SELECT COUNT(*) AS total_keys FROM `keys` WHERE user_id = ? AND deleted_at IS NULL", [guard.auth.user.id])))!;
 
+  const isMysql = gatewayDb.driver === "mysql";
+  const hourBucketExpr = isMysql
+    ? "DATE_FORMAT(created_at, '%Y-%m-%dT%H:00:00')"
+    : "strftime('%Y-%m-%dT%H:00:00', created_at)";
+  const hoursAgo = (n: number) => isMysql
+    ? `DATE_SUB(NOW(), INTERVAL ${n} HOUR)`
+    : `datetime('now', '-${n} hours')`;
+  const daysAgo = (n: number) => isMysql
+    ? `DATE_SUB(NOW(), INTERVAL ${n} DAY)`
+    : `datetime('now', '-${n} days')`;
+  const endMsExpr = isMysql
+    ? "CAST(UNIX_TIMESTAMP(created_at) * 1000 AS UNSIGNED)"
+    : "CAST(unixepoch(created_at) * 1000 AS INTEGER)";
+
   const hourlyRows = await gatewayDb
     .query<{ hour_bucket: string; tokens: number }>(
       `SELECT
-         strftime('%Y-%m-%dT%H:00:00', created_at) AS hour_bucket,
+         ${hourBucketExpr} AS hour_bucket,
          COALESCE(SUM(total_tokens), 0) AS tokens
        FROM logs
-       ${whereSql ? `${whereSql} AND` : "WHERE"} created_at >= datetime('now', '-23 hours')
+       ${whereSql ? `${whereSql} AND` : "WHERE"} created_at >= ${hoursAgo(23)}
        GROUP BY hour_bucket
        ORDER BY hour_bucket ASC`,
       whereArgs,
@@ -161,13 +175,13 @@ export async function GET(request: Request) {
   const concurrencyRows = await gatewayDb
     .query<{ end_ms: number; latency_ms: number }>(
       `SELECT
-         CAST(unixepoch(created_at) * 1000 AS INTEGER) AS end_ms,
+         ${endMsExpr} AS end_ms,
          latency_ms
        FROM logs
        ${whereSql ? `${whereSql} AND` : "WHERE"} channel_id IS NOT NULL
          AND latency_ms IS NOT NULL
          AND latency_ms > 0
-         AND created_at >= datetime('now', '-24 hours')`,
+         AND created_at >= ${hoursAgo(24)}`,
       whereArgs,
     );
 
@@ -180,13 +194,13 @@ export async function GET(request: Request) {
         .queryOne<{ recent_failed_requests: number }>(
           `SELECT COALESCE(SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END), 0) AS recent_failed_requests
            FROM logs
-           WHERE created_at >= datetime('now', '-30 days')`,
+           WHERE created_at >= ${daysAgo(30)}`,
         ))!)?.recent_failed_requests ?? 0)
     : (((await gatewayDb
         .queryOne<{ recent_failed_requests: number }>(
           `SELECT COALESCE(SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END), 0) AS recent_failed_requests
            FROM logs
-           WHERE user_id = ? AND created_at >= datetime('now', '-30 days')`,
+           WHERE user_id = ? AND created_at >= ${daysAgo(30)}`,
           [guard.auth.user.id],
         ))!)?.recent_failed_requests ?? 0);
 

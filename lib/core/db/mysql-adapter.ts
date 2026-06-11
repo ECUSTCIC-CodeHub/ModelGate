@@ -54,7 +54,7 @@ export class MysqlAdapter implements DatabaseAdapter {
       waitForConnections: true,
       queueLimit: 0,
       enableKeepAlive: true,
-      multipleStatements: false,
+      multipleStatements: true,
     });
   }
 
@@ -77,15 +77,7 @@ export class MysqlAdapter implements DatabaseAdapter {
   }
 
   async exec(sql: string): Promise<void> {
-    const statements = sql.split(";").map((s) => s.trim()).filter(Boolean);
-    const conn = await this.pool.getConnection();
-    try {
-      for (const stmt of statements) {
-        await conn.query(stmt);
-      }
-    } finally {
-      conn.release();
-    }
+    await this.pool.query(sql);
   }
 
   async transaction<T>(fn: (tx: TransactionContext) => Promise<T>): Promise<T> {

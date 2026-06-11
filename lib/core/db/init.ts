@@ -332,7 +332,7 @@ async function seedDefaultSettings(db: DatabaseAdapter) {
   for (const [key, value] of defaults) {
     if (db.driver === "mysql") {
       await db.execute(
-        `INSERT INTO settings (\`key\`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = value`,
+        "INSERT IGNORE INTO settings (`key`, value) VALUES (?, ?)",
         [key, value],
       );
     } else {
@@ -357,7 +357,7 @@ async function migrateUnlimitedLimitSemantics(db: DatabaseAdapter) {
 
   if (db.driver === "mysql") {
     await db.execute(
-      `INSERT INTO settings (\`key\`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = value`,
+      "INSERT IGNORE INTO settings (`key`, value) VALUES (?, ?)",
       ["limit_unlimited_value_migrated", "1"],
     );
   } else {

@@ -1,12 +1,17 @@
 import { getGatewaySettings } from "@/lib/core/settings";
 
 let circuitBreakerCache: { enabled: boolean; ts: number } | null = null;
+let circuitBreakerRefreshing = false;
 const CACHE_TTL_MS = 5_000;
 
 function refreshCircuitBreakerSetting() {
+  if (circuitBreakerRefreshing) return;
+  circuitBreakerRefreshing = true;
   getGatewaySettings().then((s) => {
     circuitBreakerCache = { enabled: s.upstream_circuit_breaker_enabled === 1, ts: Date.now() };
-  }).catch(() => {});
+  }).catch(() => {}).finally(() => {
+    circuitBreakerRefreshing = false;
+  });
 }
 
 function isCircuitBreakerEnabled(): boolean {

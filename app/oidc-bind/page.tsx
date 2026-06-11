@@ -24,10 +24,10 @@ export default async function OidcBindPage() {
   const config = await getOidcConfig();
   let allowCreate = config.autoRegister;
   if (!allowCreate) {
-    const adminCount = (await gatewayDb.queryOne<{ count: number }>(
+    const adminCount = await gatewayDb.queryOne<{ count: number }>(
       "SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL",
-    ))!;
-    allowCreate = adminCount.count === 0;
+    );
+    allowCreate = (adminCount?.count ?? 1) === 0;
   }
 
   return <BindForm allowCreate={allowCreate} />;
