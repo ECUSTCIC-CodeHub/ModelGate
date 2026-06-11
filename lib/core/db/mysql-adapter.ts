@@ -58,6 +58,7 @@ export class MysqlAdapter implements DatabaseAdapter {
       queueLimit: 0,
       enableKeepAlive: true,
       multipleStatements: true,
+      decimalNumbers: true,
     });
   }
 
