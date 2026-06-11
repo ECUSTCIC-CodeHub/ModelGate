@@ -65,7 +65,7 @@ const GATEWAY_KEYS = [
   "public_security_filing_number",
 ] as const;
 
-const SETTINGS_SELECT_SQL = `SELECT key, value FROM settings WHERE key IN (${GATEWAY_KEYS.map(() => "?").join(", ")})`;
+const SETTINGS_SELECT_SQL = `SELECT \`key\`, value FROM settings WHERE \`key\` IN (${GATEWAY_KEYS.map(() => "?").join(", ")})`;
 
 async function readGatewaySettingsFromDb(): Promise<GatewaySettings> {
   const rows = await gatewayDb.query<{ key: string; value: string }>(SETTINGS_SELECT_SQL, [...GATEWAY_KEYS]);

@@ -100,13 +100,13 @@ export async function GET(request: Request) {
   if (key) {
     const parsed = parseKeyFilter(key);
     if (parsed.kind === "exact") {
-      whereClauses.push("k.key = ?");
+      whereClauses.push("k.`key` = ?");
       whereArgs.push(parsed.key);
     } else if (parsed.kind === "fingerprint") {
-      whereClauses.push("k.key LIKE ? ESCAPE '\\'");
+      whereClauses.push("k.`key` LIKE ? ESCAPE '\\'");
       whereArgs.push(`sk-gw-${escapeLike(parsed.front)}%${escapeLike(parsed.back)}`);
     } else if (parsed.kind === "short") {
-      whereClauses.push("(k.key LIKE ? ESCAPE '\\' OR k.key LIKE ? ESCAPE '\\')");
+      whereClauses.push("(k.`key` LIKE ? ESCAPE '\\' OR k.`key` LIKE ? ESCAPE '\\')");
       whereArgs.push(`sk-gw-${escapeLike(parsed.nibble)}%`, `%${escapeLike(parsed.nibble)}`);
     } else {
       whereClauses.push("LOWER(k.name) LIKE ? ESCAPE '\\'");
