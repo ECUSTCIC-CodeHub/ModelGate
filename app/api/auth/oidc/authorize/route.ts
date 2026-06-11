@@ -16,14 +16,14 @@ export async function GET(request: Request) {
   const unavailable = requireFeature("oidc");
   if (unavailable) return unavailable;
 
-  const config = getOidcConfig();
+  const config = await getOidcConfig();
   if (!config.enabled || !config.issuerUrl || !config.clientId) {
     return jsonError("OIDC 未启用或配置不完整", 400);
   }
 
   const url = new URL(request.url);
   const bind = url.searchParams.get("bind") === "1";
-  const redirectUri = resolveRedirectUri(request.url);
+  const redirectUri = await resolveRedirectUri(request.url);
 
   let discovery;
   try {

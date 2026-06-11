@@ -100,7 +100,7 @@ export function createQueuedUpstreamResponse({
 
           const lease = acquireResult.lease;
 
-          const channelQuota = checkChannelQuota(route.channel.id, estimatedTokens);
+          const channelQuota = await checkChannelQuota(route.channel.id, estimatedTokens);
           if (!channelQuota.ok) {
             lease.abandon();
             controller.enqueue(toSseDataBlock(buildErrorResponseBody(channelQuota.reason, 429, inboundProtocol, "channel_quota_exceeded", "429")));
@@ -320,7 +320,7 @@ export function createQueuedUpstreamResponse({
 
         const lease = acquireResult.lease;
 
-        const channelQuota = checkChannelQuota(route.channel.id, estimatedTokens);
+        const channelQuota = await checkChannelQuota(route.channel.id, estimatedTokens);
         if (!channelQuota.ok) {
           lease.abandon();
           controller.enqueue(encoder.encode(buildErrorResponseBody(channelQuota.reason, 429, inboundProtocol, "channel_quota_exceeded", "429")));

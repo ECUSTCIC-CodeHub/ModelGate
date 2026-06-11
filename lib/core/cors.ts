@@ -10,24 +10,24 @@ const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Max-Age": "86400",
 };
 
-export function isCorsEnabled(): boolean {
+export async function isCorsEnabled(): Promise<boolean> {
   try {
-    return getGatewaySettings().cors_enabled === 1;
+    return (await getGatewaySettings()).cors_enabled === 1;
   } catch {
     return false;
   }
 }
 
-export function applyCorsHeaders(resp: Response): Response {
-  if (!isCorsEnabled()) return resp;
+export async function applyCorsHeaders(resp: Response): Promise<Response> {
+  if (!(await isCorsEnabled())) return resp;
   for (const [k, v] of Object.entries(CORS_HEADERS)) {
     resp.headers.set(k, v);
   }
   return resp;
 }
 
-export function handleCorsPreflight(): Response {
-  if (!isCorsEnabled()) {
+export async function handleCorsPreflight(): Promise<Response> {
+  if (!(await isCorsEnabled())) {
     return new Response(null, { status: 204 });
   }
   return new Response(null, { status: 204, headers: CORS_HEADERS });

@@ -15,7 +15,7 @@ const bodySchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const guard = ensureAdmin(request);
+  const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
   const body = await request.json().catch(() => null);

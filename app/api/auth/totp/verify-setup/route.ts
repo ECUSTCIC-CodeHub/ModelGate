@@ -11,7 +11,7 @@ const schema = z.object({
 });
 
 export async function POST(request: Request) {
-  const guard = ensureWebUser(request);
+  const guard = await ensureWebUser(request);
   if ("error" in guard) return guard.error;
 
   const user = guard.auth.user;
@@ -20,9 +20,8 @@ export async function POST(request: Request) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) return jsonError("验证码格式错误", 400);
 
-  const row = gatewayDb
-    .prepare("SELECT totp_secret, totp_enabled FROM users WHERE id = ? AND deleted_at IS NULL")
-    .get(user.id) as { totp_secret: string | null; totp_enabled: number } | undefined;
+  const row = await gatewayDb
+    .queryOne<{ totp_secret: string | null; totp_enabled: number }>("SELECT totp_secret, totp_enabled FROM users WHERE id = ? AND deleted_at IS NULL", [user.id]);
 
   if (!row || !row.totp_secret) {
     return jsonError("请先发起 TOTP 设置", 400);
@@ -37,9 +36,8 @@ export async function POST(request: Request) {
     return jsonError("验证码错误", 401);
   }
 
-  gatewayDb
-    .prepare("UPDATE users SET totp_enabled = 1 WHERE id = ?")
-    .run(user.id);
+  await gatewayDb
+    .execute("UPDATE users SET totp_enabled = 1 WHERE id = ?", [user.id]);
 
   return jsonOk({ message: "TOTP 绑定成功。" });
 }

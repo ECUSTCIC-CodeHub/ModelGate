@@ -9,9 +9,9 @@ export type AuthStatus = {
   registration_enabled: boolean;
 };
 
-export function getAuthStatus(): AuthStatus {
-  const config = getOidcConfig();
-  const settings = getGatewaySettings();
+export async function getAuthStatus(): Promise<AuthStatus> {
+  const config = await getOidcConfig();
+  const settings = await getGatewaySettings();
   return {
     oidc_enabled: modelGateFeatures.oidc && config.enabled && !!config.issuerUrl && !!config.clientId,
     oidc_button_text: config.buttonText,

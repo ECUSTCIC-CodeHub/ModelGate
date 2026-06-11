@@ -14,15 +14,15 @@ function parseLogMetadata(value: unknown) {
 }
 
 export async function GET(request: Request) {
-  const guard = ensureUser(request);
+  const guard = await ensureUser(request);
   if ("error" in guard) return guard.error;
 
   const url = new URL(request.url);
   const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? 50)));
   const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0));
 
-  const rows = gatewayDb
-    .prepare(
+  const rows = await gatewayDb
+    .query<Record<string, unknown>>(
       `SELECT
          l.id, l.user_id, u.username, l.key_id, l.channel_id,
          c.name AS channel_name,
@@ -36,20 +36,26 @@ export async function GET(request: Request) {
        WHERE l.user_id = ?
        ORDER BY l.id DESC
        LIMIT ? OFFSET ?`,
-    )
-    .all(guard.auth.user.id, limit, offset) as Array<Record<string, unknown>>;
+      [guard.auth.user.id, limit, offset],
+    );
 
   const data = rows.map((row) => ({
     ...row,
     metadata: parseLogMetadata(row.metadata),
   }));
 
-  const total = gatewayDb
-    .prepare("SELECT COUNT(*) AS total FROM logs WHERE user_id = ?")
-    .get(guard.auth.user.id) as { total: number };
+  const total = (await gatewayDb
+    .queryOne<{ total: number }>("SELECT COUNT(*) AS total FROM logs WHERE user_id = ?", [guard.auth.user.id]))!;
 
-  const summary = gatewayDb
-    .prepare(
+  const summary = (await gatewayDb
+    .queryOne<{
+    total_requests: number;
+    failed_requests: number;
+    total_tokens: number;
+    avg_latency_ms: number;
+    avg_first_token_latency_ms: number;
+    avg_output_tps: number;
+  }>(
       `SELECT
          COUNT(*) AS total_requests,
          SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) AS failed_requests,
@@ -59,15 +65,8 @@ export async function GET(request: Request) {
          COALESCE(AVG(output_tps), 0) AS avg_output_tps
        FROM logs
        WHERE user_id = ?`,
-    )
-    .get(guard.auth.user.id) as {
-    total_requests: number;
-    failed_requests: number;
-    total_tokens: number;
-    avg_latency_ms: number;
-    avg_first_token_latency_ms: number;
-    avg_output_tps: number;
-  };
+      [guard.auth.user.id],
+    ))!;
 
   return jsonOk({
     summary,

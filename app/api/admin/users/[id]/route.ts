@@ -36,7 +36,7 @@ function normalizeQuota(value: number | null | undefined) {
 }
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
-  const guard = ensureAdmin(request);
+  const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
   const { id } = await context.params;
@@ -48,16 +48,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     if (unavailable) return unavailable;
   }
 
-  const existing = gatewayDb
-    .prepare(
-      `SELECT id, username, email, role, group_id, enabled, rpm, qps, tpm,
-              quota_tokens, quota_requests,
-              quota_period, period_quota_tokens, period_quota_requests,
-              allowed_model_aliases, note
-       FROM users WHERE id = ? AND deleted_at IS NULL`,
-    )
-    .get(id) as
-    | {
+  const existing = await gatewayDb
+    .queryOne<{
         id: number;
         username: string;
         email: string | null;
@@ -74,8 +66,14 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         period_quota_requests: number | null;
         allowed_model_aliases: string;
         note: string | null;
-      }
-    | undefined;
+      }>(
+        `SELECT id, username, email, role, group_id, enabled, rpm, qps, tpm,
+                quota_tokens, quota_requests,
+                quota_period, period_quota_tokens, period_quota_requests,
+                allowed_model_aliases, note
+         FROM users WHERE id = ? AND deleted_at IS NULL`,
+        [id],
+      );
 
   if (!existing) return jsonError("用户不存在", 404);
 
@@ -84,25 +82,22 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     existing.enabled === 1 &&
     (parsed.data.enabled === false || parsed.data.role === "user");
   if (willDisableAdmin) {
-    const adminCount = gatewayDb
-      .prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND enabled = 1 AND deleted_at IS NULL")
-      .get() as { count: number };
+    const adminCount = (await gatewayDb
+      .queryOne<{ count: number }>("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND enabled = 1 AND deleted_at IS NULL"))!;
     if (adminCount.count <= 1) {
       return jsonError("不能禁用或降级最后一个启用的管理员", 400);
     }
   }
 
   if (parsed.data.username !== undefined && parsed.data.username !== existing.username) {
-    const duplicated = gatewayDb
-      .prepare("SELECT id FROM users WHERE username = ? AND id != ?")
-      .get(parsed.data.username, id) as { id: number } | undefined;
+    const duplicated = await gatewayDb
+      .queryOne<{ id: number }>("SELECT id FROM users WHERE username = ? AND id != ?", [parsed.data.username, id]);
     if (duplicated) return jsonError("用户名已存在", 409);
   }
 
   if (parsed.data.group_id !== undefined && parsed.data.group_id !== null) {
-    const group = gatewayDb
-      .prepare("SELECT id FROM groups WHERE id = ? AND deleted_at IS NULL")
-      .get(parsed.data.group_id) as { id: number } | undefined;
+    const group = await gatewayDb
+      .queryOne<{ id: number }>("SELECT id FROM `groups` WHERE id = ? AND deleted_at IS NULL", [parsed.data.group_id]);
     if (!group) return jsonError("用户组不存在", 400);
   }
 
@@ -166,90 +161,87 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     : null;
 
   if (nextPasswordHash) {
-    gatewayDb
-      .prepare(
+    await gatewayDb
+      .execute(
         `UPDATE users
          SET username = ?, email = ?, role = ?, group_id = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?,
              quota_tokens = ?, quota_requests = ?,
              quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?,
              allowed_model_aliases = ?, note = ?, password_hash = ?
          WHERE id = ?`,
-      )
-      .run(
-        merged.username,
-        merged.email,
-        merged.role,
-        merged.group_id,
-        merged.enabled,
-        merged.rpm,
-        merged.qps,
-        merged.tpm,
-        merged.quota_tokens,
-        merged.quota_requests,
-        merged.quota_period,
-        merged.period_quota_tokens,
-        merged.period_quota_requests,
-        merged.allowed_model_aliases,
-        merged.note,
-        nextPasswordHash,
-        id,
+        [
+          merged.username,
+          merged.email,
+          merged.role,
+          merged.group_id,
+          merged.enabled,
+          merged.rpm,
+          merged.qps,
+          merged.tpm,
+          merged.quota_tokens,
+          merged.quota_requests,
+          merged.quota_period,
+          merged.period_quota_tokens,
+          merged.period_quota_requests,
+          merged.allowed_model_aliases,
+          merged.note,
+          nextPasswordHash,
+          id,
+        ],
       );
   } else {
-    gatewayDb
-      .prepare(
+    await gatewayDb
+      .execute(
         `UPDATE users
          SET username = ?, email = ?, role = ?, group_id = ?, enabled = ?, rpm = ?, qps = ?, tpm = ?,
              quota_tokens = ?, quota_requests = ?,
              quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?,
              allowed_model_aliases = ?, note = ?
          WHERE id = ?`,
-      )
-      .run(
-        merged.username,
-        merged.email,
-        merged.role,
-        merged.group_id,
-        merged.enabled,
-        merged.rpm,
-        merged.qps,
-        merged.tpm,
-        merged.quota_tokens,
-        merged.quota_requests,
-        merged.quota_period,
-        merged.period_quota_tokens,
-        merged.period_quota_requests,
-        merged.allowed_model_aliases,
-        merged.note,
-        id,
+        [
+          merged.username,
+          merged.email,
+          merged.role,
+          merged.group_id,
+          merged.enabled,
+          merged.rpm,
+          merged.qps,
+          merged.tpm,
+          merged.quota_tokens,
+          merged.quota_requests,
+          merged.quota_period,
+          merged.period_quota_tokens,
+          merged.period_quota_requests,
+          merged.allowed_model_aliases,
+          merged.note,
+          id,
+        ],
       );
   }
 
   if (parsed.data.reset_usage === "all" || parsed.data.reset_usage === "total") {
-    gatewayDb
-      .prepare("UPDATE users SET used_tokens = 0, used_requests = 0 WHERE id = ?")
-      .run(id);
-    gatewayDb
-      .prepare("UPDATE keys SET used_tokens = 0, used_requests = 0 WHERE user_id = ? AND deleted_at IS NULL")
-      .run(id);
+    await gatewayDb
+      .execute("UPDATE users SET used_tokens = 0, used_requests = 0 WHERE id = ?", [id]);
+    await gatewayDb
+      .execute("UPDATE `keys` SET used_tokens = 0, used_requests = 0 WHERE user_id = ? AND deleted_at IS NULL", [id]);
   }
   if (modelGateFeatures.periodQuota && (parsed.data.reset_usage === "all" || parsed.data.reset_usage === "period")) {
-    gatewayDb
-      .prepare("UPDATE users SET period_used_tokens = 0, period_used_requests = 0, period_reset_at = NULL WHERE id = ?")
-      .run(id);
+    await gatewayDb
+      .execute("UPDATE users SET period_used_tokens = 0, period_used_requests = 0, period_reset_at = NULL WHERE id = ?", [id]);
   }
 
-  const row = gatewayDb
-    .prepare(
+  const row = (await gatewayDb
+    .queryOne<{ allowed_model_aliases: string } & Record<string, unknown>>(
       `SELECT u.id, u.username, u.email, u.role, u.group_id, g.name AS group_name,
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
               u.quota_period, u.period_quota_tokens, u.period_quota_requests,
               u.period_used_tokens, u.period_used_requests, u.period_reset_at,
               u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.enabled, u.created_at
        FROM users u
-       LEFT JOIN groups g ON g.id = u.group_id AND g.deleted_at IS NULL
+       LEFT JOIN \`groups\` g ON g.id = u.group_id AND g.deleted_at IS NULL
        WHERE u.id = ? AND u.deleted_at IS NULL`,
-    )
-    .get(id) as { allowed_model_aliases: string } & Record<string, unknown>;
+      [id],
+    ))!;
 
   return jsonOk({
     message: parsed.data.reset_usage ? "用量已重置。" : "用户更新成功。",
@@ -258,23 +250,20 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 }
 
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
-  const guard = ensureAdmin(request);
+  const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
   const { id } = await context.params;
-  const adminCount = gatewayDb.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND enabled = 1 AND deleted_at IS NULL").get() as {
-    count: number;
-  };
+  const adminCount = (await gatewayDb.queryOne<{ count: number }>("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND enabled = 1 AND deleted_at IS NULL"))!;
 
-  const target = gatewayDb
-    .prepare("SELECT role, enabled FROM users WHERE id = ? AND deleted_at IS NULL")
-    .get(id) as { role: "admin" | "user"; enabled: number } | undefined;
+  const target = await gatewayDb
+    .queryOne<{ role: "admin" | "user"; enabled: number }>("SELECT role, enabled FROM users WHERE id = ? AND deleted_at IS NULL", [id]);
 
   if (!target) return jsonError("用户不存在", 404);
   if (target.role === "admin" && target.enabled === 1 && adminCount.count <= 1) {
     return jsonError("不能删除最后一个启用的管理员", 400);
   }
 
-  softDeleteUser(id);
+  await softDeleteUser(id);
   return jsonOk({ ok: true, message: "用户删除成功。" });
 }

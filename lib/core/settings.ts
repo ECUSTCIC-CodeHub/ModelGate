@@ -65,12 +65,10 @@ const GATEWAY_KEYS = [
   "public_security_filing_number",
 ] as const;
 
-const settingsSelect = gatewayDb.prepare(
-  `SELECT key, value FROM settings WHERE key IN (${GATEWAY_KEYS.map(() => "?").join(", ")})`,
-);
+const SETTINGS_SELECT_SQL = `SELECT key, value FROM settings WHERE key IN (${GATEWAY_KEYS.map(() => "?").join(", ")})`;
 
-function readGatewaySettingsFromDb(): GatewaySettings {
-  const rows = settingsSelect.all(...GATEWAY_KEYS) as Array<{ key: string; value: string }>;
+async function readGatewaySettingsFromDb(): Promise<GatewaySettings> {
+  const rows = await gatewayDb.query<{ key: string; value: string }>(SETTINGS_SELECT_SQL, [...GATEWAY_KEYS]);
 
   const map = new Map(rows.map((row) => [row.key, row.value]));
 
@@ -100,18 +98,18 @@ function readGatewaySettingsFromDb(): GatewaySettings {
   };
 }
 
-export function getGatewaySettings(): GatewaySettings {
+export async function getGatewaySettings(): Promise<GatewaySettings> {
   const now = Date.now();
   if (cachedGatewaySettings && cachedGatewaySettings.expiresAt > now) {
     return cachedGatewaySettings.value;
   }
 
-  const value = readGatewaySettingsFromDb();
+  const value = await readGatewaySettingsFromDb();
   cachedGatewaySettings = { value, expiresAt: now + GATEWAY_SETTINGS_CACHE_TTL_MS };
   return value;
 }
 
-export function setGatewaySettings(input: {
+export async function setGatewaySettings(input: {
   registration_enabled: boolean;
   password_login_enabled: boolean;
   upstream_retry_enabled: boolean;
@@ -155,20 +153,21 @@ export function setGatewaySettings(input: {
   if (input.icp_filing_number !== undefined) values.icp_filing_number = input.icp_filing_number.trim();
   if (input.public_security_filing_number !== undefined) values.public_security_filing_number = input.public_security_filing_number.trim();
 
-  const upsert = gatewayDb.prepare(
-    `INSERT INTO settings (key, value, updated_at)
-     VALUES (?, ?, CURRENT_TIMESTAMP)
-     ON CONFLICT(key) DO UPDATE SET
-       value = excluded.value,
-       updated_at = CURRENT_TIMESTAMP`,
-  );
+  const upsertSql = gatewayDb.driver === "mysql"
+    ? `INSERT INTO settings (\`key\`, value, updated_at)
+       VALUES (?, ?, CURRENT_TIMESTAMP)
+       ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at = CURRENT_TIMESTAMP`
+    : `INSERT INTO settings (key, value, updated_at)
+       VALUES (?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(key) DO UPDATE SET
+         value = excluded.value,
+         updated_at = CURRENT_TIMESTAMP`;
 
-  const tx = gatewayDb.transaction(() => {
+  await gatewayDb.transaction(async (tx) => {
     for (const [key, val] of Object.entries(values)) {
-      upsert.run(key, val);
+      await tx.execute(upsertSql, [key, val]);
     }
   });
 
-  tx();
   cachedGatewaySettings = null;
 }

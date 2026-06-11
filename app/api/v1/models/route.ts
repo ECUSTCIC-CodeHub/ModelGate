@@ -6,9 +6,9 @@ import { jsonError, jsonOk } from "@/lib/core/http";
 import { listAccessibleModelAliases } from "@/lib/gateway/model-access";
 
 export async function GET(request: Request) {
-  const auth = checkApiKeyAuth(request);
+  const auth = await checkApiKeyAuth(request);
   if (!auth.ok) {
-    return applyCorsHeaders(
+    return await applyCorsHeaders(
       jsonError(auth.reason === "missing" ? "认证失败，未提供 API Key。" : "认证失败，API Key 无效或已禁用。", 401, {
         type: "auth_error",
         param: "None",
@@ -17,8 +17,8 @@ export async function GET(request: Request) {
     );
   }
 
-  const aliases = listAccessibleModelAliases(auth.context.user);
-  return applyCorsHeaders(
+  const aliases = await listAccessibleModelAliases(auth.context.user);
+  return await applyCorsHeaders(
     jsonOk({
       object: "list",
       data: aliases.map((alias) => ({ id: alias, object: "model" })),
@@ -27,5 +27,5 @@ export async function GET(request: Request) {
 }
 
 export async function OPTIONS() {
-  return handleCorsPreflight();
+  return await handleCorsPreflight();
 }

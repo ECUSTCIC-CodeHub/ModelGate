@@ -86,8 +86,8 @@ function ollamaModelInfo(alias: string) {
   };
 }
 
-function findAccessibleModel(request: Request, model: string) {
-  const authResult = checkApiKeyAuth(request);
+async function findAccessibleModel(request: Request, model: string) {
+  const authResult = await checkApiKeyAuth(request);
   if (!authResult.ok) {
     return {
       ok: false as const,
@@ -98,7 +98,7 @@ function findAccessibleModel(request: Request, model: string) {
     };
   }
 
-  const item = listAccessibleModels(authResult.context.user).find((row) => row.alias === model);
+  const item = (await listAccessibleModels(authResult.context.user)).find((row) => row.alias === model);
   if (!item) {
     return { ok: false as const, response: jsonResponse({ error: `模型 ${model} 不存在或无权访问。` }, { status: 404 }) };
   }
@@ -123,8 +123,8 @@ function getRequestedModel(body: JsonRecord) {
   return typeof body.model === "string" ? body.model : "";
 }
 
-export function handleOllamaTagsRequest(request: Request) {
-  const authResult = checkApiKeyAuth(request);
+export async function handleOllamaTagsRequest(request: Request) {
+  const authResult = await checkApiKeyAuth(request);
   if (!authResult.ok) {
     return jsonResponse(
       { error: authResult.reason === "missing" ? "认证失败，未提供 API Key。" : "认证失败，API Key 无效或已禁用。" },
@@ -132,7 +132,7 @@ export function handleOllamaTagsRequest(request: Request) {
     );
   }
 
-  const models = listAccessibleModels(authResult.context.user).map((item) => {
+  const models = (await listAccessibleModels(authResult.context.user)).map((item) => {
     return {
       name: item.alias,
       model: item.alias,
@@ -161,7 +161,7 @@ export async function handleOllamaShowRequest(request: Request) {
     return jsonResponse({ error: "请求参数不正确，缺少 model。" }, { status: 400 });
   }
 
-  const result = findAccessibleModel(request, model);
+  const result = await findAccessibleModel(request, model);
   if (!result.ok) return result.response;
 
   const details = ollamaModelDetails(result.item.alias);
@@ -177,8 +177,8 @@ export async function handleOllamaShowRequest(request: Request) {
   });
 }
 
-export function handleOllamaVersionRequest(request: Request) {
-  const authResult = checkApiKeyAuth(request);
+export async function handleOllamaVersionRequest(request: Request) {
+  const authResult = await checkApiKeyAuth(request);
   if (!authResult.ok) {
     return jsonResponse(
       { error: authResult.reason === "missing" ? "认证失败，未提供 API Key。" : "认证失败，API Key 无效或已禁用。" },

@@ -5,9 +5,9 @@ import { handleGatewayProtocolRequest } from "@/lib/gateway/gateway-handler";
 import { embeddingsGatewayAdapter } from "@/lib/gateway/protocol-adapters";
 
 export async function POST(request: Request) {
-  return applyCorsHeaders(await handleGatewayProtocolRequest(request, embeddingsGatewayAdapter));
+  return await applyCorsHeaders(await handleGatewayProtocolRequest(request, embeddingsGatewayAdapter));
 }
 
 export async function OPTIONS() {
-  return handleCorsPreflight();
+  return await handleCorsPreflight();
 }

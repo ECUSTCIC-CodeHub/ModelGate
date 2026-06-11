@@ -14,7 +14,7 @@ const schema = z.object({
 });
 
 export async function POST(request: Request) {
-  const guard = ensureWebUser(request);
+  const guard = await ensureWebUser(request);
   if ("error" in guard) return guard.error;
 
   const user = guard.auth.user;
@@ -23,16 +23,15 @@ export async function POST(request: Request) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数错误", 400);
 
-  const row = gatewayDb
-    .prepare("SELECT password_hash, totp_secret, totp_enabled FROM users WHERE id = ? AND deleted_at IS NULL")
-    .get(user.id) as { password_hash: string; totp_secret: string | null; totp_enabled: number } | undefined;
+  const row = await gatewayDb
+    .queryOne<{ password_hash: string; totp_secret: string | null; totp_enabled: number }>("SELECT password_hash, totp_secret, totp_enabled FROM users WHERE id = ? AND deleted_at IS NULL", [user.id]);
 
   if (!row) return jsonError("用户不存在", 404);
   if (row.totp_enabled !== 1 || !row.totp_secret) {
     return jsonError("TOTP 未启用", 400);
   }
 
-  if (getAuthStatus().password_login_enabled) {
+  if ((await getAuthStatus()).password_login_enabled) {
     if (!parsed.data.password) return jsonError("请输入当前密码", 400);
     const ok = await comparePassword(parsed.data.password, row.password_hash);
     if (!ok) return jsonError("密码错误", 401);
@@ -42,9 +41,8 @@ export async function POST(request: Request) {
     if (!valid) return jsonError("验证码错误", 401);
   }
 
-  gatewayDb
-    .prepare("UPDATE users SET totp_secret = NULL, totp_enabled = 0 WHERE id = ?")
-    .run(user.id);
+  await gatewayDb
+    .execute("UPDATE users SET totp_secret = NULL, totp_enabled = 0 WHERE id = ?", [user.id]);
 
   return jsonOk({ message: "TOTP 已解绑。" });
 }

@@ -16,9 +16,9 @@ function withPathToken(request: Request, token: string) {
 
 export async function POST(request: Request, context: RouteContext) {
   const { token } = await context.params;
-  return applyCorsHeaders(await handleGatewayProtocolRequest(withPathToken(request, token), chatCompletionsGatewayAdapter));
+  return await applyCorsHeaders(await handleGatewayProtocolRequest(withPathToken(request, token), chatCompletionsGatewayAdapter));
 }
 
-export function OPTIONS() {
-  return handleCorsPreflight();
+export async function OPTIONS() {
+  return await handleCorsPreflight();
 }

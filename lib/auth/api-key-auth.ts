@@ -11,9 +11,6 @@ export type ApiKeyAuthResult =
   | { ok: true; context: ApiKeyContext }
   | { ok: false; reason: "missing" | "invalid" };
 
-const keyByValueStmt = gatewayDb.prepare("SELECT * FROM keys WHERE key = ? AND enabled = 1 AND deleted_at IS NULL");
-const userByIdStmt = gatewayDb.prepare("SELECT * FROM users WHERE id = ? AND enabled = 1 AND deleted_at IS NULL");
-
 function normalizeApiKey(value: string | null) {
   const trimmed = value?.trim();
   return trimmed || null;
@@ -24,9 +21,9 @@ function parseQueryApiKey(url: string) {
   return normalizeApiKey(params.get("token")) ?? normalizeApiKey(params.get("api_key"));
 }
 
-export function checkApiKeyAuth(request: Request): ApiKeyAuthResult {
+export async function checkApiKeyAuth(request: Request): Promise<ApiKeyAuthResult> {
   if (AUTH_DISABLED) {
-    return { ok: true, context: getNoAuthContext() };
+    return { ok: true, context: await getNoAuthContext() };
   }
 
   const raw =
@@ -35,18 +32,18 @@ export function checkApiKeyAuth(request: Request): ApiKeyAuthResult {
     ?? parseQueryApiKey(request.url);
   if (!raw) return { ok: false, reason: "missing" };
 
-  const key = keyByValueStmt.get(raw) as DbKey | undefined;
+  const key = await gatewayDb.queryOne<DbKey>("SELECT * FROM keys WHERE key = ? AND enabled = 1 AND deleted_at IS NULL", [raw]);
 
   if (!key) return { ok: false, reason: "invalid" };
 
-  const user = userByIdStmt.get(key.user_id) as DbUser | undefined;
+  const user = await gatewayDb.queryOne<DbUser>("SELECT * FROM users WHERE id = ? AND enabled = 1 AND deleted_at IS NULL", [key.user_id]);
 
   if (!user) return { ok: false, reason: "invalid" };
   return { ok: true, context: { key, user } };
 }
 
-export function requireApiKey(request: Request): ApiKeyContext | null {
-  const result = checkApiKeyAuth(request);
+export async function requireApiKey(request: Request): Promise<ApiKeyContext | null> {
+  const result = await checkApiKeyAuth(request);
   if (!result.ok) return null;
   return result.context;
 }

@@ -38,8 +38,8 @@ const jwksCache = new Map<string, { keys: OidcJwk[]; expiresAt: number }>();
 const DISCOVERY_TTL_MS = 5 * 60 * 1000;
 const OIDC_ID_TOKEN_ALGORITHMS: Algorithm[] = ["RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512"];
 
-export function getOidcConfig() {
-  const s = getGatewaySettings();
+export async function getOidcConfig() {
+  const s = await getGatewaySettings();
   return {
     enabled: s.oidc_enabled === 1,
     issuerUrl: s.oidc_issuer_url,
@@ -51,14 +51,14 @@ export function getOidcConfig() {
   };
 }
 
-export function getPublicOrigin(requestUrl: string): string {
-  const s = getGatewaySettings();
+export async function getPublicOrigin(requestUrl: string): Promise<string> {
+  const s = await getGatewaySettings();
   if (s.public_base_url) return s.public_base_url;
   return new URL(requestUrl).origin;
 }
 
-export function resolveRedirectUri(requestUrl: string): string {
-  return `${getPublicOrigin(requestUrl)}/api/auth/oidc/callback`;
+export async function resolveRedirectUri(requestUrl: string): Promise<string> {
+  return `${await getPublicOrigin(requestUrl)}/api/auth/oidc/callback`;
 }
 
 export function normalizeOidcIssuerUrl(raw: string): string {
@@ -285,14 +285,12 @@ export function deriveUsername(info: OidcUserInfo): string {
   return "oidc" + createHash("sha256").update(info.sub).digest("hex").slice(0, 8);
 }
 
-export function resolveGroupFromClaims(
+export async function resolveGroupFromClaims(
   claims: Record<string, unknown>,
-): number | null {
-  const groups = gatewayDb
-    .prepare(
-      "SELECT id, oidc_claim_expr FROM groups WHERE oidc_claim_expr IS NOT NULL AND oidc_claim_expr != '' AND enabled = 1 AND deleted_at IS NULL ORDER BY oidc_claim_priority DESC, id ASC",
-    )
-    .all() as Array<{ id: number; oidc_claim_expr: string }>;
+): Promise<number | null> {
+  const groups = await gatewayDb.query<{ id: number; oidc_claim_expr: string }>(
+    "SELECT id, oidc_claim_expr FROM groups WHERE oidc_claim_expr IS NOT NULL AND oidc_claim_expr != '' AND enabled = 1 AND deleted_at IS NULL ORDER BY oidc_claim_priority DESC, id ASC",
+  );
 
   for (const group of groups) {
     try {

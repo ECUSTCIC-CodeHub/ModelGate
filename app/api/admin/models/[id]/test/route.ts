@@ -7,13 +7,25 @@ import { testUpstreamModel } from "@/lib/gateway/proxy";
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
-  const guard = ensureAdmin(request);
+  const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
   const { id } = await context.params;
-  const row = gatewayDb
-    .prepare(
-      `SELECT
+  const row = await gatewayDb
+    .queryOne<{
+        model_id: number;
+        alias: string;
+        real_model: string;
+        upstream_protocol: GatewayProtocol;
+        channel_id: number;
+        channel_name: string;
+        base_url: string;
+        api_key: string;
+        user_agent: string;
+        proxy_url: string;
+        timeout: number;
+      }>(
+        `SELECT
          m.id AS model_id,
          m.alias,
          m.real_model,
@@ -28,22 +40,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        FROM models m
        JOIN channels c ON c.id = m.channel_id
        WHERE m.id = ? AND m.deleted_at IS NULL`,
-    )
-    .get(id) as
-    | {
-        model_id: number;
-        alias: string;
-        real_model: string;
-        upstream_protocol: GatewayProtocol;
-        channel_id: number;
-        channel_name: string;
-        base_url: string;
-        api_key: string;
-        user_agent: string;
-        proxy_url: string;
-        timeout: number;
-      }
-    | undefined;
+        [id],
+      );
 
   if (!row) return jsonError("模型不存在", 404);
 

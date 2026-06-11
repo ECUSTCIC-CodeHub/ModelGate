@@ -9,48 +9,48 @@ export type ModelQuotaInfo = {
   period_reset_at: string | null;
 };
 
-function ensureModelPeriodReset(modelId: number, period: number, resetAt: string | null): { period_used_tokens: number; period_used_requests: number; period_reset_at: string } {
+async function ensureModelPeriodReset(modelId: number, period: number, resetAt: string | null): Promise<{ period_used_tokens: number; period_used_requests: number; period_reset_at: string }> {
   const now = new Date();
   if (resetAt && new Date(resetAt) > now) {
-    return gatewayDb
-      .prepare("SELECT period_used_tokens, period_used_requests, period_reset_at FROM models WHERE id = ?")
-      .get(modelId) as { period_used_tokens: number; period_used_requests: number; period_reset_at: string };
+    return gatewayDb.queryOne(
+      "SELECT period_used_tokens, period_used_requests, period_reset_at FROM models WHERE id = ?",
+      [modelId],
+    ) as Promise<{ period_used_tokens: number; period_used_requests: number; period_reset_at: string }>;
   }
   const nextReset = new Date(now.getTime() + period * 1000).toISOString();
-  const result = gatewayDb
-    .prepare(
-      `UPDATE models
+  const result = await gatewayDb.execute(
+    `UPDATE models
        SET period_used_tokens = 0, period_used_requests = 0, period_reset_at = ?
        WHERE id = ? AND (period_reset_at IS NULL OR period_reset_at <= ?)`,
-    )
-    .run(nextReset, modelId, now.toISOString());
+    [nextReset, modelId, now.toISOString()],
+  );
   if (result.changes > 0) {
     return { period_used_tokens: 0, period_used_requests: 0, period_reset_at: nextReset };
   }
-  return gatewayDb
-    .prepare("SELECT period_used_tokens, period_used_requests, period_reset_at FROM models WHERE id = ?")
-    .get(modelId) as { period_used_tokens: number; period_used_requests: number; period_reset_at: string };
+  return gatewayDb.queryOne(
+    "SELECT period_used_tokens, period_used_requests, period_reset_at FROM models WHERE id = ?",
+    [modelId],
+  ) as Promise<{ period_used_tokens: number; period_used_requests: number; period_reset_at: string }>;
 }
 
-export function checkModelQuota(modelId: number, estimatedTokens: number): { ok: false; reason: string } | { ok: true; quota: ModelQuotaInfo } {
-  const model = gatewayDb
-    .prepare(`SELECT id, quota_tokens, quota_requests, quota_period,
+export async function checkModelQuota(modelId: number, estimatedTokens: number): Promise<{ ok: false; reason: string } | { ok: true; quota: ModelQuotaInfo }> {
+  const model = await gatewayDb.queryOne<{
+    id: number;
+    quota_tokens: number | null;
+    quota_requests: number | null;
+    quota_period: number | null;
+    period_quota_tokens: number | null;
+    period_quota_requests: number | null;
+    period_used_tokens: number;
+    period_used_requests: number;
+    period_reset_at: string | null;
+  }>(
+    `SELECT id, quota_tokens, quota_requests, quota_period,
               period_quota_tokens, period_quota_requests,
               period_used_tokens, period_used_requests, period_reset_at
-              FROM models WHERE id = ? AND deleted_at IS NULL`)
-    .get(modelId) as
-    | {
-        id: number;
-        quota_tokens: number | null;
-        quota_requests: number | null;
-        quota_period: number | null;
-        period_quota_tokens: number | null;
-        period_quota_requests: number | null;
-        period_used_tokens: number;
-        period_used_requests: number;
-        period_reset_at: string | null;
-      }
-    | undefined;
+              FROM models WHERE id = ? AND deleted_at IS NULL`,
+    [modelId],
+  );
 
   if (!model) {
     return { ok: false, reason: "模型不存在" };
@@ -73,7 +73,7 @@ export function checkModelQuota(modelId: number, estimatedTokens: number): { ok:
   }
 
   if (modelGateFeatures.periodQuota && model.quota_period) {
-    const period = ensureModelPeriodReset(modelId, model.quota_period, model.period_reset_at);
+    const period = await ensureModelPeriodReset(modelId, model.quota_period, model.period_reset_at);
     quota.period_reset_at = period.period_reset_at;
 
     if (model.period_quota_requests !== null) {

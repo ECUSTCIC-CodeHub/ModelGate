@@ -63,29 +63,25 @@ export async function POST(request: Request) {
     const rateCheck = checkLoginRateLimit(request, linkParsed.data.username);
     if (!rateCheck.ok) return jsonError("尝试过于频繁，请稍后再试", 429);
 
-    const user = gatewayDb
-      .prepare("SELECT * FROM users WHERE username = ? AND deleted_at IS NULL")
-      .get(linkParsed.data.username) as DbUser | undefined;
+    const user = await gatewayDb
+      .queryOne<DbUser>("SELECT * FROM users WHERE username = ? AND deleted_at IS NULL", [linkParsed.data.username]);
 
     if (!user || user.enabled !== 1) return jsonError("用户名或密码错误", 401);
 
     const ok = await comparePassword(linkParsed.data.password, user.password_hash);
     if (!ok) return jsonError("用户名或密码错误", 401);
 
-    gatewayDb
-      .prepare("UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL WHERE oidc_issuer = ? AND oidc_subject = ? AND id != ?")
-      .run(pending.issuer, pending.sub, user.id);
+    await gatewayDb
+      .execute("UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL WHERE oidc_issuer = ? AND oidc_subject = ? AND id != ?", [pending.issuer, pending.sub, user.id]);
 
     const linkEmail = pending.email?.toLowerCase() ?? null;
-    const claimGroupId = resolveGroupFromClaims(pending.rawClaims);
+    const claimGroupId = await resolveGroupFromClaims(pending.rawClaims);
     if (claimGroupId !== null) {
-      gatewayDb
-        .prepare("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, email = COALESCE(?, email), group_id = ? WHERE id = ?")
-        .run(pending.issuer, pending.sub, linkEmail, claimGroupId, user.id);
+      await gatewayDb
+        .execute("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, email = COALESCE(?, email), group_id = ? WHERE id = ?", [pending.issuer, pending.sub, linkEmail, claimGroupId, user.id]);
     } else {
-      gatewayDb
-        .prepare("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, email = COALESCE(?, email) WHERE id = ?")
-        .run(pending.issuer, pending.sub, linkEmail, user.id);
+      await gatewayDb
+        .execute("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, email = COALESCE(?, email) WHERE id = ?", [pending.issuer, pending.sub, linkEmail, user.id]);
     }
 
     const tokens = issueAuthTokens(user);
@@ -95,37 +91,31 @@ export async function POST(request: Request) {
   }
 
   if (createParsed.success) {
-    const config = getOidcConfig();
+    const config = await getOidcConfig();
     if (!config.autoRegister) {
-      const adminCount = gatewayDb
-        .prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL")
-        .get() as { count: number };
+      const adminCount = (await gatewayDb
+        .queryOne<{ count: number }>("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL"))!;
       if (adminCount.count > 0) {
         return jsonError("自动注册已关闭，请联系管理员创建账号", 403);
       }
     }
 
-    gatewayDb
-      .prepare("UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL WHERE oidc_issuer = ? AND oidc_subject = ?")
-      .run(pending.issuer, pending.sub);
+    await gatewayDb
+      .execute("UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL WHERE oidc_issuer = ? AND oidc_subject = ?", [pending.issuer, pending.sub]);
 
     const createEmail = pending.email?.toLowerCase() ?? null;
 
     if (createEmail) {
-      const emailUser = gatewayDb
-        .prepare("SELECT * FROM users WHERE email = ? AND deleted_at IS NULL")
-        .get(createEmail) as DbUser | undefined;
+      const emailUser = await gatewayDb
+        .queryOne<DbUser>("SELECT * FROM users WHERE email = ? AND deleted_at IS NULL", [createEmail]);
       if (emailUser) {
-        gatewayDb
-          .prepare("UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL WHERE oidc_issuer = ? AND oidc_subject = ? AND id != ?")
-          .run(pending.issuer, pending.sub, emailUser.id);
-        gatewayDb
-          .prepare("UPDATE users SET oidc_issuer = ?, oidc_subject = ? WHERE id = ?")
-          .run(pending.issuer, pending.sub, emailUser.id);
+        await gatewayDb
+          .execute("UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL WHERE oidc_issuer = ? AND oidc_subject = ? AND id != ?", [pending.issuer, pending.sub, emailUser.id]);
+        await gatewayDb
+          .execute("UPDATE users SET oidc_issuer = ?, oidc_subject = ? WHERE id = ?", [pending.issuer, pending.sub, emailUser.id]);
 
-        const user = gatewayDb
-          .prepare("SELECT * FROM users WHERE id = ? AND deleted_at IS NULL")
-          .get(emailUser.id) as DbUser | undefined;
+        const user = await gatewayDb
+          .queryOne<DbUser>("SELECT * FROM users WHERE id = ? AND deleted_at IS NULL", [emailUser.id]);
         if (!user) return jsonError("账号绑定失败", 500);
 
         const tokens = issueAuthTokens(user);
@@ -135,23 +125,20 @@ export async function POST(request: Request) {
       }
     }
 
-    const adminCount = gatewayDb
-      .prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL")
-      .get() as { count: number };
+    const adminCount = (await gatewayDb
+      .queryOne<{ count: number }>("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL"))!;
     const role: "admin" | "user" = adminCount.count === 0 ? "admin" : "user";
 
-    const claimGroupId = resolveGroupFromClaims(pending.rawClaims);
-    const defaultGroup = gatewayDb
-      .prepare("SELECT id FROM groups WHERE is_default = 1 AND deleted_at IS NULL")
-      .get() as { id: number } | undefined;
+    const claimGroupId = await resolveGroupFromClaims(pending.rawClaims);
+    const defaultGroup = await gatewayDb
+      .queryOne<{ id: number }>("SELECT id FROM `groups` WHERE is_default = 1 AND deleted_at IS NULL");
     const groupId = claimGroupId ?? defaultGroup?.id ?? null;
 
     let username = createParsed.data.username
       || deriveUsername({ sub: pending.sub, name: pending.name, preferred_username: pending.preferred_username, email: pending.email });
 
-    const existing = gatewayDb
-      .prepare("SELECT id FROM users WHERE username = ?")
-      .get(username) as { id: number } | undefined;
+    const existing = await gatewayDb
+      .queryOne<{ id: number }>("SELECT id FROM users WHERE username = ?", [username]);
     if (existing) {
       if (createParsed.data.username) return jsonError("用户名已存在", 409);
       username = username + randomBytes(3).toString("hex");
@@ -159,17 +146,16 @@ export async function POST(request: Request) {
 
     const placeholderHash = await hashPassword(randomBytes(32).toString("hex"));
 
-    gatewayDb
-      .prepare(
+    await gatewayDb
+      .execute(
         `INSERT INTO users (username, password_hash, role, group_id, oidc_issuer, oidc_subject, email,
            rpm, qps, tpm, quota_tokens, quota_requests, enabled)
          VALUES (?, ?, ?, ?, ?, ?, ?, -1, -1, -1, NULL, NULL, 1)`,
-      )
-      .run(username, placeholderHash, role, groupId, pending.issuer, pending.sub, createEmail);
+        [username, placeholderHash, role, groupId, pending.issuer, pending.sub, createEmail],
+      );
 
-    const user = gatewayDb
-      .prepare("SELECT * FROM users WHERE oidc_issuer = ? AND oidc_subject = ? AND deleted_at IS NULL")
-      .get(pending.issuer, pending.sub) as DbUser | undefined;
+    const user = await gatewayDb
+      .queryOne<DbUser>("SELECT * FROM users WHERE oidc_issuer = ? AND oidc_subject = ? AND deleted_at IS NULL", [pending.issuer, pending.sub]);
 
     if (!user) return jsonError("创建账号失败", 500);
 

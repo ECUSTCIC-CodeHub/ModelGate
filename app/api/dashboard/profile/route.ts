@@ -6,11 +6,11 @@ import { ensureWebUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
 
 export async function GET(request: Request) {
-  const guard = ensureWebUser(request);
+  const guard = await ensureWebUser(request);
   if ("error" in guard) return guard.error;
 
   const user = guard.auth.user;
-  const effective = getEffectiveLimits(user as DbUser);
+  const effective = await getEffectiveLimits(user as DbUser);
 
   return jsonOk({
     user: {

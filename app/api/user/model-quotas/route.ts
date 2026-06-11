@@ -15,29 +15,19 @@ function formatPeriodLabel(seconds: number): string {
 }
 
 export async function GET(request: Request) {
-  const guard = ensureUser(request);
+  const guard = await ensureUser(request);
   if ("error" in guard) return guard.error;
 
   const user = guard.auth.user;
   const group = user.group_id
-    ? (gatewayDb.prepare("SELECT allowed_model_aliases, allowed_channel_ids FROM groups WHERE id = ? AND enabled = 1 AND deleted_at IS NULL").get(user.group_id) as { allowed_model_aliases: string; allowed_channel_ids: string } | undefined)
+    ? (await gatewayDb.queryOne<{ allowed_model_aliases: string; allowed_channel_ids: string }>("SELECT allowed_model_aliases, allowed_channel_ids FROM `groups` WHERE id = ? AND enabled = 1 AND deleted_at IS NULL", [user.group_id]))
     : null;
 
   const userAllowedAliases: string[] = (() => { try { return JSON.parse(user.allowed_model_aliases); } catch { return []; } })();
   const groupAllowedAliases: string[] = (() => { try { return group ? JSON.parse(group.allowed_model_aliases) : []; } catch { return []; } })();
   const groupAllowedChannels: number[] = (() => { try { return group ? JSON.parse(group.allowed_channel_ids) : []; } catch { return []; } })();
 
-  const models = gatewayDb.prepare(
-    `SELECT m.id, m.alias, m.real_model, m.channel_id, m.is_public, m.quota_mode,
-            m.quota_tokens, m.quota_requests, m.quota_period,
-            m.period_quota_tokens, m.period_quota_requests,
-            m.period_used_tokens, m.period_used_requests, m.period_reset_at,
-            m.token_multiplier, m.request_multiplier
-     FROM models m
-     JOIN channels c ON c.id = m.channel_id
-     WHERE m.enabled = 1 AND c.enabled = 1
-       AND m.deleted_at IS NULL AND c.deleted_at IS NULL`,
-  ).all() as Array<{
+  const models = await gatewayDb.query<{
     id: number;
     alias: string;
     real_model: string;
@@ -54,7 +44,17 @@ export async function GET(request: Request) {
     period_reset_at: string | null;
     token_multiplier: number;
     request_multiplier: number;
-  }>;
+  }>(
+    `SELECT m.id, m.alias, m.real_model, m.channel_id, m.is_public, m.quota_mode,
+            m.quota_tokens, m.quota_requests, m.quota_period,
+            m.period_quota_tokens, m.period_quota_requests,
+            m.period_used_tokens, m.period_used_requests, m.period_reset_at,
+            m.token_multiplier, m.request_multiplier
+     FROM models m
+     JOIN channels c ON c.id = m.channel_id
+     WHERE m.enabled = 1 AND c.enabled = 1
+       AND m.deleted_at IS NULL AND c.deleted_at IS NULL`,
+  );
 
   const accessible = models.filter((m) => {
     if (groupAllowedChannels.length > 0 && !groupAllowedChannels.includes(m.channel_id)) return false;

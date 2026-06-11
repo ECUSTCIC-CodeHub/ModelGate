@@ -47,13 +47,12 @@ const createSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const guard = ensureAdmin(request);
+  const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
-  const channels = gatewayDb.prepare("SELECT * FROM channels WHERE deleted_at IS NULL ORDER BY id DESC").all() as Array<Record<string, unknown> & { id: number }>;
-  const models = gatewayDb
-    .prepare("SELECT id, alias, real_model, channel_id, upstream_protocol, supported_protocols, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, created_at FROM models WHERE deleted_at IS NULL ORDER BY id DESC")
-    .all() as Array<{
+  const channels = await gatewayDb.query<Record<string, unknown> & { id: number }>("SELECT * FROM channels WHERE deleted_at IS NULL ORDER BY id DESC");
+  const models = await gatewayDb
+    .query<{
     id: number;
     alias: string;
     real_model: string;
@@ -73,7 +72,7 @@ export async function GET(request: Request) {
     period_quota_tokens: number | null;
     period_quota_requests: number | null;
     created_at: string;
-  }>;
+  }>("SELECT id, alias, real_model, channel_id, upstream_protocol, supported_protocols, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, created_at FROM models WHERE deleted_at IS NULL ORDER BY id DESC");
 
   const grouped = new Map<number, typeof models>();
   for (const model of models) {
@@ -90,7 +89,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const guard = ensureAdmin(request);
+  const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
   const body = await request.json().catch(() => null);
@@ -105,30 +104,30 @@ export async function POST(request: Request) {
     }
   }
 
-  const tx = gatewayDb.transaction(() => {
+  const channelId = await gatewayDb.transaction(async (tx) => {
     const channelEnabled = parsed.data.enabled === false ? 0 : 1;
-    const result = gatewayDb
-      .prepare(
+    const result = await tx
+      .execute(
         `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, force_include_usage)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        parsed.data.name,
-        parsed.data.base_url,
-        parsed.data.api_key,
-        stringifySupportedProtocols(supportedProtocols),
-        parsed.data.user_agent?.trim() ?? "",
-        normalizeProxyUrl(parsed.data.proxy_url),
-        channelEnabled,
-        parsed.data.weight ?? 1,
-        parsed.data.max_concurrency ?? 64,
-        parsed.data.timeout ?? 60,
-        parsed.data.quota_tokens ?? null,
-        parsed.data.quota_requests ?? null,
-        parsed.data.quota_period ?? null,
-        parsed.data.period_quota_tokens ?? null,
-        parsed.data.period_quota_requests ?? null,
-        parsed.data.force_include_usage === false ? 0 : 1,
+        [
+          parsed.data.name,
+          parsed.data.base_url,
+          parsed.data.api_key,
+          stringifySupportedProtocols(supportedProtocols),
+          parsed.data.user_agent?.trim() ?? "",
+          normalizeProxyUrl(parsed.data.proxy_url),
+          channelEnabled,
+          parsed.data.weight ?? 1,
+          parsed.data.max_concurrency ?? 64,
+          parsed.data.timeout ?? 60,
+          parsed.data.quota_tokens ?? null,
+          parsed.data.quota_requests ?? null,
+          parsed.data.quota_period ?? null,
+          parsed.data.period_quota_tokens ?? null,
+          parsed.data.period_quota_requests ?? null,
+          parsed.data.force_include_usage === false ? 0 : 1,
+        ],
       );
 
     const channelId = Number(result.lastInsertRowid);
@@ -137,32 +136,31 @@ export async function POST(request: Request) {
       const modelProtocols = normalizeSupportedProtocols(model.supported_protocols);
       const validModelProtocols = modelProtocols.filter((p) => supportedProtocols.includes(p));
       const finalModelProtocols = validModelProtocols.length > 0 ? validModelProtocols : [upstreamProtocol];
-      gatewayDb
-        .prepare(
+      await tx
+        .execute(
           `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          model.alias,
-          model.real_model,
-          channelId,
-          upstreamProtocol,
-          stringifySupportedProtocols(finalModelProtocols),
-          model.copilot_compatibility === true ? 1 : 0,
-          model.is_public === false ? 0 : 1,
-          channelEnabled === 1 && model.enabled !== false ? 1 : 0,
-          model.weight ?? 1,
-          model.token_multiplier ?? 1,
-          model.request_multiplier ?? 1,
-          model.max_concurrency ?? 0,
-          model.quota_mode ?? "follow_group",
+          [
+            model.alias,
+            model.real_model,
+            channelId,
+            upstreamProtocol,
+            stringifySupportedProtocols(finalModelProtocols),
+            model.copilot_compatibility === true ? 1 : 0,
+            model.is_public === false ? 0 : 1,
+            channelEnabled === 1 && model.enabled !== false ? 1 : 0,
+            model.weight ?? 1,
+            model.token_multiplier ?? 1,
+            model.request_multiplier ?? 1,
+            model.max_concurrency ?? 0,
+            model.quota_mode ?? "follow_group",
+          ],
         );
     }
 
     return channelId;
   });
 
-  const channelId = tx();
-  const row = gatewayDb.prepare("SELECT * FROM channels WHERE id = ? AND deleted_at IS NULL").get(channelId);
+  const row = await gatewayDb.queryOne("SELECT * FROM channels WHERE id = ? AND deleted_at IS NULL", [channelId]);
   return jsonOk({ message: "渠道创建成功。", data: row }, 201);
 }

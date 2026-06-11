@@ -9,12 +9,11 @@ export async function GET(request: Request) {
   const unavailable = requireFeature("announcement");
   if (unavailable) return unavailable;
 
-  const guard = ensureWebUser(request);
+  const guard = await ensureWebUser(request);
   if ("error" in guard) return guard.error;
 
-  const row = gatewayDb
-    .prepare("SELECT value FROM settings WHERE key = 'announcement_content'")
-    .get() as { value: string } | undefined;
+  const row = await gatewayDb
+    .queryOne<{ value: string }>("SELECT value FROM settings WHERE `key` = 'announcement_content'");
 
   return jsonOk({ content: row?.value ?? "" });
 }

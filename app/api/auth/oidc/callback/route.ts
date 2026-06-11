@@ -38,9 +38,9 @@ function redirectWithError(origin: string, message: string, bind = false) {
 }
 
 export async function GET(request: Request) {
-  const config = getOidcConfig();
+  const config = await getOidcConfig();
   const url = new URL(request.url);
-  const origin = getPublicOrigin(request.url);
+  const origin = await getPublicOrigin(request.url);
 
   if (!isFeatureEnabled("oidc")) {
     return redirectWithError(origin, featureUnavailableMessage("OIDC"));
@@ -77,7 +77,7 @@ export async function GET(request: Request) {
   if (statePayload.state !== returnedState) {
     return redirectWithError(origin, "状态验证失败", isBind);
   }
-  const redirectUri = resolveRedirectUri(request.url);
+  const redirectUri = await resolveRedirectUri(request.url);
 
   let discovery;
   try {
@@ -141,49 +141,44 @@ export async function GET(request: Request) {
   };
 
   if (isBind) {
-    const auth = requireWebAuthWithRefresh(request);
+    const auth = await requireWebAuthWithRefresh(request);
     if (!auth) {
       return clearStateCookie(redirectWithError(origin, "请先登录后再绑定", true));
     }
 
-    const existingBind = gatewayDb
-      .prepare("SELECT id FROM users WHERE oidc_issuer = ? AND oidc_subject = ? AND deleted_at IS NULL")
-      .get(issuer, userInfo.sub) as { id: number } | undefined;
+    const existingBind = await gatewayDb
+      .queryOne<{ id: number }>("SELECT id FROM users WHERE oidc_issuer = ? AND oidc_subject = ? AND deleted_at IS NULL", [issuer, userInfo.sub]);
 
     if (existingBind && existingBind.id !== auth.user.id) {
       return clearStateCookie(redirectWithError(origin, "该 OIDC 账号已被其他用户绑定", true));
     }
 
     const email = userInfo.email?.toLowerCase() ?? null;
-    const claimGroupId = resolveGroupFromClaims(rawClaims);
+    const claimGroupId = await resolveGroupFromClaims(rawClaims);
     if (claimGroupId !== null) {
-      gatewayDb
-        .prepare("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, email = COALESCE(?, email), group_id = ? WHERE id = ?")
-        .run(issuer, userInfo.sub, email, claimGroupId, auth.user.id);
+      await gatewayDb
+        .execute("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, email = COALESCE(?, email), group_id = ? WHERE id = ?", [issuer, userInfo.sub, email, claimGroupId, auth.user.id]);
     } else {
-      gatewayDb
-        .prepare("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, email = COALESCE(?, email) WHERE id = ?")
-        .run(issuer, userInfo.sub, email, auth.user.id);
+      await gatewayDb
+        .execute("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, email = COALESCE(?, email) WHERE id = ?", [issuer, userInfo.sub, email, auth.user.id]);
     }
 
     const res = NextResponse.redirect(`${origin}/dashboard?oidc_bound=1`, 302);
     return clearStateCookie(res);
   }
 
-  let user = gatewayDb
-    .prepare("SELECT * FROM users WHERE oidc_issuer = ? AND oidc_subject = ? AND enabled = 1 AND deleted_at IS NULL")
-    .get(issuer, userInfo.sub) as DbUser | undefined;
+  let user = await gatewayDb
+    .queryOne<DbUser>("SELECT * FROM users WHERE oidc_issuer = ? AND oidc_subject = ? AND enabled = 1 AND deleted_at IS NULL", [issuer, userInfo.sub]);
 
   if (!user) {
-    const settings = getGatewaySettings();
+    const settings = await getGatewaySettings();
     const isOidcOnlyMode = settings.password_login_enabled === 0;
 
     if (isOidcOnlyMode) {
       if (!config.autoRegister) {
-        const adminCount = gatewayDb
-          .prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL")
-          .get() as { count: number };
-        if (adminCount.count > 0) {
+        const adminCount = await gatewayDb
+          .queryOne<{ count: number }>("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL");
+        if (adminCount!.count > 0) {
           return clearStateCookie(redirectWithError(origin, "OIDC 登录失败，请联系管理员"));
         }
       }
@@ -213,20 +208,17 @@ export async function GET(request: Request) {
       return clearStateCookie(redirectWithError(origin, "OIDC 登录失败，请联系管理员"));
     }
 
-    const claimGroupId = resolveGroupFromClaims(rawClaims);
+    const claimGroupId = await resolveGroupFromClaims(rawClaims);
     const email = userInfo.email?.toLowerCase() ?? null;
 
     if (email) {
-      const emailUser = gatewayDb
-        .prepare("SELECT * FROM users WHERE email = ? AND deleted_at IS NULL")
-        .get(email) as DbUser | undefined;
+      const emailUser = await gatewayDb
+        .queryOne<DbUser>("SELECT * FROM users WHERE email = ? AND deleted_at IS NULL", [email]);
       if (emailUser) {
-        gatewayDb
-          .prepare("UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL WHERE oidc_issuer = ? AND oidc_subject = ? AND id != ?")
-          .run(issuer, userInfo.sub, emailUser.id);
-        gatewayDb
-          .prepare("UPDATE users SET oidc_issuer = ?, oidc_subject = ? WHERE id = ?")
-          .run(issuer, userInfo.sub, emailUser.id);
+        await gatewayDb
+          .execute("UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL WHERE oidc_issuer = ? AND oidc_subject = ? AND id != ?", [issuer, userInfo.sub, emailUser.id]);
+        await gatewayDb
+          .execute("UPDATE users SET oidc_issuer = ?, oidc_subject = ? WHERE id = ?", [issuer, userInfo.sub, emailUser.id]);
         user = emailUser;
       }
     }
@@ -234,39 +226,35 @@ export async function GET(request: Request) {
     if (!user) {
     const placeholderHash = await hashPassword(randomBytes(32).toString("hex"));
 
-    const registerUser = gatewayDb.transaction(() => {
-      const adminCount = gatewayDb
-        .prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL")
-        .get() as { count: number };
+    const registerUser = async () => gatewayDb.transaction(async (tx) => {
+      const adminCount = (await tx
+        .queryOne<{ count: number }>("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL"))!;
       const role: "admin" | "user" = adminCount.count === 0 ? "admin" : "user";
 
-      const defaultGroup = gatewayDb
-        .prepare("SELECT id FROM groups WHERE is_default = 1 AND deleted_at IS NULL")
-        .get() as { id: number } | undefined;
+      const defaultGroup = await tx
+        .queryOne<{ id: number }>("SELECT id FROM `groups` WHERE is_default = 1 AND deleted_at IS NULL");
       const groupId = claimGroupId ?? defaultGroup?.id ?? null;
 
       let username = deriveUsername(userInfo);
-      const existing = gatewayDb
-        .prepare("SELECT id FROM users WHERE username = ?")
-        .get(username) as { id: number } | undefined;
+      const existing = await tx
+        .queryOne<{ id: number }>("SELECT id FROM users WHERE username = ?", [username]);
       if (existing) {
         username = username + randomBytes(3).toString("hex");
       }
 
-      gatewayDb
-        .prepare(
+      await tx
+        .execute(
           `INSERT INTO users (username, password_hash, role, group_id, oidc_issuer, oidc_subject, email,
              rpm, qps, tpm, quota_tokens, quota_requests, enabled)
            VALUES (?, ?, ?, ?, ?, ?, ?, -1, -1, -1, NULL, NULL, 1)`,
-        )
-        .run(username, placeholderHash, role, groupId, issuer, userInfo.sub, email);
+          [username, placeholderHash, role, groupId, issuer, userInfo.sub, email],
+        );
 
-      return gatewayDb
-        .prepare("SELECT * FROM users WHERE oidc_issuer = ? AND oidc_subject = ? AND deleted_at IS NULL")
-        .get(issuer, userInfo.sub) as DbUser | undefined;
+      return tx
+        .queryOne<DbUser>("SELECT * FROM users WHERE oidc_issuer = ? AND oidc_subject = ? AND deleted_at IS NULL", [issuer, userInfo.sub]);
     });
 
-    user = registerUser();
+    user = await registerUser();
 
     if (!user) {
       return clearStateCookie(redirectWithError(origin, "自动注册失败"));
@@ -275,12 +263,11 @@ export async function GET(request: Request) {
   }
 
   {
-    const claimGroupId = resolveGroupFromClaims(rawClaims);
+    const claimGroupId = await resolveGroupFromClaims(rawClaims);
     const email = userInfo.email?.toLowerCase() ?? null;
     if ((claimGroupId !== null && claimGroupId !== user.group_id) || (email && email !== user.email)) {
-      gatewayDb
-        .prepare("UPDATE users SET group_id = COALESCE(?, group_id), email = COALESCE(?, email) WHERE id = ?")
-        .run(claimGroupId, email, user.id);
+      await gatewayDb
+        .execute("UPDATE users SET group_id = COALESCE(?, group_id), email = COALESCE(?, email) WHERE id = ?", [claimGroupId, email, user.id]);
     }
   }
 

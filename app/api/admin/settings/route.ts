@@ -29,15 +29,15 @@ const schema = z.object({
 });
 
 export async function GET(request: Request) {
-  const guard = ensureAdmin(request);
+  const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
-  const settings = getGatewaySettings();
+  const settings = await getGatewaySettings();
   return jsonOk({ message: "系统设置获取成功。", data: maskSettingsForEdition(settings) });
 }
 
 export async function PUT(request: Request) {
-  const guard = ensureAdmin(request);
+  const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
   const body = await request.json().catch(() => null);
@@ -54,15 +54,15 @@ export async function PUT(request: Request) {
 
   const oidcWillBeEnabled = input.oidc_enabled !== undefined
     ? input.oidc_enabled && !!input.oidc_issuer_url && !!input.oidc_client_id
-    : getGatewaySettings().oidc_enabled === 1;
+    : (await getGatewaySettings()).oidc_enabled === 1;
 
   if (!input.password_login_enabled && !oidcWillBeEnabled) {
     return jsonError("账号密码登录和 OIDC 登录不能同时关闭，至少保留一种登录方式。", 400);
   }
 
-  setGatewaySettings(input);
+  await setGatewaySettings(input);
 
-  const updated = getGatewaySettings();
+  const updated = await getGatewaySettings();
   return jsonOk({
     message: "系统设置更新成功。",
     data: maskSettingsForEdition(updated),
