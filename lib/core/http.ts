@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 
-const UTC_TIMESTAMP_KEYS = new Set(["created_at", "updated_at", "deleted_at", "hour"]);
+const UTC_TIMESTAMP_KEYS = new Set([
+  "created_at",
+  "updated_at",
+  "deleted_at",
+  "period_reset_at",
+  "last_used_at",
+  "hour",
+]);
 
 function toShanghaiIsoString(value: string) {
   const normalized = value.includes("T") ? value : value.replace(" ", "T");
