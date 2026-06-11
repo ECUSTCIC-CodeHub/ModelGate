@@ -35,7 +35,7 @@ export async function GET(request: Request) {
   let periodUsedRequests = user.period_used_requests;
   const periodResetAt = user.period_reset_at;
 
-  if (limits.quota_period && periodResetAt && periodResetAt.slice(0, 19) <= toShanghaiDatetimeNoMs(now)) {
+  if (limits.quota_period && periodResetAt && String(periodResetAt).slice(0, 19) <= toShanghaiDatetimeNoMs(now)) {
     periodUsedTokens = 0;
     periodUsedRequests = 0;
   }
