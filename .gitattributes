@@ -1,0 +1,2 @@
+# 强制 POSIX 换行，避免 Alpine 容器内 shell 解释器读 CRLF 报错
+*.sh text eol=lf
