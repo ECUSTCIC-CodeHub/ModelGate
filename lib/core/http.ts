@@ -5,6 +5,7 @@ const UTC_TIMESTAMP_KEYS = new Set([
   "updated_at",
   "deleted_at",
   "period_reset_at",
+  "reset_at",
   "last_used_at",
   "hour",
 ]);
