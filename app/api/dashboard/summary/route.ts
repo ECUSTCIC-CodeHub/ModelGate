@@ -3,7 +3,6 @@ export const dynamic = "force-dynamic";
 import { gatewayDb } from "@/lib/core/db";
 import { ensureWebUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
-import { toShanghaiDatetime } from "@/lib/core/db/datetime";
 
 function estimateConcurrency(rows: Array<{ end_ms: number; latency_ms: number }>) {
   const now = Date.now();
@@ -126,17 +125,34 @@ export async function GET(request: Request) {
       whereArgs,
     );
 
+  const shanghaiBucketFmt = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false,
+  });
+  const formatShanghaiBucket = (date: Date): string => {
+    const parts = shanghaiBucketFmt.formatToParts(date);
+    const g = (t: Intl.DateTimeFormatPartTypes) =>
+      parts.find((p) => p.type === t)?.value ?? "00";
+    const hour = g("hour") === "24" ? "00" : g("hour");
+    return `${g("year")}-${g("month")}-${g("day")}T${hour}:${g("minute")}:${g("second")}`;
+  };
+
   const hourlyMap = new Map(hourlyRows.map((row) => [row.hour_bucket, row.tokens]));
   const hourlyTokens = Array.from({ length: 24 }, (_, index) => {
     const t = new Date(Date.now() - (23 - index) * 3600 * 1000);
-    const y = t.getUTCFullYear();
-    const m = String(t.getUTCMonth() + 1).padStart(2, "0");
-    const d = String(t.getUTCDate()).padStart(2, "0");
-    const h = String(t.getUTCHours()).padStart(2, "0");
-    const bucket = `${y}-${m}-${d}T${h}:00:00`;
-    const shanghaiLabel = toShanghaiDatetime(t).replace(" ", "T").slice(0, 19);
+    const bucket = isMysql
+      ? formatShanghaiBucket(t)
+      : (() => {
+          const y = t.getUTCFullYear();
+          const m = String(t.getUTCMonth() + 1).padStart(2, "0");
+          const d = String(t.getUTCDate()).padStart(2, "0");
+          const h = String(t.getUTCHours()).padStart(2, "0");
+          return `${y}-${m}-${d}T${h}:00:00`;
+        })();
     return {
-      hour: shanghaiLabel,
+      hour: bucket,
       tokens: hourlyMap.get(bucket) ?? 0,
     };
   });
