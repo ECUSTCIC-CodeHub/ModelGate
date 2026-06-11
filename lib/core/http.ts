@@ -8,7 +8,6 @@ const UTC_TIMESTAMP_KEYS = new Set([
   "period_reset_at",
   "reset_at",
   "last_used_at",
-  "hour",
 ]);
 
 function toShanghaiIsoString(value: string) {

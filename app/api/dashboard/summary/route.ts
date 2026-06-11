@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { gatewayDb } from "@/lib/core/db";
 import { ensureWebUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
+import { toShanghaiDatetime } from "@/lib/core/db/datetime";
 
 function estimateConcurrency(rows: Array<{ end_ms: number; latency_ms: number }>) {
   const now = Date.now();
@@ -133,8 +134,9 @@ export async function GET(request: Request) {
     const d = String(t.getUTCDate()).padStart(2, "0");
     const h = String(t.getUTCHours()).padStart(2, "0");
     const bucket = `${y}-${m}-${d}T${h}:00:00`;
+    const shanghaiLabel = toShanghaiDatetime(t).replace(" ", "T").slice(0, 19);
     return {
-      hour: bucket,
+      hour: shanghaiLabel,
       tokens: hourlyMap.get(bucket) ?? 0,
     };
   });
