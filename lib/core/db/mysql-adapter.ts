@@ -3,10 +3,12 @@ import type { DatabaseAdapter, ExecuteResult, TransactionContext } from "@/lib/c
 
 function normalizeParams(params?: unknown[]): unknown[] | undefined {
   if (!params || params.length === 0) return undefined;
-  return params.map((p) => {
-    if (typeof p === "boolean") return p ? 1 : 0;
-    return p;
-  });
+  let needsConvert = false;
+  for (const p of params) {
+    if (typeof p === "boolean") { needsConvert = true; break; }
+  }
+  if (!needsConvert) return params;
+  return params.map((p) => typeof p === "boolean" ? (p ? 1 : 0) : p);
 }
 
 function makeTxContext(conn: PoolConnection): TransactionContext {

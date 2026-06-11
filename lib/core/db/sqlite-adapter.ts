@@ -1,6 +1,8 @@
 import type BetterSqlite3 from "better-sqlite3";
 import type { DatabaseAdapter, ExecuteResult, TransactionContext } from "@/lib/core/db/adapter";
 
+const STMT_CACHE_MAX = 256;
+
 function runAsync<T>(fn: () => T): Promise<T> {
   return new Promise((resolve, reject) => {
     setImmediate(() => {
@@ -13,28 +15,44 @@ function runAsync<T>(fn: () => T): Promise<T> {
   });
 }
 
-function makeTxContext(db: BetterSqlite3.Database): TransactionContext {
+function makeStmtCache(db: BetterSqlite3.Database) {
+  const cache = new Map<string, BetterSqlite3.Statement>();
+  return (sql: string): BetterSqlite3.Statement => {
+    let stmt = cache.get(sql);
+    if (!stmt) {
+      stmt = db.prepare(sql);
+      if (cache.size >= STMT_CACHE_MAX) {
+        const oldest = cache.keys().next().value!;
+        cache.delete(oldest);
+      }
+      cache.set(sql, stmt);
+    }
+    return stmt;
+  };
+}
+
+function makeTxContext(db: BetterSqlite3.Database, prepare: (sql: string) => BetterSqlite3.Statement): TransactionContext {
   return {
-    async query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]> {
+    query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]> {
       return runAsync(() => {
-        const stmt = db.prepare(sql);
+        const stmt = prepare(sql);
         return (params ? stmt.all(...params) : stmt.all()) as T[];
       });
     },
-    async queryOne<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T | undefined> {
+    queryOne<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T | undefined> {
       return runAsync(() => {
-        const stmt = db.prepare(sql);
+        const stmt = prepare(sql);
         return (params ? stmt.get(...params) : stmt.get()) as T | undefined;
       });
     },
-    async execute(sql: string, params?: unknown[]): Promise<ExecuteResult> {
+    execute(sql: string, params?: unknown[]): Promise<ExecuteResult> {
       return runAsync(() => {
-        const stmt = db.prepare(sql);
+        const stmt = prepare(sql);
         const info = params ? stmt.run(...params) : stmt.run();
         return { changes: info.changes, lastInsertRowid: Number(info.lastInsertRowid) };
       });
     },
-    async exec(sql: string): Promise<void> {
+    exec(sql: string): Promise<void> {
       return runAsync(() => { db.exec(sql); });
     },
   };
@@ -42,42 +60,47 @@ function makeTxContext(db: BetterSqlite3.Database): TransactionContext {
 
 export class SqliteAdapter implements DatabaseAdapter {
   readonly driver = "sqlite" as const;
-  constructor(private db: BetterSqlite3.Database) {}
+  private prepare: (sql: string) => BetterSqlite3.Statement;
 
-  async query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]> {
+  constructor(private db: BetterSqlite3.Database) {
+    this.prepare = makeStmtCache(db);
+  }
+
+  query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]> {
     return runAsync(() => {
-      const stmt = this.db.prepare(sql);
+      const stmt = this.prepare(sql);
       return (params ? stmt.all(...params) : stmt.all()) as T[];
     });
   }
 
-  async queryOne<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T | undefined> {
+  queryOne<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T | undefined> {
     return runAsync(() => {
-      const stmt = this.db.prepare(sql);
+      const stmt = this.prepare(sql);
       return (params ? stmt.get(...params) : stmt.get()) as T | undefined;
     });
   }
 
-  async execute(sql: string, params?: unknown[]): Promise<ExecuteResult> {
+  execute(sql: string, params?: unknown[]): Promise<ExecuteResult> {
     return runAsync(() => {
-      const stmt = this.db.prepare(sql);
+      const stmt = this.prepare(sql);
       const info = params ? stmt.run(...params) : stmt.run();
       return { changes: info.changes, lastInsertRowid: Number(info.lastInsertRowid) };
     });
   }
 
-  async exec(sql: string): Promise<void> {
+  exec(sql: string): Promise<void> {
     return runAsync(() => { this.db.exec(sql); });
   }
 
   async transaction<T>(fn: (tx: TransactionContext) => Promise<T>): Promise<T> {
-    const txFn = this.db.transaction(async () => {
-      return fn(makeTxContext(this.db));
+    const txPrepare = makeStmtCache(this.db);
+    const txFn = this.db.transaction(() => {
+      return fn(makeTxContext(this.db, txPrepare));
     });
-    return runAsync(() => txFn()) as Promise<T>;
+    return runAsync(() => txFn());
   }
 
-  async ensureColumn(table: string, column: string, ddl: string): Promise<boolean> {
+  ensureColumn(table: string, column: string, ddl: string): Promise<boolean> {
     return runAsync(() => {
       const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
       if (!columns.some((col) => col.name === column)) {
@@ -95,7 +118,7 @@ export class SqliteAdapter implements DatabaseAdapter {
     });
   }
 
-  async close(): Promise<void> {
+  close(): Promise<void> {
     return runAsync(() => { this.db.close(); });
   }
 }

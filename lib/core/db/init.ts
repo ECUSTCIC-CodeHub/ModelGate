@@ -298,10 +298,13 @@ async function initMysql(): Promise<DatabaseAdapter> {
   });
 
   await db.exec(MYSQL_BASE_SCHEMA_SQL);
+  await ensureAllColumns(db);
   await db.exec(MYSQL_POST_MIGRATION_INDEXES_SQL);
   await db.exec(MYSQL_DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL);
   await seedDefaultSettings(db);
+  await migrateUnlimitedLimitSemantics(db);
   await ensureDefaultGroup(db);
+  await cleanupModelUserUsage(db);
 
   return db;
 }
