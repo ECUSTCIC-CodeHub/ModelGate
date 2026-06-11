@@ -5,7 +5,7 @@ import { ensureWebUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
 
 function escapeLike(input: string): string {
-  return input.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+  return input.replace(/\|/g, "||").replace(/%/g, "|%").replace(/_/g, "|_");
 }
 
 function parseDateParam(value: string) {
@@ -78,22 +78,22 @@ export async function GET(request: Request) {
     whereClauses.push("l.user_id = ?");
     whereArgs.push(guard.auth.user.id);
   } else if (user) {
-    whereClauses.push("u.username LIKE ? ESCAPE '\\'");
+    whereClauses.push("u.username LIKE ? ESCAPE '|'");
     whereArgs.push(`%${escapeLike(user)}%`);
   }
 
   if (model) {
-    whereClauses.push("(l.model_alias LIKE ? ESCAPE '\\' OR l.real_model LIKE ? ESCAPE '\\')");
+    whereClauses.push("(l.model_alias LIKE ? ESCAPE '|' OR l.real_model LIKE ? ESCAPE '|')");
     whereArgs.push(`%${escapeLike(model)}%`, `%${escapeLike(model)}%`);
   }
 
   if (channel) {
-    whereClauses.push("c.name LIKE ? ESCAPE '\\'");
+    whereClauses.push("c.name LIKE ? ESCAPE '|'");
     whereArgs.push(`%${escapeLike(channel)}%`);
   }
 
   if (ip) {
-    whereClauses.push("l.client_ip LIKE ? ESCAPE '\\'");
+    whereClauses.push("l.client_ip LIKE ? ESCAPE '|'");
     whereArgs.push(`%${escapeLike(ip)}%`);
   }
 
@@ -103,13 +103,13 @@ export async function GET(request: Request) {
       whereClauses.push("k.`key` = ?");
       whereArgs.push(parsed.key);
     } else if (parsed.kind === "fingerprint") {
-      whereClauses.push("k.`key` LIKE ? ESCAPE '\\'");
+      whereClauses.push("k.`key` LIKE ? ESCAPE '|'");
       whereArgs.push(`sk-gw-${escapeLike(parsed.front)}%${escapeLike(parsed.back)}`);
     } else if (parsed.kind === "short") {
-      whereClauses.push("(k.`key` LIKE ? ESCAPE '\\' OR k.`key` LIKE ? ESCAPE '\\')");
+      whereClauses.push("(k.`key` LIKE ? ESCAPE '|' OR k.`key` LIKE ? ESCAPE '|')");
       whereArgs.push(`sk-gw-${escapeLike(parsed.nibble)}%`, `%${escapeLike(parsed.nibble)}`);
     } else {
-      whereClauses.push("LOWER(k.name) LIKE ? ESCAPE '\\'");
+      whereClauses.push("LOWER(k.name) LIKE ? ESCAPE '|'");
       whereArgs.push(`%${escapeLike(parsed.text.toLowerCase())}%`);
     }
   }
