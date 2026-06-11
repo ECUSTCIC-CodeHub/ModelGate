@@ -1,6 +1,6 @@
 import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
-import { toMysqlDatetime } from "@/lib/core/db/datetime";
+import { toMysqlDatetime, toMysqlDatetimeNoMs } from "@/lib/core/db/datetime";
 
 export type QuotaInfo = {
   remaining_requests: number | null;

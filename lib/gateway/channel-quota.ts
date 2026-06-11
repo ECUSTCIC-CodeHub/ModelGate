@@ -1,6 +1,6 @@
 import { gatewayDb } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
-import { toMysqlDatetime } from "@/lib/core/db/datetime";
+import { toMysqlDatetime, toMysqlDatetimeNoMs } from "@/lib/core/db/datetime";
 
 export type ChannelQuotaInfo = {
   remaining_requests: number | null;
