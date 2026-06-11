@@ -10,6 +10,13 @@ services:
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-change-me-to-another-random-string}
       - TZ=Asia/Shanghai
       # - AUTH_DISABLED=1
+      # MySQL 模式（取消注释并填写以下配置）
+      # - DB_DRIVER=mysql
+      # - MYSQL_HOST=mysql
+      # - MYSQL_PORT=3306
+      # - MYSQL_USER=root
+      # - MYSQL_PASSWORD=your-password
+      # - MYSQL_DATABASE=modelgate
     volumes:
       - modelgate-data:/app/data
 
