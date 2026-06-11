@@ -30,8 +30,14 @@ function normalizeTimeFields<T>(input: T): T {
   const record = input as Record<string, unknown>;
   return Object.fromEntries(
     Object.entries(record).map(([key, value]) => {
-      if (typeof value === "string" && UTC_TIMESTAMP_KEYS.has(key)) {
-        return [key, toShanghaiIsoString(value)];
+      if (UTC_TIMESTAMP_KEYS.has(key)) {
+        if (value instanceof Date) {
+          if (Number.isNaN(value.getTime())) return [key, null];
+          return [key, toShanghaiIsoString(value.toISOString())];
+        }
+        if (typeof value === "string") {
+          return [key, toShanghaiIsoString(value)];
+        }
       }
       return [key, normalizeTimeFields(value)];
     }),
