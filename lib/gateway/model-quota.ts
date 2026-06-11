@@ -18,15 +18,15 @@ async function ensureModelPeriodReset(modelId: number, period: number, resetAt: 
       [modelId],
     ) as Promise<{ period_used_tokens: number; period_used_requests: number; period_reset_at: string }>;
   }
-  const nextReset = new Date(now.getTime() + period * 1000).toISOString();
+  const nextReset = new Date(now.getTime() + period * 1000);
   const result = await gatewayDb.execute(
     `UPDATE models
        SET period_used_tokens = 0, period_used_requests = 0, period_reset_at = ?
        WHERE id = ? AND (period_reset_at IS NULL OR period_reset_at <= ?)`,
-    [toMysqlDatetime(nextReset), modelId, toMysqlDatetime(now.toISOString())],
+    [toMysqlDatetime(nextReset), modelId, toMysqlDatetimeNoMs(now)],
   );
   if (result.changes > 0) {
-    return { period_used_tokens: 0, period_used_requests: 0, period_reset_at: nextReset };
+    return { period_used_tokens: 0, period_used_requests: 0, period_reset_at: toMysqlDatetime(nextReset) };
   }
   return gatewayDb.queryOne(
     "SELECT period_used_tokens, period_used_requests, period_reset_at FROM models WHERE id = ?",
