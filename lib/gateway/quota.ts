@@ -1,5 +1,6 @@
 import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
+import { toMysqlDatetime } from "@/lib/core/db/datetime";
 
 export type QuotaInfo = {
   remaining_requests: number | null;
@@ -40,7 +41,7 @@ async function ensurePeriodReset(userId: number, period: number, resetAt: string
     `UPDATE users
        SET period_used_tokens = 0, period_used_requests = 0, period_reset_at = ?
        WHERE id = ? AND (period_reset_at IS NULL OR period_reset_at <= ?)`,
-    [nextReset, userId, now.toISOString()],
+    [toMysqlDatetime(nextReset), userId, toMysqlDatetime(now.toISOString())],
   );
   if (result.changes > 0) {
     return { period_used_tokens: 0, period_used_requests: 0, period_reset_at: nextReset };

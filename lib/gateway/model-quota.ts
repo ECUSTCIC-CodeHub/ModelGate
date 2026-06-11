@@ -1,5 +1,6 @@
 import { gatewayDb } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
+import { toMysqlDatetime } from "@/lib/core/db/datetime";
 
 export type ModelQuotaInfo = {
   remaining_requests: number | null;
@@ -22,7 +23,7 @@ async function ensureModelPeriodReset(modelId: number, period: number, resetAt: 
     `UPDATE models
        SET period_used_tokens = 0, period_used_requests = 0, period_reset_at = ?
        WHERE id = ? AND (period_reset_at IS NULL OR period_reset_at <= ?)`,
-    [nextReset, modelId, now.toISOString()],
+    [toMysqlDatetime(nextReset), modelId, toMysqlDatetime(now.toISOString())],
   );
   if (result.changes > 0) {
     return { period_used_tokens: 0, period_used_requests: 0, period_reset_at: nextReset };
