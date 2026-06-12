@@ -249,6 +249,39 @@ test("responses developer role is converted to chat_completions system role", ()
   assert.ok(!JSON.stringify(result).includes('"role":"developer"'));
 });
 
+test("responses thinking content is not sent as chat_completions content part", () => {
+  const result = responsesGatewayAdapter.adaptRequestBody(
+    {
+      model: "gpt-4o",
+      input: [
+        {
+          type: "reasoning",
+          content: [{ type: "reasoning_text", text: "think" }],
+        },
+        {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "hello" }],
+        },
+        {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: "next" }],
+        },
+      ],
+      stream: false,
+    },
+    chatCompletionsGatewayAdapter,
+    "gpt-4o",
+  );
+  const messages = result.messages as Array<{ role?: string; content?: unknown; reasoning?: string }>;
+
+  assert.equal(messages[0]?.role, "assistant");
+  assert.equal(messages[0]?.content, "");
+  assert.equal(messages[0]?.reasoning, "think");
+  assert.ok(!JSON.stringify(result).includes('"type":"thinking"'));
+});
+
 // --- responsesResponseToIntermediate ---
 
 console.log("\nresponsesResponseToIntermediate");

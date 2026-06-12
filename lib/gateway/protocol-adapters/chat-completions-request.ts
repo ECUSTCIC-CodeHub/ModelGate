@@ -150,7 +150,7 @@ export function chatCompletionsRequestFromIntermediate(request: IntermediateRequ
       return {
         role: "assistant",
         content: normalizedPartsToChatContent(message.content, {
-          preserveThinking: request.sourceProtocol === "responses" ? true : preserveThinking,
+          preserveThinking,
         }),
         reasoning: reasoningText || undefined,
         tool_calls: message.tool_calls.map((toolCall) => ({
@@ -175,7 +175,7 @@ export function chatCompletionsRequestFromIntermediate(request: IntermediateRequ
     return {
       role,
       content: normalizedPartsToChatContent(message.content, {
-        preserveThinking: request.sourceProtocol === "responses" ? true : preserveThinking,
+        preserveThinking,
       }),
       reasoning: message.role === "assistant" && reasoningText ? reasoningText : undefined,
     };
