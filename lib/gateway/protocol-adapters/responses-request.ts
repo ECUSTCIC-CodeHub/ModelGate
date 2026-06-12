@@ -29,6 +29,10 @@ import {
   type IntermediateRequest,
 } from "@/lib/gateway/protocol-adapters/intermediate";
 import {
+  ANTHROPIC_ONLY_EXTRA_KEYS,
+  CHAT_COMPLETIONS_ONLY_EXTRA_KEYS,
+} from "@/lib/gateway/protocol-adapters/protocol-extra";
+import {
   responsesToolChoiceToIntermediate,
   responsesToolsToIntermediate,
   toolChoiceFromIntermediateForResponses,
@@ -54,6 +58,32 @@ const REQUEST_KEYS = [
   "context_management",
 ];
 
+function normalizeResponsesMessageRole(role: string) {
+  if (role === "developer") return "system";
+  if (role === "system" || role === "user" || role === "assistant" || role === "tool" || role === "latest_reminder") {
+    return role;
+  }
+  return "user";
+}
+
+function responseExtraFromIntermediate(request: IntermediateRequest) {
+  if (request.sourceProtocol === "chat_completions") {
+    return omitKeys(request.extra, [
+      "context_management",
+      ...CHAT_COMPLETIONS_ONLY_EXTRA_KEYS,
+    ]);
+  }
+
+  if (request.sourceProtocol === "anthropic_messages") {
+    return omitKeys(request.extra, [
+      "context_management",
+      ...ANTHROPIC_ONLY_EXTRA_KEYS,
+    ]);
+  }
+
+  return omitKeys(request.extra, ["context_management"]);
+}
+
 export function responsesRequestToIntermediate(body: JsonRecord, realModel: string): IntermediateRequest {
   return {
     sourceProtocol: "responses",
@@ -77,12 +107,14 @@ export function responsesRequestToIntermediate(body: JsonRecord, realModel: stri
 }
 
 export function responsesRequestFromIntermediate(request: IntermediateRequest): JsonRecord {
-  const extra = omitKeys(request.extra, ["context_management"]);
+  const extra = responseExtraFromIntermediate(request);
   const next: JsonRecord = {
     ...extra,
     model: request.model,
     input: request.messages.flatMap((message) => {
       const items: JsonRecord[] = [];
+      const role = normalizeResponsesMessageRole(message.role);
+      const content = message.content.filter((part) => part.type !== "thinking");
       const reasoningText = message.role === "assistant" ? extractThinkingText(message.content) : "";
       if (reasoningText) {
         items.push({
@@ -92,11 +124,11 @@ export function responsesRequestFromIntermediate(request: IntermediateRequest): 
         });
       }
 
-      if (message.role !== "tool" && (message.content.length > 0 || message.role !== "assistant")) {
+      if (message.role !== "tool" && (content.length > 0 || message.role !== "assistant")) {
         items.push({
           type: "message",
-          role: message.role,
-          content: normalizedPartsToResponseContent(message.content, message.role),
+          role,
+          content: normalizedPartsToResponseContent(content, role),
         });
       }
 

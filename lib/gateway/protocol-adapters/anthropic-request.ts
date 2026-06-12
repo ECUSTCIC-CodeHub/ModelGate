@@ -9,6 +9,10 @@ import {
   type IntermediateRequest,
 } from "@/lib/gateway/protocol-adapters/intermediate";
 import {
+  CHAT_COMPLETIONS_ONLY_EXTRA_KEYS,
+  RESPONSES_ONLY_EXTRA_KEYS,
+} from "@/lib/gateway/protocol-adapters/protocol-extra";
+import {
   anthropicToolChoiceToIntermediate,
   anthropicToolsToIntermediate,
   toolChoiceFromIntermediateForAnthropic,
@@ -67,29 +71,22 @@ const CROSS_PROTOCOL_EXTRA_KEYS = [
   "stream_options",
   "user",
   "instructions",
-  "store",
-];
-
-const RESPONSES_ONLY_EXTRA_KEYS = [
-  ...CROSS_PROTOCOL_EXTRA_KEYS,
-  "include",
-  "reasoning",
-  "previous_response_id",
-  "prompt_cache_key",
   "service_tier",
-  "truncation",
+  "store",
 ];
 
 export function anthropicRequestFromIntermediate(request: IntermediateRequest): JsonRecord {
   const extra = request.sourceProtocol === "responses"
-    ? omitKeys(request.extra, RESPONSES_ONLY_EXTRA_KEYS)
-    : omitKeys(request.extra, CROSS_PROTOCOL_EXTRA_KEYS);
+    ? omitKeys(request.extra, [...CROSS_PROTOCOL_EXTRA_KEYS, ...RESPONSES_ONLY_EXTRA_KEYS])
+    : request.sourceProtocol === "chat_completions"
+      ? omitKeys(request.extra, [...CROSS_PROTOCOL_EXTRA_KEYS, ...CHAT_COMPLETIONS_ONLY_EXTRA_KEYS])
+      : omitKeys(request.extra, CROSS_PROTOCOL_EXTRA_KEYS);
   const systemBlocks = request.messages
-    .filter((message) => message.role === "system")
+    .filter((message) => message.role === "system" || message.role === "developer")
     .flatMap((message) => normalizedPartsToAnthropicContent(message.content));
 
   const messages = request.messages
-    .filter((message) => message.role !== "system")
+    .filter((message) => message.role !== "system" && message.role !== "developer")
     .flatMap((message) => {
       if (message.role === "tool") {
         return [{

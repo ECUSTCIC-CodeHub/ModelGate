@@ -1759,6 +1759,12 @@ OpenAI Chat Completions 兼容端点。
 
 > 流式 Chat Completions 请求转发到上游时，网关会自动附加 `stream_options.include_usage = true`，用于优先记录上游返回的 Token usage 和缓存 Token；上游不返回 usage 时才使用本地分词统计。
 
+> 当 Chat Completions 请求被路由到 Responses 或 Anthropic Messages 上游时，网关会将 `developer` 消息按系统指令语义转换，避免上游协议不支持 `developer` role 导致请求失败。
+
+> 当 Chat Completions 请求被路由到 Responses 上游时，assistant 消息中的 `reasoning` / `reasoning_content` 会转换为 Responses reasoning item，不会作为 `thinking` 内容块写入 `message.content`。
+
+> 当 Chat Completions 请求被路由到 Responses 或 Anthropic Messages 上游时，`max_completion_tokens` 会映射到目标协议的输出上限字段；`n`、`logprobs`、`top_logprobs`、`presence_penalty`、`frequency_penalty`、`logit_bias`、`seed` 等 Chat 专属字段不会透传到不兼容上游。
+
 **额外响应头:**
 ```
 X-Quota-Limit-Requests-Remaining: 9877

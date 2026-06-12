@@ -9,6 +9,10 @@ import {
   omitKeys,
   type IntermediateRequest,
 } from "@/lib/gateway/protocol-adapters/intermediate";
+import {
+  ANTHROPIC_ONLY_EXTRA_KEYS,
+  RESPONSES_ONLY_EXTRA_KEYS,
+} from "@/lib/gateway/protocol-adapters/protocol-extra";
 
 import {
   chatToolChoiceToIntermediate,
@@ -22,6 +26,7 @@ const REQUEST_KEYS = [
   "messages",
   "stream",
   "max_tokens",
+  "max_completion_tokens",
   "temperature",
   "top_p",
   "stop",
@@ -32,6 +37,8 @@ const REQUEST_KEYS = [
   "user",
   "metadata",
   "response_format",
+  "reasoning_effort",
+  "reasoning",
 ];
 
 function chatResponseFormatToIntermediate(responseFormat: unknown) {
@@ -85,12 +92,15 @@ function chatResponseFormatFromIntermediate(text: unknown) {
 }
 
 export function chatCompletionsRequestToIntermediate(body: JsonRecord, realModel: string): IntermediateRequest {
+  const reasoning = typeof body.reasoning === "object" && body.reasoning !== null
+    ? body.reasoning as JsonRecord
+    : null;
   return {
     sourceProtocol: "chat_completions",
     model: realModel,
     messages: normalizeChatMessages(body.messages),
     stream: body.stream === true,
-    maxTokens: body.max_tokens,
+    maxTokens: body.max_tokens ?? body.max_completion_tokens,
     temperature: body.temperature,
     top_p: body.top_p,
     stop: body.stop,
@@ -101,6 +111,11 @@ export function chatCompletionsRequestToIntermediate(body: JsonRecord, realModel
     user: body.user,
     metadata: body.metadata,
     text: chatResponseFormatToIntermediate(body.response_format),
+    reasoning_effort: typeof body.reasoning_effort === "string"
+      ? body.reasoning_effort
+      : typeof reasoning?.effort === "string"
+        ? reasoning.effort
+        : undefined,
     response_format: body.response_format,
     extra: omitKeys(body, REQUEST_KEYS),
   };
@@ -130,18 +145,11 @@ export function chatCompletionsRequestFromIntermediate(request: IntermediateRequ
     "text",
     "reasoning_effort",
   ];
-  const responsesOnlyExtraKeys = [
-    ...crossProtocolKeys,
-    "include",
-    "reasoning",
-    "previous_response_id",
-    "prompt_cache_key",
-    "service_tier",
-    "truncation",
-  ];
   const extra = request.sourceProtocol === "responses"
-    ? omitKeys(request.extra, responsesOnlyExtraKeys)
-    : omitKeys(request.extra, crossProtocolKeys);
+    ? omitKeys(request.extra, [...crossProtocolKeys, ...RESPONSES_ONLY_EXTRA_KEYS])
+    : request.sourceProtocol === "anthropic_messages"
+      ? omitKeys(request.extra, [...crossProtocolKeys, ...ANTHROPIC_ONLY_EXTRA_KEYS])
+      : omitKeys(request.extra, crossProtocolKeys);
   const messages = normalizeResponsesInstructions(request.messages, request.extra.instructions).map((message) => {
     const role = normalizeChatMessageRole(message.role);
     const reasoningText = extractThinkingText(message.content);

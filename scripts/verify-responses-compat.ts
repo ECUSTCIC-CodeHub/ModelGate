@@ -4,6 +4,7 @@ import {
   downgradeResponsesRequestForRoute,
   getResponsesRouteCompatibilityNote,
 } from "../lib/gateway/protocol-adapters/tools";
+import { anthropicGatewayAdapter } from "../lib/gateway/protocol-adapters/anthropic";
 import { chatCompletionsGatewayAdapter } from "../lib/gateway/protocol-adapters/chat-completions";
 import { responsesGatewayAdapter } from "../lib/gateway/protocol-adapters/responses";
 import { responsesResponseToIntermediate } from "../lib/gateway/protocol-adapters/responses-response";
@@ -282,6 +283,217 @@ test("responses thinking content is not sent as chat_completions content part", 
   assert.ok(!JSON.stringify(result).includes('"type":"thinking"'));
 });
 
+// --- chat_completions -> upstream request ---
+
+console.log("\nchat_completions -> upstream request");
+
+test("chat_completions developer role is converted for responses upstream", () => {
+  const result = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "gpt-4o",
+      messages: [
+        { role: "developer", content: "answer concisely" },
+        { role: "user", content: "hi" },
+      ],
+      stream: false,
+    },
+    responsesGatewayAdapter,
+    "gpt-4o",
+  );
+  const input = result.input as Array<{ role?: string; content?: unknown }>;
+
+  assert.equal(input[0]?.role, "system");
+  assert.equal(input[1]?.role, "user");
+  assert.ok(!JSON.stringify(result).includes('"role":"developer"'));
+});
+
+test("chat_completions reasoning is converted for responses upstream without thinking content part", () => {
+  const result = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "gpt-4o",
+      messages: [
+        { role: "assistant", content: "hello", reasoning: "think" },
+        { role: "user", content: "next" },
+      ],
+      stream: false,
+    },
+    responsesGatewayAdapter,
+    "gpt-4o",
+  );
+  const input = result.input as Array<{ type?: string; role?: string; content?: Array<{ type?: string; text?: string }> }>;
+
+  assert.equal(input[0]?.type, "reasoning");
+  assert.equal(input[1]?.type, "message");
+  assert.equal(input[1]?.role, "assistant");
+  assert.equal(input[1]?.content?.[0]?.type, "output_text");
+  assert.ok(!JSON.stringify(result).includes('"type":"thinking"'));
+});
+
+test("chat_completions developer role is converted for anthropic upstream", () => {
+  const result = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "claude-sonnet-4-6",
+      messages: [
+        { role: "developer", content: "answer concisely" },
+        { role: "user", content: "hi" },
+      ],
+      stream: false,
+    },
+    anthropicGatewayAdapter,
+    "claude-sonnet-4-6",
+  );
+  const messages = result.messages as Array<{ role?: string; content?: unknown }>;
+
+  assert.equal(result.system, "answer concisely");
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0]?.role, "user");
+  assert.ok(!JSON.stringify(result).includes('"role":"developer"'));
+});
+
+test("chat_completions fields are filtered and mapped for responses upstream", () => {
+  const result = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "gpt-4o",
+      messages: [{ role: "user", content: "hi" }],
+      stream: false,
+      max_completion_tokens: 64,
+      n: 2,
+      logprobs: true,
+      top_logprobs: 2,
+      presence_penalty: 0.5,
+      frequency_penalty: 0.25,
+      logit_bias: { "42": 1 },
+      seed: 123,
+      response_format: { type: "json_object" },
+      reasoning: { effort: "medium" },
+      store: true,
+      service_tier: "auto",
+    },
+    responsesGatewayAdapter,
+    "gpt-4o",
+  );
+
+  assert.equal(result.max_output_tokens, 64);
+  assert.deepEqual(result.text, { format: { type: "json_object" } });
+  assert.equal(result.reasoning_effort, "medium");
+  assert.equal(result.store, true);
+  assert.equal(result.service_tier, "auto");
+  for (const key of [
+    "max_completion_tokens",
+    "n",
+    "logprobs",
+    "top_logprobs",
+    "presence_penalty",
+    "frequency_penalty",
+    "logit_bias",
+    "seed",
+    "response_format",
+    "reasoning",
+  ]) {
+    assert.ok(!(key in result), `${key} should not leak to responses`);
+  }
+});
+
+test("chat_completions fields are filtered and mapped for anthropic upstream", () => {
+  const result = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "claude-sonnet-4-6",
+      messages: [{ role: "user", content: "hi" }],
+      stream: false,
+      max_completion_tokens: 64,
+      n: 2,
+      logprobs: true,
+      top_logprobs: 2,
+      presence_penalty: 0.5,
+      frequency_penalty: 0.25,
+      logit_bias: { "42": 1 },
+      seed: 123,
+      response_format: { type: "json_object" },
+      reasoning: { effort: "medium" },
+      store: true,
+      service_tier: "auto",
+      stream_options: { include_usage: true },
+      parallel_tool_calls: true,
+      user: "u1",
+    },
+    anthropicGatewayAdapter,
+    "claude-sonnet-4-6",
+  );
+
+  assert.equal(result.max_tokens, 64);
+  for (const key of [
+    "max_completion_tokens",
+    "n",
+    "logprobs",
+    "top_logprobs",
+    "presence_penalty",
+    "frequency_penalty",
+    "logit_bias",
+    "seed",
+    "response_format",
+    "reasoning",
+    "reasoning_effort",
+    "store",
+    "service_tier",
+    "stream_options",
+    "parallel_tool_calls",
+    "user",
+  ]) {
+    assert.ok(!(key in result), `${key} should not leak to anthropic`);
+  }
+});
+
+test("anthropic-only fields are filtered for responses upstream", () => {
+  const result = anthropicGatewayAdapter.adaptRequestBody(
+    {
+      model: "gpt-4o",
+      max_tokens: 64,
+      messages: [{ role: "user", content: "hi" }],
+      top_k: 20,
+      container: "session_1",
+      mcp_servers: [],
+      thinking: { type: "enabled", budget_tokens: 1024 },
+    },
+    responsesGatewayAdapter,
+    "gpt-4o",
+  );
+
+  assert.equal(result.max_output_tokens, 64);
+  for (const key of ["top_k", "container", "mcp_servers", "thinking"]) {
+    assert.ok(!(key in result), `${key} should not leak to responses`);
+  }
+});
+
+test("responses upstream body converts to chat_completions text, reasoning and tools", () => {
+  const result = JSON.parse(chatCompletionsGatewayAdapter.adaptResponseBody(
+    JSON.stringify({
+      id: "resp_test",
+      model: "gpt-4o",
+      output: [
+        { type: "reasoning", content: [{ type: "reasoning_text", text: "think" }] },
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "hello", annotations: [] }] },
+        { type: "function_call", id: "fc_1", call_id: "call_1", name: "search", arguments: "{\"q\":\"hello\"}" },
+      ],
+    }),
+    responsesGatewayAdapter,
+  )) as {
+    choices: Array<{
+      message: {
+        content?: string;
+        reasoning?: string;
+        tool_calls?: Array<{ function?: { name?: string; arguments?: string } }>;
+      };
+      finish_reason?: string;
+    }>;
+  };
+  const choice = result.choices[0];
+
+  assert.equal(choice?.message.content, "hello");
+  assert.equal(choice?.message.reasoning, "think");
+  assert.equal(choice?.message.tool_calls?.[0]?.function?.name, "search");
+  assert.equal(choice?.finish_reason, "tool_calls");
+});
+
 // --- responsesResponseToIntermediate ---
 
 console.log("\nresponsesResponseToIntermediate");
@@ -398,6 +610,19 @@ test("responses -> anthropic 流可从 completed 快照补发文本", async () =
   assert.equal(result.completionText(), "hello");
 });
 
+test("responses -> chat_completions stream can emit completed snapshot text", async () => {
+  const upstream = makeUpstreamResponsesStream([
+    'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_test","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[]}}\n\n',
+    'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_test","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hello","annotations":[]}]}],"output_text":"hello"}}\n\n',
+  ]);
+
+  const result = createTransformedStream(upstream, responsesGatewayAdapter, chatCompletionsGatewayAdapter);
+  const output = await collectStream(result.stream);
+
+  assert.ok(output.includes("\"content\":\"hello\""), "should emit chat completion content delta");
+  assert.equal(result.completionText(), "hello");
+});
+
 test("responses -> anthropic can count output_item.done text without completed", async () => {
   const upstream = makeUpstreamResponsesStream([
     'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_test","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[]}}\n\n',
@@ -445,6 +670,20 @@ test("responses -> anthropic 流可从 completed 快照补发工具调用", asyn
   assert.ok(output.includes("\"type\":\"tool_use\""), "应包含 Anthropic 工具调用块");
   assert.ok(output.includes("\"name\":\"search\""), "应保留工具名");
   assert.ok(output.includes("input_json_delta"), "应补发工具参数增量");
+});
+
+test("responses -> chat_completions stream can emit completed snapshot tool call", async () => {
+  const upstream = makeUpstreamResponsesStream([
+    'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_test","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[]}}\n\n',
+    'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_test","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[{"type":"function_call","id":"fc_1","call_id":"call_1","name":"search","arguments":"{\\"q\\":\\"hello\\"}","status":"completed"}]}}\n\n',
+  ]);
+
+  const result = createTransformedStream(upstream, responsesGatewayAdapter, chatCompletionsGatewayAdapter);
+  const output = await collectStream(result.stream);
+
+  assert.ok(output.includes("\"tool_calls\""), "should emit chat completion tool calls");
+  assert.ok(output.includes("\"name\":\"search\""), "should keep tool name");
+  assert.ok(output.includes("\"finish_reason\":\"tool_calls\""), "should finish with tool_calls");
 });
 
 // --- Summary ---

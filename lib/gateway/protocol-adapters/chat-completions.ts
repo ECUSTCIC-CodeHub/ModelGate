@@ -31,6 +31,6 @@ export const chatCompletionsGatewayAdapter = createBodyProtocolGatewayAdapter({
     return inputTextFromMessages(normalizeChatMessages(body.messages));
   },
   getMaxOutputTokens(body) {
-    return body.max_tokens;
+    return body.max_tokens ?? body.max_completion_tokens;
   },
 });
