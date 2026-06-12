@@ -59,7 +59,7 @@ export function createBodyProtocolGatewayAdapter(options: {
     adaptRequestBody(body, outbound, realModel, forceIncludeUsage = true) {
       const prepare = (requestBody: JsonRecord) => {
         const prepared = outbound.prepareOutboundRequestBody?.(requestBody) ?? requestBody;
-        if (prepared.stream === true) {
+        if (prepared.stream === true && outbound.protocol === "chat_completions") {
           const streamOptions = typeof prepared.stream_options === "object" && prepared.stream_options !== null && !Array.isArray(prepared.stream_options)
             ? prepared.stream_options as JsonRecord
             : {};
