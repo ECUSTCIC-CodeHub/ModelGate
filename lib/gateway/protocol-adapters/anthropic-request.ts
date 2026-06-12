@@ -59,7 +59,21 @@ export function anthropicRequestToIntermediate(body: JsonRecord, realModel: stri
   };
 }
 
+const CROSS_PROTOCOL_EXTRA_KEYS = [
+  "text",
+  "reasoning_effort",
+  "context_management",
+  "parallel_tool_calls",
+  "stream_options",
+  "user",
+  "instructions",
+  "store",
+];
+
 export function anthropicRequestFromIntermediate(request: IntermediateRequest): JsonRecord {
+  const extra = request.sourceProtocol === "responses"
+    ? {}
+    : omitKeys(request.extra, CROSS_PROTOCOL_EXTRA_KEYS);
   const systemBlocks = request.messages
     .filter((message) => message.role === "system")
     .flatMap((message) => normalizedPartsToAnthropicContent(message.content));
@@ -97,7 +111,7 @@ export function anthropicRequestFromIntermediate(request: IntermediateRequest): 
     });
 
   const next: JsonRecord = {
-    ...request.extra,
+    ...extra,
     model: request.model,
     messages,
     stream: request.stream,

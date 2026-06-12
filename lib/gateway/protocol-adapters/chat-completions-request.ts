@@ -121,7 +121,12 @@ function normalizeResponsesInstructions(messages: NormalizedMessage[], instructi
 export function chatCompletionsRequestFromIntermediate(request: IntermediateRequest): JsonRecord {
   const extra = request.sourceProtocol === "responses"
     ? {}
-    : omitKeys(request.extra, ["instructions", "context_management"]);
+    : omitKeys(request.extra, [
+        "instructions",
+        "context_management",
+        "text",
+        "reasoning_effort",
+      ]);
   const messages = normalizeResponsesInstructions(request.messages, request.extra.instructions).map((message) => {
     const reasoningText = extractThinkingText(message.content);
     const preserveThinking = request.sourceProtocol === "anthropic_messages" && message.role === "assistant";
