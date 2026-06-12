@@ -70,9 +70,19 @@ const CROSS_PROTOCOL_EXTRA_KEYS = [
   "store",
 ];
 
+const RESPONSES_ONLY_EXTRA_KEYS = [
+  ...CROSS_PROTOCOL_EXTRA_KEYS,
+  "include",
+  "reasoning",
+  "previous_response_id",
+  "prompt_cache_key",
+  "service_tier",
+  "truncation",
+];
+
 export function anthropicRequestFromIntermediate(request: IntermediateRequest): JsonRecord {
   const extra = request.sourceProtocol === "responses"
-    ? {}
+    ? omitKeys(request.extra, RESPONSES_ONLY_EXTRA_KEYS)
     : omitKeys(request.extra, CROSS_PROTOCOL_EXTRA_KEYS);
   const systemBlocks = request.messages
     .filter((message) => message.role === "system")
