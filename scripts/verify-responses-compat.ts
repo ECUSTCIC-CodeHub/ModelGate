@@ -331,6 +331,135 @@ test("responses reasoning is attached to chat_completions assistant tool call hi
   assert.ok(!JSON.stringify(result).includes('"type":"thinking"'));
 });
 
+test("responses reasoning between function call and output keeps chat tool adjacency", () => {
+  const result = responsesGatewayAdapter.adaptRequestBody(
+    {
+      model: "gpt-4o",
+      input: [
+        {
+          type: "function_call",
+          call_id: "call_1",
+          name: "search",
+          arguments: "{\"q\":\"hello\"}",
+        },
+        {
+          type: "reasoning",
+          content: [{ type: "reasoning_text", text: "wait for search" }],
+        },
+        {
+          type: "function_call_output",
+          call_id: "call_1",
+          output: "result",
+        },
+      ],
+      stream: false,
+    },
+    chatCompletionsGatewayAdapter,
+    "gpt-4o",
+  );
+  const messages = result.messages as Array<{
+    role?: string;
+    reasoning_content?: string;
+    tool_call_id?: string;
+    tool_calls?: Array<{ id?: string }>;
+  }>;
+
+  assert.equal(messages[0]?.role, "assistant");
+  assert.equal(messages[0]?.reasoning_content, "wait for search");
+  assert.equal(messages[0]?.tool_calls?.[0]?.id, "call_1");
+  assert.equal(messages[1]?.role, "tool");
+  assert.equal(messages[1]?.tool_call_id, "call_1");
+});
+
+test("responses consecutive function calls are grouped before chat tool outputs", () => {
+  const result = responsesGatewayAdapter.adaptRequestBody(
+    {
+      model: "gpt-4o",
+      input: [
+        {
+          type: "function_call",
+          call_id: "call_1",
+          name: "search",
+          arguments: "{\"q\":\"hello\"}",
+        },
+        {
+          type: "function_call",
+          call_id: "call_2",
+          name: "read",
+          arguments: "{\"path\":\"README.md\"}",
+        },
+        {
+          type: "function_call_output",
+          call_id: "call_1",
+          output: "search result",
+        },
+        {
+          type: "function_call_output",
+          call_id: "call_2",
+          output: "file result",
+        },
+      ],
+      stream: false,
+    },
+    chatCompletionsGatewayAdapter,
+    "gpt-4o",
+  );
+  const messages = result.messages as Array<{
+    role?: string;
+    tool_call_id?: string;
+    tool_calls?: Array<{ id?: string }>;
+  }>;
+
+  assert.equal(messages[0]?.role, "assistant");
+  assert.deepEqual(messages[0]?.tool_calls?.map((toolCall) => toolCall.id), ["call_1", "call_2"]);
+  assert.equal(messages[1]?.role, "tool");
+  assert.equal(messages[1]?.tool_call_id, "call_1");
+  assert.equal(messages[2]?.role, "tool");
+  assert.equal(messages[2]?.tool_call_id, "call_2");
+});
+
+test("responses non-tool messages between tool call and output are deferred", () => {
+  const result = responsesGatewayAdapter.adaptRequestBody(
+    {
+      model: "gpt-4o",
+      input: [
+        {
+          type: "function_call",
+          call_id: "call_1",
+          name: "search",
+          arguments: "{\"q\":\"hello\"}",
+        },
+        {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: "next" }],
+        },
+        {
+          type: "function_call_output",
+          call_id: "call_1",
+          output: "result",
+        },
+      ],
+      stream: false,
+    },
+    chatCompletionsGatewayAdapter,
+    "gpt-4o",
+  );
+  const messages = result.messages as Array<{
+    role?: string;
+    content?: unknown;
+    tool_call_id?: string;
+    tool_calls?: Array<{ id?: string }>;
+  }>;
+
+  assert.equal(messages[0]?.role, "assistant");
+  assert.equal(messages[0]?.tool_calls?.[0]?.id, "call_1");
+  assert.equal(messages[1]?.role, "tool");
+  assert.equal(messages[1]?.tool_call_id, "call_1");
+  assert.equal(messages[2]?.role, "user");
+  assert.equal(messages[2]?.content, "next");
+});
+
 // --- chat_completions -> upstream request ---
 
 console.log("\nchat_completions -> upstream request");

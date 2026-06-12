@@ -154,10 +154,7 @@ function isAssistantThinkingOnly(message: NormalizedMessage) {
     message.content.every((part) => part.type === "thinking");
 }
 
-function flushPendingThinking(
-  messages: NormalizedMessage[],
-  pendingThinking: NormalizedContentPart[],
-) {
+function flushPendingThinking(messages: NormalizedMessage[], pendingThinking: NormalizedContentPart[]) {
   if (pendingThinking.length === 0) return;
   messages.push({
     role: "assistant",
@@ -166,14 +163,150 @@ function flushPendingThinking(
   pendingThinking.length = 0;
 }
 
-function mergeResponsesReasoningMessages(messages: NormalizedMessage[]) {
+function toolCallIds(message: NormalizedMessage | null) {
+  return new Set((message?.tool_calls ?? [])
+    .map((toolCall) => toolCall.id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0));
+}
+
+function toolOutputIds(messages: NormalizedMessage[]) {
+  return new Set(messages
+    .map((message) => message.tool_call_id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0));
+}
+
+function toolGroupComplete(toolGroup: NormalizedMessage | null, toolOutputs: NormalizedMessage[]) {
+  const expected = toolCallIds(toolGroup);
+  if (expected.size === 0) return false;
+  const fulfilled = toolOutputIds(toolOutputs);
+  return [...expected].every((id) => fulfilled.has(id));
+}
+
+function matchingToolOutputs(toolGroup: NormalizedMessage, toolOutputs: NormalizedMessage[]) {
+  const expected = toolCallIds(toolGroup);
+  return toolOutputs.filter((message) => message.tool_call_id && expected.has(message.tool_call_id));
+}
+
+function flushToolGroup(
+  messages: NormalizedMessage[],
+  state: {
+    toolGroup: NormalizedMessage | null;
+    toolOutputs: NormalizedMessage[];
+    deferred: NormalizedMessage[];
+  },
+) {
+  if (!state.toolGroup) return;
+
+  const outputs = matchingToolOutputs(state.toolGroup, state.toolOutputs);
+  const outputIds = toolOutputIds(outputs);
+  const toolCalls = (state.toolGroup.tool_calls ?? []).filter((toolCall) => toolCall.id && outputIds.has(toolCall.id));
+
+  if (toolCalls.length > 0) {
+    messages.push({
+      ...state.toolGroup,
+      tool_calls: toolCalls,
+    });
+    messages.push(...outputs);
+  } else if (state.toolGroup.content.length > 0) {
+    messages.push({
+      role: "assistant",
+      content: state.toolGroup.content,
+    });
+  }
+
+  messages.push(...state.deferred);
+  state.toolGroup = null;
+  state.toolOutputs = [];
+  state.deferred = [];
+}
+
+function startOrMergeToolGroup(
+  state: {
+    toolGroup: NormalizedMessage | null;
+    toolOutputs: NormalizedMessage[];
+    deferred: NormalizedMessage[];
+  },
+  message: NormalizedMessage,
+  pendingThinking: NormalizedContentPart[],
+) {
+  if (state.toolGroup && toolGroupComplete(state.toolGroup, state.toolOutputs)) {
+    return false;
+  }
+
+  if (!state.toolGroup) {
+    state.toolGroup = {
+      ...message,
+      content: [...pendingThinking, ...message.content],
+      tool_calls: [...(message.tool_calls ?? [])],
+    };
+  } else {
+    state.toolGroup = {
+      ...state.toolGroup,
+      content: [...state.toolGroup.content, ...pendingThinking, ...message.content],
+      tool_calls: [...(state.toolGroup.tool_calls ?? []), ...(message.tool_calls ?? [])],
+    };
+  }
+  pendingThinking.length = 0;
+  return true;
+}
+
+function normalizeResponsesMessagesForChat(messages: NormalizedMessage[]) {
   const merged: NormalizedMessage[] = [];
   const pendingThinking: NormalizedContentPart[] = [];
+  const toolState: {
+    toolGroup: NormalizedMessage | null;
+    toolOutputs: NormalizedMessage[];
+    deferred: NormalizedMessage[];
+  } = {
+    toolGroup: null,
+    toolOutputs: [],
+    deferred: [],
+  };
 
   for (const message of messages) {
     if (isAssistantThinkingOnly(message)) {
-      pendingThinking.push(...message.content);
+      if (toolState.toolGroup && !toolGroupComplete(toolState.toolGroup, toolState.toolOutputs)) {
+        toolState.toolGroup.content.push(...message.content);
+      } else {
+        pendingThinking.push(...message.content);
+      }
       continue;
+    }
+
+    if (message.role === "assistant" && message.tool_calls?.length) {
+      if (!startOrMergeToolGroup(toolState, message, pendingThinking)) {
+        flushToolGroup(merged, toolState);
+        startOrMergeToolGroup(toolState, message, pendingThinking);
+      }
+      continue;
+    }
+
+    if (message.role === "tool") {
+      if (toolState.toolGroup) {
+        toolState.toolOutputs.push(message);
+        if (toolGroupComplete(toolState.toolGroup, toolState.toolOutputs)) {
+          flushToolGroup(merged, toolState);
+        }
+      } else {
+        flushPendingThinking(merged, pendingThinking);
+        merged.push(message);
+      }
+      continue;
+    }
+
+    if (message.role === "assistant" && toolState.toolGroup && !toolGroupComplete(toolState.toolGroup, toolState.toolOutputs)) {
+      toolState.toolGroup.content.push(...pendingThinking, ...message.content);
+      pendingThinking.length = 0;
+      continue;
+    }
+
+    if (toolState.toolGroup) {
+      if (toolGroupComplete(toolState.toolGroup, toolState.toolOutputs)) {
+        flushToolGroup(merged, toolState);
+      } else {
+        toolState.deferred.push(message);
+        continue;
+      }
     }
 
     if (pendingThinking.length > 0 && message.role === "assistant") {
@@ -189,6 +322,7 @@ function mergeResponsesReasoningMessages(messages: NormalizedMessage[]) {
     merged.push(message);
   }
 
+  flushToolGroup(merged, toolState);
   flushPendingThinking(merged, pendingThinking);
   return merged;
 }
@@ -207,7 +341,7 @@ export function chatCompletionsRequestFromIntermediate(request: IntermediateRequ
       : omitKeys(request.extra, crossProtocolKeys);
   const sourceMessages = normalizeResponsesInstructions(request.messages, request.extra.instructions);
   const messagesForChat = request.sourceProtocol === "responses"
-    ? mergeResponsesReasoningMessages(sourceMessages)
+    ? normalizeResponsesMessagesForChat(sourceMessages)
     : sourceMessages;
   const messages = messagesForChat.map((message) => {
     const role = normalizeChatMessageRole(message.role);

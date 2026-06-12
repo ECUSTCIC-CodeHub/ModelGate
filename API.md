@@ -1970,7 +1970,7 @@ OpenAI Responses API 兼容端点。
 - 当实际命中的上游协议为 `chat_completions` 时，网关会尽量兼容：仅转发可映射为 OpenAI function calling 的 `function tools`，忽略 `namespace`、`custom` 等无法映射的 Responses 原生 tools。
 - 若 `tool_choice` 在过滤后已不再有效，网关会自动降级为 chat 上游可接受的形式（如 `auto` 或省略）。
 - 当 Responses 请求被路由到 `chat_completions` 上游时，网关会将 `developer` 消息角色转换为 `system`，避免 Codex 等客户端的开发者消息被 Chat 上游拒绝。
-- 当 Responses 请求中的思考内容被路由到 `chat_completions` 上游时，网关不会将 `thinking` 作为 `messages[].content` 内容块发送；assistant 思考内容会映射到 Chat 兼容的 `reasoning` 与 `reasoning_content` 字段，并与相邻的 assistant 文本或工具调用历史合并，满足 thinking 模式上游对历史思考内容回传的要求。
+- 当 Responses 请求中的思考内容被路由到 `chat_completions` 上游时，网关不会将 `thinking` 作为 `messages[].content` 内容块发送；assistant 思考内容会映射到 Chat 兼容的 `reasoning` 与 `reasoning_content` 字段，并与相邻的 assistant 文本或工具调用历史合并，满足 thinking 模式上游对历史思考内容回传的要求。连续工具调用会合并到同一条 assistant `tool_calls`，对应 tool 结果会紧跟其后，避免生成 Chat 上游拒绝的未闭合工具调用历史。
 
 **流式响应说明:**
 
