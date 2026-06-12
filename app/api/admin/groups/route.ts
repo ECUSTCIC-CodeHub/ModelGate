@@ -7,7 +7,7 @@ import { modelGateFeatures } from "@/lib/core/features";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { listExistingChannelIds, parseAllowedChannelIds, stringifyAllowedChannelIds } from "@/lib/gateway/channel-access";
-import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
+import { listExistingModelAliases, parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
 
 const createSchema = z.object({
   name: z.string().min(1).max(64),
@@ -85,6 +85,9 @@ export async function POST(request: Request) {
   const channelIds = parsed.data.allowed_channel_ids
     ? await listExistingChannelIds(parsed.data.allowed_channel_ids)
     : [];
+  const inputAliases = parsed.data.allowed_model_aliases ?? [];
+  const existingAliases = await listExistingModelAliases(inputAliases);
+  const droppedAliases = inputAliases.filter((a) => !existingAliases.includes(a));
 
   const result = await gatewayDb.transaction(async (tx) => {
     if (setDefault) {
@@ -106,7 +109,7 @@ export async function POST(request: Request) {
           modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.quota_period) : null,
           modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_tokens) : null,
           modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_requests) : null,
-          stringifyAllowedModelAliases(parsed.data.allowed_model_aliases ?? []),
+          stringifyAllowedModelAliases(existingAliases),
           stringifyAllowedChannelIds(channelIds),
           exprTrimmed,
           modelGateFeatures.oidc ? parsed.data.oidc_claim_priority ?? 0 : 0,
@@ -130,6 +133,7 @@ export async function POST(request: Request) {
         allowed_channel_ids: parseAllowedChannelIds(row.allowed_channel_ids),
         user_count: 0,
       },
+      ...(droppedAliases.length > 0 ? { warnings: [`以下模型别名不存在，已忽略: ${droppedAliases.join(", ")}`] } : {}),
     },
     201,
   );

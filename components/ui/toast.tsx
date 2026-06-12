@@ -3,7 +3,7 @@
 import { createContext, ReactNode, useCallback, useContext, useMemo } from "react";
 import { Toaster, toast as sonnerToast } from "sonner";
 
-type ToastVariant = "success" | "error" | "info";
+type ToastVariant = "success" | "error" | "warning" | "info";
 
 type ToastInput = {
   title?: string;
@@ -35,6 +35,7 @@ const TOAST_BASE_CLASS = [
 const TOAST_VARIANT_CLASS: Record<ToastVariant, string> = {
   success: "!border-l-4 !border-l-emerald-500",
   error: "!border-l-4 !border-l-[var(--color-destructive)]",
+  warning: "!border-l-4 !border-l-amber-500",
   info: "!border-l-4 !border-l-[var(--color-accent)]",
 };
 
@@ -66,6 +67,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         sonnerToast.error(input.title, options);
         return;
       }
+      if (variant === "warning") {
+        sonnerToast.warning(input.title, options);
+        return;
+      }
       sonnerToast(input.title, options);
       return;
     }
@@ -76,6 +81,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }
     if (variant === "error") {
       sonnerToast.error(input.description, { ...options, description: undefined });
+      return;
+    }
+    if (variant === "warning") {
+      sonnerToast.warning(input.description, { ...options, description: undefined });
       return;
     }
     sonnerToast(input.description, { ...options, description: undefined });

@@ -6,7 +6,7 @@ import { gatewayDb } from "@/lib/core/db";
 import { modelGateFeatures, requireFeature } from "@/lib/core/features";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
-import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
+import { listExistingModelAliases, parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
 import { softDeleteUser } from "@/lib/services/soft-delete-service";
 import { USERNAME_SCHEMA } from "@/lib/auth/username";
 
@@ -101,6 +101,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     if (!group) return jsonError("用户组不存在", 400);
   }
 
+  const inputAliases = parsed.data.allowed_model_aliases ?? [];
+  const existingAliases = await listExistingModelAliases(inputAliases);
+  const droppedAliases = inputAliases.filter((a) => !existingAliases.includes(a));
+
   const merged = {
     ...existing,
     ...parsed.data,
@@ -141,7 +145,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     allowed_model_aliases:
       parsed.data.allowed_model_aliases === undefined
         ? existing.allowed_model_aliases
-        : stringifyAllowedModelAliases(parsed.data.allowed_model_aliases),
+        : stringifyAllowedModelAliases(existingAliases),
     note:
       parsed.data.note === undefined
         ? existing.note
@@ -246,6 +250,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   return jsonOk({
     message: parsed.data.reset_usage ? "用量已重置。" : "用户更新成功。",
     data: { ...row, allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases) },
+    ...(droppedAliases.length > 0 ? { warnings: [`以下模型别名不存在，已忽略: ${droppedAliases.join(", ")}`] } : {}),
   });
 }
 

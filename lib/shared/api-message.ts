@@ -9,3 +9,10 @@ export function getApiMessage(data: unknown, fallback: string) {
   }
   return fallback;
 }
+
+export function getApiWarnings(data: unknown): string[] {
+  if (!data || typeof data !== "object") return [];
+  const obj = data as Record<string, unknown>;
+  if (!Array.isArray(obj.warnings)) return [];
+  return obj.warnings.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+}

@@ -7,7 +7,7 @@ import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { getEffectiveLimits, getUserGroup } from "@/lib/gateway/effective-limits";
 import { modelGateFeatures } from "@/lib/core/features";
-import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
+import { listExistingModelAliases, parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
 import { USERNAME_SCHEMA } from "@/lib/auth/username";
 import { friendlyCredentialPayloadError } from "@/lib/auth/validation";
 
@@ -181,6 +181,10 @@ export async function POST(request: Request) {
   }
 
   const passwordHash = await hashPassword(parsed.data.password);
+  const inputAliases = parsed.data.allowed_model_aliases ?? [];
+  const existingAliases = await listExistingModelAliases(inputAliases);
+  const droppedAliases = inputAliases.filter((a) => !existingAliases.includes(a));
+
   const result = await gatewayDb
     .execute(
       `INSERT INTO users (
@@ -204,7 +208,7 @@ export async function POST(request: Request) {
         modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.quota_period) : null,
         modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_tokens) : null,
         modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_requests) : null,
-        stringifyAllowedModelAliases(parsed.data.allowed_model_aliases ?? []),
+        stringifyAllowedModelAliases(existingAliases),
         parsed.data.note?.trim() ? parsed.data.note.trim() : null,
       ],
     );
@@ -225,5 +229,6 @@ export async function POST(request: Request) {
   return jsonOk({
     message: "用户创建成功。",
     data: { ...row, allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases) },
+    ...(droppedAliases.length > 0 ? { warnings: [`以下模型别名不存在，已忽略: ${droppedAliases.join(", ")}`] } : {}),
   }, 201);
 }

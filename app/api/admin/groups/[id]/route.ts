@@ -7,7 +7,7 @@ import { modelGateFeatures } from "@/lib/core/features";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { listExistingChannelIds, parseAllowedChannelIds, stringifyAllowedChannelIds } from "@/lib/gateway/channel-access";
-import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
+import { listExistingModelAliases, parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
 
 const updateSchema = z.object({
   name: z.string().min(1).max(64).optional(),
@@ -103,6 +103,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
   const setDefault = parsed.data.is_default === true;
 
+  const inputAliases = parsed.data.allowed_model_aliases ?? [];
+  const existingAliases = await listExistingModelAliases(inputAliases);
+  const droppedAliases = inputAliases.filter((a) => !existingAliases.includes(a));
+
   const merged = {
     name: parsed.data.name ?? existing.name,
     description:
@@ -141,7 +145,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     allowed_model_aliases:
       parsed.data.allowed_model_aliases === undefined
         ? existing.allowed_model_aliases
-        : stringifyAllowedModelAliases(parsed.data.allowed_model_aliases),
+        : stringifyAllowedModelAliases(existingAliases),
     allowed_channel_ids:
       parsed.data.allowed_channel_ids === undefined
         ? existing.allowed_channel_ids
@@ -211,6 +215,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases),
       allowed_channel_ids: parseAllowedChannelIds(row.allowed_channel_ids),
     },
+    ...(droppedAliases.length > 0 ? { warnings: [`以下模型别名不存在，已忽略: ${droppedAliases.join(", ")}`] } : {}),
   });
 }
 

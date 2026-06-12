@@ -7,6 +7,7 @@ import { useToast } from "@/components/ui/toast";
 import { authedFetch, ensureAdmin } from "@/lib/auth/client-auth";
 import { modelGateFeatures } from "@/lib/core/features";
 import { getApiMessage } from "@/lib/shared/api-message";
+import { getApiWarnings } from "@/lib/shared/api-message";
 import {
   initialForm,
   periodToPreset,
@@ -243,6 +244,8 @@ export function useUserAdmin() {
       const data = await response.json().catch(() => null);
       if (response.ok) {
         toast({ variant: "success", description: getApiMessage(data, "创建用户成功。") });
+        const warnings = getApiWarnings(data);
+        if (warnings.length > 0) toast({ variant: "warning", description: warnings.join("\n") });
         setDrawerOpen(false);
         setForm(initialForm);
         await loadUsers(page);
@@ -259,6 +262,8 @@ export function useUserAdmin() {
     const data = await response.json().catch(() => null);
     if (response.ok) {
       toast({ variant: "success", description: getApiMessage(data, "更新用户成功。") });
+      const warnings = getApiWarnings(data);
+      if (warnings.length > 0) toast({ variant: "warning", description: warnings.join("\n") });
       setDrawerOpen(false);
       setEditingId(null);
       setForm(initialForm);

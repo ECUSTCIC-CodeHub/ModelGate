@@ -21,6 +21,17 @@ export function stringifyAllowedModelAliases(aliases: string[]) {
   return JSON.stringify(normalized);
 }
 
+export async function listExistingModelAliases(aliases: string[]): Promise<string[]> {
+  if (aliases.length === 0) return [];
+  const placeholders = aliases.map(() => "?").join(",");
+  const rows = await gatewayDb.query<{ alias: string }>(
+    `SELECT DISTINCT alias FROM models WHERE alias IN (${placeholders}) AND enabled = 1 AND deleted_at IS NULL`,
+    aliases,
+  );
+  const existing = new Set(rows.map((r) => r.alias));
+  return aliases.filter((a) => existing.has(a));
+}
+
 export async function getEffectiveAllowedAliases(user: Pick<DbUser, "group_id" | "allowed_model_aliases">): Promise<string[]> {
   const userAliases = parseAllowedModelAliases(user.allowed_model_aliases);
   const group = await getUserGroup(user.group_id ?? null);
