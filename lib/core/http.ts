@@ -12,8 +12,12 @@ const UTC_TIMESTAMP_KEYS = new Set([
 
 function toShanghaiIsoString(value: string) {
   const normalized = value.includes("T") ? value : value.replace(" ", "T");
-  const withZone = /(?:Z|[+-]\d{2}:\d{2})$/.test(normalized) ? normalized : `${normalized}Z`;
-  const date = new Date(withZone);
+  const hasTz = /(?:Z|[+-]\d{2}:\d{2})$/.test(value);
+  if (!hasTz) {
+    // DATETIME 无时区标记 → 已是本地时间，只规范化格式
+    return normalized.length >= 23 ? normalized.slice(0, 23) : normalized;
+  }
+  const date = new Date(normalized);
   if (Number.isNaN(date.getTime())) return value;
   return toShanghaiDatetime(date);
 }
