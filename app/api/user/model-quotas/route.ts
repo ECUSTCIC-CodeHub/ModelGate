@@ -4,6 +4,8 @@ import { gatewayDb } from "@/lib/core/db";
 import { ensureUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
 import { toShanghaiDatetimeNoMs } from "@/lib/core/db/datetime";
+import { parseAllowedModelAliases } from "@/lib/gateway/model-access";
+import { parseAllowedChannelIds } from "@/lib/gateway/channel-access";
 
 function formatPeriodLabel(seconds: number): string {
   if (seconds === 3600) return "每小时";
@@ -24,9 +26,9 @@ export async function GET(request: Request) {
     ? (await gatewayDb.queryOne<{ allowed_model_aliases: string; allowed_channel_ids: string }>("SELECT allowed_model_aliases, allowed_channel_ids FROM `groups` WHERE id = ? AND enabled = 1 AND deleted_at IS NULL", [user.group_id]))
     : null;
 
-  const userAllowedAliases: string[] = (() => { try { return JSON.parse(user.allowed_model_aliases); } catch { return []; } })();
-  const groupAllowedAliases: string[] = (() => { try { return group ? JSON.parse(group.allowed_model_aliases) : []; } catch { return []; } })();
-  const groupAllowedChannels: number[] = (() => { try { return group ? JSON.parse(group.allowed_channel_ids) : []; } catch { return []; } })();
+  const userAllowedAliases = parseAllowedModelAliases(user.allowed_model_aliases);
+  const groupAllowedAliases = parseAllowedModelAliases(group?.allowed_model_aliases);
+  const groupAllowedChannels = parseAllowedChannelIds(group?.allowed_channel_ids);
 
   const models = await gatewayDb.query<{
     id: number;
