@@ -7,7 +7,7 @@ function cleanFloat(value: number): number {
   return Math.round(value * 1e6) / 1e6;
 }
 
-export async function addUsage(userId: number, keyId: number, tokens: number, requests = 1, tokenMultiplier = 1, requestMultiplier = 1, channelId?: number, modelId?: number, quotaMode?: string) {
+export async function addUsage(userId: number, keyId: number, tokens: number, requests = 1, tokenMultiplier = 1, requestMultiplier = 1, channelId?: number, modelId?: number) {
   const billedTokens = cleanFloat(Math.max(0, tokens * tokenMultiplier));
   const billedRequests = cleanFloat(Math.max(0, requests * requestMultiplier));
   await gatewayDb.transaction(async (tx) => {

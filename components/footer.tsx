@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 
 interface SiteInfo {
@@ -52,10 +53,12 @@ export function Footer() {
             target="_blank"
             rel="noopener noreferrer"
           >
-            <img
+            <Image
               src="https://beian.mps.gov.cn/img/ghs.png"
               alt=""
-              style={{ float: "left", marginRight: 4 }}
+              width={20}
+              height={20}
+              className="mr-1"
             />
             {ps}
           </a>

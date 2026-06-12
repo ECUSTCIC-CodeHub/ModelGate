@@ -250,7 +250,7 @@ export async function handleMultipartGatewayRequest(request: Request) {
     }
 
     lease.complete({ ok: true, latencyMs: Date.now() - startedAt });
-    addUsage(auth.user.id, auth.key.id, Math.max(1, estimatedTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id, route.model.quota_mode);
+    addUsage(auth.user.id, auth.key.id, Math.max(1, estimatedTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id);
     insertChatLog({
       user_id: auth.user.id,
       key_id: auth.key.id,

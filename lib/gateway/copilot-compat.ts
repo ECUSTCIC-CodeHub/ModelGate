@@ -22,7 +22,6 @@ type StreamChoiceState = {
 
 const TOOL_FINISH_REASONS = new Set(["tool_calls", "function_call"]);
 const TOOL_CALL_START = "<tool_call";
-const TOOL_CALL_END = "</tool_call>";
 
 const REASONING_EFFORT_BUDGETS: Record<string, number> = {
   minimal: 256,

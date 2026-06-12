@@ -87,17 +87,17 @@ export async function GET(request: Request) {
     retry_requests: number;
   };
 
-  const activeUsers = isAdmin
-    ? (((await gatewayDb
-        .queryOne<{ active_users: number }>(
-          `SELECT COUNT(DISTINCT user_id) AS active_users
-           FROM logs`,
-        ))!)?.active_users ?? 0)
-    : 1;
+  const activeUserData = isAdmin
+    ? await gatewayDb.queryOne<{ active_users: number }>(
+        `SELECT COUNT(DISTINCT user_id) AS active_users
+         FROM logs`,
+      )
+    : null;
+  const activeUsers = isAdmin ? activeUserData?.active_users ?? 0 : 1;
 
-  const keyData = (await (isAdmin
+  const keyData = await (isAdmin
     ? gatewayDb.queryOne<{ total_keys: number }>("SELECT COUNT(*) AS total_keys FROM `keys` WHERE deleted_at IS NULL")
-    : gatewayDb.queryOne<{ total_keys: number }>("SELECT COUNT(*) AS total_keys FROM `keys` WHERE user_id = ? AND deleted_at IS NULL", [guard.auth.user.id])))!;
+    : gatewayDb.queryOne<{ total_keys: number }>("SELECT COUNT(*) AS total_keys FROM `keys` WHERE user_id = ? AND deleted_at IS NULL", [guard.auth.user.id]));
 
   const isMysql = await gatewayDb.getDriver() === "mysql";
   const hourBucketExpr = isMysql
@@ -207,20 +207,19 @@ export async function GET(request: Request) {
   const successRateBase = Math.max(0, (summary.total_requests ?? 0) - (summary.rate_limited_requests ?? 0));
   const successCount = Math.max(0, successRateBase - ((summary.failed_requests ?? 0) - (summary.rate_limited_requests ?? 0)));
 
-  const recentFailed = isAdmin
-    ? (((await gatewayDb
-        .queryOne<{ recent_failed_requests: number }>(
-          `SELECT COALESCE(SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END), 0) AS recent_failed_requests
-           FROM logs
-           WHERE created_at >= ${daysAgo(30)}`,
-        ))!)?.recent_failed_requests ?? 0)
-    : (((await gatewayDb
-        .queryOne<{ recent_failed_requests: number }>(
-          `SELECT COALESCE(SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END), 0) AS recent_failed_requests
-           FROM logs
-           WHERE user_id = ? AND created_at >= ${daysAgo(30)}`,
-          [guard.auth.user.id],
-        ))!)?.recent_failed_requests ?? 0);
+  const recentFailedData = await (isAdmin
+    ? gatewayDb.queryOne<{ recent_failed_requests: number }>(
+        `SELECT COALESCE(SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END), 0) AS recent_failed_requests
+         FROM logs
+         WHERE created_at >= ${daysAgo(30)}`,
+      )
+    : gatewayDb.queryOne<{ recent_failed_requests: number }>(
+        `SELECT COALESCE(SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END), 0) AS recent_failed_requests
+         FROM logs
+         WHERE user_id = ? AND created_at >= ${daysAgo(30)}`,
+        [guard.auth.user.id],
+      ));
+  const recentFailed = recentFailedData?.recent_failed_requests ?? 0;
 
   return jsonOk({
     data: {
@@ -228,7 +227,7 @@ export async function GET(request: Request) {
       total_tokens: summary.total_tokens ?? 0,
       failed_requests: summary.failed_requests ?? 0,
       recent_failed_requests: recentFailed,
-      total_keys: keyData.total_keys ?? 0,
+      total_keys: keyData?.total_keys ?? 0,
       active_users: activeUsers,
       avg_latency_ms: summary.avg_latency_ms ?? 0,
       avg_output_tps: summary.avg_output_tps ?? 0,

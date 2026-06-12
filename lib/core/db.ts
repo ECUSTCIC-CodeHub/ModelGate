@@ -32,21 +32,25 @@ const awaitInit = (): Promise<DatabaseAdapter> => {
 };
 
 const ASYNC_METHODS = new Set(["query", "queryOne", "execute", "exec", "transaction", "ensureColumn", "close", "getDriver"]);
+type DatabaseMethod = (...args: unknown[]) => unknown;
+
+function dbValue(db: DatabaseAdapter, prop: string | symbol) {
+  const value = db[prop as keyof DatabaseAdapter];
+  return typeof value === "function" ? (value as DatabaseMethod).bind(db) : value;
+}
 
 export const gatewayDb: DatabaseAdapter = new Proxy({} as DatabaseAdapter, {
   get(_target, prop) {
     // Synchronous read-only access (e.g. driver check) when already initialized
     if (gatewayDbInstance) {
-      const db = gatewayDbInstance;
-      const value = db[prop as keyof DatabaseAdapter];
-      return typeof value === "function" ? (value as Function).bind(db) : value;
+      return dbValue(gatewayDbInstance, prop);
     }
     // Not yet initialized – wrap methods to await init first
     const propName = prop as string;
     if (ASYNC_METHODS.has(propName)) {
       return async (...args: unknown[]) => {
         const db = await awaitInit();
-        return (db[propName as keyof DatabaseAdapter] as Function).apply(db, args);
+        return (db[propName as keyof DatabaseAdapter] as DatabaseMethod).apply(db, args);
       };
     }
     // For property access (e.g. `driver`), return from a promise-then chain
@@ -54,8 +58,7 @@ export const gatewayDb: DatabaseAdapter = new Proxy({} as DatabaseAdapter, {
     // Since `driver` is the only sync property and it's always checked inside async
     // functions, we create a lazy getter via a thenable.
     return awaitInit().then((db) => {
-      const value = db[prop as keyof DatabaseAdapter];
-      return typeof value === "function" ? (value as Function).bind(db) : value;
+      return dbValue(db, prop);
     });
   },
 });
