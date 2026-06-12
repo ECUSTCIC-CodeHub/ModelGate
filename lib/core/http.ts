@@ -11,12 +11,15 @@ const UTC_TIMESTAMP_KEYS = new Set([
 ]);
 
 function toShanghaiIsoString(value: string) {
-  const normalized = value.includes("T") ? value : value.replace(" ", "T");
   const hasTz = /(?:Z|[+-]\d{2}:\d{2})$/.test(value);
   if (!hasTz) {
-    // DATETIME 无时区标记 → 已是本地时间，只规范化格式
-    return normalized.length >= 23 ? normalized.slice(0, 23) : normalized;
+    // DATETIME 无时区标记 → 已是本地时间，输出空格分隔 .SSS 格式
+    // 空格分隔确保所有浏览器一致解析为本地时间
+    const space = value.includes("T") ? value.replace("T", " ") : value;
+    const withMs = space.includes(".") ? space : `${space}.000`;
+    return withMs.slice(0, 23);
   }
+  const normalized = value.includes("T") ? value : value.replace(" ", "T");
   const date = new Date(normalized);
   if (Number.isNaN(date.getTime())) return value;
   return toShanghaiDatetime(date);
