@@ -3,6 +3,7 @@ import {
   normalizeChatMessages,
   normalizedPartsToChatContent,
   type JsonRecord,
+  type NormalizedContentPart,
   type NormalizedMessage,
 } from "@/lib/gateway/normalized-message";
 import {
@@ -138,6 +139,60 @@ function normalizeChatMessageRole(role: string) {
   return role;
 }
 
+function chatReasoningFields(role: string, reasoningText: string): JsonRecord {
+  if (role !== "assistant" || !reasoningText) return {};
+  return {
+    reasoning: reasoningText,
+    reasoning_content: reasoningText,
+  };
+}
+
+function isAssistantThinkingOnly(message: NormalizedMessage) {
+  return message.role === "assistant" &&
+    !message.tool_calls?.length &&
+    message.content.length > 0 &&
+    message.content.every((part) => part.type === "thinking");
+}
+
+function flushPendingThinking(
+  messages: NormalizedMessage[],
+  pendingThinking: NormalizedContentPart[],
+) {
+  if (pendingThinking.length === 0) return;
+  messages.push({
+    role: "assistant",
+    content: [...pendingThinking],
+  });
+  pendingThinking.length = 0;
+}
+
+function mergeResponsesReasoningMessages(messages: NormalizedMessage[]) {
+  const merged: NormalizedMessage[] = [];
+  const pendingThinking: NormalizedContentPart[] = [];
+
+  for (const message of messages) {
+    if (isAssistantThinkingOnly(message)) {
+      pendingThinking.push(...message.content);
+      continue;
+    }
+
+    if (pendingThinking.length > 0 && message.role === "assistant") {
+      merged.push({
+        ...message,
+        content: [...pendingThinking, ...message.content],
+      });
+      pendingThinking.length = 0;
+      continue;
+    }
+
+    flushPendingThinking(merged, pendingThinking);
+    merged.push(message);
+  }
+
+  flushPendingThinking(merged, pendingThinking);
+  return merged;
+}
+
 export function chatCompletionsRequestFromIntermediate(request: IntermediateRequest): JsonRecord {
   const crossProtocolKeys = [
     "instructions",
@@ -150,7 +205,11 @@ export function chatCompletionsRequestFromIntermediate(request: IntermediateRequ
     : request.sourceProtocol === "anthropic_messages"
       ? omitKeys(request.extra, [...crossProtocolKeys, ...ANTHROPIC_ONLY_EXTRA_KEYS])
       : omitKeys(request.extra, crossProtocolKeys);
-  const messages = normalizeResponsesInstructions(request.messages, request.extra.instructions).map((message) => {
+  const sourceMessages = normalizeResponsesInstructions(request.messages, request.extra.instructions);
+  const messagesForChat = request.sourceProtocol === "responses"
+    ? mergeResponsesReasoningMessages(sourceMessages)
+    : sourceMessages;
+  const messages = messagesForChat.map((message) => {
     const role = normalizeChatMessageRole(message.role);
     const reasoningText = extractThinkingText(message.content);
     const preserveThinking = request.sourceProtocol === "anthropic_messages" && message.role === "assistant";
@@ -160,7 +219,7 @@ export function chatCompletionsRequestFromIntermediate(request: IntermediateRequ
         content: normalizedPartsToChatContent(message.content, {
           preserveThinking,
         }),
-        reasoning: reasoningText || undefined,
+        ...chatReasoningFields("assistant", reasoningText),
         tool_calls: message.tool_calls.map((toolCall) => ({
           id: toolCall.id,
           type: "function",
@@ -185,7 +244,7 @@ export function chatCompletionsRequestFromIntermediate(request: IntermediateRequ
       content: normalizedPartsToChatContent(message.content, {
         preserveThinking,
       }),
-      reasoning: message.role === "assistant" && reasoningText ? reasoningText : undefined,
+      ...chatReasoningFields(message.role, reasoningText),
     };
   });
 

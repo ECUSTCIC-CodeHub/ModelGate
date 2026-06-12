@@ -275,11 +275,59 @@ test("responses thinking content is not sent as chat_completions content part", 
     chatCompletionsGatewayAdapter,
     "gpt-4o",
   );
-  const messages = result.messages as Array<{ role?: string; content?: unknown; reasoning?: string }>;
+  const messages = result.messages as Array<{
+    role?: string;
+    content?: unknown;
+    reasoning?: string;
+    reasoning_content?: string;
+  }>;
+
+  assert.equal(messages[0]?.role, "assistant");
+  assert.equal(messages[0]?.content, "hello");
+  assert.equal(messages[0]?.reasoning, "think");
+  assert.equal(messages[0]?.reasoning_content, "think");
+  assert.equal(messages[1]?.role, "user");
+  assert.ok(!JSON.stringify(result).includes('"type":"thinking"'));
+});
+
+test("responses reasoning is attached to chat_completions assistant tool call history", () => {
+  const result = responsesGatewayAdapter.adaptRequestBody(
+    {
+      model: "gpt-4o",
+      input: [
+        {
+          type: "reasoning",
+          content: [{ type: "reasoning_text", text: "think before tool" }],
+        },
+        {
+          type: "function_call",
+          call_id: "call_1",
+          name: "search",
+          arguments: "{\"q\":\"hello\"}",
+        },
+        {
+          type: "function_call_output",
+          call_id: "call_1",
+          output: "result",
+        },
+      ],
+      stream: false,
+    },
+    chatCompletionsGatewayAdapter,
+    "gpt-4o",
+  );
+  const messages = result.messages as Array<{
+    role?: string;
+    content?: unknown;
+    reasoning_content?: string;
+    tool_calls?: Array<{ function?: { name?: string } }>;
+  }>;
 
   assert.equal(messages[0]?.role, "assistant");
   assert.equal(messages[0]?.content, "");
-  assert.equal(messages[0]?.reasoning, "think");
+  assert.equal(messages[0]?.reasoning_content, "think before tool");
+  assert.equal(messages[0]?.tool_calls?.[0]?.function?.name, "search");
+  assert.equal(messages[1]?.role, "tool");
   assert.ok(!JSON.stringify(result).includes('"type":"thinking"'));
 });
 
@@ -312,7 +360,7 @@ test("chat_completions reasoning is converted for responses upstream without thi
     {
       model: "gpt-4o",
       messages: [
-        { role: "assistant", content: "hello", reasoning: "think" },
+        { role: "assistant", content: "hello", reasoning_content: "think" },
         { role: "user", content: "next" },
       ],
       stream: false,
