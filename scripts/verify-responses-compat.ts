@@ -4,6 +4,8 @@ import {
   downgradeResponsesRequestForRoute,
   getResponsesRouteCompatibilityNote,
 } from "../lib/gateway/protocol-adapters/tools";
+import { chatCompletionsGatewayAdapter } from "../lib/gateway/protocol-adapters/chat-completions";
+import { responsesGatewayAdapter } from "../lib/gateway/protocol-adapters/responses";
 import { responsesResponseToIntermediate } from "../lib/gateway/protocol-adapters/responses-response";
 import { createTransformedStream } from "../lib/gateway/protocol-adapters/streaming";
 
@@ -223,6 +225,30 @@ test("非 chat_completions 路由不返回 note", () => {
   );
 });
 
+// --- responses -> chat_completions request ---
+
+console.log("\nresponses -> chat_completions request");
+
+test("responses developer role is converted to chat_completions system role", () => {
+  const result = responsesGatewayAdapter.adaptRequestBody(
+    {
+      model: "gpt-4o",
+      input: [
+        { type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] },
+        { type: "message", role: "developer", content: [{ type: "input_text", text: "answer concisely" }] },
+      ],
+      stream: false,
+    },
+    chatCompletionsGatewayAdapter,
+    "gpt-4o",
+  );
+  const messages = result.messages as Array<{ role?: string; content?: unknown }>;
+
+  assert.equal(messages[1]?.role, "system");
+  assert.equal(messages[1]?.content, "answer concisely");
+  assert.ok(!JSON.stringify(result).includes('"role":"developer"'));
+});
+
 // --- responsesResponseToIntermediate ---
 
 console.log("\nresponsesResponseToIntermediate");
@@ -336,6 +362,39 @@ test("responses -> anthropic 流可从 completed 快照补发文本", async () =
 
   assert.ok(output.includes("content_block_delta"), "应包含 Anthropic 文本增量事件");
   assert.ok(output.includes("\"text\":\"hello\""), "应补发 completed 快照中的文本");
+  assert.equal(result.completionText(), "hello");
+});
+
+test("responses -> anthropic can count output_item.done text without completed", async () => {
+  const upstream = makeUpstreamResponsesStream([
+    'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_test","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[]}}\n\n',
+    'event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":0,"item":{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"hello","annotations":[]}]}}\n\n',
+  ]);
+
+  const responses = makeAdapter("responses");
+  const anthropic = makeAdapter("anthropic_messages");
+  const result = createTransformedStream(upstream, responses, anthropic);
+  const output = await collectStream(result.stream);
+
+  assert.ok(output.includes("\"text\":\"hello\""), "should emit text from output_item.done");
+  assert.equal(result.completionText(), "hello");
+});
+
+test("responses -> anthropic can count done-only reasoning summary", async () => {
+  const upstream = makeUpstreamResponsesStream([
+    'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_test","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[]}}\n\n',
+    'event: response.reasoning_summary_text.done\ndata: {"type":"response.reasoning_summary_text.done","text":"think"}\n\n',
+    'event: response.output_text.done\ndata: {"type":"response.output_text.done","text":"hello"}\n\n',
+  ]);
+
+  const responses = makeAdapter("responses");
+  const anthropic = makeAdapter("anthropic_messages");
+  const result = createTransformedStream(upstream, responses, anthropic, { thinkingEnabled: true });
+  const output = await collectStream(result.stream);
+
+  assert.ok(output.includes("\"thinking\":\"think\""), "should emit reasoning summary as thinking");
+  assert.ok(output.includes("\"text\":\"hello\""), "should emit done-only text");
+  assert.equal(result.reasoningText(), "think");
   assert.equal(result.completionText(), "hello");
 });
 

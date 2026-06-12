@@ -1963,11 +1963,13 @@ OpenAI Responses API 兼容端点。
 - 当实际命中的上游协议为原生 `responses` 时，保留 Responses 原生工具能力。
 - 当实际命中的上游协议为 `chat_completions` 时，网关会尽量兼容：仅转发可映射为 OpenAI function calling 的 `function tools`，忽略 `namespace`、`custom` 等无法映射的 Responses 原生 tools。
 - 若 `tool_choice` 在过滤后已不再有效，网关会自动降级为 chat 上游可接受的形式（如 `auto` 或省略）。
+- 当 Responses 请求被路由到 `chat_completions` 上游时，网关会将 `developer` 消息角色转换为 `system`，避免 Codex 等客户端的开发者消息被 Chat 上游拒绝。
 
 **流式响应说明:**
 
 - 流式 Responses 响应在上游正常 EOF 但缺少最终 `response.completed` 时，会由网关补齐标准完成事件，避免客户端因缺少 `response.completed` 而报流提前结束。
 - 流式 Responses 响应在上游只在 `response.completed` 最终快照中提供文本或工具调用时，网关会补发对应增量事件，确保跨协议转换和 Responses 客户端都能收到完整输出。
+- 流式 Responses 响应在上游只通过 `response.output_item.done`、`response.content_part.done`、`response.output_text.done` 或 reasoning done 事件提供最终文本/思考内容时，网关也会补发对应增量，并纳入本地 Token 统计。
 
 ---
 

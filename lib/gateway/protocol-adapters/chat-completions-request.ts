@@ -118,6 +118,11 @@ function normalizeResponsesInstructions(messages: NormalizedMessage[], instructi
   return [prefix, ...messages];
 }
 
+function normalizeChatMessageRole(role: string) {
+  if (role === "developer") return "system";
+  return role;
+}
+
 export function chatCompletionsRequestFromIntermediate(request: IntermediateRequest): JsonRecord {
   const crossProtocolKeys = [
     "instructions",
@@ -138,6 +143,7 @@ export function chatCompletionsRequestFromIntermediate(request: IntermediateRequ
     ? omitKeys(request.extra, responsesOnlyExtraKeys)
     : omitKeys(request.extra, crossProtocolKeys);
   const messages = normalizeResponsesInstructions(request.messages, request.extra.instructions).map((message) => {
+    const role = normalizeChatMessageRole(message.role);
     const reasoningText = extractThinkingText(message.content);
     const preserveThinking = request.sourceProtocol === "anthropic_messages" && message.role === "assistant";
     if (message.role === "assistant" && message.tool_calls && message.tool_calls.length > 0) {
@@ -167,7 +173,7 @@ export function chatCompletionsRequestFromIntermediate(request: IntermediateRequ
     }
 
     return {
-      role: message.role,
+      role,
       content: normalizedPartsToChatContent(message.content, {
         preserveThinking: request.sourceProtocol === "responses" ? true : preserveThinking,
       }),

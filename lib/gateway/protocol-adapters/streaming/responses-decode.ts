@@ -41,6 +41,15 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
     if (firstTokenAt === null) firstTokenAt = Date.now();
   };
 
+  const responseFromPayload = (payload: JsonRecord | null) => {
+    const response = asRecord(payload?.response);
+    if (response) return response;
+    if (!payload) return null;
+    return payload.output !== undefined || payload.output_text !== undefined || payload.usage !== undefined
+      ? payload
+      : null;
+  };
+
   const updateResponseMetadata = (response: JsonRecord | null) => {
     if (!response) return;
     lastResponse = response;
@@ -135,6 +144,50 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
     controller.enqueue({ type: "reasoning_delta", text: delta });
   };
 
+  const emitTextPart = (
+    controller: ReadableStreamDefaultController<IntermediateStreamEvent>,
+    text: string,
+  ) => {
+    if (!text || completionText.endsWith(text)) return;
+    emitStart(controller);
+    markFirstToken();
+    completionText += text;
+    controller.enqueue({ type: "text_delta", text });
+  };
+
+  const emitReasoningPart = (
+    controller: ReadableStreamDefaultController<IntermediateStreamEvent>,
+    text: string,
+  ) => {
+    if (!text || reasoningText.endsWith(text)) return;
+    emitStart(controller);
+    markFirstToken();
+    reasoningText += text;
+    controller.enqueue({ type: "reasoning_delta", text });
+  };
+
+  const emitContentPart = (
+    controller: ReadableStreamDefaultController<IntermediateStreamEvent>,
+    part: JsonRecord | null,
+  ) => {
+    if (!part) return;
+    const type = typeof part.type === "string" ? part.type : "";
+    const text = typeof part.text === "string"
+      ? part.text
+      : typeof part.thinking === "string"
+        ? part.thinking
+        : "";
+    if (!text) return;
+
+    if (type === "output_text" || type === "text") {
+      emitTextPart(controller, text);
+      return;
+    }
+    if (type === "reasoning_text" || type === "reasoning" || type === "thinking" || type === "summary_text") {
+      emitReasoningPart(controller, text);
+    }
+  };
+
   const emitMissingResponseOutput = (
     controller: ReadableStreamDefaultController<IntermediateStreamEvent>,
     response: JsonRecord | null,
@@ -197,7 +250,7 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
 
             const event = parseResponsesSseEvent(eventName, data);
             const payload = asRecord(event.data);
-            const response = asRecord(payload?.response);
+            const response = responseFromPayload(payload);
             updateResponseMetadata(response);
 
             if (event.event === "response.created" || event.event === "response.in_progress") {
@@ -218,6 +271,32 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
               markFirstToken();
               reasoningText += payload.delta;
               controller.enqueue({ type: "reasoning_delta", text: payload.delta });
+              continue;
+            }
+
+            if (event.event === "response.reasoning_summary_text.delta" && typeof payload?.delta === "string") {
+              emitStart(controller);
+              markFirstToken();
+              reasoningText += payload.delta;
+              controller.enqueue({ type: "reasoning_delta", text: payload.delta });
+              continue;
+            }
+
+            if (event.event === "response.output_text.done" && typeof payload?.text === "string") {
+              emitMissingText(controller, payload.text);
+              continue;
+            }
+
+            if (
+              (event.event === "response.reasoning_text.done" || event.event === "response.reasoning_summary_text.done") &&
+              typeof payload?.text === "string"
+            ) {
+              emitMissingReasoning(controller, payload.text);
+              continue;
+            }
+
+            if (event.event === "response.content_part.done") {
+              emitContentPart(controller, asRecord(payload?.part) ?? asRecord(payload?.content_part));
               continue;
             }
 
@@ -274,6 +353,8 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
                 if (typeof item.arguments === "string") {
                   emitMissingToolArguments(controller, tool, item.arguments);
                 }
+              } else if (item?.type === "message" || item?.type === "reasoning") {
+                emitMissingResponseOutput(controller, { output: [item] });
               }
               continue;
             }

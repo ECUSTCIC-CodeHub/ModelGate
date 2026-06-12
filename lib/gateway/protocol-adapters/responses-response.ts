@@ -15,7 +15,7 @@ const RESPONSE_KEYS = ["id", "object", "created_at", "created", "status", "error
 
 export function extractResponsesMessage(output: unknown, fallbackOutputText?: unknown) {
   const items = asArray(output).map((item) => asRecord(item)).filter((item): item is JsonRecord => Boolean(item));
-  const messageItems = items.filter((item) => item.type === "message" && item.role === "assistant");
+  const messageItems = items.filter((item) => item.type === "message" && (item.role === undefined || item.role === "assistant"));
   const functionCalls = items.filter((item) => item.type === "function_call");
   const reasoningItems = items.filter((item) => item.type === "reasoning");
 
@@ -37,8 +37,16 @@ export function extractResponsesMessage(output: unknown, fallbackOutputText?: un
     .filter((part) => part.type === "thinking")
     .map((part) => part.thinking)
     .join("");
+  const reasoningSummary = reasoningItems
+    .flatMap((item) => normalizeContentParts(item.summary))
+    .flatMap((part) => {
+      if (part.type === "thinking") return [part.thinking];
+      if (part.type === "text") return [part.text];
+      return [];
+    })
+    .join("");
 
-  return { text, toolCalls, reasoning };
+  return { text, toolCalls, reasoning: reasoning || reasoningSummary };
 }
 
 function createdToUnix(value: unknown) {
