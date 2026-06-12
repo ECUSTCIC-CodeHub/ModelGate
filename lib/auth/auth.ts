@@ -11,16 +11,24 @@ declare global {
   var __jwtRefreshSecret__: string | undefined;
 }
 
-function resolveSecret(envKey: string, globalKey: "__jwtAccessSecret__" | "__jwtRefreshSecret__"): string {
-  if (process.env[envKey]) return process.env[envKey]!;
-  if (!globalThis[globalKey]) globalThis[globalKey] = randomBytes(32).toString("hex");
-  return globalThis[globalKey];
+function getAccessSecret(): string {
+  if (process.env.JWT_ACCESS_SECRET) return process.env.JWT_ACCESS_SECRET;
+  if (!globalThis.__jwtAccessSecret__) globalThis.__jwtAccessSecret__ = randomBytes(32).toString("hex");
+  return globalThis.__jwtAccessSecret__;
 }
 
-const ACCESS_SECRET = resolveSecret("JWT_ACCESS_SECRET", "__jwtAccessSecret__");
-const REFRESH_SECRET = resolveSecret("JWT_REFRESH_SECRET", "__jwtRefreshSecret__");
-const ACCESS_EXPIRES_SECONDS = Number(process.env.JWT_ACCESS_EXPIRES_SECONDS ?? 900);
-const REFRESH_EXPIRES_SECONDS = Number(process.env.JWT_REFRESH_EXPIRES_SECONDS ?? 604800);
+function getRefreshSecret(): string {
+  if (process.env.JWT_REFRESH_SECRET) return process.env.JWT_REFRESH_SECRET;
+  if (!globalThis.__jwtRefreshSecret__) globalThis.__jwtRefreshSecret__ = randomBytes(32).toString("hex");
+  return globalThis.__jwtRefreshSecret__;
+}
+function getAccessExpiresSeconds(): number {
+  return Number(process.env.JWT_ACCESS_EXPIRES_SECONDS ?? 900);
+}
+
+function getRefreshExpiresSeconds(): number {
+  return Number(process.env.JWT_REFRESH_EXPIRES_SECONDS ?? 604800);
+}
 export const ACCESS_COOKIE_NAME = "vlm-access-token";
 export const REFRESH_COOKIE_NAME = "vlm-refresh-token";
 
@@ -46,8 +54,8 @@ export function signAccessToken(user: Pick<DbUser, "id" | "role" | "username">) 
       username: user.username,
       type: "access",
     } satisfies TokenPayload,
-    ACCESS_SECRET,
-    { expiresIn: ACCESS_EXPIRES_SECONDS },
+    getAccessSecret(),
+    { expiresIn: getAccessExpiresSeconds() },
   );
 }
 
@@ -59,17 +67,17 @@ export function signRefreshToken(user: Pick<DbUser, "id" | "role" | "username">)
       username: user.username,
       type: "refresh",
     } satisfies TokenPayload,
-    REFRESH_SECRET,
-    { expiresIn: REFRESH_EXPIRES_SECONDS },
+    getRefreshSecret(),
+    { expiresIn: getRefreshExpiresSeconds() },
   );
 }
 
 export function verifyAccessToken(token: string) {
-  return jwt.verify(token, ACCESS_SECRET) as TokenPayload;
+  return jwt.verify(token, getAccessSecret()) as TokenPayload;
 }
 
 export function verifyRefreshToken(token: string) {
-  return jwt.verify(token, REFRESH_SECRET) as TokenPayload;
+  return jwt.verify(token, getRefreshSecret()) as TokenPayload;
 }
 
 export type OidcPendingPayload = {
@@ -93,12 +101,12 @@ const OIDC_PENDING_EXPIRES_SECONDS = 600;
 export const OIDC_PENDING_COOKIE_NAME = "oidc-pending";
 
 export function signOidcPendingToken(payload: Omit<OidcPendingPayload, "type">): string {
-  return jwt.sign({ ...payload, type: "oidc_pending" }, ACCESS_SECRET, { expiresIn: OIDC_PENDING_EXPIRES_SECONDS });
+  return jwt.sign({ ...payload, type: "oidc_pending" }, getAccessSecret(), { expiresIn: OIDC_PENDING_EXPIRES_SECONDS });
 }
 
 export function verifyOidcPendingToken(token: string): OidcPendingPayload | null {
   try {
-    const decoded = jwt.verify(token, ACCESS_SECRET) as OidcPendingPayload;
+    const decoded = jwt.verify(token, getAccessSecret()) as OidcPendingPayload;
     if (decoded.type !== "oidc_pending") return null;
     return decoded;
   } catch {
@@ -111,14 +119,14 @@ const TOTP_PENDING_EXPIRES_SECONDS = 300;
 export function signTotpPendingToken(user: Pick<DbUser, "id" | "username" | "role">): string {
   return jwt.sign(
     { sub: String(user.id), username: user.username, role: user.role, type: "totp_pending" } satisfies TotpPendingPayload,
-    ACCESS_SECRET,
+    getAccessSecret(),
     { expiresIn: TOTP_PENDING_EXPIRES_SECONDS },
   );
 }
 
 export function verifyTotpPendingToken(token: string): TotpPendingPayload | null {
   try {
-    const decoded = jwt.verify(token, ACCESS_SECRET) as TotpPendingPayload;
+    const decoded = jwt.verify(token, getAccessSecret()) as TotpPendingPayload;
     if (decoded.type !== "totp_pending") return null;
     return decoded;
   } catch {
@@ -219,7 +227,7 @@ export function issueAuthTokens(user: Pick<DbUser, "id" | "username" | "role">) 
     access_token: signAccessToken(user),
     refresh_token: signRefreshToken(user),
     token_type: "Bearer",
-    expires_in_seconds: ACCESS_EXPIRES_SECONDS,
+    expires_in_seconds: getAccessExpiresSeconds(),
   };
 }
 
@@ -237,8 +245,8 @@ export function applyAuthCookies(
   response: NextResponse,
   tokens: Pick<ReturnType<typeof issueAuthTokens>, "access_token" | "refresh_token">,
 ) {
-  response.cookies.set(ACCESS_COOKIE_NAME, tokens.access_token, buildCookieOptions(ACCESS_EXPIRES_SECONDS));
-  response.cookies.set(REFRESH_COOKIE_NAME, tokens.refresh_token, buildCookieOptions(REFRESH_EXPIRES_SECONDS));
+  response.cookies.set(ACCESS_COOKIE_NAME, tokens.access_token, buildCookieOptions(getAccessExpiresSeconds()));
+  response.cookies.set(REFRESH_COOKIE_NAME, tokens.refresh_token, buildCookieOptions(getRefreshExpiresSeconds()));
   return response;
 }
 
