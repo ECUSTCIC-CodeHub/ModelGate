@@ -13,17 +13,18 @@ import { usageFromResponses } from "@/lib/gateway/protocol-adapters/usage";
 
 const RESPONSE_KEYS = ["id", "object", "created_at", "created", "status", "error", "incomplete_details", "model", "output", "output_text", "usage"];
 
-export function extractResponsesMessage(output: unknown) {
+export function extractResponsesMessage(output: unknown, fallbackOutputText?: unknown) {
   const items = asArray(output).map((item) => asRecord(item)).filter((item): item is JsonRecord => Boolean(item));
   const messageItems = items.filter((item) => item.type === "message" && item.role === "assistant");
   const functionCalls = items.filter((item) => item.type === "function_call");
   const reasoningItems = items.filter((item) => item.type === "reasoning");
 
-  const text = messageItems
+  const outputText = messageItems
     .flatMap((item) => normalizeContentParts(item.content))
     .filter((part) => part.type === "text")
     .map((part) => part.text)
     .join("");
+  const text = outputText || (typeof fallbackOutputText === "string" ? fallbackOutputText : "");
 
   const toolCalls = functionCalls.map((item) => ({
     id: typeof item.call_id === "string" ? item.call_id : typeof item.id === "string" ? item.id : undefined,
@@ -48,7 +49,7 @@ function createdToUnix(value: unknown) {
 }
 
 export function responsesResponseToIntermediate(body: JsonRecord): IntermediateResponse {
-  const extracted = extractResponsesMessage(body.output);
+  const extracted = extractResponsesMessage(body.output, body.output_text);
   const usage = usageFromResponses(body.usage);
   const content = [];
   if (extracted.reasoning) content.push({ type: "thinking" as const, thinking: extracted.reasoning });

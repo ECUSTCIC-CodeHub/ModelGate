@@ -1947,6 +1947,7 @@ Anthropic Messages 兼容端点。
 - 同时发送 `x-api-key` 与 `Authorization: Bearer <api_key>`，兼容原生 Anthropic（认 `x-api-key`）及第三方 Claude 兼容代理（部分仅认 `Authorization`）
 - 客户端的 `anthropic-version` 头透传给上游，未提供时默认 `2023-06-01`
 - 客户端的 `anthropic-beta` 头透传给上游（prompt caching、扩展思考等特性所需）
+- 当实际命中的上游协议为 `responses` 时，流式转换会从 `response.completed` 的最终快照补齐未通过 delta 发出的文本与工具调用，避免 Claude Code 等 Anthropic 客户端收到空回复。
 
 ---
 
@@ -1966,6 +1967,7 @@ OpenAI Responses API 兼容端点。
 **流式响应说明:**
 
 - 流式 Responses 响应在上游正常 EOF 但缺少最终 `response.completed` 时，会由网关补齐标准完成事件，避免客户端因缺少 `response.completed` 而报流提前结束。
+- 流式 Responses 响应在上游只在 `response.completed` 最终快照中提供文本或工具调用时，网关会补发对应增量事件，确保跨协议转换和 Responses 客户端都能收到完整输出。
 
 ---
 

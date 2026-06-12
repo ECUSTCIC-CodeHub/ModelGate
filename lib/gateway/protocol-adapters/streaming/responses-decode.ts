@@ -1,4 +1,5 @@
 import { asArray, asRecord, type JsonRecord } from "@/lib/gateway/normalized-message";
+import { extractResponsesMessage } from "@/lib/gateway/protocol-adapters/responses-response";
 import {
   type IntermediateStreamEvent,
   type IntermediateStreamResult,
@@ -32,6 +33,7 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
   let started = false;
   let finished = false;
   let finishReason: string | null = null;
+  let lastResponse: JsonRecord | null = null;
   const toolsByItemId = new Map<string, ResponsesToolState>();
   const toolsByIndex = new Map<number, ResponsesToolState>();
 
@@ -41,6 +43,7 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
 
   const updateResponseMetadata = (response: JsonRecord | null) => {
     if (!response) return;
+    lastResponse = response;
     if (typeof response.id === "string") responseId = response.id;
     if (typeof response.model === "string") model = response.model;
     if (response.created_at !== undefined || response.created !== undefined) {
@@ -55,7 +58,10 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
 
   const rememberTool = (item: JsonRecord | null, itemId: string, outputIndex: number) => {
     const existing = toolsByItemId.get(itemId);
-    if (existing) return existing;
+    if (existing) {
+      if (!existing.name && typeof item?.name === "string") existing.name = item.name;
+      return existing;
+    }
 
     const callId = typeof item?.call_id === "string"
       ? item.call_id
@@ -99,6 +105,65 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
     if (started) return;
     started = true;
     controller.enqueue({ type: "start", id: responseId, model, created, usage });
+  };
+
+  const emitMissingText = (
+    controller: ReadableStreamDefaultController<IntermediateStreamEvent>,
+    finalText: string,
+  ) => {
+    if (!finalText || finalText === completionText) return;
+    if (completionText && !finalText.startsWith(completionText)) return;
+    const delta = finalText.slice(completionText.length);
+    if (!delta) return;
+    emitStart(controller);
+    markFirstToken();
+    completionText += delta;
+    controller.enqueue({ type: "text_delta", text: delta });
+  };
+
+  const emitMissingReasoning = (
+    controller: ReadableStreamDefaultController<IntermediateStreamEvent>,
+    finalText: string,
+  ) => {
+    if (!finalText || finalText === reasoningText) return;
+    if (reasoningText && !finalText.startsWith(reasoningText)) return;
+    const delta = finalText.slice(reasoningText.length);
+    if (!delta) return;
+    emitStart(controller);
+    markFirstToken();
+    reasoningText += delta;
+    controller.enqueue({ type: "reasoning_delta", text: delta });
+  };
+
+  const emitMissingResponseOutput = (
+    controller: ReadableStreamDefaultController<IntermediateStreamEvent>,
+    response: JsonRecord | null,
+  ) => {
+    if (!response) return;
+    const extracted = extractResponsesMessage(response.output, response.output_text);
+    emitMissingReasoning(controller, extracted.reasoning);
+    emitMissingText(controller, extracted.text);
+
+    const output = asArray(response.output).map((item) => asRecord(item)).filter((item): item is JsonRecord => Boolean(item));
+    output.forEach((item, outputIndex) => {
+      if (item.type !== "function_call") return;
+      emitStart(controller);
+      const itemId = typeof item.id === "string" ? item.id : typeof item.call_id === "string" ? item.call_id : "";
+      const existing = toolsByItemId.get(itemId) ?? toolsByIndex.get(outputIndex);
+      const tool = existing ?? rememberTool(item, itemId, outputIndex);
+      if (!tool.name && typeof item.name === "string") tool.name = item.name;
+      if (!existing) {
+        controller.enqueue({
+          type: "tool_call_start",
+          index: tool.index,
+          id: tool.callId,
+          name: tool.name,
+          arguments: tool.arguments || undefined,
+        });
+      } else if (typeof item.arguments === "string") {
+        emitMissingToolArguments(controller, tool, item.arguments);
+      }
+    });
   };
 
   const stream = new ReadableStream<IntermediateStreamEvent>({
@@ -215,6 +280,7 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
 
             if (event.event === "response.completed") {
               emitStart(controller);
+              emitMissingResponseOutput(controller, response);
               if (usage) controller.enqueue({ type: "usage", usage });
               if (!finished) {
                 finished = true;
@@ -225,6 +291,8 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
         }
 
         if (started && !finished) {
+          emitMissingResponseOutput(controller, lastResponse);
+          if (usage) controller.enqueue({ type: "usage", usage });
           controller.enqueue({ type: "finish", reason: finishReason ?? "stop" });
         }
         controller.close();
