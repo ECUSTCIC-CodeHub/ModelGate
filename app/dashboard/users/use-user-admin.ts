@@ -245,7 +245,7 @@ export function useUserAdmin() {
       if (response.ok) {
         toast({ variant: "success", description: getApiMessage(data, "创建用户成功。") });
         const warnings = getApiWarnings(data);
-        if (warnings.length > 0) toast({ variant: "warning", description: warnings.join("\n") });
+        if (warnings.length > 0) setTimeout(() => toast({ variant: "warning", description: warnings.join("\n") }), 600);
         setDrawerOpen(false);
         setForm(initialForm);
         await loadUsers(page);
@@ -263,7 +263,7 @@ export function useUserAdmin() {
     if (response.ok) {
       toast({ variant: "success", description: getApiMessage(data, "更新用户成功。") });
       const warnings = getApiWarnings(data);
-      if (warnings.length > 0) toast({ variant: "warning", description: warnings.join("\n") });
+      if (warnings.length > 0) setTimeout(() => toast({ variant: "warning", description: warnings.join("\n") }), 600);
       setDrawerOpen(false);
       setEditingId(null);
       setForm(initialForm);
