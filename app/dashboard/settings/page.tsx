@@ -37,6 +37,7 @@ export default function AdminSettingsPage() {
   const [upstreamRetryMaxAttempts, setUpstreamRetryMaxAttempts] = useState(3);
   const [upstreamRetrySameChannel, setUpstreamRetrySameChannel] = useState(false);
   const [circuitBreakerEnabled, setCircuitBreakerEnabled] = useState(true);
+  const [upstreamStrictPriority, setUpstreamStrictPriority] = useState(false);
   const [oidcEnabled, setOidcEnabled] = useState(false);
   const [oidcIssuerUrl, setOidcIssuerUrl] = useState("");
   const [oidcClientId, setOidcClientId] = useState("");
@@ -64,6 +65,7 @@ export default function AdminSettingsPage() {
     setUpstreamRetryMaxAttempts(Number(settings.upstream_retry_max_attempts ?? 3));
     setUpstreamRetrySameChannel(settings.upstream_retry_same_channel === 1);
     setCircuitBreakerEnabled(settings.upstream_circuit_breaker_enabled !== 0);
+    setUpstreamStrictPriority(settings.upstream_strict_priority === 1);
     if (oidcFeatureEnabled) {
       setOidcEnabled(settings.oidc_enabled === 1);
       setOidcIssuerUrl(stringValue(settings.oidc_issuer_url));
@@ -115,6 +117,7 @@ export default function AdminSettingsPage() {
       upstream_retry_max_attempts: upstreamRetryMaxAttempts,
       upstream_retry_same_channel: upstreamRetrySameChannel,
       upstream_circuit_breaker_enabled: circuitBreakerEnabled,
+      upstream_strict_priority: upstreamStrictPriority,
       ...(oidcFeatureEnabled ? {
         oidc_enabled: oidcEnabled,
         oidc_issuer_url: oidcIssuerUrl,
@@ -173,10 +176,12 @@ export default function AdminSettingsPage() {
             upstreamRetryMaxAttempts={upstreamRetryMaxAttempts}
             upstreamRetrySameChannel={upstreamRetrySameChannel}
             circuitBreakerEnabled={circuitBreakerEnabled}
+            upstreamStrictPriority={upstreamStrictPriority}
             setUpstreamRetryEnabled={setUpstreamRetryEnabled}
             setUpstreamRetryMaxAttempts={setUpstreamRetryMaxAttempts}
             setUpstreamRetrySameChannel={setUpstreamRetrySameChannel}
             setCircuitBreakerEnabled={setCircuitBreakerEnabled}
+            setUpstreamStrictPriority={setUpstreamStrictPriority}
           />
         </div>
 

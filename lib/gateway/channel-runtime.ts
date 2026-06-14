@@ -249,7 +249,7 @@ export function acquireChannel(key: string, maxConcurrency: number, signal?: Abo
   });
 }
 
-export function scoreChannel(key: string, staticWeight: number, maxConcurrency: number) {
+export function scoreChannel(key: string, staticWeight: number, maxConcurrency: number, strictPriority = false) {
   const state = getState(key);
   syncStateConfig(state, maxConcurrency);
   const now = Date.now();
@@ -258,10 +258,10 @@ export function scoreChannel(key: string, staticWeight: number, maxConcurrency: 
     return 0;
   }
 
-  const loadPenalty = Math.max(0.15, 1 - state.inFlight / Math.max(1, state.maxConcurrency));
+  const loadPenalty = strictPriority ? 1 : Math.max(0.15, 1 - state.inFlight / Math.max(1, state.maxConcurrency));
   const failurePenalty = 1 / (1 + state.consecutiveFailures * 0.6);
   const latencyPenalty =
-    state.latencyEwmaMs === null ? 1 : Math.max(0.35, Math.min(1.15, 1500 / state.latencyEwmaMs));
+    strictPriority ? 1 : (state.latencyEwmaMs === null ? 1 : Math.max(0.35, Math.min(1.15, 1500 / state.latencyEwmaMs)));
 
   return Math.max(1, staticWeight) * loadPenalty * failurePenalty * latencyPenalty;
 }

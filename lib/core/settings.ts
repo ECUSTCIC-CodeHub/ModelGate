@@ -16,6 +16,7 @@ export type GatewaySettings = {
   upstream_retry_max_attempts: number;
   upstream_retry_same_channel: number;
   upstream_circuit_breaker_enabled: number;
+  upstream_strict_priority: number;
   oidc_enabled: number;
   oidc_issuer_url: string;
   oidc_client_id: string;
@@ -58,6 +59,7 @@ const GATEWAY_KEYS = [
   "upstream_retry_max_attempts",
   "upstream_retry_same_channel",
   "upstream_circuit_breaker_enabled",
+  "upstream_strict_priority",
   ...OIDC_KEYS,
   "announcement_content",
   "access_guide_notice",
@@ -79,6 +81,7 @@ async function readGatewaySettingsFromDb(): Promise<GatewaySettings> {
     password_login_enabled: map.get("password_login_enabled") === "0" ? 0 : 1,
     upstream_retry_enabled: map.get("upstream_retry_enabled") === "0" ? 0 : 1,
     upstream_circuit_breaker_enabled: map.get("upstream_circuit_breaker_enabled") === "0" ? 0 : 1,
+    upstream_strict_priority: map.get("upstream_strict_priority") === "1" ? 1 : 0,
     upstream_retry_max_attempts: positiveInt(
       map.get("upstream_retry_max_attempts"),
       DEFAULTS.upstream_retry_max_attempts,
@@ -119,6 +122,7 @@ export async function setGatewaySettings(input: {
   upstream_retry_max_attempts: number;
   upstream_retry_same_channel: boolean;
   upstream_circuit_breaker_enabled: boolean;
+  upstream_strict_priority: boolean;
   oidc_enabled?: boolean;
   oidc_issuer_url?: string;
   oidc_client_id?: string;
@@ -139,6 +143,7 @@ export async function setGatewaySettings(input: {
     password_login_enabled: input.password_login_enabled ? "1" : "0",
     upstream_retry_enabled: input.upstream_retry_enabled ? "1" : "0",
     upstream_circuit_breaker_enabled: input.upstream_circuit_breaker_enabled ? "1" : "0",
+    upstream_strict_priority: input.upstream_strict_priority ? "1" : "0",
     upstream_retry_max_attempts: String(Math.max(1, Math.trunc(input.upstream_retry_max_attempts))),
     upstream_retry_same_channel: input.upstream_retry_same_channel ? "1" : "0",
   };

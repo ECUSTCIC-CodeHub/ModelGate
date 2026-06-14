@@ -1,5 +1,6 @@
 import { gatewayDb, type DbChannel, type DbModel } from "@/lib/core/db";
 import type { ModelQuotaMode } from "@/lib/core/db/types";
+import { getGatewaySettings } from "@/lib/core/settings";
 import { makeModelRuntimeKey, scoreChannel } from "@/lib/gateway/channel-runtime";
 import { parseSupportedProtocols, type GatewayProtocol } from "@/lib/gateway/protocols";
 
@@ -222,6 +223,9 @@ export async function listModelRoutes(alias: string, options?: { excludeChannelI
     ? exactRows
     : filterRows(await findRows("*"));
 
+  const settings = await getGatewaySettings();
+  const strictPriority = settings.upstream_strict_priority === 1;
+
   return candidateRows
     .map((row) => {
       const route = mapRowToRoute(row, protocol);
@@ -229,6 +233,7 @@ export async function listModelRoutes(alias: string, options?: { excludeChannelI
         makeModelRuntimeKey(row.channel_id_2, row.real_model),
         Math.max(1, row.model_weight) * Math.max(1, row.channel_weight),
         effectiveMaxConcurrency(row.channel_max_concurrency, row.model_max_concurrency),
+        strictPriority,
       );
       const passthroughBonus = protocol && route.effective_upstream_protocol === protocol ? 1.05 : 1;
       return {

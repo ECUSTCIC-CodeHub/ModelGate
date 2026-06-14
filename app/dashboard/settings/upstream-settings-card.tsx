@@ -11,19 +11,23 @@ export function UpstreamSettingsCard({
   upstreamRetryMaxAttempts,
   upstreamRetrySameChannel,
   circuitBreakerEnabled,
+  upstreamStrictPriority,
   setUpstreamRetryEnabled,
   setUpstreamRetryMaxAttempts,
   setUpstreamRetrySameChannel,
   setCircuitBreakerEnabled,
+  setUpstreamStrictPriority,
 }: {
   upstreamRetryEnabled: boolean;
   upstreamRetryMaxAttempts: number;
   upstreamRetrySameChannel: boolean;
   circuitBreakerEnabled: boolean;
+  upstreamStrictPriority: boolean;
   setUpstreamRetryEnabled: (value: boolean) => void;
   setUpstreamRetryMaxAttempts: (value: number) => void;
   setUpstreamRetrySameChannel: (value: boolean) => void;
   setCircuitBreakerEnabled: (value: boolean) => void;
+  setUpstreamStrictPriority: (value: boolean) => void;
 }) {
   return (
     <Card>
@@ -51,6 +55,12 @@ export function UpstreamSettingsCard({
           description="连续失败 3 次后暂停该渠道 15 秒，防止雪崩。关闭后所有渠道始终可用。"
           checked={circuitBreakerEnabled}
           onCheckedChange={setCircuitBreakerEnabled}
+        />
+        <ToggleRow
+          title="严格优先级"
+          description="仅按权重排序，不因并发或延迟自动降级到低权重渠道。高权重渠道未失败则不切换。"
+          checked={upstreamStrictPriority}
+          onCheckedChange={setUpstreamStrictPriority}
         />
         <div className="space-y-2">
           <Label>最大路由尝试次数</Label>
