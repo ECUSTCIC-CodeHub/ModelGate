@@ -320,6 +320,18 @@ async function normalizeMysqlDatetimes(db: DatabaseAdapter) {
   }
 }
 
+async function migrateQuotaColumnsToBigInt(db: DatabaseAdapter) {
+  const tables = ["channels", "models", "`groups`", "users"];
+  const columns = ["quota_tokens", "quota_requests", "period_quota_tokens", "period_quota_requests"];
+  for (const table of tables) {
+    for (const col of columns) {
+      await db.exec(`ALTER TABLE ${table} MODIFY COLUMN \`${col}\` BIGINT`).catch(() => {
+        // 列可能已经是 BIGINT，忽略错误
+      });
+    }
+  }
+}
+
 async function initMysql(): Promise<DatabaseAdapter> {
   const host = process.env.MYSQL_HOST || "localhost";
   const port = Number(process.env.MYSQL_PORT) || 3306;
@@ -338,6 +350,7 @@ async function initMysql(): Promise<DatabaseAdapter> {
     await db.exec(MYSQL_BASE_SCHEMA_SQL);
     for (const idx of MYSQL_BASE_INDEXES) await createIndexIdempotent(db, idx);
     await ensureAllColumns(db);
+    await migrateQuotaColumnsToBigInt(db);
     for (const idx of MYSQL_POST_MIGRATION_INDEXES) await createIndexIdempotent(db, idx);
     await db.exec(MYSQL_DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL);
     await seedDefaultSettings(db);
