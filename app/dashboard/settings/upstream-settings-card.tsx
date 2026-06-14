@@ -69,7 +69,7 @@ export function UpstreamSettingsCard({
             min={1}
             max={10}
             value={upstreamRetryMaxAttempts}
-            onChange={(e) => setUpstreamRetryMaxAttempts(Number(e.target.value))}
+            onChange={(e) => { const v = Number(e.target.value); setUpstreamRetryMaxAttempts(v < 1 || Number.isNaN(v) ? 1 : v); }}
           />
           <p className="text-xs text-[var(--color-foreground-muted)]">默认 3，建议不要超过 5，避免上游回退过慢。</p>
         </div>

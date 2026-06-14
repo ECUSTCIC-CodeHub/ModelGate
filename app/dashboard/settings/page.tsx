@@ -52,6 +52,7 @@ export default function AdminSettingsPage() {
   const [corsEnabled, setCorsEnabled] = useState(false);
   const [icpFilingNumber, setIcpFilingNumber] = useState("");
   const [publicSecurityFilingNumber, setPublicSecurityFilingNumber] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const oidcFeatureEnabled = modelGateFeatures.oidc;
   const announcementFeatureEnabled = modelGateFeatures.announcement;
@@ -86,15 +87,6 @@ export default function AdminSettingsPage() {
     setPublicSecurityFilingNumber(stringValue(settings.public_security_filing_number));
   }, [accessGuideNoticeFeatureEnabled, announcementFeatureEnabled, oidcFeatureEnabled, webhookFeatureEnabled]);
 
-  const load = useCallback(async () => {
-    if (!(await ensureAdmin(router))) return;
-    const response = await authedFetch("/api/admin/settings");
-    const payload = await response.json().catch(() => null);
-    if (response.ok) {
-      applySettings(responseData(payload));
-    }
-  }, [applySettings, router]);
-
   useEffect(() => {
     let cancelled = false;
     async function init() {
@@ -110,43 +102,52 @@ export default function AdminSettingsPage() {
   }, [applySettings, router]);
 
   async function save() {
-    const payload = {
-      registration_enabled: registrationEnabled,
-      password_login_enabled: passwordLoginEnabled,
-      upstream_retry_enabled: upstreamRetryEnabled,
-      upstream_retry_max_attempts: upstreamRetryMaxAttempts,
-      upstream_retry_same_channel: upstreamRetrySameChannel,
-      upstream_circuit_breaker_enabled: circuitBreakerEnabled,
-      upstream_strict_priority: upstreamStrictPriority,
-      ...(oidcFeatureEnabled ? {
-        oidc_enabled: oidcEnabled,
-        oidc_issuer_url: oidcIssuerUrl,
-        oidc_client_id: oidcClientId,
-        oidc_client_secret: oidcClientSecret,
-        oidc_scopes: oidcScopes,
-        oidc_auto_register: oidcAutoRegister,
-        oidc_button_text: oidcButtonText,
-      } : {}),
-      public_base_url: publicBaseUrl,
-      ...(announcementFeatureEnabled ? { announcement_content: announcementContent } : {}),
-      ...(accessGuideNoticeFeatureEnabled ? { access_guide_notice: accessGuideNotice } : {}),
-      ...(webhookFeatureEnabled ? { webhook_secret: webhookSecret } : {}),
-      cors_enabled: corsEnabled,
-      icp_filing_number: icpFilingNumber,
-      public_security_filing_number: publicSecurityFilingNumber,
-    };
+    setIsSaving(true);
+    try {
+      const payload = {
+        registration_enabled: registrationEnabled,
+        password_login_enabled: passwordLoginEnabled,
+        upstream_retry_enabled: upstreamRetryEnabled,
+        upstream_retry_max_attempts: upstreamRetryMaxAttempts,
+        upstream_retry_same_channel: upstreamRetrySameChannel,
+        upstream_circuit_breaker_enabled: circuitBreakerEnabled,
+        upstream_strict_priority: upstreamStrictPriority,
+        ...(oidcFeatureEnabled ? {
+          oidc_enabled: oidcEnabled,
+          oidc_issuer_url: oidcIssuerUrl,
+          oidc_client_id: oidcClientId,
+          oidc_client_secret: oidcClientSecret,
+          oidc_scopes: oidcScopes,
+          oidc_auto_register: oidcAutoRegister,
+          oidc_button_text: oidcButtonText,
+        } : {}),
+        public_base_url: publicBaseUrl,
+        ...(announcementFeatureEnabled ? { announcement_content: announcementContent } : {}),
+        ...(accessGuideNoticeFeatureEnabled ? { access_guide_notice: accessGuideNotice } : {}),
+        ...(webhookFeatureEnabled ? { webhook_secret: webhookSecret } : {}),
+        cors_enabled: corsEnabled,
+        icp_filing_number: icpFilingNumber,
+        public_security_filing_number: publicSecurityFilingNumber,
+      };
 
-    const response = await authedFetch("/api/admin/settings", {
-      method: "PUT",
-      body: JSON.stringify(payload),
-    });
-    const data = await response.json().catch(() => null);
-    if (response.ok) {
-      toast({ variant: "success", description: getApiMessage(data, "保存成功。") });
-      void load();
-      return;
+      const response = await authedFetch("/api/admin/settings", {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => null);
+      if (response.ok) {
+        toast({ variant: "success", description: getApiMessage(data, "保存成功。") });
+        const refreshResponse = await authedFetch("/api/admin/settings");
+        const refreshPayload = await refreshResponse.json().catch(() => null);
+        if (refreshResponse.ok) {
+          applySettings(responseData(refreshPayload));
+        }
+        return;
+      }
+      toast({ variant: "error", description: getApiMessage(data, "保存失败。") });
+    } finally {
+      setIsSaving(false);
     }
-    toast({ variant: "error", description: getApiMessage(data, "保存失败。") });
   }
 
   function copyPublicUrl(path: string) {
@@ -239,7 +240,7 @@ export default function AdminSettingsPage() {
           setPublicSecurityFilingNumber={setPublicSecurityFilingNumber}
         />
 
-        <SaveSettingsCard onSave={() => void save()} />
+        <SaveSettingsCard disabled={isSaving} onSave={() => void save()} />
       </div>
     </DashboardShell>
   );
