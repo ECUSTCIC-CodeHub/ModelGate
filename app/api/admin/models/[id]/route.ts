@@ -95,7 +95,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     return jsonError("所选渠道不支持该上游协议", 400);
   }
   const channelProtocols = parseSupportedProtocols(channel.supported_protocols);
-  const rawModelProtocols = parsed.data.supported_protocols ?? normalizeSupportedProtocols(existing.supported_protocols);
+  const rawModelProtocols = parsed.data.supported_protocols ?? parseSupportedProtocols(existing.supported_protocols);
   const validModelProtocols = rawModelProtocols.filter((p) => channelProtocols.includes(p));
   if (validModelProtocols.length === 0) {
     return jsonError("至少需要一个渠道支持的可用协议", 400);
