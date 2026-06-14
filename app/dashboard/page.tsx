@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { modelGateFeatures } from "@/lib/core/features";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { DashboardHeaderActions } from "./_home/dashboard-header-actions";
 import { DashboardModelQuotaCard } from "./_home/dashboard-model-quota-card";
@@ -31,7 +32,7 @@ export default function DashboardHomePage() {
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
           <DashboardTokenTrendCard chartReady={dashboard.chartReady} summary={dashboard.summary} />
-          <DashboardQuickActionsCard isAdmin={isAdmin} onNavigate={navigate} />
+          <DashboardQuickActionsCard isAdmin={isAdmin} announcementEnabled={modelGateFeatures.announcement} onNavigate={navigate} />
         </div>
 
         <DashboardTopUsageTables summary={dashboard.summary} />

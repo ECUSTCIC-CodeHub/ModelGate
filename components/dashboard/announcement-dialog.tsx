@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { Button } from "@/components/ui/button";
@@ -31,27 +31,38 @@ export function AnnouncementDialog() {
   const [html, setHtml] = useState("");
   const [contentHash, setContentHash] = useState("");
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const response = await authedFetch("/api/dashboard/announcement");
-        if (!response.ok) return;
-        const data = await response.json();
-        const content = (data?.content ?? "").trim();
-        if (!content) return;
+  const fetchAndShow = useCallback(async (force = false) => {
+    try {
+      const response = await authedFetch("/api/dashboard/announcement");
+      if (!response.ok) return;
+      const data = await response.json();
+      const content = (data?.content ?? "").trim();
+      if (!content) return;
 
-        const hash = await hashContent(content);
-        if (localStorage.getItem(DISMISSED_KEY) === hash) return;
+      const hash = await hashContent(content);
+      if (!force && localStorage.getItem(DISMISSED_KEY) === hash) return;
 
-        setContentHash(hash);
-        const rendered = await marked.parse(content);
-        setHtml(DOMPurify.sanitize(rendered));
-        setOpen(true);
-      } catch {
-        // silently ignore
-      }
-    })();
+      setContentHash(hash);
+      const rendered = await marked.parse(content);
+      setHtml(DOMPurify.sanitize(rendered));
+      setOpen(true);
+    } catch {
+      // silently ignore
+    }
   }, []);
+
+  useEffect(() => {
+    void fetchAndShow();
+  }, [fetchAndShow]);
+
+  useEffect(() => {
+    function onReopen() {
+      localStorage.removeItem(DISMISSED_KEY);
+      void fetchAndShow(true);
+    }
+    window.addEventListener("announcement:reopen", onReopen);
+    return () => window.removeEventListener("announcement:reopen", onReopen);
+  }, [fetchAndShow]);
 
   function onDismiss() {
     setOpen(false);

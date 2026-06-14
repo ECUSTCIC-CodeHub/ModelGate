@@ -1,16 +1,17 @@
 "use client";
 
-import { Cog, KeyRound, ShieldCheck, Sparkles, Users, Waypoints } from "lucide-react";
+import { Cog, KeyRound, Megaphone, ShieldCheck, Sparkles, Users, Waypoints } from "lucide-react";
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 type DashboardQuickActionsCardProps = {
   isAdmin: boolean;
+  announcementEnabled: boolean;
   onNavigate: (href: string) => void;
 };
 
-export function DashboardQuickActionsCard({ isAdmin, onNavigate }: DashboardQuickActionsCardProps) {
+export function DashboardQuickActionsCard({ isAdmin, announcementEnabled, onNavigate }: DashboardQuickActionsCardProps) {
   return (
     <Card>
       <CardHeader>
@@ -29,6 +30,12 @@ export function DashboardQuickActionsCard({ isAdmin, onNavigate }: DashboardQuic
           <ShieldCheck className="h-4 w-4" />
           查看可用模型
         </Button>
+        {announcementEnabled ? (
+          <Button variant="outline" onClick={() => window.dispatchEvent(new CustomEvent("announcement:reopen"))}>
+            <Megaphone className="h-4 w-4" />
+            查看公告
+          </Button>
+        ) : null}
         {isAdmin ? (
           <Button variant="outline" onClick={() => onNavigate("/dashboard/channels")}>
             <Waypoints className="h-4 w-4" />
