@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
 import { ChevronDown, Copy } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { SectionTitle } from "@/components/dashboard/section-title";
@@ -53,7 +55,24 @@ export default function AvailableModelsPage() {
   const [rows, setRows] = useState<ModelItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [noticeHtml, setNoticeHtml] = useState("");
   const { toast } = useToast();
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const response = await authedFetch("/api/dashboard/access-guide-notice");
+        if (!response.ok) return;
+        const data = await response.json();
+        const content = (data?.content ?? "").trim();
+        if (!content) return;
+        const rendered = await marked.parse(content);
+        setNoticeHtml(DOMPurify.sanitize(rendered));
+      } catch {
+        // silently ignore
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,6 +116,17 @@ export default function AvailableModelsPage() {
       subtitle="一站式查看接入配置、协议端点与当前账号可调用的模型列表。"
     >
       <div className="space-y-4 pb-6">
+        {noticeHtml ? (
+          <Card>
+            <CardContent className="pt-6">
+              <div
+                className="markdown-body"
+                dangerouslySetInnerHTML={{ __html: noticeHtml }}
+              />
+            </CardContent>
+          </Card>
+        ) : null}
+
         <Card>
           <CardHeader>
             <SectionTitle

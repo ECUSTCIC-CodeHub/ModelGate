@@ -8,6 +8,7 @@ import { getApiMessage } from "@/lib/shared/api-message";
 import { authedFetch, ensureAdmin } from "@/lib/auth/client-auth";
 import { modelGateFeatures } from "@/lib/core/features";
 import {
+  AccessGuideNoticeSettingsCard,
   AnnouncementSettingsCard,
   CorsSettingsCard,
   FilingSettingsCard,
@@ -45,6 +46,7 @@ export default function AdminSettingsPage() {
   const [oidcButtonText, setOidcButtonText] = useState("OIDC 登录");
   const [publicBaseUrl, setPublicBaseUrl] = useState("");
   const [announcementContent, setAnnouncementContent] = useState("");
+  const [accessGuideNotice, setAccessGuideNotice] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
   const [corsEnabled, setCorsEnabled] = useState(false);
   const [icpFilingNumber, setIcpFilingNumber] = useState("");
@@ -52,6 +54,7 @@ export default function AdminSettingsPage() {
   const { toast } = useToast();
   const oidcFeatureEnabled = modelGateFeatures.oidc;
   const announcementFeatureEnabled = modelGateFeatures.announcement;
+  const accessGuideNoticeFeatureEnabled = modelGateFeatures.accessGuideNotice;
   const webhookFeatureEnabled = modelGateFeatures.webhook;
 
   const applySettings = useCallback((settings: Record<string, unknown>) => {
@@ -74,11 +77,12 @@ export default function AdminSettingsPage() {
     const savedBase = stringValue(settings.public_base_url);
     setPublicBaseUrl(savedBase || (typeof window !== "undefined" ? window.location.origin : ""));
     if (announcementFeatureEnabled) setAnnouncementContent(stringValue(settings.announcement_content));
+    if (accessGuideNoticeFeatureEnabled) setAccessGuideNotice(stringValue(settings.access_guide_notice));
     if (webhookFeatureEnabled) setWebhookSecret(stringValue(settings.webhook_secret));
     setCorsEnabled(settings.cors_enabled === 1);
     setIcpFilingNumber(stringValue(settings.icp_filing_number));
     setPublicSecurityFilingNumber(stringValue(settings.public_security_filing_number));
-  }, [announcementFeatureEnabled, oidcFeatureEnabled, webhookFeatureEnabled]);
+  }, [accessGuideNoticeFeatureEnabled, announcementFeatureEnabled, oidcFeatureEnabled, webhookFeatureEnabled]);
 
   const load = useCallback(async () => {
     if (!(await ensureAdmin(router))) return;
@@ -122,6 +126,7 @@ export default function AdminSettingsPage() {
       } : {}),
       public_base_url: publicBaseUrl,
       ...(announcementFeatureEnabled ? { announcement_content: announcementContent } : {}),
+      ...(accessGuideNoticeFeatureEnabled ? { access_guide_notice: accessGuideNotice } : {}),
       ...(webhookFeatureEnabled ? { webhook_secret: webhookSecret } : {}),
       cors_enabled: corsEnabled,
       icp_filing_number: icpFilingNumber,
@@ -212,6 +217,13 @@ export default function AdminSettingsPage() {
           <AnnouncementSettingsCard
             announcementContent={announcementContent}
             setAnnouncementContent={setAnnouncementContent}
+          />
+        ) : null}
+
+        {accessGuideNoticeFeatureEnabled ? (
+          <AccessGuideNoticeSettingsCard
+            accessGuideNotice={accessGuideNotice}
+            setAccessGuideNotice={setAccessGuideNotice}
           />
         ) : null}
 

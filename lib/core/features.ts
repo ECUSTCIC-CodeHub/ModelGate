@@ -13,6 +13,7 @@ export const modelGateFeatures = {
   periodQuota: modelGateEdition === "full",
   announcement: modelGateEdition === "full",
   webhook: modelGateEdition === "full",
+  accessGuideNotice: modelGateEdition === "full",
 } as const;
 
 export type ModelGateFeature = keyof typeof modelGateFeatures;
@@ -22,6 +23,7 @@ const featureNames: Record<ModelGateFeature, string> = {
   periodQuota: "周期配额",
   announcement: "公告",
   webhook: "Webhook",
+  accessGuideNotice: "接入指南通知",
 };
 
 export function featureUnavailableMessage(featureName: string) {
@@ -60,6 +62,7 @@ export type EditionSettingsInput = {
   oidc_auto_register?: boolean;
   oidc_button_text?: string;
   announcement_content?: string;
+  access_guide_notice?: string;
   webhook_secret?: string;
 };
 
@@ -81,6 +84,9 @@ export function filterSettingsInputForEdition<T extends EditionSettingsInput>(in
   if (!modelGateFeatures.webhook) {
     delete next.webhook_secret;
   }
+  if (!modelGateFeatures.accessGuideNotice) {
+    delete next.access_guide_notice;
+  }
   return next;
 }
 
@@ -94,6 +100,7 @@ export function maskSettingsForEdition<T extends {
   oidc_auto_register: number;
   oidc_button_text: string;
   announcement_content: string;
+  access_guide_notice: string;
   webhook_secret: string;
 }>(settings: T): T {
   return {
@@ -107,6 +114,7 @@ export function maskSettingsForEdition<T extends {
     oidc_auto_register: modelGateFeatures.oidc ? settings.oidc_auto_register : 1,
     oidc_button_text: modelGateFeatures.oidc ? settings.oidc_button_text : "OIDC 登录",
     announcement_content: modelGateFeatures.announcement ? settings.announcement_content : "",
+    access_guide_notice: modelGateFeatures.accessGuideNotice ? settings.access_guide_notice : "",
     webhook_secret: modelGateFeatures.webhook && settings.webhook_secret ? "••••••••" : "",
   };
 }

@@ -25,6 +25,7 @@ export type GatewaySettings = {
   oidc_button_text: string;
   public_base_url: string;
   announcement_content: string;
+  access_guide_notice: string;
   webhook_secret: string;
   cors_enabled: number;
   icp_filing_number: string;
@@ -59,6 +60,7 @@ const GATEWAY_KEYS = [
   "upstream_circuit_breaker_enabled",
   ...OIDC_KEYS,
   "announcement_content",
+  "access_guide_notice",
   "webhook_secret",
   "cors_enabled",
   "icp_filing_number",
@@ -91,6 +93,7 @@ async function readGatewaySettingsFromDb(): Promise<GatewaySettings> {
     oidc_button_text: map.get("oidc_button_text") || "OIDC 登录",
     public_base_url: map.get("public_base_url") ?? "",
     announcement_content: map.get("announcement_content") ?? "",
+    access_guide_notice: map.get("access_guide_notice") ?? "",
     webhook_secret: map.get("webhook_secret") ?? "",
     cors_enabled: map.get("cors_enabled") === "1" ? 1 : 0,
     icp_filing_number: map.get("icp_filing_number") ?? "",
@@ -125,6 +128,7 @@ export async function setGatewaySettings(input: {
   oidc_button_text?: string;
   public_base_url?: string;
   announcement_content?: string;
+  access_guide_notice?: string;
   webhook_secret?: string;
   cors_enabled?: boolean;
   icp_filing_number?: string;
@@ -148,6 +152,7 @@ export async function setGatewaySettings(input: {
   if (input.oidc_button_text !== undefined) values.oidc_button_text = input.oidc_button_text.trim() || "OIDC 登录";
   if (input.public_base_url !== undefined) values.public_base_url = input.public_base_url.trim().replace(/\/+$/, "");
   if (input.announcement_content !== undefined) values.announcement_content = input.announcement_content;
+  if (input.access_guide_notice !== undefined) values.access_guide_notice = input.access_guide_notice;
   if (input.webhook_secret !== undefined) values.webhook_secret = input.webhook_secret.trim();
   if (input.cors_enabled !== undefined) values.cors_enabled = input.cors_enabled ? "1" : "0";
   if (input.icp_filing_number !== undefined) values.icp_filing_number = input.icp_filing_number.trim();
