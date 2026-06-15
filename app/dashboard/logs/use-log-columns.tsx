@@ -122,8 +122,9 @@ export function useLogColumns(role: LogRole) {
       cell: ({ row }) => {
         const alias = row.original.model_alias;
         const real = row.original.real_model;
-        const bothPresent = alias && real && alias !== real;
-        const text = bothPresent ? `${alias} → ${real}` : (real ?? alias ?? "-");
+        const text = alias && real && alias !== real
+          ? `${alias} → ${real}`
+          : (real ?? alias ?? "-");
         return (
           <span className="block max-w-48 truncate" title={text}>{text}</span>
         );
