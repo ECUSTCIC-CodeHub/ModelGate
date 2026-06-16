@@ -1,12 +1,15 @@
 "use client";
 
+import { useMemo } from "react";
 import { AlertDialogAction } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { EmptyState } from "@/components/dashboard/empty-state";
+import { ResizeHandle } from "@/components/ui/resize-handle";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatLimit, formatNumber } from "@/lib/shared/formatters";
+import { useResizableColumns, type ColumnWidthDef } from "@/lib/shared/use-resizable-columns";
 import { formatPeriodLabel, type UserRow } from "./user-model";
 
 export function UserTable({
@@ -28,6 +31,26 @@ export function UserTable({
   onRevokeTotp: (id: number) => void;
   onRemove: (id: number) => void;
 }) {
+  const colDefs = useMemo<ColumnWidthDef[]>(
+    () => [
+      { key: "username", defaultWidth: 160, minWidth: 80 },
+      { key: "email", defaultWidth: 220, minWidth: 100 },
+      { key: "tags", defaultWidth: 180, minWidth: 100 },
+      { key: "group", defaultWidth: 120, minWidth: 80 },
+      { key: "note", defaultWidth: 220, minWidth: 100 },
+      { key: "rateLimit", defaultWidth: 180, minWidth: 140 },
+      { key: "used", defaultWidth: 150, minWidth: 120 },
+      { key: "quota", defaultWidth: 150, minWidth: 120 },
+      ...(periodQuotaEnabled ? [{ key: "periodQuota", defaultWidth: 180, minWidth: 140 }] : []),
+    ],
+    [periodQuotaEnabled],
+  );
+
+  const { widths, getResizeHandler } = useResizableColumns(colDefs);
+
+  const totalMinWidth =
+    colDefs.reduce((sum, c) => sum + c.minWidth, 0) + 360;
+
   if (rows.length === 0) {
     return (
       <EmptyState
@@ -38,20 +61,27 @@ export function UserTable({
     );
   }
 
+  const th = (key: string, label: string, extraClass = "") => (
+    <TableHead key={key} className={`relative ${extraClass}`} style={{ width: widths[key] }}>
+      {label}
+      <ResizeHandle onMouseDown={getResizeHandler(key)} />
+    </TableHead>
+  );
+
   return (
     <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-      <Table className={periodQuotaEnabled ? "min-w-[1940px] table-fixed" : "min-w-[1760px] table-fixed"}>
+      <Table className="table-fixed" style={{ minWidth: totalMinWidth }}>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[160px]">用户名</TableHead>
-            <TableHead className="w-[220px]">邮箱</TableHead>
-            <TableHead className="w-[180px]">标签</TableHead>
-            <TableHead className="w-[120px]">用户组</TableHead>
-            <TableHead className="w-[220px]">备注</TableHead>
-            <TableHead className="w-[180px]">限速 RPM/QPS/TPM</TableHead>
-            <TableHead className="w-[150px]">累计 请求/Token</TableHead>
-            <TableHead className="w-[150px]">配额 请求/Token</TableHead>
-            {periodQuotaEnabled ? <TableHead className="w-[180px]">周期配额</TableHead> : null}
+            {th("username", "用户名")}
+            {th("email", "邮箱")}
+            {th("tags", "标签")}
+            {th("group", "用户组")}
+            {th("note", "备注")}
+            {th("rateLimit", "限速 RPM/QPS/TPM")}
+            {th("used", "累计 请求/Token")}
+            {th("quota", "配额 请求/Token")}
+            {periodQuotaEnabled ? th("periodQuota", "周期配额") : null}
             <TableHead className="w-[360px] text-right">操作</TableHead>
           </TableRow>
         </TableHeader>

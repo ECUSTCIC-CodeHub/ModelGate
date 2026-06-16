@@ -1,11 +1,14 @@
 "use client";
 
+import { useMemo } from "react";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ResizeHandle } from "@/components/ui/resize-handle";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatLimit } from "@/lib/shared/formatters";
+import { useResizableColumns, type ColumnWidthDef } from "@/lib/shared/use-resizable-columns";
 import { formatPeriodLabel, type ChannelOption, type GroupRow } from "./group-model";
 
 function formatAllowedChannels(ids: number[] | undefined, channelOptions: ChannelOption[]) {
@@ -29,6 +32,26 @@ export function GroupTable({
   onEdit: (row: GroupRow) => void;
   onRemove: (id: number) => void;
 }) {
+  const colDefs = useMemo<ColumnWidthDef[]>(
+    () => [
+      { key: "name", defaultWidth: 140, minWidth: 80 },
+      { key: "description", defaultWidth: 140, minWidth: 80 },
+      { key: "status", defaultWidth: 80, minWidth: 60 },
+      { key: "isDefault", defaultWidth: 80, minWidth: 60 },
+      { key: "userCount", defaultWidth: 80, minWidth: 60 },
+      { key: "rateLimit", defaultWidth: 180, minWidth: 140 },
+      { key: "quotaRequests", defaultWidth: 100, minWidth: 80 },
+      { key: "quotaTokens", defaultWidth: 100, minWidth: 80 },
+      ...(periodQuotaEnabled ? [{ key: "periodQuota", defaultWidth: 180, minWidth: 140 }] : []),
+      { key: "modelWhitelist", defaultWidth: 120, minWidth: 80 },
+      { key: "channelWhitelist", defaultWidth: 120, minWidth: 80 },
+    ],
+    [periodQuotaEnabled],
+  );
+
+  const { widths, getResizeHandler } = useResizableColumns(colDefs);
+  const totalMinWidth = colDefs.reduce((sum, c) => sum + c.minWidth, 0) + 240;
+
   if (rows.length === 0) {
     return (
       <EmptyState
@@ -39,23 +62,30 @@ export function GroupTable({
     );
   }
 
+  const th = (key: string, label: string, extraClass = "") => (
+    <TableHead key={key} className={`relative ${extraClass}`} style={{ width: widths[key] }}>
+      {label}
+      <ResizeHandle onMouseDown={getResizeHandler(key)} />
+    </TableHead>
+  );
+
   return (
     <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-      <Table className="min-w-[980px]">
+      <Table className="table-fixed" style={{ minWidth: totalMinWidth }}>
         <TableHeader>
           <TableRow>
-            <TableHead>组名</TableHead>
-            <TableHead>描述</TableHead>
-            <TableHead>状态</TableHead>
-            <TableHead>默认</TableHead>
-            <TableHead>用户数</TableHead>
-            <TableHead>限速 (RPM/QPS/TPM)</TableHead>
-            <TableHead>请求配额</TableHead>
-            <TableHead>Token 配额</TableHead>
-            {periodQuotaEnabled ? <TableHead>周期配额</TableHead> : null}
-            <TableHead>模型白名单</TableHead>
-            <TableHead>渠道白名单</TableHead>
-            <TableHead className="text-right">操作</TableHead>
+            {th("name", "组名")}
+            {th("description", "描述")}
+            {th("status", "状态")}
+            {th("isDefault", "默认")}
+            {th("userCount", "用户数")}
+            {th("rateLimit", "限速 (RPM/QPS/TPM)")}
+            {th("quotaRequests", "请求配额")}
+            {th("quotaTokens", "Token 配额")}
+            {periodQuotaEnabled ? th("periodQuota", "周期配额") : null}
+            {th("modelWhitelist", "模型白名单")}
+            {th("channelWhitelist", "渠道白名单")}
+            <TableHead className="text-right" style={{ width: 240 }}>操作</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

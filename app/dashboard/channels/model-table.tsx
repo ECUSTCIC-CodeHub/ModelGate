@@ -1,10 +1,13 @@
 "use client";
 
+import { useMemo } from "react";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ResizeHandle } from "@/components/ui/resize-handle";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useResizableColumns, type ColumnWidthDef } from "@/lib/shared/use-resizable-columns";
 import type { ModelRow, ModelWithChannel } from "./channel-model";
 import { parseSupportedProtocols, shortProtocolLabel } from "./channel-model";
 
@@ -27,6 +30,26 @@ export function ModelTable({
   onToggle: (row: ModelRow) => void;
   onRemove: (id: number) => void;
 }) {
+  const colDefs = useMemo<ColumnWidthDef[]>(
+    () => [
+      { key: "index", defaultWidth: 60, minWidth: 40 },
+      { key: "alias", defaultWidth: 140, minWidth: 80 },
+      { key: "realModel", defaultWidth: 140, minWidth: 80 },
+      { key: "channel", defaultWidth: 100, minWidth: 60 },
+      { key: "protocol", defaultWidth: 160, minWidth: 100 },
+      { key: "status", defaultWidth: 80, minWidth: 60 },
+      { key: "visibility", defaultWidth: 80, minWidth: 60 },
+      { key: "copilot", defaultWidth: 80, minWidth: 60 },
+      { key: "weight", defaultWidth: 70, minWidth: 50 },
+      { key: "multiplier", defaultWidth: 110, minWidth: 80 },
+      { key: "concurrency", defaultWidth: 90, minWidth: 70 },
+    ],
+    [],
+  );
+
+  const { widths, getResizeHandler } = useResizableColumns(colDefs);
+  const totalMinWidth = colDefs.reduce((sum, c) => sum + c.minWidth, 0) + 360;
+
   if (models.length === 0) {
     return (
       <EmptyState
@@ -37,23 +60,30 @@ export function ModelTable({
     );
   }
 
+  const th = (key: string, label: string, extraClass = "") => (
+    <TableHead key={key} className={`relative ${extraClass}`} style={{ width: widths[key] }}>
+      {label}
+      <ResizeHandle onMouseDown={getResizeHandler(key)} />
+    </TableHead>
+  );
+
   return (
     <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-      <Table className="min-w-[1160px]">
+      <Table className="table-fixed" style={{ minWidth: totalMinWidth }}>
         <TableHeader>
           <TableRow>
-            <TableHead>序号</TableHead>
-            <TableHead>别名</TableHead>
-            <TableHead>真实模型</TableHead>
-            <TableHead>所属渠道</TableHead>
-            <TableHead>上游协议</TableHead>
-            <TableHead>状态</TableHead>
-            <TableHead>可见性</TableHead>
-            <TableHead>Copilot</TableHead>
-            <TableHead>权重</TableHead>
-            <TableHead>倍率</TableHead>
-            <TableHead>最大并发</TableHead>
-            <TableHead className="min-w-72 text-right">操作</TableHead>
+            {th("index", "序号")}
+            {th("alias", "别名")}
+            {th("realModel", "真实模型")}
+            {th("channel", "所属渠道")}
+            {th("protocol", "上游协议")}
+            {th("status", "状态")}
+            {th("visibility", "可见性")}
+            {th("copilot", "Copilot")}
+            {th("weight", "权重")}
+            {th("multiplier", "倍率")}
+            {th("concurrency", "最大并发")}
+            <TableHead className="text-right" style={{ width: 360 }}>操作</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

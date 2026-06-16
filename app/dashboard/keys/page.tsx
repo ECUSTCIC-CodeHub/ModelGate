@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Copy } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/empty-state";
@@ -21,7 +21,9 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { ResizeHandle } from "@/components/ui/resize-handle";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useResizableColumns, type ColumnWidthDef } from "@/lib/shared/use-resizable-columns";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/shared/api-message";
 import { authedFetch, ensureLoggedIn, getCachedProfile } from "@/lib/auth/client-auth";
@@ -157,6 +159,29 @@ export default function ConsoleKeysPage() {
         toast({ variant: "error", description: getApiMessage(data, "删除密钥失败。") });
     }
 
+    const keyColDefs = useMemo<ColumnWidthDef[]>(
+        () => [
+            { key: "name", defaultWidth: 160, minWidth: 80 },
+            { key: "key", defaultWidth: 320, minWidth: 140 },
+            { key: "createdAt", defaultWidth: 160, minWidth: 120 },
+            { key: "lastUsed", defaultWidth: 160, minWidth: 120 },
+            { key: "usedRequests", defaultWidth: 100, minWidth: 80 },
+            { key: "usedTokens", defaultWidth: 100, minWidth: 80 },
+            { key: "status", defaultWidth: 80, minWidth: 60 },
+        ],
+        [],
+    );
+
+    const { widths, getResizeHandler } = useResizableColumns(keyColDefs);
+    const totalMinWidth = keyColDefs.reduce((sum, c) => sum + c.minWidth, 0) + 240;
+
+    const th = (key: string, label: string) => (
+        <TableHead key={key} className="relative" style={{ width: widths[key] }}>
+            {label}
+            <ResizeHandle onMouseDown={getResizeHandler(key)} />
+        </TableHead>
+    );
+
     return (
         <DashboardShell
             role={role}
@@ -194,17 +219,17 @@ export default function ConsoleKeysPage() {
                         {error ? <p className="text-sm text-[var(--color-destructive)]">{error}</p> : null}
                         {keys.length > 0 ? (
                             <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-                                <Table className="min-w-[1024px]">
+                                <Table className="table-fixed" style={{ minWidth: totalMinWidth }}>
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead>名称</TableHead>
-                                            <TableHead>Key</TableHead>
-                                            <TableHead>创建时间</TableHead>
-                                            <TableHead>最近使用</TableHead>
-                                            <TableHead>累计请求</TableHead>
-                                            <TableHead>累计 Token</TableHead>
-                                            <TableHead>状态</TableHead>
-                                            <TableHead className="text-right">操作</TableHead>
+                                            {th("name", "名称")}
+                                            {th("key", "Key")}
+                                            {th("createdAt", "创建时间")}
+                                            {th("lastUsed", "最近使用")}
+                                            {th("usedRequests", "累计请求")}
+                                            {th("usedTokens", "累计 Token")}
+                                            {th("status", "状态")}
+                                            <TableHead className="text-right" style={{ width: 240 }}>操作</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
