@@ -1,15 +1,17 @@
 "use client";
 
-import type { ColumnDef } from "@tanstack/react-table";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { PagePagination } from "@/components/dashboard/page-pagination";
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { DataTable } from "@/components/ui/data-table";
-import type { LogRow } from "./log-model";
+import { ResizeHandle } from "@/components/ui/resize-handle";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useResizableColumns } from "@/lib/shared/use-resizable-columns";
+import { useLogColumnDefs, type LogColDef } from "./use-log-columns";
+import type { LogRole, LogRow } from "./log-model";
 
 type LogTableCardProps = {
-  columns: Array<ColumnDef<LogRow>>;
+  role: LogRole;
   rows: LogRow[];
   loading: boolean;
   page: number;
@@ -19,7 +21,7 @@ type LogTableCardProps = {
 };
 
 export function LogTableCard({
-  columns,
+  role,
   rows,
   loading,
   page,
@@ -27,6 +29,17 @@ export function LogTableCard({
   pageSize,
   onPageChange,
 }: LogTableCardProps) {
+  const colDefs = useLogColumnDefs(role);
+  const { widths, getResizeHandler } = useResizableColumns(colDefs);
+  const totalMinWidth = colDefs.reduce((sum, c) => sum + c.minWidth, 0);
+
+  const th = (col: LogColDef) => (
+    <TableHead key={col.key} className="relative" style={{ width: widths[col.key] }}>
+      {col.label}
+      <ResizeHandle onMouseDown={getResizeHandler(col.key)} />
+    </TableHead>
+  );
+
   return (
     <Card>
       <CardHeader>
@@ -38,11 +51,24 @@ export function LogTableCard({
       <CardContent className="space-y-4">
         {rows.length > 0 ? (
           <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-            <DataTable
-              columns={columns}
-              data={rows}
-              emptyText={loading ? "加载中..." : "暂无日志"}
-            />
+            <Table className="table-fixed" style={{ minWidth: totalMinWidth }}>
+              <TableHeader>
+                <TableRow>
+                  {colDefs.map(th)}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow key={row.id}>
+                    {colDefs.map((col) => (
+                      <TableCell key={col.key}>
+                        {col.render(row)}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         ) : (
           <EmptyState
