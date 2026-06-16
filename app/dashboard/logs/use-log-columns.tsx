@@ -1,10 +1,10 @@
 "use client";
 
-import { type ColumnDef } from "@tanstack/react-table";
-import { useMemo } from "react";
+import { type ReactNode, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatNumber, formatTokenCount, formatDatetime } from "@/lib/shared/utils";
+import type { ColumnWidthDef } from "@/lib/shared/use-resizable-columns";
 import { ClientInfo } from "./client-info";
 import { formatDuration } from "./log-formatters";
 import type { LogRole, LogRow } from "./log-model";
@@ -62,45 +62,58 @@ function TokenDetailRow({
   );
 }
 
-export function useLogColumns(role: LogRole) {
-  return useMemo<Array<ColumnDef<LogRow>>>(() => {
-    const cols: Array<ColumnDef<LogRow>> = [];
+export type LogColDef = ColumnWidthDef & {
+  label: string;
+  render: (row: LogRow) => ReactNode;
+};
+
+export function useLogColumnDefs(role: LogRole) {
+  return useMemo<LogColDef[]>(() => {
+    const cols: LogColDef[] = [];
 
     cols.push({
-      accessorKey: "created_at",
-      header: "时间",
-      cell: ({ row }) => (
+      key: "createdAt",
+      defaultWidth: 170,
+      minWidth: 130,
+      label: "时间",
+      render: (row) => (
         <span className="whitespace-nowrap font-mono text-xs text-[var(--color-foreground-secondary)]">
-          {formatDatetime(row.original.created_at)}
+          {formatDatetime(row.created_at)}
         </span>
       ),
     });
 
     if (role === "admin") {
       cols.push({
-        accessorKey: "username",
-        header: "用户",
-        cell: ({ row }) => (
-          <span className="block max-w-36 truncate whitespace-nowrap" title={row.original.username}>
-            {row.original.username}
+        key: "username",
+        defaultWidth: 120,
+        minWidth: 80,
+        label: "用户",
+        render: (row) => (
+          <span className="block max-w-36 truncate whitespace-nowrap" title={row.username}>
+            {row.username}
           </span>
         ),
       });
     }
 
     cols.push({
-      accessorKey: "client_ip",
-      header: "客户端",
-      cell: ({ row }) => <ClientInfo ip={row.original.client_ip} userAgent={row.original.user_agent} />,
+      key: "client",
+      defaultWidth: 120,
+      minWidth: 80,
+      label: "客户端",
+      render: (row) => <ClientInfo ip={row.client_ip} userAgent={row.user_agent} />,
     });
 
     cols.push({
-      id: "key",
-      header: "密钥",
-      cell: ({ row }) => {
-        const masked = row.original.key_masked;
+      key: "key",
+      defaultWidth: 200,
+      minWidth: 120,
+      label: "密钥",
+      render: (row) => {
+        const masked = row.key_masked;
         if (!masked) return <span className="text-[var(--color-foreground-muted)]">-</span>;
-        const name = row.original.key_name;
+        const name = row.key_name;
         return (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -117,11 +130,13 @@ export function useLogColumns(role: LogRole) {
     });
 
     cols.push({
-      id: "model",
-      header: "模型",
-      cell: ({ row }) => {
-        const alias = row.original.model_alias;
-        const real = row.original.real_model;
+      key: "model",
+      defaultWidth: 200,
+      minWidth: 120,
+      label: "模型",
+      render: (row) => {
+        const alias = row.model_alias;
+        const real = row.real_model;
         const text = alias && real && alias !== real
           ? `${alias} → ${real}`
           : (real ?? alias ?? "-");
@@ -133,10 +148,12 @@ export function useLogColumns(role: LogRole) {
 
     if (role === "admin") {
       cols.push({
-        accessorKey: "channel_name",
-        header: "渠道",
-        cell: ({ row }) => {
-          const text = row.original.channel_name ?? (row.original.status_code >= 400 ? "网关拦截" : "-");
+        key: "channel",
+        defaultWidth: 140,
+        minWidth: 80,
+        label: "渠道",
+        render: (row) => {
+          const text = row.channel_name ?? (row.status_code >= 400 ? "网关拦截" : "-");
           return <span className="block max-w-40 truncate" title={text}>{text}</span>;
         },
       });
@@ -144,22 +161,24 @@ export function useLogColumns(role: LogRole) {
 
     cols.push(
       {
-        accessorKey: "status_code",
-        header: "状态",
-        cell: ({ row }) => (
+        key: "status",
+        defaultWidth: 120,
+        minWidth: 80,
+        label: "状态",
+        render: (row) => (
           <div className="flex items-center gap-1.5 whitespace-nowrap">
-            <Badge variant={row.original.status_code >= 400 ? "secondary" : "default"}>
-              {row.original.status_code}
+            <Badge variant={row.status_code >= 400 ? "secondary" : "default"}>
+              {row.status_code}
             </Badge>
-            <span className="text-xs text-[var(--color-foreground-muted)]">{row.original.stream ? "流式" : "普通"}</span>
-            {role === "admin" && (row.original.route_attempts ?? 1) > 1 ? (
+            <span className="text-xs text-[var(--color-foreground-muted)]">{row.stream ? "流式" : "普通"}</span>
+            {role === "admin" && (row.route_attempts ?? 1) > 1 ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span className="cursor-help text-xs text-[var(--color-foreground-muted)]">·重试</span>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>路由尝试 {(row.original.route_attempts ?? 1)} 次</p>
-                  <p>尝试渠道：{row.original.attempted_channels ?? "-"}</p>
+                  <p>路由尝试 {(row.route_attempts ?? 1)} 次</p>
+                  <p>尝试渠道：{row.attempted_channels ?? "-"}</p>
                 </TooltipContent>
               </Tooltip>
             ) : null}
@@ -167,13 +186,15 @@ export function useLogColumns(role: LogRole) {
         ),
       },
       {
-        accessorKey: "total_tokens",
-        header: "Token",
-        cell: ({ row }) => {
-          const promptTokens = row.original.prompt_tokens;
-          const completionTokens = row.original.completion_tokens;
-          const totalTokens = row.original.total_tokens ?? 0;
-          const tokenUsage = row.original.metadata?.token_usage;
+        key: "token",
+        defaultWidth: 220,
+        minWidth: 140,
+        label: "Token",
+        render: (row) => {
+          const promptTokens = row.prompt_tokens;
+          const completionTokens = row.completion_tokens;
+          const totalTokens = row.total_tokens ?? 0;
+          const tokenUsage = row.metadata?.token_usage;
           const remoteUsage = tokenUsage?.remote ?? null;
           const localUsage = tokenUsage?.local ?? null;
 
@@ -189,7 +210,7 @@ export function useLogColumns(role: LogRole) {
                     入 {formatTokenCount(promptTokens ?? 0)} / 出 {formatTokenCount(completionTokens ?? 0)}
                   </span>
                   <span className="block text-xs text-[var(--color-foreground-muted)]">
-                    总 {formatTokenCount(totalTokens)} · {formatTokenSourceShort(row.original.token_source)}
+                    总 {formatTokenCount(totalTokens)} · {formatTokenSourceShort(row.token_source)}
                   </span>
                 </button>
               </TooltipTrigger>
@@ -217,13 +238,15 @@ export function useLogColumns(role: LogRole) {
         },
       },
       {
-        id: "performance",
-        header: "耗时 / 速度",
-        cell: ({ row }) => {
-          const total = formatDuration(row.original.latency_ms);
-          const ttft = formatDuration(row.original.first_token_latency_ms);
-          const tps = typeof row.original.output_tps === "number"
-            ? `${row.original.output_tps.toFixed(1)} t/s`
+        key: "performance",
+        defaultWidth: 140,
+        minWidth: 100,
+        label: "耗时 / 速度",
+        render: (row) => {
+          const total = formatDuration(row.latency_ms);
+          const ttft = formatDuration(row.first_token_latency_ms);
+          const tps = typeof row.output_tps === "number"
+            ? `${row.output_tps.toFixed(1)} t/s`
             : "-";
           return (
             <div className="whitespace-nowrap leading-tight">
@@ -234,21 +257,19 @@ export function useLogColumns(role: LogRole) {
         },
       },
       {
-        accessorKey: "error_message",
-        header: "失败原因",
-        cell: ({ row }) => {
-          if (row.original.status_code < 400) {
+        key: "error",
+        defaultWidth: 200,
+        minWidth: 120,
+        label: "失败原因",
+        render: (row) => {
+          if (row.status_code < 400) {
             return <span className="block w-full truncate text-[var(--color-foreground-muted)]">-</span>;
           }
           return (
-            <span className="block w-full truncate text-[var(--color-foreground-secondary)]" title={row.original.error_message ?? "-"}>
-              {row.original.error_message ?? "-"}
+            <span className="block w-full truncate text-[var(--color-foreground-secondary)]" title={row.error_message ?? "-"}>
+              {row.error_message ?? "-"}
             </span>
           );
-        },
-        meta: {
-          headerClassName: "w-[28rem] min-w-[28rem] max-w-[28rem]",
-          cellClassName: "w-[28rem] min-w-[28rem] max-w-[28rem]",
         },
       },
     );

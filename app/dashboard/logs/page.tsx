@@ -6,11 +6,9 @@ import { LogFiltersCard } from "./log-filters-card";
 import { LogSummaryCards } from "./log-summary-cards";
 import { LogTableCard } from "./log-table-card";
 import { useLogAdmin } from "./use-log-admin";
-import { useLogColumns } from "./use-log-columns";
 
 function LogsContent() {
   const logs = useLogAdmin();
-  const columns = useLogColumns(logs.role);
 
   return (
     <DashboardShell
@@ -31,7 +29,7 @@ function LogsContent() {
         />
 
         <LogTableCard
-          columns={columns}
+          role={logs.role}
           rows={logs.rows}
           loading={logs.loading}
           page={logs.page}
