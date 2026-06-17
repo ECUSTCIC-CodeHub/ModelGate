@@ -15,36 +15,35 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { authedFetch } from "@/lib/auth/client-auth";
 
-const DISMISSED_KEY = "announcement_dismissed_hash";
+const DISMISSED_KEY = "announcement_dismissed_id";
 
-async function hashContent(text: string): Promise<string> {
-  const encoded = new TextEncoder().encode(text);
-  const buffer = await crypto.subtle.digest("SHA-256", encoded);
-  return Array.from(new Uint8Array(buffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")
-    .slice(0, 16);
-}
+const PURIFY_CONFIG = {
+  ALLOWED_TAGS: ["p", "br", "strong", "em", "ul", "ol", "li", "a", "code", "pre", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "table", "thead", "tbody", "tr", "th", "td", "del", "s", "sub", "sup"],
+  ALLOWED_ATTR: ["href", "title", "class"],
+};
 
 export function AnnouncementDialog() {
   const [open, setOpen] = useState(false);
   const [html, setHtml] = useState("");
-  const [contentHash, setContentHash] = useState("");
+  const [title, setTitle] = useState("");
+  const [announcementId, setAnnouncementId] = useState<number | null>(null);
 
   const fetchAndShow = useCallback(async (force = false) => {
     try {
       const response = await authedFetch("/api/dashboard/announcement");
       if (!response.ok) return;
       const data = await response.json();
+      const id: number | null = data?.id ?? null;
       const content = (data?.content ?? "").trim();
-      if (!content) return;
+      if (!content || id === null) return;
 
-      const hash = await hashContent(content);
-      if (!force && localStorage.getItem(DISMISSED_KEY) === hash) return;
+      const stored = localStorage.getItem(DISMISSED_KEY);
+      if (!force && stored === String(id)) return;
 
-      setContentHash(hash);
+      setAnnouncementId(id);
+      setTitle(data?.title || "系统公告");
       const rendered = await marked.parse(content);
-      setHtml(DOMPurify.sanitize(rendered));
+      setHtml(DOMPurify.sanitize(rendered, PURIFY_CONFIG));
       setOpen(true);
     } catch {
       // silently ignore
@@ -66,8 +65,8 @@ export function AnnouncementDialog() {
 
   function onDismiss() {
     setOpen(false);
-    if (contentHash) {
-      localStorage.setItem(DISMISSED_KEY, contentHash);
+    if (announcementId !== null) {
+      localStorage.setItem(DISMISSED_KEY, String(announcementId));
     }
   }
 
@@ -75,7 +74,7 @@ export function AnnouncementDialog() {
     <Dialog open={open} onOpenChange={(v) => { if (!v) onDismiss(); }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>系统公告</DialogTitle>
+          <DialogTitle>{title || "系统公告"}</DialogTitle>
           <DialogDescription>来自管理员的通知</DialogDescription>
         </DialogHeader>
         <ScrollArea className="max-h-[60vh]">

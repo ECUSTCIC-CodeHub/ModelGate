@@ -388,6 +388,7 @@ async function seedDefaultSettings(db: DatabaseAdapter) {
     ["oidc_auto_register", "1"],
     ["oidc_button_text", "OIDC 登录"],
     ["announcement_content", ""],
+    ["announcement_display_count", "3"],
     ["icp_filing_number", ""],
     ["public_security_filing_number", ""],
   ];

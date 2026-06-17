@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { modelGateFeatures } from "@/lib/core/features";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import { DashboardAnnouncementsCard } from "./_home/dashboard-announcements-card";
 import { DashboardHeaderActions } from "./_home/dashboard-header-actions";
 import { DashboardModelQuotaCard } from "./_home/dashboard-model-quota-card";
 import { DashboardQuotaCard } from "./_home/dashboard-quota-card";
@@ -26,6 +27,7 @@ export default function DashboardHomePage() {
       right={<DashboardHeaderActions onNavigate={navigate} />}
     >
       <div className="space-y-4 pb-6">
+        {modelGateFeatures.announcement ? <DashboardAnnouncementsCard /> : null}
         <DashboardSummaryCards loading={dashboard.loading} role={dashboard.role} summary={dashboard.summary} />
         <DashboardQuotaCard quota={dashboard.quota} />
         <DashboardModelQuotaCard modelQuotas={dashboard.modelQuotas} />

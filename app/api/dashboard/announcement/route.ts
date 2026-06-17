@@ -13,7 +13,11 @@ export async function GET(request: Request) {
   if ("error" in guard) return guard.error;
 
   const row = await gatewayDb
-    .queryOne<{ value: string }>("SELECT value FROM settings WHERE `key` = 'announcement_content'");
+    .queryOne<{ id: number; title: string; content: string; pinned: number; created_at: string }>(
+      "SELECT id, title, content, pinned, created_at FROM announcements ORDER BY pinned DESC, created_at DESC LIMIT 1",
+    );
 
-  return jsonOk({ content: row?.value ?? "" });
+  if (!row) return jsonOk({ content: "", id: null, title: "" });
+
+  return jsonOk({ content: row.content, id: row.id, title: row.title });
 }

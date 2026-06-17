@@ -23,6 +23,7 @@ const schema = z.object({
   oidc_button_text: z.string().optional(),
   public_base_url: z.string().optional(),
   announcement_content: z.string().max(5000).optional(),
+  announcement_display_count: z.number().int().min(1).max(20).optional(),
   access_guide_notice: z.string().max(10000).optional(),
   webhook_secret: z.string().max(200).optional(),
   cors_enabled: z.boolean().optional(),

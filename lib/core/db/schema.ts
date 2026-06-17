@@ -116,6 +116,15 @@ CREATE INDEX IF NOT EXISTS idx_logs_user_created_at ON logs(user_id, created_at)
 CREATE INDEX IF NOT EXISTS idx_logs_user_id_id ON logs(user_id, id);
 CREATE INDEX IF NOT EXISTS idx_logs_channel_created_at ON logs(channel_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_logs_key_id ON logs(key_id);
+
+CREATE TABLE IF NOT EXISTS announcements (
+  id INTEGER PRIMARY KEY,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  pinned INTEGER DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_announcements_pinned_created ON announcements(pinned, created_at);
 `;
 
 export const POST_MIGRATION_INDEXES_SQL = `

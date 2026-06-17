@@ -47,6 +47,7 @@ export default function AdminSettingsPage() {
   const [oidcButtonText, setOidcButtonText] = useState("OIDC 登录");
   const [publicBaseUrl, setPublicBaseUrl] = useState("");
   const [announcementContent, setAnnouncementContent] = useState("");
+  const [announcementDisplayCount, setAnnouncementDisplayCount] = useState(3);
   const [accessGuideNotice, setAccessGuideNotice] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
   const [corsEnabled, setCorsEnabled] = useState(false);
@@ -80,6 +81,7 @@ export default function AdminSettingsPage() {
     const savedBase = stringValue(settings.public_base_url);
     setPublicBaseUrl(savedBase || (typeof window !== "undefined" ? window.location.origin : ""));
     if (announcementFeatureEnabled) setAnnouncementContent(stringValue(settings.announcement_content));
+    if (announcementFeatureEnabled) setAnnouncementDisplayCount(Number(settings.announcement_display_count ?? 3));
     if (accessGuideNoticeFeatureEnabled) setAccessGuideNotice(stringValue(settings.access_guide_notice));
     if (webhookFeatureEnabled) setWebhookSecret(stringValue(settings.webhook_secret));
     setCorsEnabled(settings.cors_enabled === 1);
@@ -123,6 +125,7 @@ export default function AdminSettingsPage() {
         } : {}),
         public_base_url: publicBaseUrl,
         ...(announcementFeatureEnabled ? { announcement_content: announcementContent } : {}),
+        ...(announcementFeatureEnabled ? { announcement_display_count: announcementDisplayCount } : {}),
         ...(accessGuideNoticeFeatureEnabled ? { access_guide_notice: accessGuideNotice } : {}),
         ...(webhookFeatureEnabled ? { webhook_secret: webhookSecret } : {}),
         cors_enabled: corsEnabled,
@@ -221,8 +224,8 @@ export default function AdminSettingsPage() {
 
         {announcementFeatureEnabled ? (
           <AnnouncementSettingsCard
-            announcementContent={announcementContent}
-            setAnnouncementContent={setAnnouncementContent}
+            announcementDisplayCount={announcementDisplayCount}
+            setAnnouncementDisplayCount={setAnnouncementDisplayCount}
           />
         ) : null}
 

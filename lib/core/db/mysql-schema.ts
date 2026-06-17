@@ -153,6 +153,14 @@ CREATE TABLE IF NOT EXISTS logs (
   user_agent TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS announcements (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  content TEXT NOT NULL,
+  pinned TINYINT(1) DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 `;
 
 export const MYSQL_BASE_INDEXES = [
@@ -167,6 +175,7 @@ export const MYSQL_BASE_INDEXES = [
   { name: "idx_logs_channel_created_at", table: "logs", expr: "(channel_id, created_at)" },
   { name: "idx_logs_key_id", table: "logs", expr: "(key_id)" },
   { name: "idx_keys_key", table: "`keys`", expr: "(`key`)" },
+  { name: "idx_announcements_pinned_created", table: "announcements", expr: "(pinned, created_at)" },
 ] as const;
 
 export const MYSQL_POST_MIGRATION_INDEXES = [

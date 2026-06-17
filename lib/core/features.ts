@@ -62,6 +62,7 @@ export type EditionSettingsInput = {
   oidc_auto_register?: boolean;
   oidc_button_text?: string;
   announcement_content?: string;
+  announcement_display_count?: number;
   access_guide_notice?: string;
   webhook_secret?: string;
 };
@@ -80,6 +81,7 @@ export function filterSettingsInputForEdition<T extends EditionSettingsInput>(in
   }
   if (!modelGateFeatures.announcement) {
     delete next.announcement_content;
+    delete next.announcement_display_count;
   }
   if (!modelGateFeatures.webhook) {
     delete next.webhook_secret;
@@ -100,6 +102,7 @@ export function maskSettingsForEdition<T extends {
   oidc_auto_register: number;
   oidc_button_text: string;
   announcement_content: string;
+  announcement_display_count: number;
   access_guide_notice: string;
   webhook_secret: string;
 }>(settings: T): T {
@@ -114,6 +117,7 @@ export function maskSettingsForEdition<T extends {
     oidc_auto_register: modelGateFeatures.oidc ? settings.oidc_auto_register : 1,
     oidc_button_text: modelGateFeatures.oidc ? settings.oidc_button_text : "OIDC 登录",
     announcement_content: modelGateFeatures.announcement ? settings.announcement_content : "",
+    announcement_display_count: modelGateFeatures.announcement ? settings.announcement_display_count : 3,
     access_guide_notice: modelGateFeatures.accessGuideNotice ? settings.access_guide_notice : "",
     webhook_secret: modelGateFeatures.webhook && settings.webhook_secret ? "••••••••" : "",
   };
