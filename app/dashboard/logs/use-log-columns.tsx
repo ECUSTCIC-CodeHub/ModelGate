@@ -121,7 +121,7 @@ export function useLogColumnDefs(role: LogRole) {
                 {masked}
               </button>
             </TooltipTrigger>
-            <TooltipContent align="start">
+            <TooltipContent align="start" className="max-w-[280px] break-all">
               <p>备注：{name && name.trim() ? name : "（无）"}</p>
             </TooltipContent>
           </Tooltip>
@@ -165,25 +165,34 @@ export function useLogColumnDefs(role: LogRole) {
         defaultWidth: 120,
         minWidth: 80,
         label: "状态",
-        render: (row) => (
-          <div className="flex items-center gap-1.5 whitespace-nowrap">
-            <Badge variant={row.status_code >= 400 ? "secondary" : "default"}>
-              {row.status_code}
-            </Badge>
-            <span className="text-xs text-[var(--color-foreground-muted)]">{row.stream ? "流式" : "普通"}</span>
-            {role === "admin" && (row.route_attempts ?? 1) > 1 ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="cursor-help text-xs text-[var(--color-foreground-muted)]">·重试</span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>路由尝试 {(row.route_attempts ?? 1)} 次</p>
-                  <p>尝试渠道：{row.attempted_channels ?? "-"}</p>
-                </TooltipContent>
-              </Tooltip>
-            ) : null}
-          </div>
-        ),
+        render: (row) => {
+          const isRetry = role === "admin" && (row.route_attempts ?? 1) > 1;
+          const titleText = isRetry
+            ? `重试 ${row.route_attempts ?? 1} 次 · ${row.attempted_channels ?? "-"}`
+            : `${row.status_code} ${row.stream ? "流式" : "普通"}`;
+          return (
+            <div
+              className="flex items-center gap-1.5 whitespace-nowrap"
+              title={titleText}
+            >
+              <Badge variant={row.status_code >= 400 ? "secondary" : "default"}>
+                {row.status_code}
+              </Badge>
+              <span className="text-xs text-[var(--color-foreground-muted)]">{row.stream ? "流式" : "普通"}</span>
+              {isRetry ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="cursor-help text-xs text-[var(--color-foreground-muted)]">·重试</span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-[320px] break-all">
+                    <p>路由尝试 {(row.route_attempts ?? 1)} 次</p>
+                    <p>尝试渠道：{row.attempted_channels ?? "-"}</p>
+                  </TooltipContent>
+                </Tooltip>
+              ) : null}
+            </div>
+          );
+        },
       },
       {
         key: "token",

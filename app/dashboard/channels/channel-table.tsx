@@ -42,7 +42,7 @@ export function ChannelTable({
     [],
   );
 
-  const { widths, getResizeHandler } = useResizableColumns(colDefs);
+  const { widths, getResizeHandler } = useResizableColumns(colDefs, "channels");
   const totalMinWidth = colDefs.reduce((sum, c) => sum + c.minWidth, 0) + 360;
 
   if (channels.length === 0) {

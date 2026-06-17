@@ -46,7 +46,7 @@ export function UserTable({
     [periodQuotaEnabled],
   );
 
-  const { widths, getResizeHandler } = useResizableColumns(colDefs);
+  const { widths, getResizeHandler } = useResizableColumns(colDefs, "users");
 
   const totalMinWidth =
     colDefs.reduce((sum, c) => sum + c.minWidth, 0) + 360;

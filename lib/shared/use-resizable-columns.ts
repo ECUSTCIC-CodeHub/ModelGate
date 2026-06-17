@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export interface ColumnWidthDef {
   key: string;
@@ -8,14 +8,61 @@ export interface ColumnWidthDef {
   minWidth: number;
 }
 
-export function useResizableColumns(columns: ColumnWidthDef[]) {
+const STORAGE_KEY = "modelgate:column-widths";
+
+function loadStoredWidths(): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") return parsed as Record<string, number>;
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+function saveStoredWidths(widths: Record<string, number>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(widths));
+  } catch {
+    // ignore
+  }
+}
+
+export function useResizableColumns(columns: ColumnWidthDef[], scope: string) {
   const [widths, setWidths] = useState<Record<string, number>>(() => {
+    const stored = loadStoredWidths();
+    const scopedKey = `${scope}:`;
     const initial: Record<string, number> = {};
     for (const col of columns) {
-      initial[col.key] = col.defaultWidth;
+      const storedKey = `${scopedKey}${col.key}`;
+      const storedValue = stored[storedKey];
+      initial[col.key] =
+        typeof storedValue === "number" && storedValue >= col.minWidth
+          ? storedValue
+          : col.defaultWidth;
     }
     return initial;
   });
+
+  useEffect(() => {
+    const stored = loadStoredWidths();
+    const scopedKey = `${scope}:`;
+    let changed = false;
+    const merged = { ...stored };
+    for (const col of columns) {
+      const storedKey = `${scopedKey}${col.key}`;
+      const w = widths[col.key];
+      if (typeof w === "number" && w !== merged[storedKey]) {
+        merged[storedKey] = w;
+        changed = true;
+      }
+    }
+    if (changed) saveStoredWidths(merged);
+  }, [widths, columns, scope]);
 
   const getResizeHandler = useCallback(
     (key: string) => (e: React.MouseEvent) => {

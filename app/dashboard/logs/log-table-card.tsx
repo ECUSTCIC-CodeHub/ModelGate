@@ -30,12 +30,19 @@ export function LogTableCard({
   onPageChange,
 }: LogTableCardProps) {
   const colDefs = useLogColumnDefs(role);
-  const { widths, getResizeHandler } = useResizableColumns(colDefs);
+  const { widths, getResizeHandler } = useResizableColumns(colDefs, "logs");
   const totalMinWidth = colDefs.reduce((sum, c) => sum + c.minWidth, 0);
+  const showEmpty = rows.length === 0;
 
-  const th = (col: LogColDef) => (
-    <TableHead key={col.key} className="relative" style={{ width: widths[col.key] }}>
-      {col.label}
+  const th = (col: LogColDef, isLast: boolean) => (
+    <TableHead
+      key={col.key}
+      className="relative"
+      style={{ width: widths[col.key] }}
+    >
+      <span className={isLast ? undefined : "border-r border-[var(--color-border)] pr-2"}>
+        {col.label}
+      </span>
       <ResizeHandle onMouseDown={getResizeHandler(col.key)} />
     </TableHead>
   );
@@ -49,12 +56,12 @@ export function LogTableCard({
         />
       </CardHeader>
       <CardContent className="space-y-4">
-        {rows.length > 0 ? (
+        {!showEmpty ? (
           <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
             <Table className="table-fixed" style={{ minWidth: totalMinWidth }}>
               <TableHeader>
                 <TableRow>
-                  {colDefs.map(th)}
+                  {colDefs.map((col, i) => th(col, i === colDefs.length - 1))}
                 </TableRow>
               </TableHeader>
               <TableBody>

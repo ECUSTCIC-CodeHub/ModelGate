@@ -49,7 +49,7 @@ export function GroupTable({
     [periodQuotaEnabled],
   );
 
-  const { widths, getResizeHandler } = useResizableColumns(colDefs);
+  const { widths, getResizeHandler } = useResizableColumns(colDefs, "groups");
   const totalMinWidth = colDefs.reduce((sum, c) => sum + c.minWidth, 0) + 240;
 
   if (rows.length === 0) {

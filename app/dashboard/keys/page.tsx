@@ -172,7 +172,7 @@ export default function ConsoleKeysPage() {
         [],
     );
 
-    const { widths, getResizeHandler } = useResizableColumns(keyColDefs);
+    const { widths, getResizeHandler } = useResizableColumns(keyColDefs, "keys");
     const totalMinWidth = keyColDefs.reduce((sum, c) => sum + c.minWidth, 0) + 240;
 
     const th = (key: string, label: string) => (

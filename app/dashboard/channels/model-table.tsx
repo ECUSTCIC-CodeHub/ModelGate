@@ -47,7 +47,7 @@ export function ModelTable({
     [],
   );
 
-  const { widths, getResizeHandler } = useResizableColumns(colDefs);
+  const { widths, getResizeHandler } = useResizableColumns(colDefs, "channels-models");
   const totalMinWidth = colDefs.reduce((sum, c) => sum + c.minWidth, 0) + 360;
 
   if (models.length === 0) {
