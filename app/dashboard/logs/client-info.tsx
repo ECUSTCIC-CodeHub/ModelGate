@@ -12,7 +12,7 @@ export function ClientInfo({ ip, userAgent }: ClientInfoProps) {
   const shortUserAgent = formatUserAgent(userAgent);
 
   return (
-    <div className="max-w-64 space-y-1 leading-tight">
+    <div className="min-w-0 max-w-64 space-y-1 leading-tight">
       <div className="flex min-w-0 items-center gap-1.5">
         <span className="shrink-0 rounded-sm bg-[var(--color-popover-hover)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--color-foreground-muted)]">
           IP
