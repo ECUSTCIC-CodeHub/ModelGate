@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
-import { Megaphone, Pin } from "lucide-react";
+import { ChevronDown, Megaphone, Pin } from "lucide-react";
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { authedFetch } from "@/lib/auth/client-auth";
@@ -34,6 +34,7 @@ function formatDate(value: string) {
 export function DashboardAnnouncementsCard() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [htmlMap, setHtmlMap] = useState<Record<number, string>>({});
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
   const fetchAnnouncements = useCallback(async () => {
     try {
@@ -58,6 +59,18 @@ export function DashboardAnnouncementsCard() {
     void fetchAnnouncements();
   }, [fetchAnnouncements]);
 
+  function toggleExpand(id: number) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
   if (announcements.length === 0) return null;
 
   return (
@@ -65,28 +78,43 @@ export function DashboardAnnouncementsCard() {
       <CardHeader>
         <SectionTitle
           title="系统公告"
-          description="最近发布的通知与公告。"
+          description="最近发布的通知与公告，点击标题展开查看。"
           action={<Megaphone className="h-5 w-5 text-[var(--color-foreground-muted)]" />}
         />
       </CardHeader>
-      <CardContent className="space-y-4">
-        {announcements.map((item) => (
-          <div key={item.id} className="border-b border-[var(--color-border)] pb-4 last:border-b-0 last:pb-0">
-            <div className="mb-2 flex items-center gap-2">
-              {item.pinned ? (
-                <Pin className="h-4 w-4 text-[var(--color-accent)]" />
+      <CardContent className="space-y-1">
+        {announcements.map((item) => {
+          const expanded = expandedIds.has(item.id);
+          return (
+            <div key={item.id} className="border-b border-[var(--color-border)] last:border-b-0">
+              <button
+                type="button"
+                aria-expanded={expanded}
+                aria-controls={`announcement-content-${item.id}`}
+                onClick={() => toggleExpand(item.id)}
+                className="flex w-full items-center gap-2 py-3 text-left"
+              >
+                {item.pinned ? (
+                  <Pin className="h-4 w-4 shrink-0 text-[var(--color-accent)]" />
+                ) : null}
+                <ChevronDown
+                  className={`h-4 w-4 shrink-0 text-[var(--color-foreground-muted)] transition-transform ${expanded ? "rotate-180" : ""}`}
+                />
+                <h3 className="truncate text-base font-semibold text-[var(--color-foreground)]">{item.title}</h3>
+                <span className="ml-auto shrink-0 text-xs text-[var(--color-foreground-muted)]">
+                  {formatDate(item.created_at)}
+                </span>
+              </button>
+              {expanded ? (
+                <div
+                  id={`announcement-content-${item.id}`}
+                  className="markdown-body pb-4 text-sm"
+                  dangerouslySetInnerHTML={{ __html: htmlMap[item.id] ?? "" }}
+                />
               ) : null}
-              <h3 className="text-base font-semibold text-[var(--color-foreground)]">{item.title}</h3>
-              <span className="ml-auto text-xs text-[var(--color-foreground-muted)]">
-                {formatDate(item.created_at)}
-              </span>
             </div>
-            <div
-              className="markdown-body text-sm"
-              dangerouslySetInnerHTML={{ __html: htmlMap[item.id] ?? "" }}
-            />
-          </div>
-        ))}
+          );
+        })}
       </CardContent>
     </Card>
   );
