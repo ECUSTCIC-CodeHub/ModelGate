@@ -24,7 +24,7 @@ export function ClientInfo({ ip, userAgent }: ClientInfoProps) {
           <TooltipTrigger asChild>
             <button
               type="button"
-              className="flex max-w-64 cursor-help items-center gap-1.5 rounded-sm text-left text-xs text-[var(--color-foreground-secondary)] transition-colors hover:text-[var(--color-accent)]"
+              className="flex min-w-0 max-w-64 cursor-help items-center gap-1.5 rounded-sm text-left text-xs text-[var(--color-foreground-secondary)] transition-colors hover:text-[var(--color-accent)]"
             >
               <span className="shrink-0 rounded-sm bg-[var(--color-popover-hover)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--color-foreground-muted)]">
                 UA
