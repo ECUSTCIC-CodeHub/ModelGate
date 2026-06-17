@@ -14,7 +14,7 @@ export async function GET(request: Request) {
 
   const row = await gatewayDb
     .queryOne<{ id: number; title: string; content: string; pinned: number; created_at: string }>(
-      "SELECT id, title, content, pinned, created_at FROM announcements ORDER BY pinned DESC, created_at DESC LIMIT 1",
+      "SELECT id, title, content, pinned, created_at FROM announcements ORDER BY created_at DESC LIMIT 1",
     );
 
   if (!row) return jsonOk({ content: "", id: null, title: "" });
