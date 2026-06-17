@@ -12,19 +12,19 @@ export function ClientInfo({ ip, userAgent }: ClientInfoProps) {
   const shortUserAgent = formatUserAgent(userAgent);
 
   return (
-    <div className="min-w-0 max-w-64 space-y-1 leading-tight">
+    <div className="min-w-0 space-y-1 leading-tight">
       <div className="flex min-w-0 items-center gap-1.5">
         <span className="shrink-0 rounded-sm bg-[var(--color-popover-hover)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--color-foreground-muted)]">
           IP
         </span>
-        <span className="truncate font-mono text-xs text-[var(--color-foreground-muted)]">{ip ?? "-"}</span>
+        <span className="min-w-0 truncate font-mono text-xs text-[var(--color-foreground-muted)]">{ip ?? "-"}</span>
       </div>
       {userAgent ? (
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               type="button"
-              className="flex min-w-0 max-w-64 cursor-help items-center gap-1.5 rounded-sm text-left text-xs text-[var(--color-foreground-secondary)] transition-colors hover:text-[var(--color-accent)]"
+              className="flex min-w-0 cursor-help items-center gap-1.5 rounded-sm text-left text-xs text-[var(--color-foreground-secondary)] transition-colors hover:text-[var(--color-accent)]"
             >
               <span className="shrink-0 rounded-sm bg-[var(--color-popover-hover)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--color-foreground-muted)]">
                 UA

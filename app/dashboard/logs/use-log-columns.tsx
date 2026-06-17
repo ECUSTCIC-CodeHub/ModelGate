@@ -77,7 +77,7 @@ export function useLogColumnDefs(role: LogRole) {
       minWidth: 130,
       label: "时间",
       render: (row) => (
-        <span className="whitespace-nowrap font-mono text-xs text-[var(--color-foreground-secondary)]">
+        <span className="block truncate font-mono text-xs text-[var(--color-foreground-secondary)]">
           {formatDatetime(row.created_at)}
         </span>
       ),
@@ -90,7 +90,7 @@ export function useLogColumnDefs(role: LogRole) {
         minWidth: 80,
         label: "用户",
         render: (row) => (
-          <span className="block max-w-36 truncate whitespace-nowrap" title={row.username}>
+          <span className="block truncate" title={row.username}>
             {row.username}
           </span>
         ),
@@ -117,7 +117,7 @@ export function useLogColumnDefs(role: LogRole) {
         return (
           <Tooltip>
             <TooltipTrigger asChild>
-              <button type="button" className="block max-w-44 truncate text-left font-mono text-xs text-inherit">
+              <button type="button" className="block truncate text-left font-mono text-xs text-inherit">
                 {masked}
               </button>
             </TooltipTrigger>
@@ -141,7 +141,7 @@ export function useLogColumnDefs(role: LogRole) {
           ? `${alias} → ${real}`
           : (real ?? alias ?? "-");
         return (
-          <span className="block max-w-48 truncate" title={text}>{text}</span>
+          <span className="block truncate" title={text}>{text}</span>
         );
       },
     });
@@ -154,7 +154,7 @@ export function useLogColumnDefs(role: LogRole) {
         label: "渠道",
         render: (row) => {
           const text = row.channel_name ?? (row.status_code >= 400 ? "网关拦截" : "-");
-          return <span className="block max-w-40 truncate" title={text}>{text}</span>;
+          return <span className="block truncate" title={text}>{text}</span>;
         },
       });
     }
@@ -263,10 +263,10 @@ export function useLogColumnDefs(role: LogRole) {
         label: "失败原因",
         render: (row) => {
           if (row.status_code < 400) {
-            return <span className="block w-full truncate text-[var(--color-foreground-muted)]">-</span>;
+            return <span className="block truncate text-[var(--color-foreground-muted)]">-</span>;
           }
           return (
-            <span className="block w-full truncate text-[var(--color-foreground-secondary)]" title={row.error_message ?? "-"}>
+            <span className="block truncate text-[var(--color-foreground-secondary)]" title={row.error_message ?? "-"}>
               {row.error_message ?? "-"}
             </span>
           );
