@@ -61,7 +61,7 @@ export function LogTableCard({
                 {rows.map((row) => (
                   <TableRow key={row.id}>
                     {colDefs.map((col) => (
-                      <TableCell key={col.key}>
+                      <TableCell key={col.key} className="overflow-hidden">
                         {col.render(row)}
                       </TableCell>
                     ))}

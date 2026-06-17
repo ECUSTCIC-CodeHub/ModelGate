@@ -99,8 +99,8 @@ export function useLogColumnDefs(role: LogRole) {
 
     cols.push({
       key: "client",
-      defaultWidth: 120,
-      minWidth: 80,
+      defaultWidth: 180,
+      minWidth: 120,
       label: "客户端",
       render: (row) => <ClientInfo ip={row.client_ip} userAgent={row.user_agent} />,
     });
