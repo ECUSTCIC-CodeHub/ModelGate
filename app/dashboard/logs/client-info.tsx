@@ -29,7 +29,7 @@ export function ClientInfo({ ip, userAgent }: ClientInfoProps) {
               <span className="shrink-0 rounded-sm bg-[var(--color-popover-hover)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--color-foreground-muted)]">
                 UA
               </span>
-              <span className="truncate underline decoration-[var(--color-border-strong)] underline-offset-2">{shortUserAgent}</span>
+              <span className="min-w-0 truncate underline decoration-[var(--color-border-strong)] underline-offset-2">{shortUserAgent}</span>
             </button>
           </TooltipTrigger>
           <TooltipContent align="start" className="max-w-96">
