@@ -47,10 +47,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     sets.push("pinned = ?");
     params.push(parsed.data.pinned ? 1 : 0);
   }
-  if (sets.length > 0) {
-    params.push(id);
-    await gatewayDb.execute(`UPDATE announcements SET ${sets.join(", ")} WHERE id = ?`, params);
-  }
+  if (sets.length === 0) return jsonError("没有需要更新的字段", 400);
+
+  params.push(id);
+  await gatewayDb.execute(`UPDATE announcements SET ${sets.join(", ")} WHERE id = ?`, params);
 
   const row = await gatewayDb.queryOne<{
     id: number;

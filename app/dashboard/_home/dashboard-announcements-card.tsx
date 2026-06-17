@@ -7,11 +7,7 @@ import { ChevronDown, Megaphone, Pin } from "lucide-react";
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { authedFetch } from "@/lib/auth/client-auth";
-
-const PURIFY_CONFIG = {
-  ALLOWED_TAGS: ["p", "br", "strong", "em", "ul", "ol", "li", "a", "code", "pre", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "table", "thead", "tbody", "tr", "th", "td", "del", "s", "sub", "sup"],
-  ALLOWED_ATTR: ["href", "title", "class"],
-};
+import { formatAnnouncementDate, MARKDOWN_PURIFY_CONFIG } from "@/lib/shared/utils";
 
 type Announcement = {
   id: number;
@@ -20,16 +16,6 @@ type Announcement = {
   pinned: number;
   created_at: string;
 };
-
-function formatDate(value: string) {
-  if (!value) return "";
-  const date = new Date(value.includes("T") ? value : value.replace(" ", "T"));
-  if (Number.isNaN(date.getTime())) return value;
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
 
 export function DashboardAnnouncementsCard() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -46,7 +32,7 @@ export function DashboardAnnouncementsCard() {
 
       const rendered: Record<number, string> = {};
       for (const item of list) {
-        const html = DOMPurify.sanitize(await marked.parse(item.content), PURIFY_CONFIG);
+        const html = DOMPurify.sanitize(await marked.parse(item.content), MARKDOWN_PURIFY_CONFIG);
         rendered[item.id] = html;
       }
       setHtmlMap(rendered);
@@ -102,7 +88,7 @@ export function DashboardAnnouncementsCard() {
                 />
                 <h3 className="truncate text-base font-semibold text-[var(--color-foreground)]">{item.title}</h3>
                 <span className="ml-auto shrink-0 text-xs text-[var(--color-foreground-muted)]">
-                  {formatDate(item.created_at)}
+                  {formatAnnouncementDate(item.created_at)}
                 </span>
               </button>
               {expanded ? (

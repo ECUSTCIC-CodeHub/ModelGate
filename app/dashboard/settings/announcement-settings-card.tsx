@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/shared/api-message";
 import { authedFetch } from "@/lib/auth/client-auth";
+import { formatAnnouncementDate } from "@/lib/shared/utils";
 
 type Announcement = {
   id: number;
@@ -16,18 +17,6 @@ type Announcement = {
   pinned: number;
   created_at: string;
 };
-
-function formatDate(value: string) {
-  if (!value) return "";
-  const date = new Date(value.includes("T") ? value : value.replace(" ", "T"));
-  if (Number.isNaN(date.getTime())) return value;
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  const hh = String(date.getHours()).padStart(2, "0");
-  const mm = String(date.getMinutes()).padStart(2, "0");
-  return `${y}-${m}-${d} ${hh}:${mm}`;
-}
 
 export function AnnouncementSettingsCard({
   announcementDisplayCount,
@@ -38,6 +27,7 @@ export function AnnouncementSettingsCard({
 }) {
   const { toast } = useToast();
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formTitle, setFormTitle] = useState("");
@@ -53,6 +43,8 @@ export function AnnouncementSettingsCard({
       setAnnouncements(data?.data ?? []);
     } catch {
       // silently ignore
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -157,7 +149,7 @@ export function AnnouncementSettingsCard({
             min={1}
             max={20}
             value={announcementDisplayCount}
-            onChange={(e) => setAnnouncementDisplayCount(Math.max(1, Number(e.target.value) || 1))}
+            onChange={(e) => setAnnouncementDisplayCount(Math.min(20, Math.max(1, Number(e.target.value) || 1)))}
             className="w-20 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-3 py-1.5 text-sm text-[var(--color-foreground)] focus-visible:border-[var(--color-accent)]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/20"
           />
           <span className="text-xs text-[var(--color-foreground-muted)]">首页概览展示最近 N 条公告，保存设置后生效。</span>
@@ -205,7 +197,11 @@ export function AnnouncementSettingsCard({
           </div>
         ) : null}
 
-        {announcements.length === 0 ? (
+        {loading ? (
+          <div className="py-8 text-center text-sm text-[var(--color-foreground-muted)]">
+            加载中...
+          </div>
+        ) : announcements.length === 0 ? (
           <div className="py-8 text-center text-sm text-[var(--color-foreground-muted)]">
             暂无公告，点击「新增公告」创建第一条。
           </div>
@@ -223,7 +219,7 @@ export function AnnouncementSettingsCard({
                     ) : null}
                     <span className="truncate font-medium text-[var(--color-foreground)]">{item.title}</span>
                     <span className="ml-auto shrink-0 text-xs text-[var(--color-foreground-muted)]">
-                      {formatDate(item.created_at)}
+                      {formatAnnouncementDate(item.created_at, true)}
                     </span>
                   </div>
                   <p className="mt-1 line-clamp-2 text-sm text-[var(--color-foreground-muted)]">

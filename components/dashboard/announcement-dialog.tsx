@@ -14,13 +14,9 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { authedFetch } from "@/lib/auth/client-auth";
+import { MARKDOWN_PURIFY_CONFIG } from "@/lib/shared/utils";
 
 const DISMISSED_KEY = "announcement_dismissed_id";
-
-const PURIFY_CONFIG = {
-  ALLOWED_TAGS: ["p", "br", "strong", "em", "ul", "ol", "li", "a", "code", "pre", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "table", "thead", "tbody", "tr", "th", "td", "del", "s", "sub", "sup"],
-  ALLOWED_ATTR: ["href", "title", "class"],
-};
 
 export function AnnouncementDialog() {
   const [open, setOpen] = useState(false);
@@ -43,7 +39,7 @@ export function AnnouncementDialog() {
       setAnnouncementId(id);
       setTitle(data?.title || "系统公告");
       const rendered = await marked.parse(content);
-      setHtml(DOMPurify.sanitize(rendered, PURIFY_CONFIG));
+      setHtml(DOMPurify.sanitize(rendered, MARKDOWN_PURIFY_CONFIG));
       setOpen(true);
     } catch {
       // silently ignore
