@@ -132,6 +132,11 @@ export default function AvailableModelsPage() {
     setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
   }
 
+  function handleSort(field: SortField) {
+    if (sortField === field) toggleSortOrder();
+    else { setSortField(field); setSortOrder("asc"); }
+  }
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return rows;
@@ -155,36 +160,43 @@ export default function AvailableModelsPage() {
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
-  function renderTokenMultiplier(row: ModelItem) {
-    const hasTokenRange = row.token_multiplier_min !== row.token_multiplier_max;
+  function renderMultiplier(row: ModelItem, type: "token" | "request") {
+    const multiplier = type === "token" ? row.token_multiplier : row.request_multiplier;
+    const min = type === "token" ? row.token_multiplier_min : row.request_multiplier_min;
+    const max = type === "token" ? row.token_multiplier_max : row.request_multiplier_max;
+    const hasRange = min !== max;
     const hasMultipleChannels = row.channels.length > 1;
+    const popoverTitle = type === "token" ? "各渠道 Token 倍率" : "各渠道请求倍率";
 
     if (hasMultipleChannels) {
       return (
         <Popover>
           <PopoverTrigger asChild>
             <button className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-mono hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer">
-              <span className={hasTokenRange ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}>
-                {hasTokenRange ? row.token_multiplier_min + "x ~ " + row.token_multiplier_max + "x" : row.token_multiplier + "x"}
+              <span className={hasRange ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}>
+                {hasRange ? min + "x ~ " + max + "x" : multiplier + "x"}
               </span>
               <ChevronDown className="h-3.5 w-3.5 text-[var(--color-foreground-muted)]" />
             </button>
           </PopoverTrigger>
           <PopoverContent className="w-72 p-3" align="center">
             <div className="space-y-2">
-              <p className="text-xs font-medium text-[var(--color-foreground-muted)]">各渠道 Token 倍率</p>
+              <p className="text-xs font-medium text-[var(--color-foreground-muted)]">{popoverTitle}</p>
               <div className="space-y-1">
-                {row.channels.map((ch) => (
-                  <div key={ch.channel_id} className="flex items-center justify-between text-xs">
-                    <span className="text-[var(--color-foreground-secondary)] truncate max-w-[120px]">{ch.channel_name}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-[var(--color-foreground-muted)]">W{ch.effective_weight}</span>
-                      <span className={cn("font-mono", ch.token_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]")}>
-                        {ch.token_multiplier}x
-                      </span>
+                {row.channels.map((ch) => {
+                  const chMultiplier = type === "token" ? ch.token_multiplier : ch.request_multiplier;
+                  return (
+                    <div key={ch.channel_id} className="flex items-center justify-between text-xs">
+                      <span className="text-[var(--color-foreground-secondary)] truncate max-w-[120px]">{ch.channel_name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[var(--color-foreground-muted)]">W{ch.effective_weight}</span>
+                        <span className={cn("font-mono", chMultiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]")}>
+                          {chMultiplier}x
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </PopoverContent>
@@ -193,52 +205,8 @@ export default function AvailableModelsPage() {
     }
 
     return (
-      <span className={cn("font-mono text-sm", row.token_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]")}>
-        {row.token_multiplier}x
-      </span>
-    );
-  }
-
-  function renderRequestMultiplier(row: ModelItem) {
-    const hasRequestRange = row.request_multiplier_min !== row.request_multiplier_max;
-    const hasMultipleChannels = row.channels.length > 1;
-
-    if (hasMultipleChannels) {
-      return (
-        <Popover>
-          <PopoverTrigger asChild>
-            <button className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-mono hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer">
-              <span className={hasRequestRange ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}>
-                {hasRequestRange ? row.request_multiplier_min + "x ~ " + row.request_multiplier_max + "x" : row.request_multiplier + "x"}
-              </span>
-              <ChevronDown className="h-3.5 w-3.5 text-[var(--color-foreground-muted)]" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent className="w-72 p-3" align="center">
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-[var(--color-foreground-muted)]">各渠道请求倍率</p>
-              <div className="space-y-1">
-                {row.channels.map((ch) => (
-                  <div key={ch.channel_id} className="flex items-center justify-between text-xs">
-                    <span className="text-[var(--color-foreground-secondary)] truncate max-w-[120px]">{ch.channel_name}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-[var(--color-foreground-muted)]">W{ch.effective_weight}</span>
-                      <span className={cn("font-mono", ch.request_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]")}>
-                        {ch.request_multiplier}x
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </PopoverContent>
-        </Popover>
-      );
-    }
-
-    return (
-      <span className={cn("font-mono text-sm", row.request_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]")}>
-        {row.request_multiplier}x
+      <span className={cn("font-mono text-sm", multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]")}>
+        {multiplier}x
       </span>
     );
   }
@@ -393,30 +361,21 @@ export default function AvailableModelsPage() {
                             field="id"
                             currentField={sortField}
                             order={sortOrder}
-                            onClick={() => {
-                              if (sortField === "id") toggleSortOrder();
-                              else { setSortField("id"); setSortOrder("asc"); }
-                            }}
+                            onClick={() => handleSort("id")}
                           />
                           <SortButton
                             label="Token 倍率"
                             field="token_multiplier"
                             currentField={sortField}
                             order={sortOrder}
-                            onClick={() => {
-                              if (sortField === "token_multiplier") toggleSortOrder();
-                              else { setSortField("token_multiplier"); setSortOrder("asc"); }
-                            }}
+                            onClick={() => handleSort("token_multiplier")}
                           />
                           <SortButton
                             label="请求倍率"
                             field="request_multiplier"
                             currentField={sortField}
                             order={sortOrder}
-                            onClick={() => {
-                              if (sortField === "request_multiplier") toggleSortOrder();
-                              else { setSortField("request_multiplier"); setSortOrder("asc"); }
-                            }}
+                            onClick={() => handleSort("request_multiplier")}
                           />
                           <TableHead className="w-16" />
                         </TableRow>
@@ -426,10 +385,10 @@ export default function AvailableModelsPage() {
                           <TableRow key={row.id}>
                             <TableCell className="font-mono text-sm">{row.id}</TableCell>
                             <TableCell className="text-center">
-                              {renderTokenMultiplier(row)}
+                              {renderMultiplier(row, "token")}
                             </TableCell>
                             <TableCell className="text-center">
-                              {renderRequestMultiplier(row)}
+                              {renderMultiplier(row, "request")}
                             </TableCell>
                             <TableCell>
                               <Button size="sm" variant="ghost" onClick={() => copyText(row.id)}>
@@ -534,7 +493,13 @@ function SortButton({
 }) {
   const active = field === currentField;
   return (
-    <TableHead className="text-center cursor-pointer select-none" onClick={onClick}>
+    <TableHead
+      role="button"
+      tabIndex={0}
+      className="text-center cursor-pointer select-none"
+      onClick={onClick}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
+    >
       <span className="inline-flex items-center gap-1">
         {label}
         {active ? (
