@@ -2,14 +2,7 @@
 
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { FlaskConical, Pencil, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,8 +13,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import type { ModelWithChannel } from "./channel-model";
-import { parseSupportedProtocols, shortProtocolLabel } from "./channel-model";
+import { parseSupportedProtocols, shortProtocolLabel, type ModelWithChannel } from "./channel-model";
+import { ModelActions } from "./model-actions";
 
 export function ModelCard({
   model,
@@ -39,7 +32,6 @@ export function ModelCard({
   onRemove: () => void;
 }) {
   const [confirmToggle, setConfirmToggle] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 transition-shadow hover:shadow-[var(--shadow-md)]">
@@ -88,46 +80,13 @@ export function ModelCard({
       </div>
 
       <div className="flex items-center justify-end gap-1 border-t border-[var(--color-border)] pt-2">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={onTest}
-              disabled={testing}
-            >
-              <FlaskConical className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{testing ? "测试中..." : "测试"}</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={onEdit}
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>编辑</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-[var(--color-destructive)] hover:text-[var(--color-destructive)]"
-              onClick={() => setConfirmDelete(true)}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>删除</TooltipContent>
-        </Tooltip>
+        <ModelActions
+          model={model}
+          testing={testing}
+          onTest={onTest}
+          onEdit={onEdit}
+          onRemove={onRemove}
+        />
       </div>
 
       <AlertDialog open={confirmToggle} onOpenChange={setConfirmToggle}>
@@ -147,26 +106,6 @@ export function ModelCard({
               }}
             >
               确认
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>删除模型映射 {model.alias}？</AlertDialogTitle>
-            <AlertDialogDescription>删除后客户端将无法再通过该 alias 访问对应模型，此操作不可撤销。</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                setConfirmDelete(false);
-                onRemove();
-              }}
-            >
-              确认删除
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

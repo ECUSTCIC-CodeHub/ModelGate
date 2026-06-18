@@ -39,7 +39,16 @@ export function ModelTable({
 }) {
   const [search, setSearch] = useState("");
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
-  const [view, setView] = useState<"card" | "list">("card");
+  const [view, setView] = useState<"card" | "list">(() => {
+    if (typeof window === "undefined") return "card";
+    const saved = localStorage.getItem("modelView");
+    return saved === "card" || saved === "list" ? saved : "card";
+  });
+
+  function changeView(v: "card" | "list") {
+    setView(v);
+    localStorage.setItem("modelView", v);
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -102,7 +111,9 @@ export function ModelTable({
                 variant="ghost"
                 size="icon"
                 className={cn("h-8 w-8 rounded-sm", view === "card" && "bg-[var(--color-surface-hover)] text-[var(--color-foreground)]")}
-                onClick={() => setView("card")}
+                onClick={() => changeView("card")}
+                aria-label="卡片视图"
+                aria-pressed={view === "card"}
               >
                 <LayoutGrid className="h-4 w-4" />
               </Button>
@@ -115,7 +126,9 @@ export function ModelTable({
                 variant="ghost"
                 size="icon"
                 className={cn("h-8 w-8 rounded-sm", view === "list" && "bg-[var(--color-surface-hover)] text-[var(--color-foreground)]")}
-                onClick={() => setView("list")}
+                onClick={() => changeView("list")}
+                aria-label="列表视图"
+                aria-pressed={view === "list"}
               >
                 <List className="h-4 w-4" />
               </Button>
