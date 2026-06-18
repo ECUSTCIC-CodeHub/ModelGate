@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/shared/utils";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { Button } from "@/components/ui/button";
@@ -39,11 +39,12 @@ export function ModelTable({
 }) {
   const [search, setSearch] = useState("");
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
-  const [view, setView] = useState<"card" | "list">(() => {
-    if (typeof window === "undefined") return "card";
+  const [view, setView] = useState<"card" | "list">("card");
+
+  useEffect(() => {
     const saved = localStorage.getItem("modelView");
-    return saved === "card" || saved === "list" ? saved : "card";
-  });
+    if (saved === "card" || saved === "list") setView(saved);
+  }, []);
 
   function changeView(v: "card" | "list") {
     setView(v);
