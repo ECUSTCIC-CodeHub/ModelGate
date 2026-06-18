@@ -20,7 +20,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import type { ModelRow } from "./channel-model";
+import type { ModelWithChannel } from "./channel-model";
+import { parseSupportedProtocols, shortProtocolLabel } from "./channel-model";
 
 export function ModelCard({
   model,
@@ -30,7 +31,7 @@ export function ModelCard({
   onToggle,
   onRemove,
 }: {
-  model: ModelRow & { channel_name: string };
+  model: ModelWithChannel;
   testing: boolean;
   onTest: () => void;
   onEdit: () => void;
@@ -51,15 +52,15 @@ export function ModelCard({
           <span className="inline-flex items-center gap-1.5 text-xs font-medium">
             <span
               className={`inline-block h-2 w-2 rounded-full ${
-                model.enabled ? "bg-[var(--color-success,#22c55e)]" : "bg-[var(--color-destructive)]"
+                model.enabled ? "bg-[var(--color-success)]" : "bg-[var(--color-destructive)]"
               }`}
             />
-            <span className={model.enabled ? "text-[var(--color-success,#22c55e)]" : "text-[var(--color-destructive)]"}>
+            <span className={model.enabled ? "text-[var(--color-success)]" : "text-[var(--color-destructive)]"}>
               {model.enabled ? "启用" : "禁用"}
             </span>
           </span>
           <Switch
-            checked={model.enabled === 1}
+            checked={!!model.enabled}
             onCheckedChange={() => setConfirmToggle(true)}
           />
         </div>
@@ -73,6 +74,17 @@ export function ModelCard({
         <Badge variant={model.is_public ? "default" : "secondary"}>
           {model.is_public ? "公开" : "白名单"}
         </Badge>
+        {model.copilot_compatibility ? (
+          <Badge variant="default">Copilot 兼容</Badge>
+        ) : null}
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        {parseSupportedProtocols(model.supported_protocols).map((p) => (
+          <Badge key={p} variant={p === model.upstream_protocol ? "default" : "outline"} className="text-[10px]">
+            {shortProtocolLabel(p)}
+          </Badge>
+        ))}
       </div>
 
       <div className="flex items-center justify-end gap-1 border-t border-[var(--color-border)] pt-2">
