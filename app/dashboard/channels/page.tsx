@@ -51,10 +51,7 @@ export default function AdminChannelsPage() {
               </TabsContent>
 
               <TabsContent value="models" className="space-y-4">
-                <PageToolbar>
-                  <p className="text-sm text-[var(--color-foreground-muted)]">模型映射决定外部调用时传入的 alias 如何路由到真实模型与渠道。</p>
-                  <Button disabled={admin.channels.length === 0} onClick={() => admin.openCreateModel(admin.channels[0]?.id ?? 0)}>新增模型映射</Button>
-                </PageToolbar>
+                <p className="text-sm text-[var(--color-foreground-muted)]">模型映射决定外部调用时传入的 alias 如何路由到真实模型与渠道。</p>
                 <ModelTable
                   models={admin.allModels}
                   channelsCount={admin.channels.length}
