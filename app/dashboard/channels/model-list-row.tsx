@@ -64,6 +64,9 @@ export function ModelListRow({
         ) : null}
       </TableCell>
       <TableCell className="whitespace-nowrap">{model.weight}x</TableCell>
+      <TableCell className="whitespace-nowrap text-sm text-[var(--color-foreground-secondary)]">
+        {Math.max(1, model.weight) * Math.max(1, model.channel_weight)}x
+      </TableCell>
       <TableCell className="whitespace-nowrap font-mono text-xs text-[var(--color-foreground-secondary)]">
         T {model.token_multiplier ?? 1}x / R {model.request_multiplier ?? 1}x
       </TableCell>

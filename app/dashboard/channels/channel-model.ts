@@ -164,6 +164,7 @@ export type UpstreamModelOption = {
 
 export type ModelWithChannel = ModelRow & {
   channel_name: string;
+  channel_weight: number;
 };
 
 export const initialChannelForm: ChannelForm = {

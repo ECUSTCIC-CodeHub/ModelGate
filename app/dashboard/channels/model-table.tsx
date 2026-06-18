@@ -176,6 +176,7 @@ export function ModelTable({
                             <TableHead>可见性</TableHead>
                             <TableHead>Copilot</TableHead>
                             <TableHead>权重</TableHead>
+                            <TableHead>实际权重</TableHead>
                             <TableHead>倍率</TableHead>
                             <TableHead>最大并发</TableHead>
                             <TableHead>开关</TableHead>

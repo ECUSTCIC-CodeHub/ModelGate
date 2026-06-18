@@ -61,6 +61,9 @@ export function ModelCard({
       <div className="flex flex-wrap gap-1.5">
         <Badge variant="outline">权重 {model.weight}x</Badge>
         <Badge variant="outline">
+          实际 {Math.max(1, model.weight) * Math.max(1, model.channel_weight)}x
+        </Badge>
+        <Badge variant="outline">
           T {model.token_multiplier ?? 1}x / R {model.request_multiplier ?? 1}x
         </Badge>
         <Badge variant={model.is_public ? "default" : "secondary"}>
