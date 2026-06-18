@@ -76,7 +76,7 @@ export function DashboardAnnouncementsCard() {
                 aria-expanded={expanded}
                 aria-controls={`announcement-content-${item.id}`}
                 onClick={() => toggleExpand(item.id)}
-                className="flex w-full items-center gap-1.5 py-1.5 text-left"
+                className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left"
               >
                 {item.pinned ? (
                   <Pin className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
@@ -92,7 +92,7 @@ export function DashboardAnnouncementsCard() {
               {expanded ? (
                 <div
                   id={`announcement-content-${item.id}`}
-                  className="markdown-body pb-2 text-xs"
+                  className="markdown-body px-3 pb-2 text-xs"
                   dangerouslySetInnerHTML={{ __html: htmlMap[item.id] ?? "" }}
                 />
               ) : null}
