@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { type ReactNode, useState, useEffect } from "react";
 import { Menu, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -22,7 +22,11 @@ export function DashboardTopbar({
   onToggleTheme,
   onOpenMobileNav,
 }: DashboardTopbarProps) {
-  const themeLabel = theme === "dark" ? "切换到浅色模式" : "切换到深色模式";
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  const resolvedTheme = mounted ? theme : "light";
+  const themeLabel = resolvedTheme === "dark" ? "切换到浅色模式" : "切换到深色模式";
 
   return (
     <header className="sticky top-3 z-20 rounded-lg border border-[var(--color-header-border)] bg-[var(--color-header-bg)] px-4 py-3 shadow-[var(--shadow-sm)] lg:px-5 lg:py-4 lg:backdrop-blur-sm">
@@ -47,7 +51,7 @@ export function DashboardTopbar({
                   onClick={onToggleTheme}
                   aria-label={themeLabel}
                 >
-                  {theme === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+                  {resolvedTheme === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
                 </Button>
               </TooltipTrigger>
               <TooltipContent>{themeLabel}</TooltipContent>
