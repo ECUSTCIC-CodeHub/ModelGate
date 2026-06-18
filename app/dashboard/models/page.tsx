@@ -1,19 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
-import { ChevronDown, Copy } from "lucide-react";
+import { ChevronDown, Copy, LayoutGrid, List, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { useAuthProfile } from "@/components/providers/auth-provider";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
+import { cn } from "@/lib/shared/utils";
 import { getApiMessage } from "@/lib/shared/api-message";
 import { authedFetch, ensureLoggedIn, getCachedProfile } from "@/lib/auth/client-auth";
 
@@ -38,6 +41,9 @@ type ModelItem = {
   channels: ChannelMultiplier[];
 };
 
+type SortField = "id" | "token_multiplier" | "request_multiplier";
+type SortOrder = "asc" | "desc";
+
 const ENDPOINTS = [
   { label: "Chat Completions (OpenAI)", path: "/api/v1/chat/completions", method: "POST" },
   { label: "Chat (Ollama)", path: "/api/ollama/api/chat", method: "POST" },
@@ -48,6 +54,7 @@ const ENDPOINTS = [
   { label: "Images Edits (OpenAI)", path: "/api/v1/images/edits", method: "POST" },
 ] as const;
 
+
 export default function AvailableModelsPage() {
   const router = useRouter();
   const initialProfile = useAuthProfile();
@@ -56,7 +63,21 @@ export default function AvailableModelsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [noticeHtml, setNoticeHtml] = useState("");
+  const [search, setSearch] = useState("");
+  const [view, setView] = useState<"card" | "list">("list");
+  const [sortField, setSortField] = useState<SortField>("id");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
   const { toast } = useToast();
+
+  useEffect(() => {
+    const saved = localStorage.getItem("modelGuideView");
+    if (saved === "card" || saved === "list") setView(saved);
+  }, []);
+
+  function changeView(v: "card" | "list") {
+    setView(v);
+    localStorage.setItem("modelGuideView", v);
+  }
 
   useEffect(() => {
     void (async () => {
@@ -107,7 +128,120 @@ export default function AvailableModelsPage() {
     });
   }
 
+  function toggleSortOrder() {
+    setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+  }
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) => r.id.toLowerCase().includes(q));
+  }, [rows, search]);
+
+  const sorted = useMemo(() => {
+    const sorted = [...filtered].sort((a, b) => {
+      let cmp: number;
+      if (sortField === "id") {
+        cmp = a.id.localeCompare(b.id);
+      } else if (sortField === "token_multiplier") {
+        cmp = a.token_multiplier - b.token_multiplier;
+      } else {
+        cmp = a.request_multiplier - b.request_multiplier;
+      }
+      return sortOrder === "asc" ? cmp : -cmp;
+    });
+    return sorted;
+  }, [filtered, sortField, sortOrder]);
+
   const origin = typeof window !== "undefined" ? window.location.origin : "";
+
+  function renderTokenMultiplier(row: ModelItem) {
+    const hasTokenRange = row.token_multiplier_min !== row.token_multiplier_max;
+    const hasMultipleChannels = row.channels.length > 1;
+
+    if (hasMultipleChannels) {
+      return (
+        <Popover>
+          <PopoverTrigger asChild>
+            <button className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-mono hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer">
+              <span className={hasTokenRange ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}>
+                {hasTokenRange ? row.token_multiplier_min + "x ~ " + row.token_multiplier_max + "x" : row.token_multiplier + "x"}
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 text-[var(--color-foreground-muted)]" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-72 p-3" align="center">
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-[var(--color-foreground-muted)]">各渠道 Token 倍率</p>
+              <div className="space-y-1">
+                {row.channels.map((ch) => (
+                  <div key={ch.channel_id} className="flex items-center justify-between text-xs">
+                    <span className="text-[var(--color-foreground-secondary)] truncate max-w-[120px]">{ch.channel_name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[var(--color-foreground-muted)]">W{ch.effective_weight}</span>
+                      <span className={cn("font-mono", ch.token_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]")}>
+                        {ch.token_multiplier}x
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+      );
+    }
+
+    return (
+      <span className={cn("font-mono text-sm", row.token_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]")}>
+        {row.token_multiplier}x
+      </span>
+    );
+  }
+
+  function renderRequestMultiplier(row: ModelItem) {
+    const hasRequestRange = row.request_multiplier_min !== row.request_multiplier_max;
+    const hasMultipleChannels = row.channels.length > 1;
+
+    if (hasMultipleChannels) {
+      return (
+        <Popover>
+          <PopoverTrigger asChild>
+            <button className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-mono hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer">
+              <span className={hasRequestRange ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}>
+                {hasRequestRange ? row.request_multiplier_min + "x ~ " + row.request_multiplier_max + "x" : row.request_multiplier + "x"}
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 text-[var(--color-foreground-muted)]" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-72 p-3" align="center">
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-[var(--color-foreground-muted)]">各渠道请求倍率</p>
+              <div className="space-y-1">
+                {row.channels.map((ch) => (
+                  <div key={ch.channel_id} className="flex items-center justify-between text-xs">
+                    <span className="text-[var(--color-foreground-secondary)] truncate max-w-[120px]">{ch.channel_name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[var(--color-foreground-muted)]">W{ch.effective_weight}</span>
+                      <span className={cn("font-mono", ch.request_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]")}>
+                        {ch.request_multiplier}x
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+      );
+    }
+
+    return (
+      <span className={cn("font-mono text-sm", row.request_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]")}>
+        {row.request_multiplier}x
+      </span>
+    );
+  }
 
   return (
     <DashboardShell
@@ -202,108 +336,176 @@ export default function AvailableModelsPage() {
           <CardContent className="space-y-4">
             {error ? <p className="text-sm text-[var(--color-destructive)]">{error}</p> : null}
             {rows.length > 0 ? (
-              <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-                <Table className="min-w-[460px]">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>模型 ID</TableHead>
-                      <TableHead className="text-center">Token 倍率</TableHead>
-                      <TableHead className="text-center">请求倍率</TableHead>
-                      <TableHead className="w-16" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {rows.map((row) => {
+              <>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-foreground-muted)]" />
+                    <Input
+                      className="pl-9"
+                      placeholder="搜索模型 ID"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex items-center gap-1 rounded-md border border-[var(--color-border)] p-0.5">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={cn("h-8 w-8 rounded-sm", view === "list" && "bg-[var(--color-surface-hover)] text-[var(--color-foreground)]")}
+                          onClick={() => changeView("list")}
+                          aria-label="列表视图"
+                          aria-pressed={view === "list"}
+                        >
+                          <List className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>列表视图</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={cn("h-8 w-8 rounded-sm", view === "card" && "bg-[var(--color-surface-hover)] text-[var(--color-foreground)]")}
+                          onClick={() => changeView("card")}
+                          aria-label="卡片视图"
+                          aria-pressed={view === "card"}
+                        >
+                          <LayoutGrid className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>卡片视图</TooltipContent>
+                    </Tooltip>
+                  </div>
+                </div>
+
+                {sorted.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-[var(--color-foreground-muted)]">未找到匹配的模型。</p>
+                ) : view === "list" ? (
+                  <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
+                    <Table className="min-w-[460px]">
+                      <TableHeader>
+                        <TableRow>
+                          <SortButton
+                            label="模型 ID"
+                            field="id"
+                            currentField={sortField}
+                            order={sortOrder}
+                            onClick={() => {
+                              if (sortField === "id") toggleSortOrder();
+                              else { setSortField("id"); setSortOrder("asc"); }
+                            }}
+                          />
+                          <SortButton
+                            label="Token 倍率"
+                            field="token_multiplier"
+                            currentField={sortField}
+                            order={sortOrder}
+                            onClick={() => {
+                              if (sortField === "token_multiplier") toggleSortOrder();
+                              else { setSortField("token_multiplier"); setSortOrder("asc"); }
+                            }}
+                          />
+                          <SortButton
+                            label="请求倍率"
+                            field="request_multiplier"
+                            currentField={sortField}
+                            order={sortOrder}
+                            onClick={() => {
+                              if (sortField === "request_multiplier") toggleSortOrder();
+                              else { setSortField("request_multiplier"); setSortOrder("asc"); }
+                            }}
+                          />
+                          <TableHead className="w-16" />
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {sorted.map((row) => (
+                          <TableRow key={row.id}>
+                            <TableCell className="font-mono text-sm">{row.id}</TableCell>
+                            <TableCell className="text-center">
+                              {renderTokenMultiplier(row)}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {renderRequestMultiplier(row)}
+                            </TableCell>
+                            <TableCell>
+                              <Button size="sm" variant="ghost" onClick={() => copyText(row.id)}>
+                                <Copy className="h-3.5 w-3.5" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {sorted.map((row) => {
                       const hasTokenRange = row.token_multiplier_min !== row.token_multiplier_max;
                       const hasRequestRange = row.request_multiplier_min !== row.request_multiplier_max;
                       const hasMultipleChannels = row.channels.length > 1;
 
                       return (
-                        <TableRow key={row.id}>
-                          <TableCell className="font-mono text-sm">{row.id}</TableCell>
-                          <TableCell className="text-center">
-                            {hasMultipleChannels ? (
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <button className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-mono hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer">
-                                    <span className={hasTokenRange ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}>
-                                      {hasTokenRange ? `${row.token_multiplier_min}x ~ ${row.token_multiplier_max}x` : `${row.token_multiplier}x`}
-                                    </span>
-                                    <ChevronDown className="h-3.5 w-3.5 text-[var(--color-foreground-muted)]" />
-                                  </button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-72 p-3" align="center">
-                                  <div className="space-y-2">
-                                    <p className="text-xs font-medium text-[var(--color-foreground-muted)]">各渠道 Token 倍率</p>
-                                    <div className="space-y-1">
-                                      {row.channels.map((ch) => (
-                                        <div key={ch.channel_id} className="flex items-center justify-between text-xs">
-                                          <span className="text-[var(--color-foreground-secondary)] truncate max-w-[120px]">{ch.channel_name}</span>
-                                          <div className="flex items-center gap-2">
-                                            <span className="font-mono text-[var(--color-foreground-muted)]">W{ch.effective_weight}</span>
-                                            <span className={`font-mono ${ch.token_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}`}>
-                                              {ch.token_multiplier}x
-                                            </span>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                </PopoverContent>
-                              </Popover>
-                            ) : (
-                              <span className={`font-mono text-sm ${row.token_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}`}>
-                                {row.token_multiplier}x
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {hasMultipleChannels ? (
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <button className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-mono hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer">
-                                    <span className={hasRequestRange ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}>
-                                      {hasRequestRange ? `${row.request_multiplier_min}x ~ ${row.request_multiplier_max}x` : `${row.request_multiplier}x`}
-                                    </span>
-                                    <ChevronDown className="h-3.5 w-3.5 text-[var(--color-foreground-muted)]" />
-                                  </button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-72 p-3" align="center">
-                                  <div className="space-y-2">
-                                    <p className="text-xs font-medium text-[var(--color-foreground-muted)]">各渠道请求倍率</p>
-                                    <div className="space-y-1">
-                                      {row.channels.map((ch) => (
-                                        <div key={ch.channel_id} className="flex items-center justify-between text-xs">
-                                          <span className="text-[var(--color-foreground-secondary)] truncate max-w-[120px]">{ch.channel_name}</span>
-                                          <div className="flex items-center gap-2">
-                                            <span className="font-mono text-[var(--color-foreground-muted)]">W{ch.effective_weight}</span>
-                                            <span className={`font-mono ${ch.request_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}`}>
-                                              {ch.request_multiplier}x
-                                            </span>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                </PopoverContent>
-                              </Popover>
-                            ) : (
-                              <span className={`font-mono text-sm ${row.request_multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}`}>
-                                {row.request_multiplier}x
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Button size="sm" variant="ghost" onClick={() => copyText(row.id)}>
+                        <div
+                          key={row.id}
+                          className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 transition-shadow hover:shadow-[var(--shadow-md)]"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-semibold text-[var(--color-foreground)] font-mono">{row.id}</p>
+                              {hasMultipleChannels ? (
+                                <p className="text-xs text-[var(--color-foreground-muted)] mt-0.5">{row.channels.length} 个渠道</p>
+                              ) : (
+                                <p className="truncate text-xs text-[var(--color-foreground-muted)] mt-0.5">{row.channels[0]?.channel_name ?? "未知渠道"}</p>
+                              )}
+                            </div>
+                            <Button size="sm" variant="ghost" onClick={() => copyText(row.id)} className="h-7 w-7 p-0">
                               <Copy className="h-3.5 w-3.5" />
                             </Button>
-                          </TableCell>
-                        </TableRow>
+                          </div>
+
+                          <div className="flex flex-wrap gap-1.5">
+                            <span className={cn(
+                              "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-mono",
+                              row.token_multiplier !== 1
+                                ? "border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] text-[var(--color-accent)]"
+                                : "border-[var(--color-border)] bg-[var(--color-surface-hover)] text-[var(--color-foreground-secondary)]"
+                            )}>
+                              Token {hasTokenRange ? row.token_multiplier_min + "x~" + row.token_multiplier_max + "x" : row.token_multiplier + "x"}
+                            </span>
+                            <span className={cn(
+                              "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-mono",
+                              row.request_multiplier !== 1
+                                ? "border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] text-[var(--color-accent)]"
+                                : "border-[var(--color-border)] bg-[var(--color-surface-hover)] text-[var(--color-foreground-secondary)]"
+                            )}>
+                              请求 {hasRequestRange ? row.request_multiplier_min + "x~" + row.request_multiplier_max + "x" : row.request_multiplier + "x"}
+                            </span>
+                          </div>
+
+                          {hasMultipleChannels ? (
+                            <div className="space-y-1 border-t border-[var(--color-border)] pt-2">
+                              {row.channels.map((ch) => (
+                                <div key={ch.channel_id} className="flex items-center justify-between text-xs">
+                                  <span className="text-[var(--color-foreground-secondary)] truncate max-w-[140px]">{ch.channel_name}</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-mono text-[var(--color-foreground-muted)]">W{ch.effective_weight}</span>
+                                    <span className={cn("font-mono", ch.token_multiplier !== 1 && "text-[var(--color-accent)] font-semibold")}>T{ch.token_multiplier}x</span>
+                                    <span className={cn("font-mono", ch.request_multiplier !== 1 && "text-[var(--color-accent)] font-semibold")}>R{ch.request_multiplier}x</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
                       );
                     })}
-                  </TableBody>
-                </Table>
-              </div>
+                  </div>
+                )}
+              </>
             ) : (
               <EmptyState
                 title={loading ? "正在加载模型列表" : "暂无可用模型"}
@@ -314,5 +516,33 @@ export default function AvailableModelsPage() {
         </Card>
       </div>
     </DashboardShell>
+  );
+}
+
+function SortButton({
+  label,
+  field,
+  currentField,
+  order,
+  onClick,
+}: {
+  label: string;
+  field: SortField;
+  currentField: SortField;
+  order: SortOrder;
+  onClick: () => void;
+}) {
+  const active = field === currentField;
+  return (
+    <TableHead className="text-center cursor-pointer select-none" onClick={onClick}>
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {active ? (
+          order === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />
+        ) : (
+          <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
+        )}
+      </span>
+    </TableHead>
   );
 }
