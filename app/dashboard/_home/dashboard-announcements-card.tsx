@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { ChevronDown, Megaphone, Pin } from "lucide-react";
-import { SectionTitle } from "@/components/dashboard/section-title";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { authedFetch } from "@/lib/auth/client-auth";
 import { formatAnnouncementDate, MARKDOWN_PURIFY_CONFIG } from "@/lib/shared/utils";
@@ -61,32 +60,31 @@ export function DashboardAnnouncementsCard() {
 
   return (
     <Card>
-      <CardHeader>
-        <SectionTitle
-          title="系统公告"
-          description="最近发布的通知与公告，点击标题展开查看。"
-          action={<Megaphone className="h-5 w-5 text-[var(--color-foreground-muted)]" />}
-        />
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-[var(--color-foreground)]">系统公告</h2>
+          <Megaphone className="hidden h-4 w-4 text-[var(--color-foreground-muted)] md:block" />
+        </div>
       </CardHeader>
-      <CardContent className="space-y-1">
+      <CardContent className="grid gap-0 md:grid-cols-2">
         {announcements.map((item) => {
           const expanded = expandedIds.has(item.id);
           return (
-            <div key={item.id} className="border-b border-[var(--color-border)] last:border-b-0">
+            <div key={item.id} className="border-b border-[var(--color-border)] py-1 last:border-b-0 md:[&:nth-child(odd)]:border-r">
               <button
                 type="button"
                 aria-expanded={expanded}
                 aria-controls={`announcement-content-${item.id}`}
                 onClick={() => toggleExpand(item.id)}
-                className="flex w-full items-center gap-2 py-3 text-left"
+                className="flex w-full items-center gap-1.5 py-1.5 text-left"
               >
                 {item.pinned ? (
-                  <Pin className="h-4 w-4 shrink-0 text-[var(--color-accent)]" />
+                  <Pin className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
                 ) : null}
                 <ChevronDown
-                  className={`h-4 w-4 shrink-0 text-[var(--color-foreground-muted)] transition-transform ${expanded ? "rotate-180" : ""}`}
+                  className={`h-3.5 w-3.5 shrink-0 text-[var(--color-foreground-muted)] transition-transform ${expanded ? "rotate-180" : ""}`}
                 />
-                <h3 className="truncate text-base font-semibold text-[var(--color-foreground)]">{item.title}</h3>
+                <h3 className="truncate text-sm font-medium text-[var(--color-foreground)]">{item.title}</h3>
                 <span className="ml-auto shrink-0 text-xs text-[var(--color-foreground-muted)]">
                   {formatAnnouncementDate(item.created_at)}
                 </span>
@@ -94,7 +92,7 @@ export function DashboardAnnouncementsCard() {
               {expanded ? (
                 <div
                   id={`announcement-content-${item.id}`}
-                  className="markdown-body pb-4 text-sm"
+                  className="markdown-body pb-2 text-xs"
                   dangerouslySetInnerHTML={{ __html: htmlMap[item.id] ?? "" }}
                 />
               ) : null}
