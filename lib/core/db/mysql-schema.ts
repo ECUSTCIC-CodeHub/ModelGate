@@ -181,6 +181,7 @@ export const MYSQL_BASE_INDEXES = [
 export const MYSQL_POST_MIGRATION_INDEXES = [
   { name: "idx_models_alias_enabled_deleted", table: "models", expr: "(alias, enabled, deleted_at, channel_id)" },
   { name: "idx_channels_enabled_deleted", table: "channels", expr: "(enabled, deleted_at)" },
+  { name: "idx_logs_created_model", table: "logs", expr: "(created_at, model_alias)" },
 ] as const;
 
 export const MYSQL_DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL = `

@@ -130,6 +130,7 @@ CREATE INDEX IF NOT EXISTS idx_announcements_pinned_created ON announcements(pin
 export const POST_MIGRATION_INDEXES_SQL = `
 CREATE INDEX IF NOT EXISTS idx_models_alias_enabled_deleted ON models(alias, enabled, deleted_at, channel_id);
 CREATE INDEX IF NOT EXISTS idx_channels_enabled_deleted ON channels(enabled, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_logs_created_model ON logs(created_at, model_alias) WHERE model_alias IS NOT NULL;
 `;
 
 export const DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL = `

@@ -44,6 +44,12 @@ type ModelItem = {
 type SortField = "id" | "token_multiplier" | "request_multiplier";
 type SortOrder = "asc" | "desc";
 
+type ModelMetrics = {
+  avg_latency_ms: number;
+  avg_output_tps: number;
+  hourly: Array<{ hour: number; success_rate: number; request_count: number }>;
+};
+
 const ENDPOINTS = [
   { label: "Chat Completions (OpenAI)", path: "/api/v1/chat/completions", method: "POST" },
   { label: "Chat (Ollama)", path: "/api/ollama/api/chat", method: "POST" },
@@ -60,6 +66,7 @@ export default function AvailableModelsPage() {
   const initialProfile = useAuthProfile();
   const [role, setRole] = useState<"admin" | "user">(() => initialProfile?.role ?? getCachedProfile()?.role ?? "user");
   const [rows, setRows] = useState<ModelItem[]>([]);
+  const [metricsMap, setMetricsMap] = useState<Record<string, ModelMetrics>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [noticeHtml, setNoticeHtml] = useState("");
@@ -114,6 +121,14 @@ export default function AvailableModelsPage() {
         }
 
         setRows(data?.data ?? []);
+
+        // Non-blocking metrics fetch
+        authedFetch("/api/dashboard/model-metrics")
+          .then((res) => (res.ok ? res.json() : null))
+          .then((metricsData) => {
+            if (metricsData?.data) setMetricsMap(metricsData.data as Record<string, ModelMetrics>);
+          })
+          .catch(() => {});
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -426,23 +441,67 @@ export default function AvailableModelsPage() {
                             </Button>
                           </div>
 
-                          <div className="flex flex-wrap gap-1.5">
-                            <span className={cn(
-                              "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-mono",
-                              row.token_multiplier !== 1
-                                ? "border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] text-[var(--color-accent)]"
-                                : "border-[var(--color-border)] bg-[var(--color-surface-hover)] text-[var(--color-foreground-secondary)]"
-                            )}>
-                              Token {hasTokenRange ? row.token_multiplier_min + "x~" + row.token_multiplier_max + "x" : row.token_multiplier + "x"}
-                            </span>
-                            <span className={cn(
-                              "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-mono",
-                              row.request_multiplier !== 1
-                                ? "border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] text-[var(--color-accent)]"
-                                : "border-[var(--color-border)] bg-[var(--color-surface-hover)] text-[var(--color-foreground-secondary)]"
-                            )}>
-                              请求 {hasRequestRange ? row.request_multiplier_min + "x~" + row.request_multiplier_max + "x" : row.request_multiplier + "x"}
-                            </span>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex flex-wrap gap-1.5">
+                              <span className={cn(
+                                "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-mono",
+                                row.token_multiplier !== 1
+                                  ? "border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] text-[var(--color-accent)]"
+                                  : "border-[var(--color-border)] bg-[var(--color-surface-hover)] text-[var(--color-foreground-secondary)]"
+                              )}>
+                                Token {hasTokenRange ? row.token_multiplier_min + "x~" + row.token_multiplier_max + "x" : row.token_multiplier + "x"}
+                              </span>
+                              <span className={cn(
+                                "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-mono",
+                                row.request_multiplier !== 1
+                                  ? "border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] text-[var(--color-accent)]"
+                                  : "border-[var(--color-border)] bg-[var(--color-surface-hover)] text-[var(--color-foreground-secondary)]"
+                              )}>
+                                请求 {hasRequestRange ? row.request_multiplier_min + "x~" + row.request_multiplier_max + "x" : row.request_multiplier + "x"}
+                              </span>
+                            </div>
+                            {(() => {
+                              const metrics = metricsMap[row.id];
+                              if (!metrics) return null;
+                              const latencyLabel = metrics.avg_latency_ms >= 1000
+                                ? `${(metrics.avg_latency_ms / 1000).toFixed(1)}s`
+                                : `${metrics.avg_latency_ms}ms`;
+                              const tpsLabel = `${metrics.avg_output_tps}tps`;
+                              return (
+                                <div className="flex items-center gap-2 text-xs font-mono text-[var(--color-foreground-muted)]">
+                                  <span>{latencyLabel}</span>
+                                  <span>{tpsLabel}</span>
+                                  <div className="flex items-center gap-0.5">
+                                    {[0, 1, 2].map((h) => {
+                                      const bucket = metrics.hourly.find((b) => b.hour === h);
+                                      const rate = bucket?.success_rate ?? 0;
+                                      const count = bucket?.request_count ?? 0;
+                                      const color =
+                                        count === 0
+                                          ? "bg-gray-300 dark:bg-gray-600"
+                                          : rate >= 90
+                                            ? "bg-emerald-500"
+                                            : rate >= 70
+                                              ? "bg-amber-500"
+                                              : "bg-red-500";
+                                      const label = count === 0
+                                        ? `${h === 0 ? "最近1h" : h === 1 ? "第2h" : "第3h"}: 无数据`
+                                        : `${h === 0 ? "最近1h" : h === 1 ? "第2h" : "第3h"}: ${rate}% (${count}次)`;
+                                      return (
+                                        <Tooltip key={h}>
+                                          <TooltipTrigger asChild>
+                                            <span className={`inline-block h-4 w-1 rounded-sm ${color}`} />
+                                          </TooltipTrigger>
+                                          <TooltipContent side="top" className="text-xs">
+                                            {label}
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </div>
 
                           {hasMultipleChannels ? (
