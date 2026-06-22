@@ -472,7 +472,7 @@ export default function AvailableModelsPage() {
                                   <span>{latencyLabel}</span>
                                   <span>{tpsLabel}</span>
                                   <div className="flex items-center gap-0.5">
-                                    {[0, 1, 2].map((h) => {
+                                    {[2, 1, 0].map((h) => {
                                       const bucket = metrics.hourly.find((b) => b.hour === h);
                                       const rate = bucket?.success_rate ?? 0;
                                       const count = bucket?.request_count ?? 0;
