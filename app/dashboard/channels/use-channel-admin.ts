@@ -55,7 +55,7 @@ export function useChannelAdmin() {
     setChannelForm({
       name: row.name,
       base_url: row.base_url,
-      api_key: row.api_key,
+      api_key: row.api_key ?? "",
       user_agent: row.user_agent ?? "",
       proxy_url: row.proxy_url ?? "",
       supported_protocols: supportedProtocols,

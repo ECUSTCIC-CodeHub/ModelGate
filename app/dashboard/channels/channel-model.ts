@@ -83,7 +83,7 @@ export type Channel = {
   id: number;
   name: string;
   base_url: string;
-  api_key: string;
+  api_key: string | null;
   supported_protocols: string;
   user_agent: string;
   proxy_url: string;

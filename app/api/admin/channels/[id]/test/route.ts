@@ -16,7 +16,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         id: number;
         name: string;
         base_url: string;
-        api_key: string;
+        api_key: string | null;
         user_agent: string;
         proxy_url: string;
         timeout: number;
