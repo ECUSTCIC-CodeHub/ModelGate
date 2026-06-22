@@ -6,6 +6,7 @@ import { jsonError } from "@/lib/core/http";
 import { checkModelQuota, appendModelQuotaHeaders } from "@/lib/gateway/model-quota";
 import { resolveAccessibleModelAlias } from "@/lib/gateway/model-access";
 import { getGatewayProtocolAdapter, type GatewayProtocolAdapter } from "@/lib/gateway/protocol-adapters";
+import type { ResponseAdapterOptions } from "@/lib/gateway/protocol-adapters/intermediate";
 import { createTransformedStream } from "@/lib/gateway/protocol-adapters/streaming";
 import { appendQuotaHeaders, checkQuota } from "@/lib/gateway/quota";
 import { createQueuedUpstreamResponse, normalizeUserAgent } from "@/lib/gateway/queued-upstream-response";
@@ -73,8 +74,11 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
 
   const body = rawBody as Record<string, unknown>;
   const thinkingRecord = body.thinking && typeof body.thinking === "object" ? (body.thinking as Record<string, unknown>) : null;
-  const responseOptions = { thinkingEnabled: thinkingRecord?.type === "enabled" };
   const alias = body.model;
+  const responseOptions: ResponseAdapterOptions = {
+    thinkingEnabled: thinkingRecord?.type === "enabled",
+    requestedModel: typeof alias === "string" ? alias : undefined,
+  };
   if (typeof alias !== "string" || alias.length === 0) {
     logRejected(400, "缺少模型参数 model", null);
     return jsonError("缺少模型参数 model", 400);
@@ -440,11 +444,12 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
         reasoningText: success ? transformed.reasoningText() : "",
         model: route.model.real_model,
       });
+      const firstTokenAt = transformed.firstTokenAt();
+      const tpsStartAt = firstTokenAt ?? startedAt;
       const outputTps =
         success && tokenUsage.outputTpsTokens > 0
-          ? Number(((tokenUsage.outputTpsTokens * 1000) / Math.max(1, totalLatencyMs)).toFixed(2))
+          ? Number(((tokenUsage.outputTpsTokens * 1000) / Math.max(1, Date.now() - tpsStartAt)).toFixed(2))
           : null;
-      const firstTokenAt = transformed.firstTokenAt();
       const firstTokenLatencyMs = firstTokenAt !== null ? Math.max(0, firstTokenAt - startedAt) : null;
 
       if (success) {
@@ -507,7 +512,8 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     }));
   }
 
-  const rawText = await upstream.text();
+  const rawText = await upstream.text().catch(() => "");
+
   if (upstream.status >= 400) {
     const upstreamError = parseUpstreamError(rawText, upstream.status);
     lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
@@ -524,6 +530,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       completion_tokens: 0,
       total_tokens: localPromptTokens,
       latency_ms: Date.now() - startedAt,
+      first_token_latency_ms: null,
       output_tps: null,
       route_attempts: Math.max(1, attemptedChannels.length),
       attempted_channels: attemptedChannelNames.join(" -> "),
@@ -575,6 +582,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     token_source: tokenUsage.source,
     metadata: tokenUsageMetadata(tokenUsage),
     latency_ms: Date.now() - startedAt,
+    first_token_latency_ms: null,
     output_tps: outputTps,
     route_attempts: Math.max(1, attemptedChannels.length),
     attempted_channels: attemptedChannelNames.join(" -> "),

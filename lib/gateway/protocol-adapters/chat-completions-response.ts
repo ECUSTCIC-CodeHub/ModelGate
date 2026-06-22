@@ -131,7 +131,7 @@ export function chatCompletionsResponseFromIntermediate(
     id: response.id,
     object: "chat.completion",
     created: response.created,
-    model: response.model,
+    model: options?.requestedModel || response.model,
     choices: [{
       index: 0,
       message: {

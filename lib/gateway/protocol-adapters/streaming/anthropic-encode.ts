@@ -1,14 +1,15 @@
 import type { JsonRecord } from "@/lib/gateway/normalized-message";
+import type { ResponseAdapterOptions } from "@/lib/gateway/protocol-adapters/intermediate";
 import {
   toSseBlock,
   type IntermediateStreamEvent,
 } from "@/lib/gateway/protocol-adapters/streaming/common";
 
-export function encodeAnthropicMessagesStream(events: ReadableStream<IntermediateStreamEvent>, thinkingEnabled = false) {
+export function encodeAnthropicMessagesStream(events: ReadableStream<IntermediateStreamEvent>, options?: ResponseAdapterOptions) {
   const reader = events.getReader();
   const encoder = new TextEncoder();
   const messageId = `msg_${crypto.randomUUID().replace(/-/g, "")}`;
-  let model: string | null = null;
+  let model: string | null | undefined = null;
   let promptTokens = 0;
   let completionTokens = 0;
   let cacheReadTokens: number | undefined;
@@ -20,6 +21,8 @@ export function encodeAnthropicMessagesStream(events: ReadableStream<Intermediat
   let textIndex: number | null = null;
   const openBlocks = new Set<number>();
   const toolBlockByIndex = new Map<number, number>();
+
+  const thinkingEnabled = options?.thinkingEnabled ?? false;
 
   const emit = (controller: ReadableStreamDefaultController<Uint8Array>, event: string, payload: unknown) => {
     controller.enqueue(encoder.encode(toSseBlock(event, payload)));
@@ -92,7 +95,7 @@ export function encodeAnthropicMessagesStream(events: ReadableStream<Intermediat
           if (done) break;
 
           if (value.type === "start") {
-            if (value.model !== undefined) model = value.model;
+            model = options?.requestedModel ?? value.model;
             if (value.usage) {
               promptTokens = value.usage.prompt_tokens;
               completionTokens = value.usage.completion_tokens;

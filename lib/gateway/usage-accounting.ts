@@ -30,7 +30,7 @@ export async function addUsage(userId: number, keyId: number, tokens: number, re
 
     await tx.execute(
       `UPDATE \`keys\`
-         SET used_tokens = used_tokens + ?, used_requests = used_requests + ?
+         SET used_tokens = used_tokens + ?, used_requests = used_requests + ?, last_used_at = CURRENT_TIMESTAMP
          WHERE id = ? AND deleted_at IS NULL`,
       [billedTokens, billedRequests, keyId],
     );

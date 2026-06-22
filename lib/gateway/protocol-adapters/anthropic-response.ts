@@ -111,7 +111,7 @@ export function anthropicResponseFromIntermediate(
     id: response.id,
     type: "message",
     role: "assistant",
-    model: response.model,
+    model: options?.requestedModel || response.model,
     content,
     stop_reason: finishReasonToAnthropic(response.stop_reason, response.tool_calls.length > 0),
     stop_sequence: null,

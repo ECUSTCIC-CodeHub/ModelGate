@@ -1,15 +1,16 @@
 import type { JsonRecord } from "@/lib/gateway/normalized-message";
+import type { ResponseAdapterOptions } from "@/lib/gateway/protocol-adapters/intermediate";
 import {
   toSseBlock,
   type IntermediateStreamEvent,
   type StreamUsage,
 } from "@/lib/gateway/protocol-adapters/streaming/common";
 
-export function encodeChatCompletionsStream(events: ReadableStream<IntermediateStreamEvent>) {
+export function encodeChatCompletionsStream(events: ReadableStream<IntermediateStreamEvent>, options?: ResponseAdapterOptions) {
   const reader = events.getReader();
   const encoder = new TextEncoder();
   let id = `chatcmpl_${crypto.randomUUID().replace(/-/g, "")}`;
-  let model: string | null = null;
+  let model: string | null | undefined = null;
   let created = Math.floor(Date.now() / 1000);
   let usage: StreamUsage | null = null;
   let roleEmitted = false;
@@ -90,7 +91,7 @@ export function encodeChatCompletionsStream(events: ReadableStream<IntermediateS
 
           if (value.type === "start") {
             if (value.id) id = value.id;
-            if (value.model !== undefined) model = value.model;
+            model = options?.requestedModel ?? value.model;
             if (value.created) created = value.created;
             if (value.usage) usage = value.usage;
             emitRole(controller);

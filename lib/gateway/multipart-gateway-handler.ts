@@ -191,7 +191,9 @@ export async function handleMultipartGatewayRequest(request: Request) {
       upstream = await fetch(upstreamUrl, {
         method: "POST",
         headers: {
-          authorization: `Bearer ${route.channel.api_key}`,
+          ...(route.channel.api_key?.trim()
+            ? { authorization: `Bearer ${route.channel.api_key.trim()}` }
+            : {}),
           "user-agent": clientUserAgent ?? "OpenAI/JS 6.39.0",
         },
         body: upstreamFormData,

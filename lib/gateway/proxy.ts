@@ -3,6 +3,7 @@ import type { DbChannel, DbModel } from "@/lib/core/db";
 import type { RoutedModel } from "@/lib/gateway/router";
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 import { withUpstreamProxy } from "@/lib/gateway/upstream-proxy";
+import { Agent, type Dispatcher } from "undici";
 
 function normalizeProviderBaseUrl(baseUrl: string) {
   const normalized = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
@@ -45,15 +46,18 @@ function buildUpstreamHeaders(
   inboundHeaders?: Headers,
 ): Record<string, string> {
   const userAgent = resolveUpstreamUserAgent(protocol, route.channel.user_agent, inboundHeaders);
+  const apiKey = route.channel.api_key?.trim() ?? "";
 
   if (protocol === "anthropic_messages") {
     const headers: Record<string, string> = {
       "content-type": "application/json",
       "user-agent": userAgent,
-      "x-api-key": route.channel.api_key,
-      authorization: `Bearer ${route.channel.api_key}`,
       "anthropic-version": inboundHeaders?.get("anthropic-version") || "2023-06-01",
     };
+    if (apiKey) {
+      headers["x-api-key"] = apiKey;
+      headers["authorization"] = `Bearer ${apiKey}`;
+    }
     const beta = inboundHeaders?.get("anthropic-beta");
     if (beta) headers["anthropic-beta"] = beta;
     return headers;
@@ -62,7 +66,7 @@ function buildUpstreamHeaders(
   return {
     "content-type": "application/json",
     "user-agent": userAgent,
-    authorization: `Bearer ${route.channel.api_key}`,
+    ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
   };
 }
 
@@ -82,18 +86,24 @@ export async function fetchUpstreamRequest(
   const { controller, timeout } = createTimeoutController(route.channel.timeout);
 
   try {
-    return await fetch(
-      buildUpstreamUrl(route.channel.base_url, protocol),
-      withUpstreamProxy(
-        {
-          method: "POST",
-          headers: buildUpstreamHeaders(route, protocol, inboundHeaders),
-          body: JSON.stringify(requestBody),
-          signal: controller.signal,
-        },
-        route.channel.proxy_url,
-      ),
-    );
+    const proxyUrl = route.channel.proxy_url?.trim();
+    const fetchInit: RequestInit = {
+      method: "POST",
+      headers: buildUpstreamHeaders(route, protocol, inboundHeaders),
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    };
+
+    if (proxyUrl) {
+      const proxyInit = withUpstreamProxy(fetchInit, proxyUrl);
+      return await fetch(buildUpstreamUrl(route.channel.base_url, protocol), proxyInit);
+    }
+
+    const initWithDispatcher: RequestInit & { dispatcher: Dispatcher } = {
+      ...fetchInit,
+      dispatcher: new Agent(),
+    };
+    return await fetch(buildUpstreamUrl(route.channel.base_url, protocol), initWithDispatcher);
   } finally {
     clearTimeout(timeout);
   }
@@ -118,14 +128,20 @@ export async function testUpstreamModel(target: {
               ? {
                   "content-type": "application/json",
                   "user-agent": resolveUpstreamUserAgent(protocol, target.channel.user_agent),
-                  "x-api-key": target.channel.api_key,
-                  authorization: `Bearer ${target.channel.api_key}`,
+                  ...(target.channel.api_key?.trim()
+                    ? {
+                        "x-api-key": target.channel.api_key.trim(),
+                        authorization: `Bearer ${target.channel.api_key.trim()}`,
+                      }
+                    : {}),
                   "anthropic-version": "2023-06-01",
                 }
               : {
                   "content-type": "application/json",
                   "user-agent": resolveUpstreamUserAgent(protocol, target.channel.user_agent),
-                  authorization: `Bearer ${target.channel.api_key}`,
+                  ...(target.channel.api_key?.trim()
+                    ? { authorization: `Bearer ${target.channel.api_key.trim()}` }
+                    : {}),
                 },
           body: JSON.stringify(
             protocol === "responses"
