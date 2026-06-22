@@ -69,7 +69,7 @@ export async function GET(request: Request) {
       `SELECT
          COUNT(*) AS total_requests,
          COALESCE(SUM(total_tokens), 0) AS total_tokens,
-         COALESCE(SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END), 0) AS failed_requests,
+         COALESCE(SUM(CASE WHEN status_code >= 400 AND status_code != 429 THEN 1 ELSE 0 END), 0) AS failed_requests,
          COALESCE(SUM(CASE WHEN status_code = 429 THEN 1 ELSE 0 END), 0) AS rate_limited_requests,
          COALESCE(AVG(CASE WHEN status_code < 400 THEN latency_ms END), 0) AS avg_latency_ms,
          COALESCE(AVG(CASE WHEN status_code < 400 THEN output_tps END), 0) AS avg_output_tps,
@@ -209,12 +209,12 @@ export async function GET(request: Request) {
 
   const recentFailedData = await (isAdmin
     ? gatewayDb.queryOne<{ recent_failed_requests: number }>(
-        `SELECT COALESCE(SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END), 0) AS recent_failed_requests
+        `SELECT COALESCE(SUM(CASE WHEN status_code >= 400 AND status_code != 429 THEN 1 ELSE 0 END), 0) AS recent_failed_requests
          FROM logs
          WHERE created_at >= ${daysAgo(30)}`,
       )
     : gatewayDb.queryOne<{ recent_failed_requests: number }>(
-        `SELECT COALESCE(SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END), 0) AS recent_failed_requests
+        `SELECT COALESCE(SUM(CASE WHEN status_code >= 400 AND status_code != 429 THEN 1 ELSE 0 END), 0) AS recent_failed_requests
          FROM logs
          WHERE user_id = ? AND created_at >= ${daysAgo(30)}`,
         [guard.auth.user.id],
