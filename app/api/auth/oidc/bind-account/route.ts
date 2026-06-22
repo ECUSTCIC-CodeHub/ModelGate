@@ -10,6 +10,7 @@ import {
   sanitizeUser,
   verifyOidcPendingToken,
   OIDC_PENDING_COOKIE_NAME,
+  signTotpPendingToken,
 } from "@/lib/auth/auth";
 import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { requireFeature } from "@/lib/core/features";
@@ -18,6 +19,7 @@ import { checkLoginRateLimit } from "@/lib/auth/login-ratelimit";
 import { deriveUsername, resolveGroupFromClaims, getOidcConfig } from "@/lib/auth/oidc";
 import { USERNAME_SCHEMA } from "@/lib/auth/username";
 import { randomBytes } from "node:crypto";
+import { getGatewaySettings } from "@/lib/core/settings";
 
 const linkSchema = z.object({
   mode: z.literal("link"),
@@ -60,6 +62,11 @@ export async function POST(request: Request) {
   const createParsed = createSchema.safeParse(body);
 
   if (linkParsed.success) {
+    const settings = await getGatewaySettings();
+    if (settings.password_login_enabled !== 1) {
+      return jsonError("账号密码登录已关闭，无法通过密码绑定 OIDC", 403);
+    }
+
     const rateCheck = checkLoginRateLimit(request, linkParsed.data.username);
     if (!rateCheck.ok) return jsonError("尝试过于频繁，请稍后再试", 429);
 
@@ -82,6 +89,15 @@ export async function POST(request: Request) {
     } else {
       await gatewayDb
         .execute("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, email = COALESCE(?, email) WHERE id = ?", [pending.issuer, pending.sub, linkEmail, user.id]);
+    }
+
+    if (user.totp_enabled === 1 && user.totp_secret) {
+      const pendingToken = signTotpPendingToken(user);
+      return clearPendingCookie(jsonOk({
+        totp_required: true,
+        pending_token: pendingToken,
+        message: "绑定成功，请完成 TOTP 二次验证。",
+      }));
     }
 
     const tokens = issueAuthTokens(user);

@@ -61,6 +61,7 @@ export type EditionSettingsInput = {
   oidc_scopes?: string;
   oidc_auto_register?: boolean;
   oidc_button_text?: string;
+  public_base_url?: string;
   announcement_content?: string;
   announcement_display_count?: number;
   access_guide_notice?: string;

@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS channels (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
   base_url TEXT NOT NULL,
-  api_key TEXT NOT NULL,
+  api_key TEXT,
   supported_protocols TEXT DEFAULT NULL,
   enabled TINYINT(1) DEFAULT 1,
   weight INT DEFAULT 1,
@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS \`keys\` (
   used_requests DOUBLE DEFAULT 0,
   enabled TINYINT(1) DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_used_at DATETIME,
   deleted_at DATETIME,
   FOREIGN KEY (user_id) REFERENCES users(id)
 );

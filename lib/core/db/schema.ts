@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS channels (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
   base_url TEXT NOT NULL,
-  api_key TEXT NOT NULL,
+  api_key TEXT,
   supported_protocols TEXT DEFAULT '["chat_completions"]',
   enabled INTEGER DEFAULT 1,
   weight INTEGER DEFAULT 1,
@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS keys (
   used_requests INTEGER DEFAULT 0,
   enabled INTEGER DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_used_at DATETIME,
   deleted_at DATETIME,
   FOREIGN KEY (user_id) REFERENCES users(id)
 );

@@ -229,6 +229,7 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("keys", "name", "name TEXT DEFAULT ''");
   await db.ensureColumn("keys", "used_tokens", "used_tokens INTEGER DEFAULT 0");
   await db.ensureColumn("keys", "used_requests", "used_requests INTEGER DEFAULT 0");
+  await db.ensureColumn("keys", "last_used_at", "last_used_at DATETIME");
   await db.ensureColumn("logs", "client_ip", "client_ip TEXT");
   await db.ensureColumn("channels", "supported_protocols", `supported_protocols TEXT DEFAULT '["chat_completions"]'`);
   await db.ensureColumn("channels", "user_agent", "user_agent TEXT DEFAULT ''");
