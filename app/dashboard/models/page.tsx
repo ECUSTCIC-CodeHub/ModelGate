@@ -71,7 +71,7 @@ export default function AvailableModelsPage() {
   const [error, setError] = useState("");
   const [noticeHtml, setNoticeHtml] = useState("");
   const [search, setSearch] = useState("");
-  const [view, setView] = useState<"card" | "list">("list");
+  const [view, setView] = useState<"card" | "list">("card");
   const [sortField, setSortField] = useState<SortField>("id");
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
   const { toast } = useToast();
