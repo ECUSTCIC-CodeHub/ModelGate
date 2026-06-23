@@ -60,7 +60,7 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
         <SectionTitle title="不受账户限制的模型" description="以下模型不受账户速率限制和配额约束。独立配额模型使用自己的额度；绕过账户限制的模型则只受渠道侧限制。其余模型受账户限制，详情查看「配额与限制」页面。" />
       </CardHeader>
       <CardContent>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {modelQuotas.map((m) => (
             <div key={`${m.alias}:${m.real_model}`} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-3">
               <div className="mb-2 flex items-center justify-between gap-2">
