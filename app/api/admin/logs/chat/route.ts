@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { gatewayDb } from "@/lib/core/db";
+import { FAILED_REQUESTS_EXPR, RATE_LIMITED_REQUESTS_EXPR } from "@/lib/core/db/log-aggregates";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
 
@@ -50,6 +51,7 @@ export async function GET(request: Request) {
     .queryOne<{
     total_requests: number;
     failed_requests: number;
+    rate_limited_requests: number;
     total_tokens: number;
     avg_latency_ms: number;
     avg_first_token_latency_ms: number;
@@ -57,11 +59,12 @@ export async function GET(request: Request) {
   }>(
       `SELECT
          COUNT(*) AS total_requests,
-         SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) AS failed_requests,
+         ${FAILED_REQUESTS_EXPR} AS failed_requests,
+         ${RATE_LIMITED_REQUESTS_EXPR} AS rate_limited_requests,
          COALESCE(SUM(total_tokens), 0) AS total_tokens,
-         COALESCE(AVG(latency_ms), 0) AS avg_latency_ms,
-         COALESCE(AVG(first_token_latency_ms), 0) AS avg_first_token_latency_ms,
-         COALESCE(AVG(output_tps), 0) AS avg_output_tps
+         COALESCE(AVG(CASE WHEN status_code < 400 THEN latency_ms END), 0) AS avg_latency_ms,
+         COALESCE(AVG(CASE WHEN status_code < 400 THEN first_token_latency_ms END), 0) AS avg_first_token_latency_ms,
+         COALESCE(AVG(CASE WHEN status_code < 400 THEN output_tps END), 0) AS avg_output_tps
        FROM logs`,
     ))!;
 

@@ -50,13 +50,14 @@ export type LogRow = {
 export type LogSummary = {
   total_requests: number;
   failed_requests: number;
+  rate_limited_requests: number;
   total_tokens: number;
   avg_latency_ms: number;
   avg_first_token_latency_ms: number;
   avg_output_tps: number;
 };
 
-export type LogStatusFilter = "all" | "success" | "failed";
+export type LogStatusFilter = "all" | "success" | "failed" | "rate_limited";
 
 export type LogFilters = {
   user: string;

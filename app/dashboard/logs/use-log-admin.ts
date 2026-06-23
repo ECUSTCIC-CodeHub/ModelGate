@@ -24,6 +24,7 @@ type LogsResponse = {
 function parseStatusFilter(value: string | null): LogStatusFilter {
   if (value === "failed") return "failed";
   if (value === "success") return "success";
+  if (value === "rate_limited") return "rate_limited";
   return "all";
 }
 

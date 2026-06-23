@@ -1562,7 +1562,7 @@ email matches ".*@company\\.com"
 | ip | string | 按客户端 IP 搜索 |
 | start_date | YYYY-MM-DD | 开始日期 |
 | end_date | YYYY-MM-DD | 结束日期 |
-| status | success / failed | 按请求状态筛选：success 仅成功请求，failed 仅失败请求 |
+| status | success / failed / rate_limited | 按请求状态筛选：success 仅成功请求，failed 仅失败请求（不含 429），rate_limited 仅限流请求 |
 
 **响应 (200):**
 ```json
@@ -1570,6 +1570,7 @@ email matches ".*@company\\.com"
   "summary": {
     "total_requests": 100,
     "failed_requests": 5,
+    "rate_limited_requests": 2,
     "total_tokens": 123456,
     "avg_latency_ms": 500,
     "avg_first_token_latency_ms": 200,
@@ -1664,7 +1665,8 @@ email matches ".*@company\\.com"
 |:---|:---|
 | total_requests | 总请求数 |
 | total_tokens | 总 Token 消耗 |
-| failed_requests | 失败请求数 |
+| failed_requests | 失败请求数（不含 429 限流） |
+| rate_limited_requests | 限流请求数 |
 | total_keys | 密钥数量 |
 | active_users | 活跃用户数（普通用户始终为 1） |
 | avg_latency_ms | 平均响应延迟 |

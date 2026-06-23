@@ -11,6 +11,7 @@ const STATUS_OPTIONS: Array<{ value: LogStatusFilter; label: string }> = [
   { value: "all", label: "全部状态" },
   { value: "success", label: "成功" },
   { value: "failed", label: "失败" },
+  { value: "rate_limited", label: "限流" },
 ];
 
 type LogFiltersCardProps = {

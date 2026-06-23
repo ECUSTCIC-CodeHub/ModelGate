@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Clock3, Search, Timer, XCircle } from "lucide-react";
+import { Clock3, Search, ShieldAlert, Timer, XCircle } from "lucide-react";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { formatNumber, formatTokenCount } from "@/lib/shared/utils";
 import { formatDuration } from "./log-formatters";
@@ -19,7 +19,7 @@ export function LogSummaryCards({ summary }: LogSummaryCardsProps) {
   };
 
   return (
-    <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
       <MetricCard
         label="总请求数"
         value={formatNumber(summary?.total_requests)}
@@ -33,6 +33,13 @@ export function LogSummaryCards({ summary }: LogSummaryCardsProps) {
         hint="便于快速定位异常"
         icon={XCircle}
         onClick={() => navigate({ status: "failed" })}
+      />
+      <MetricCard
+        label="限流请求数"
+        value={formatNumber(summary?.rate_limited_requests)}
+        hint="被限流的请求量"
+        icon={ShieldAlert}
+        onClick={() => navigate({ status: "rate_limited" })}
       />
       <MetricCard
         label="总 Token"
