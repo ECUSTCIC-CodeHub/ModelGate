@@ -1,6 +1,6 @@
 # 开发约定
 
-`AGENTS.md` 与 `CLAUDE.md` 为独立文件，内容保持同步。
+`AGENTS.md` 与 `CLAUDE.md` 为独立文件，内容保持同步。开发时应合理配置子 agent 以提升效率。
 
 ## 提交规范
 
