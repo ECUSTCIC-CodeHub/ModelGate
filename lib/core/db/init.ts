@@ -23,6 +23,39 @@ const DATA_DIR_MODE = 0o755;
 const DB_FILE_MODE = 0o644;
 const require = createRequire(import.meta.url);
 
+const SQLITE_PERMISSION_PATTERNS = [
+  "SQLITE_CANTOPEN",
+  "SQLITE_PERM",
+  "not authorized",
+  "access to the path",
+  "unable to open",
+];
+
+const MYSQL_PERMISSION_CODES = [
+  "ER_ACCESS_DENIED_ERROR",
+  "ER_TABLEACCESS_DENIED_ERROR",
+  "ER_COLUMNACCESS_DENIED_ERROR",
+  "ER_DBACCESS_DENIED_ERROR",
+  "ER_CANT_OPEN_FILE",
+];
+
+function isPermissionError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message;
+  if (SQLITE_PERMISSION_PATTERNS.some((p) => msg.includes(p))) return true;
+  const code = "code" in err ? (err as Error & { code?: string }).code : undefined;
+  if (code && MYSQL_PERMISSION_CODES.includes(code)) return true;
+  return false;
+}
+
+function throwPermissionError(err: unknown): never {
+  throw new Error(
+    "数据库权限错误：无法访问数据库文件。请检查文件权限或联系管理员。" +
+      (err instanceof Error ? ` (原始错误: ${err.message})` : ""),
+    { cause: err },
+  );
+}
+
 function ensurePathMode(targetPath: string, mode: number) {
   try {
     const stats = fs.statSync(targetPath);
@@ -49,7 +82,13 @@ async function initSqlite(): Promise<DatabaseAdapter> {
   }
   ensurePathMode(dataDir, DATA_DIR_MODE);
 
-  const raw = new Database(dbPath, { timeout: SQLITE_BUSY_TIMEOUT_MS });
+  let raw: InstanceType<typeof Database>;
+  try {
+    raw = new Database(dbPath, { timeout: SQLITE_BUSY_TIMEOUT_MS });
+  } catch (err) {
+    if (isPermissionError(err)) throwPermissionError(err);
+    throw err;
+  }
   ensurePathMode(dbPath, DB_FILE_MODE);
   raw.pragma(`busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
 
@@ -60,15 +99,20 @@ async function initSqlite(): Promise<DatabaseAdapter> {
 
   const db = new SqliteAdapter(raw);
 
-  await db.exec(BASE_SCHEMA_SQL);
-  await runSqliteMigrations(db);
-  await ensureAllColumns(db);
-  await db.exec(POST_MIGRATION_INDEXES_SQL);
-  await db.exec(DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL);
-  await seedDefaultSettings(db);
-  await migrateUnlimitedLimitSemantics(db);
-  await ensureDefaultGroup(db);
-  await cleanupModelUserUsage(db);
+  try {
+    await db.exec(BASE_SCHEMA_SQL);
+    await runSqliteMigrations(db);
+    await ensureAllColumns(db);
+    await db.exec(POST_MIGRATION_INDEXES_SQL);
+    await db.exec(DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL);
+    await seedDefaultSettings(db);
+    await migrateUnlimitedLimitSemantics(db);
+    await ensureDefaultGroup(db);
+    await cleanupModelUserUsage(db);
+  } catch (err) {
+    if (isPermissionError(err)) throwPermissionError(err);
+    throw err;
+  }
 
   return db;
 }
@@ -361,6 +405,7 @@ async function initMysql(): Promise<DatabaseAdapter> {
     await cleanupModelUserUsage(db);
   } catch (err) {
     await db.close();
+    if (isPermissionError(err)) throwPermissionError(err);
     const msg = err instanceof Error ? err.message : String(err);
     const code = err instanceof Error && "code" in err ? ` (${(err as Error & { code: string }).code})` : "";
     console.error(`[ModelGate] MySQL 初始化失败: 无法连接 ${host}:${port}/${database} (用户: ${user})${code} - ${msg}`);
