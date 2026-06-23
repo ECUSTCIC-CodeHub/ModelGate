@@ -29,11 +29,11 @@ function QuotaBar({ used, total }: { used: number; total: number | null }) {
   if (total === null || total <= 0) return <span className="text-xs text-[var(--color-foreground-muted)]">不限制</span>;
   const pct = Math.min(100, (used / total) * 100);
   return (
-    <div className="space-y-1">
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-surface-hover)]">
+    <div className="flex items-center gap-2">
+      <div className="h-1 flex-1 overflow-hidden rounded-full bg-[var(--color-surface-hover)]">
         <div className="h-full rounded-full bg-[var(--color-accent)] transition-all" style={{ width: `${pct}%` }} />
       </div>
-      <p className="text-xs text-[var(--color-foreground-muted)]">{formatNumber(used)} / {formatNumber(total)}</p>
+      <span className="shrink-0 text-xs tabular-nums text-[var(--color-foreground-muted)]">{formatNumber(used)}/{formatNumber(total)}</span>
     </div>
   );
 }
@@ -42,11 +42,11 @@ function TokenBar({ used, total }: { used: number; total: number | null }) {
   if (total === null || total <= 0) return <span className="text-xs text-[var(--color-foreground-muted)]">不限制</span>;
   const pct = Math.min(100, (used / total) * 100);
   return (
-    <div className="space-y-1">
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-surface-hover)]">
+    <div className="flex items-center gap-2">
+      <div className="h-1 flex-1 overflow-hidden rounded-full bg-[var(--color-surface-hover)]">
         <div className="h-full rounded-full bg-[var(--color-accent)] transition-all" style={{ width: `${pct}%` }} />
       </div>
-      <p className="text-xs text-[var(--color-foreground-muted)]">{formatTokenCount(used)} / {formatTokenCount(total)}</p>
+      <span className="shrink-0 text-xs tabular-nums text-[var(--color-foreground-muted)]">{formatTokenCount(used)}/{formatTokenCount(total)}</span>
     </div>
   );
 }
@@ -60,19 +60,19 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
         <SectionTitle title="不受账户限制的模型" description="以下模型不受账户速率限制和配额约束。独立配额模型使用自己的额度；绕过账户限制的模型则只受渠道侧限制。其余模型受账户限制，详情查看「配额与限制」页面。" />
       </CardHeader>
       <CardContent>
-        <div className="space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {modelQuotas.map((m) => (
-            <div key={`${m.alias}:${m.real_model}`} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <div>
-                  <span className="font-mono text-sm font-medium text-[var(--color-foreground)]">{m.alias}</span>
+            <div key={`${m.alias}:${m.real_model}`} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-mono text-sm font-medium text-[var(--color-foreground)]">{m.alias}</p>
                   {m.alias !== m.real_model ? (
-                    <span className="ml-2 text-xs text-[var(--color-foreground-muted)]">({m.real_model})</span>
+                    <p className="truncate text-xs text-[var(--color-foreground-muted)]">({m.real_model})</p>
                   ) : null}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-1.5">
                   <span className="rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-foreground-muted)]">
-                    {m.quota_mode === "independent" ? "独立配额" : "绕过账户限制"}
+                    {m.quota_mode === "independent" ? "独立配额" : "绕过"}
                   </span>
                   {m.period_label ? (
                     <span className="rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-foreground-muted)]">
@@ -82,34 +82,22 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
                 </div>
               </div>
               {m.quota_mode === "independent" ? (
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
                   {m.quota_requests !== null ? (
-                    <div className="space-y-1">
-                      <p className="text-xs text-[var(--color-foreground-muted)]">请求配额</p>
-                      <QuotaBar used={m.used_requests} total={m.quota_requests} />
-                    </div>
+                    <QuotaBar used={m.used_requests} total={m.quota_requests} />
                   ) : null}
                   {m.quota_tokens !== null ? (
-                    <div className="space-y-1">
-                      <p className="text-xs text-[var(--color-foreground-muted)]">Token 配额</p>
-                      <TokenBar used={m.used_tokens} total={m.quota_tokens} />
-                    </div>
+                    <TokenBar used={m.used_tokens} total={m.quota_tokens} />
                   ) : null}
                   {m.period_quota_requests !== null ? (
-                    <div className="space-y-1">
-                      <p className="text-xs text-[var(--color-foreground-muted)]">周期请求配额</p>
-                      <QuotaBar used={m.period_used_requests ?? 0} total={m.period_quota_requests} />
-                    </div>
+                    <QuotaBar used={m.period_used_requests ?? 0} total={m.period_quota_requests} />
                   ) : null}
                   {m.period_quota_tokens !== null ? (
-                    <div className="space-y-1">
-                      <p className="text-xs text-[var(--color-foreground-muted)]">周期 Token 配额</p>
-                      <TokenBar used={m.period_used_tokens ?? 0} total={m.period_quota_tokens} />
-                    </div>
+                    <TokenBar used={m.period_used_tokens ?? 0} total={m.period_quota_tokens} />
                   ) : null}
                 </div>
               ) : (
-                <p className="text-xs text-[var(--color-foreground-muted)]">该模型不受账户配额与速率限制，使用量不计入账户总额。</p>
+                <p className="text-xs text-[var(--color-foreground-muted)]">不受账户配额限制</p>
               )}
             </div>
           ))}
