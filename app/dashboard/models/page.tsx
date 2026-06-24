@@ -23,6 +23,7 @@ import { authedFetch, ensureLoggedIn, getCachedProfile } from "@/lib/auth/client
 type ChannelMultiplier = {
   channel_id: number;
   channel_name: string;
+  real_model: string;
   token_multiplier: number;
   request_multiplier: number;
   effective_weight: number;
@@ -507,8 +508,18 @@ export default function AvailableModelsPage() {
                           {hasMultipleChannels ? (
                             <div className="space-y-1 border-t border-[var(--color-border)] pt-2">
                               {row.channels.map((ch) => (
-                                <div key={ch.channel_id} className="flex items-center justify-between text-xs">
-                                  <span className="text-[var(--color-foreground-secondary)] truncate max-w-[140px]">{ch.channel_name}</span>
+                                <div key={`${ch.channel_id}-${ch.real_model}`} className="flex items-center justify-between text-xs">
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="text-[var(--color-foreground-secondary)] truncate max-w-[180px] cursor-default">
+                                        {ch.channel_name}{ch.real_model !== row.id ? ` (${ch.real_model})` : null}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="text-xs">
+                                      <p>{ch.channel_name}</p>
+                                      <p className="text-[var(--color-foreground-muted)]">{ch.real_model}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
                                   <div className="flex items-center gap-2">
                                     <span className="font-mono text-[var(--color-foreground-muted)]">W{ch.effective_weight}</span>
                                     <span className={cn("font-mono", ch.token_multiplier !== 1 && "text-[var(--color-accent)] font-semibold")}>T{ch.token_multiplier}x</span>

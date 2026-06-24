@@ -55,7 +55,7 @@ const ENABLED_MODEL_ALIAS_SQL = `SELECT 1
      AND c.deleted_at IS NULL
    LIMIT 1`;
 
-const ACCESSIBLE_MODEL_ROWS_SQL = `SELECT m.alias, m.is_public, m.created_at, m.token_multiplier, m.request_multiplier,
+const ACCESSIBLE_MODEL_ROWS_SQL = `SELECT m.alias, m.real_model, m.is_public, m.created_at, m.token_multiplier, m.request_multiplier,
           m.weight AS model_weight,
           c.id AS channel_id, c.name AS channel_name, c.weight AS channel_weight
    FROM models m
@@ -104,6 +104,7 @@ export async function resolveAccessibleModelAlias(
 export type AccessibleModelChannel = {
   channel_id: number;
   channel_name: string;
+  real_model: string;
   token_multiplier: number;
   request_multiplier: number;
   effective_weight: number;
@@ -128,7 +129,7 @@ export async function listAccessibleModelAliases(user: Pick<DbUser, "role" | "gr
 }
 
 export async function listAccessibleModels(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">): Promise<AccessibleModel[]> {
-  const rows = await gatewayDb.query<{ alias: string; is_public: number; created_at: string | null; token_multiplier: number; request_multiplier: number; model_weight: number; channel_id: number; channel_name: string; channel_weight: number }>(ACCESSIBLE_MODEL_ROWS_SQL);
+  const rows = await gatewayDb.query<{ alias: string; real_model: string; is_public: number; created_at: string | null; token_multiplier: number; request_multiplier: number; model_weight: number; channel_id: number; channel_name: string; channel_weight: number }>(ACCESSIBLE_MODEL_ROWS_SQL);
   const allowedChannelIds = await getUserAllowedChannelIds(user);
   const allowedChannelSet = allowedChannelIds ? new Set(allowedChannelIds) : null;
 
@@ -141,10 +142,10 @@ export async function listAccessibleModels(user: Pick<DbUser, "role" | "group_id
     const ew = Math.max(1, row.model_weight ?? 1) * Math.max(1, row.channel_weight ?? 1);
     const current = visible.get(row.alias);
     if (!current) {
-      visible.set(row.alias, { alias: row.alias, created_at: row.created_at, channels: [{ channel_id: row.channel_id, channel_name: row.channel_name, token_multiplier: tm, request_multiplier: rm, effective_weight: ew }] });
+      visible.set(row.alias, { alias: row.alias, created_at: row.created_at, channels: [{ channel_id: row.channel_id, channel_name: row.channel_name, real_model: row.real_model, token_multiplier: tm, request_multiplier: rm, effective_weight: ew }] });
     } else {
       if ((row.created_at ?? "") > (current.created_at ?? "")) current.created_at = row.created_at;
-      current.channels.push({ channel_id: row.channel_id, channel_name: row.channel_name, token_multiplier: tm, request_multiplier: rm, effective_weight: ew });
+      current.channels.push({ channel_id: row.channel_id, channel_name: row.channel_name, real_model: row.real_model, token_multiplier: tm, request_multiplier: rm, effective_weight: ew });
     }
   };
 
