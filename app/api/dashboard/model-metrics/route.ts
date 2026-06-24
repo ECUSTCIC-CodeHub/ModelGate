@@ -45,7 +45,11 @@ export async function GET(request: Request) {
        model_alias,
        ${hourBucketExpr} AS hour_bucket,
        COUNT(*) AS request_count,
-       SUM(CASE WHEN status_code < 400 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS success_rate
+       COALESCE(
+         SUM(CASE WHEN status_code < 400 THEN 1 ELSE 0 END) * 100.0
+           / NULLIF(SUM(CASE WHEN status_code != 429 THEN 1 ELSE 0 END), 0),
+         0
+       ) AS success_rate
      FROM logs
      WHERE created_at >= ${hoursAgo(3)}
        AND model_alias IS NOT NULL
