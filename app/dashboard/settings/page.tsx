@@ -144,11 +144,7 @@ export default function AdminSettingsPage() {
       const data = await response.json().catch(() => null);
       if (response.ok) {
         toast({ variant: "success", description: getApiMessage(data, "保存成功。") });
-        const refreshResponse = await authedFetch("/api/admin/settings");
-        const refreshPayload = await refreshResponse.json().catch(() => null);
-        if (refreshResponse.ok) {
-          applySettings(responseData(refreshPayload));
-        }
+        router.refresh();
         return;
       }
       toast({ variant: "error", description: getApiMessage(data, "保存失败。") });
