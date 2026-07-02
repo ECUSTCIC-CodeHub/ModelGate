@@ -34,26 +34,21 @@ function makeStmtCache(db: BetterSqlite3.Database) {
 function makeTxContext(db: BetterSqlite3.Database, prepare: (sql: string) => BetterSqlite3.Statement): TransactionContext {
   return {
     query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]> {
-      return runAsync(() => {
-        const stmt = prepare(sql);
-        return (params ? stmt.all(...params) : stmt.all()) as T[];
-      });
+      const stmt = prepare(sql);
+      return Promise.resolve((params ? stmt.all(...params) : stmt.all()) as T[]);
     },
     queryOne<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T | undefined> {
-      return runAsync(() => {
-        const stmt = prepare(sql);
-        return (params ? stmt.get(...params) : stmt.get()) as T | undefined;
-      });
+      const stmt = prepare(sql);
+      return Promise.resolve((params ? stmt.get(...params) : stmt.get()) as T | undefined);
     },
     execute(sql: string, params?: unknown[]): Promise<ExecuteResult> {
-      return runAsync(() => {
-        const stmt = prepare(sql);
-        const info = params ? stmt.run(...params) : stmt.run();
-        return { changes: info.changes, lastInsertRowid: Number(info.lastInsertRowid) };
-      });
+      const stmt = prepare(sql);
+      const info = params ? stmt.run(...params) : stmt.run();
+      return Promise.resolve({ changes: info.changes, lastInsertRowid: Number(info.lastInsertRowid) });
     },
     exec(sql: string): Promise<void> {
-      return runAsync(() => { db.exec(sql); });
+      db.exec(sql);
+      return Promise.resolve();
     },
   };
 }
@@ -93,12 +88,38 @@ export class SqliteAdapter implements DatabaseAdapter {
     return runAsync(() => { this.db.exec(sql); });
   }
 
-  async transaction<T>(fn: (tx: TransactionContext) => Promise<T>): Promise<T> {
-    const txPrepare = makeStmtCache(this.db);
-    const txFn = this.db.transaction(() => {
-      return fn(makeTxContext(this.db, txPrepare));
+  transaction<T>(fn: (tx: TransactionContext) => T | Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      try {
+        this.db.exec("BEGIN TRANSACTION");
+      } catch (err) {
+        reject(err);
+        return;
+      }
+
+      const txPrepare = makeStmtCache(this.db);
+      let result: T | Promise<T>;
+      try {
+        result = fn(makeTxContext(this.db, txPrepare));
+      } catch (err) {
+        try { this.db.exec("ROLLBACK"); } catch {}
+        reject(err);
+        return;
+      }
+
+      if (result instanceof Promise) {
+        result.then(value => {
+          try { this.db.exec("COMMIT"); } catch (err) { reject(err); return; }
+          resolve(value);
+        }).catch(err => {
+          try { this.db.exec("ROLLBACK"); } catch {}
+          reject(err);
+        });
+      } else {
+        try { this.db.exec("COMMIT"); } catch (err) { reject(err); return; }
+        resolve(result);
+      }
     });
-    return runAsync(() => txFn());
   }
 
   ensureColumn(table: string, column: string, ddl: string): Promise<boolean> {
