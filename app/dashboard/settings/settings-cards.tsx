@@ -1,5 +1,6 @@
 export { AccessGuideNoticeSettingsCard } from "./access-guide-notice-settings-card";
 export { AnnouncementSettingsCard } from "./announcement-settings-card";
+export { AppearanceSettingsCard } from "./appearance-settings-card";
 export { CorsSettingsCard } from "./cors-settings-card";
 export { FilingSettingsCard } from "./filing-settings-card";
 export { LoginSettingsCard } from "./login-settings-card";

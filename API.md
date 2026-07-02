@@ -498,7 +498,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
     "webhook_secret": "",
     "cors_enabled": 0,
     "icp_filing_number": "",
-    "public_security_filing_number": ""
+    "public_security_filing_number": "",
+    "theme_color": ""
   }
 }
 ```
@@ -529,7 +530,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "announcement_content": "# 欢迎",
   "access_guide_notice": "## 自动配置工具\n\n```bash\nnpx cic-ai-config-helper\n```",
   "webhook_secret": "your-webhook-secret",
-  "cors_enabled": false
+  "cors_enabled": false,
+  "theme_color": "#00518f"
 }
 ```
 
@@ -556,6 +558,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | cors_enabled | boolean | 是否允许所有来源跨域访问网关 API（开启后 `/api/v1/*` 和 `/api/ollama/*` 返回 `Access-Control-Allow-Origin: *` 并响应 OPTIONS 预检） |
 | icp_filing_number | string | ICP 备案号，留空则不展示（最长 200 字符） |
 | public_security_filing_number | string | 公安联网备案号，留空则不展示（最长 200 字符） |
+| theme_color | string | 主题色（十六进制颜色代码，如 `#00518f`），留空则使用默认靛蓝色 |
 
 > 精简版固定保留账号密码登录；返回时会隐藏 OIDC 配置、公告内容、公告展示条数、接入指南通知和 Webhook 密钥，更新时忽略 `oidc_*`、`announcement_content`、`announcement_display_count`、`access_guide_notice` 与 `webhook_secret` 字段。
 

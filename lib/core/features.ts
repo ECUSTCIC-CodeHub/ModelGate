@@ -66,6 +66,7 @@ export type EditionSettingsInput = {
   announcement_display_count?: number;
   access_guide_notice?: string;
   webhook_secret?: string;
+  theme_color?: string;
 };
 
 export function filterSettingsInputForEdition<T extends EditionSettingsInput>(input: T): T {
@@ -106,6 +107,7 @@ export function maskSettingsForEdition<T extends {
   announcement_display_count: number;
   access_guide_notice: string;
   webhook_secret: string;
+  theme_color: string;
 }>(settings: T): T {
   return {
     ...settings,
@@ -121,5 +123,6 @@ export function maskSettingsForEdition<T extends {
     announcement_display_count: modelGateFeatures.announcement ? settings.announcement_display_count : 3,
     access_guide_notice: modelGateFeatures.accessGuideNotice ? settings.access_guide_notice : "",
     webhook_secret: modelGateFeatures.webhook && settings.webhook_secret ? "••••••••" : "",
+    theme_color: settings.theme_color,
   };
 }

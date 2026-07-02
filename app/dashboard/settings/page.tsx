@@ -10,6 +10,7 @@ import { modelGateFeatures } from "@/lib/core/features";
 import {
   AccessGuideNoticeSettingsCard,
   AnnouncementSettingsCard,
+  AppearanceSettingsCard,
   CorsSettingsCard,
   FilingSettingsCard,
   LoginSettingsCard,
@@ -53,6 +54,7 @@ export default function AdminSettingsPage() {
   const [corsEnabled, setCorsEnabled] = useState(false);
   const [icpFilingNumber, setIcpFilingNumber] = useState("");
   const [publicSecurityFilingNumber, setPublicSecurityFilingNumber] = useState("");
+  const [themeColor, setThemeColor] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const oidcFeatureEnabled = modelGateFeatures.oidc;
@@ -87,6 +89,7 @@ export default function AdminSettingsPage() {
     setCorsEnabled(settings.cors_enabled === 1);
     setIcpFilingNumber(stringValue(settings.icp_filing_number));
     setPublicSecurityFilingNumber(stringValue(settings.public_security_filing_number));
+    setThemeColor(stringValue(settings.theme_color));
   }, [accessGuideNoticeFeatureEnabled, announcementFeatureEnabled, oidcFeatureEnabled, webhookFeatureEnabled]);
 
   useEffect(() => {
@@ -131,6 +134,7 @@ export default function AdminSettingsPage() {
         cors_enabled: corsEnabled,
         icp_filing_number: icpFilingNumber,
         public_security_filing_number: publicSecurityFilingNumber,
+        theme_color: themeColor,
       };
 
       const response = await authedFetch("/api/admin/settings", {
@@ -167,6 +171,10 @@ export default function AdminSettingsPage() {
       subtitle={oidcFeatureEnabled ? "配置登录注册策略、上游重试与 OIDC 单点登录。" : "配置登录注册策略与上游重试。"}
     >
       <div className="space-y-4 pb-6">
+        <AppearanceSettingsCard
+          themeColor={themeColor}
+          setThemeColor={setThemeColor}
+        />
         <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
           <LoginSettingsCard
             oidcFeatureEnabled={oidcFeatureEnabled}

@@ -29,6 +29,7 @@ const schema = z.object({
   cors_enabled: z.boolean().optional(),
   icp_filing_number: z.string().max(200).optional(),
   public_security_filing_number: z.string().max(200).optional(),
+  theme_color: z.string().regex(/^(|#[0-9a-fA-F]{6})$/, "主题色格式不正确").optional(),
 });
 
 export async function GET(request: Request) {
