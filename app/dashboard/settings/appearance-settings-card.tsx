@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,10 @@ export function AppearanceSettingsCard({
   setThemeColor: (value: string) => void;
 }) {
   const [inputValue, setInputValue] = useState(themeColor);
+
+  useEffect(() => {
+    setInputValue(themeColor);
+  }, [themeColor]);
 
   function applyColor(value: string) {
     const normalized = value.toLowerCase();

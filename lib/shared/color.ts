@@ -142,6 +142,8 @@ export function generateThemeCssVariables(hex: string): ThemeCssVariables {
   const chartCursorStrokeLight = `rgba(${r}, ${g}, ${b}, 0.3)`;
   const chartCursorFillDark = `rgba(${r}, ${g}, ${b}, 0.12)`;
   const chartCursorStrokeDark = `rgba(${r}, ${g}, ${b}, 0.28)`;
+  const glowALight = `linear-gradient(135deg, rgba(${r}, ${g}, ${b}, 0.18), transparent 42%, rgba(${r}, ${g}, ${b}, 0.08))`;
+  const glowADark = `linear-gradient(135deg, rgba(${r}, ${g}, ${b}, 0.24), transparent 42%, rgba(${r}, ${g}, ${b}, 0.1))`;
 
   return {
     light: {
@@ -155,6 +157,7 @@ export function generateThemeCssVariables(hex: string): ThemeCssVariables {
       "--color-chart-bar": hex,
       "--color-chart-cursor-fill": chartCursorFillLight,
       "--color-chart-cursor-stroke": chartCursorStrokeLight,
+      "--glow-a": glowALight,
     },
     dark: {
       "--color-accent": hex,
@@ -167,6 +170,7 @@ export function generateThemeCssVariables(hex: string): ThemeCssVariables {
       "--color-chart-bar": hex,
       "--color-chart-cursor-fill": chartCursorFillDark,
       "--color-chart-cursor-stroke": chartCursorStrokeDark,
+      "--glow-a": glowADark,
     },
   };
 }

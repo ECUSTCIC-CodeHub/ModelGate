@@ -144,6 +144,7 @@ export default function AdminSettingsPage() {
       const data = await response.json().catch(() => null);
       if (response.ok) {
         toast({ variant: "success", description: getApiMessage(data, "保存成功。") });
+        applySettings(responseData(data));
         router.refresh();
         return;
       }

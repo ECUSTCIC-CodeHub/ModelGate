@@ -225,13 +225,13 @@ body::before {
 
 ::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: var(--color-border-strong);
+  background: var(--color-accent-muted);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-foreground-muted);
+  background: var(--color-accent);
   background-clip: padding-box;
 }
 

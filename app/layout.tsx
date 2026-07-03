@@ -3,6 +3,7 @@ import "../public/fonts/harmony.css";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/toast";
 import { ThemeScript } from "@/components/providers/theme-script";
+import { ThemeColorSync } from "@/components/providers/theme-color-sync";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { isValidHexColor } from "@/lib/shared/color";
 
@@ -25,6 +26,7 @@ export default async function RootLayout({
         <ThemeScript themeColor={themeColor} />
       </head>
       <body className="antialiased">
+        <ThemeColorSync themeColor={themeColor} />
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>

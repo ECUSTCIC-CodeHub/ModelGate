@@ -10,8 +10,9 @@ export function ThemeScript({ themeColor }: { themeColor: string | null }) {
     colorScript = `(function() {
       try {
         var style = document.createElement('style');
+        style.id = 'modelgate-theme';
         style.textContent = ':root{${lightCss}}' + '.dark{${darkCss}}';
-        document.documentElement.insertBefore(style, document.documentElement.firstChild);
+        document.head.appendChild(style);
       } catch(e) {}
     })();`;
   }
