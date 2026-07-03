@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "../public/fonts/harmony.css";
 import "./globals.css";
+import { BrandingProvider } from "@/components/providers/branding-provider";
 import { ToastProvider } from "@/components/ui/toast";
 import { ThemeScript } from "@/components/providers/theme-script";
 import { ThemeColorSync } from "@/components/providers/theme-color-sync";
@@ -27,7 +28,9 @@ export default async function RootLayout({
       </head>
       <body className="antialiased">
         <ThemeColorSync themeColor={themeColor} />
-        <ToastProvider>{children}</ToastProvider>
+        <BrandingProvider logoUrl={settings.logo_url} logoSquareUrl={settings.logo_square_url}>
+          <ToastProvider>{children}</ToastProvider>
+        </BrandingProvider>
       </body>
     </html>
   );

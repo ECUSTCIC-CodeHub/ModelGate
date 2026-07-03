@@ -67,6 +67,8 @@ export type EditionSettingsInput = {
   access_guide_notice?: string;
   webhook_secret?: string;
   theme_color?: string;
+  logo_url?: string;
+  logo_square_url?: string;
 };
 
 export function filterSettingsInputForEdition<T extends EditionSettingsInput>(input: T): T {
@@ -108,6 +110,8 @@ export function maskSettingsForEdition<T extends {
   access_guide_notice: string;
   webhook_secret: string;
   theme_color: string;
+  logo_url: string;
+  logo_square_url: string;
 }>(settings: T): T {
   return {
     ...settings,

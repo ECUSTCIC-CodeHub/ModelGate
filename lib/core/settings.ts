@@ -33,6 +33,8 @@ export type GatewaySettings = {
   icp_filing_number: string;
   public_security_filing_number: string;
   theme_color: string;
+  logo_url: string;
+  logo_square_url: string;
 };
 
 let cachedGatewaySettings: { value: GatewaySettings; expiresAt: number } | null = null;
@@ -71,6 +73,8 @@ const GATEWAY_KEYS = [
   "icp_filing_number",
   "public_security_filing_number",
   "theme_color",
+  "logo_url",
+  "logo_square_url",
 ] as const;
 
 const SETTINGS_SELECT_SQL = `SELECT \`key\`, value FROM settings WHERE \`key\` IN (${GATEWAY_KEYS.map(() => "?").join(", ")})`;
@@ -107,6 +111,8 @@ async function readGatewaySettingsFromDb(): Promise<GatewaySettings> {
     icp_filing_number: map.get("icp_filing_number") ?? "",
     public_security_filing_number: map.get("public_security_filing_number") ?? "",
     theme_color: map.get("theme_color") ?? "",
+    logo_url: map.get("logo_url") ?? "",
+    logo_square_url: map.get("logo_square_url") ?? "",
   };
 }
 
@@ -145,6 +151,8 @@ export async function setGatewaySettings(input: {
   icp_filing_number?: string;
   public_security_filing_number?: string;
   theme_color?: string;
+  logo_url?: string;
+  logo_square_url?: string;
 }) {
   const values: Record<string, string> = {
     registration_enabled: input.registration_enabled ? "1" : "0",
@@ -172,6 +180,8 @@ export async function setGatewaySettings(input: {
   if (input.icp_filing_number !== undefined) values.icp_filing_number = input.icp_filing_number.trim();
   if (input.public_security_filing_number !== undefined) values.public_security_filing_number = input.public_security_filing_number.trim();
   if (input.theme_color !== undefined) values.theme_color = input.theme_color.trim();
+  if (input.logo_url !== undefined) values.logo_url = input.logo_url.trim();
+  if (input.logo_square_url !== undefined) values.logo_square_url = input.logo_square_url.trim();
 
   const isMysql = await gatewayDb.getDriver() === "mysql";
   const upsertSql = isMysql

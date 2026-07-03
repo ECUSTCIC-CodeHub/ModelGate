@@ -55,6 +55,8 @@ export default function AdminSettingsPage() {
   const [icpFilingNumber, setIcpFilingNumber] = useState("");
   const [publicSecurityFilingNumber, setPublicSecurityFilingNumber] = useState("");
   const [themeColor, setThemeColor] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [logoSquareUrl, setLogoSquareUrl] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const oidcFeatureEnabled = modelGateFeatures.oidc;
@@ -90,6 +92,8 @@ export default function AdminSettingsPage() {
     setIcpFilingNumber(stringValue(settings.icp_filing_number));
     setPublicSecurityFilingNumber(stringValue(settings.public_security_filing_number));
     setThemeColor(stringValue(settings.theme_color));
+    setLogoUrl(stringValue(settings.logo_url));
+    setLogoSquareUrl(stringValue(settings.logo_square_url));
   }, [accessGuideNoticeFeatureEnabled, announcementFeatureEnabled, oidcFeatureEnabled, webhookFeatureEnabled]);
 
   useEffect(() => {
@@ -135,6 +139,8 @@ export default function AdminSettingsPage() {
         icp_filing_number: icpFilingNumber,
         public_security_filing_number: publicSecurityFilingNumber,
         theme_color: themeColor,
+        logo_url: logoUrl,
+        logo_square_url: logoSquareUrl,
       };
 
       const response = await authedFetch("/api/admin/settings", {
@@ -171,6 +177,10 @@ export default function AdminSettingsPage() {
         <AppearanceSettingsCard
           themeColor={themeColor}
           setThemeColor={setThemeColor}
+          logoUrl={logoUrl}
+          setLogoUrl={setLogoUrl}
+          logoSquareUrl={logoSquareUrl}
+          setLogoSquareUrl={setLogoSquareUrl}
         />
         <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
           <LoginSettingsCard

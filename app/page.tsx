@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight, ExternalLink, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Footer } from "@/components/footer";
+import { getGatewaySettings } from "@/lib/core/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,10 @@ export const metadata = {
     "ModelGate 是一个基于 Next.js + SQLite 的多租户 LLM 网关与管理控制台，统一协议入口、治理能力和调用审计。",
 };
 
-export default function HomePage() {
+export default async function HomePage() {
+  const settings = await getGatewaySettings();
+  const wideLogo = settings.logo_url;
+  const squareLogo = settings.logo_square_url;
   return (
     <main className="min-h-screen">
       <section className="relative min-h-screen overflow-hidden">
@@ -35,9 +39,25 @@ export default function HomePage() {
               <Sparkles className="mr-2 size-4 text-[var(--color-accent)]" />
               多租户 LLM 网关管理控制台
             </p>
-            <h1 className="mt-7 text-5xl font-semibold leading-tight text-[var(--color-foreground)] sm:text-6xl lg:text-7xl">
-              ModelGate
-            </h1>
+            {(wideLogo || squareLogo) ? (
+              <div className="mt-7 flex justify-center">
+                {wideLogo && squareLogo ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={wideLogo} alt="Logo" className="hidden h-14 w-auto object-contain sm:h-16 lg:h-20 md:block" />
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={squareLogo} alt="Logo" className="h-14 w-auto object-contain sm:h-16 md:hidden" />
+                  </>
+                ) : (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={wideLogo || squareLogo} alt="Logo" className="h-14 w-auto object-contain sm:h-16 lg:h-20" />
+                )}
+              </div>
+            ) : (
+              <h1 className="mt-7 text-5xl font-semibold leading-tight text-[var(--color-foreground)] sm:text-6xl lg:text-7xl">
+                ModelGate
+              </h1>
+            )}
             <p className="mt-5 max-w-3xl text-lg leading-8 text-[var(--color-foreground-secondary)] sm:text-xl">
               统一管理多协议模型入口、上游渠道、用户权限、限流配额与调用日志，让团队以一致方式接入和治理 LLM 服务。
             </p>

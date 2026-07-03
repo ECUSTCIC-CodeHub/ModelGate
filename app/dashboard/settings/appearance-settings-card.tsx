@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import {
   isValidHexColor,
   THEME_PRESETS,
@@ -24,9 +25,17 @@ function PreviewDot({ color }: { color: string }) {
 export function AppearanceSettingsCard({
   themeColor,
   setThemeColor,
+  logoUrl,
+  setLogoUrl,
+  logoSquareUrl,
+  setLogoSquareUrl,
 }: {
   themeColor: string;
   setThemeColor: (value: string) => void;
+  logoUrl: string;
+  setLogoUrl: (value: string) => void;
+  logoSquareUrl: string;
+  setLogoSquareUrl: (value: string) => void;
 }) {
   const [inputValue, setInputValue] = useState(themeColor);
 
@@ -62,7 +71,7 @@ export function AppearanceSettingsCard({
       <CardHeader>
         <SectionTitle
           title="外观设置"
-          description="自定义主题色，留空则使用默认靛蓝色。"
+          description="自定义主题色与品牌 Logo，留空则使用默认值。"
         />
       </CardHeader>
       <CardContent className="space-y-4">
@@ -152,6 +161,55 @@ export function AppearanceSettingsCard({
             </div>
           </div>
         ) : null}
+
+        <Separator />
+
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm font-medium text-[var(--color-foreground)]">
+              Brand Logo
+            </label>
+            <p className="mt-0.5 text-xs text-[var(--color-foreground-muted)]">
+              设置后侧边栏和主页将用 Logo 图片替换 "ModelGate" 文字。
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-[var(--color-foreground-secondary)]">
+              宽版 Logo（主页、宽屏侧边栏）
+            </label>
+            <Input
+              placeholder="https://example.com/logo-wide.svg"
+              value={logoUrl}
+              onChange={(e) => setLogoUrl(e.target.value)}
+              className="max-w-lg"
+            />
+            {logoUrl ? (
+              <div className="flex items-center gap-2 rounded-md border border-[var(--color-border)] bg-white p-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={logoUrl} alt="宽版 Logo 预览" className="h-8 w-auto object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+              </div>
+            ) : null}
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-[var(--color-foreground-secondary)]">
+              方形 Logo（窄屏侧边栏）
+            </label>
+            <Input
+              placeholder="https://example.com/logo-square.svg"
+              value={logoSquareUrl}
+              onChange={(e) => setLogoSquareUrl(e.target.value)}
+              className="max-w-lg"
+            />
+            {logoSquareUrl ? (
+              <div className="flex items-center gap-2 rounded-md border border-[var(--color-border)] bg-white p-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={logoSquareUrl} alt="方形 Logo 预览" className="h-8 w-auto object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+              </div>
+            ) : null}
+          </div>
+        </div>
       </CardContent>
     </Card>
   );
