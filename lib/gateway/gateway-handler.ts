@@ -445,12 +445,11 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
         model: route.model.real_model,
       });
       const firstTokenAt = transformed.firstTokenAt();
-      const tpsStartAt = firstTokenAt ?? startedAt;
+      const firstTokenLatencyMs = firstTokenAt !== null ? Math.max(0, firstTokenAt - startedAt) : null;
       const outputTps =
         success && tokenUsage.outputTpsTokens > 0
-          ? Number(((tokenUsage.outputTpsTokens * 1000) / Math.max(1, Date.now() - tpsStartAt)).toFixed(2))
+          ? Number(((tokenUsage.outputTpsTokens * 1000) / Math.max(1, totalLatencyMs)).toFixed(2))
           : null;
-      const firstTokenLatencyMs = firstTokenAt !== null ? Math.max(0, firstTokenAt - startedAt) : null;
 
       if (success) {
         addUsage(auth.user.id, auth.key.id, Math.max(1, tokenUsage.totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id);
