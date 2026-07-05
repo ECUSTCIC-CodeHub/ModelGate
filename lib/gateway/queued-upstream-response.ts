@@ -212,11 +212,12 @@ export function createQueuedUpstreamResponse({
                 reasoningText: success ? transformed.reasoningText() : "",
                 model: route.model.real_model,
               });
+              const firstTokenAt = transformed.firstTokenAt();
+              const tpsStartAt = firstTokenAt ?? startedAt;
               const outputTps =
                 success && tokenUsage.outputTpsTokens > 0
-                  ? Number(((tokenUsage.outputTpsTokens * 1000) / Math.max(1, totalLatencyMs)).toFixed(2))
+                  ? Number(((tokenUsage.outputTpsTokens * 1000) / Math.max(1, Date.now() - tpsStartAt)).toFixed(2))
                   : null;
-              const firstTokenAt = transformed.firstTokenAt();
               const firstTokenLatencyMs = firstTokenAt !== null ? Math.max(0, firstTokenAt - startedAt) : null;
 
               if (success) {
