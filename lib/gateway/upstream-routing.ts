@@ -149,6 +149,7 @@ export async function requestUpstreamWithFallback({
             message: summary.message,
             name: summary.name,
             upstreamUrl: buildUpstreamUrl(lastRoute.channel.base_url, lastRoute.effective_upstream_protocol),
+            isTimeout: summary.isTimeout,
           };
           lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
           if (attempt >= maxRouteAttempts) break;
@@ -160,6 +161,7 @@ export async function requestUpstreamWithFallback({
           message: summary.message,
           name: summary.name,
           upstreamUrl: buildUpstreamUrl(lastRoute.channel.base_url, lastRoute.effective_upstream_protocol),
+          isTimeout: summary.isTimeout,
         };
         lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
         if (attempt >= maxRouteAttempts) break;
@@ -221,6 +223,7 @@ export async function requestUpstreamWithFallback({
           message: summary.message,
           name: summary.name,
           upstreamUrl: buildUpstreamUrl(route.channel.base_url, route.effective_upstream_protocol),
+          isTimeout: summary.isTimeout,
         };
         lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
         if (attempt >= maxRouteAttempts) break;
@@ -232,6 +235,7 @@ export async function requestUpstreamWithFallback({
         message: summary.message,
         name: summary.name,
         upstreamUrl: buildUpstreamUrl(route.channel.base_url, route.effective_upstream_protocol),
+        isTimeout: summary.isTimeout,
       };
       lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
       if (attempt >= maxRouteAttempts) break;

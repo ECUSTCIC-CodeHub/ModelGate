@@ -301,9 +301,10 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   }
 
   if (!("upstream" in picked)) {
-    const failStatus = picked.failure?.isTimeout ? 504 : 502;
-    const failMessage = picked.failure?.isTimeout ? "上游请求超时" : "上游请求失败";
-    const failCode = picked.failure?.isTimeout ? "504" : "502";
+    const { failure } = picked as { failure?: { isTimeout?: boolean } };
+    const failStatus = failure?.isTimeout ? 504 : 502;
+    const failMessage = failure?.isTimeout ? "上游请求超时" : "上游请求失败";
+    const failCode = failure?.isTimeout ? "504" : "502";
     return withQuotaHeaders(jsonError(failMessage, failStatus, {
       type: "upstream_error",
       param: "None",
