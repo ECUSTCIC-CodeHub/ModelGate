@@ -15,10 +15,14 @@ const REGEX_PREFIX = "regex:";
 const MAX_PATTERN_LENGTH = 256;
 const MAX_RULES = 50;
 
+// 通配符与正则模式均使用 "i" 标志，匹配时自动忽略大小写。
+// 即规则 pattern 与客户端 UA 的大小写差异不影响匹配结果。
+
 function isPlainPattern(pattern: string): boolean {
   return !pattern.startsWith(REGEX_PREFIX);
 }
 
+// 将通配符转换为正则；结尾 "i" 标志确保匹配忽略大小写。
 function wildcardToRegex(pattern: string): RegExp {
   let escaped = "";
   for (const ch of pattern) {
@@ -37,6 +41,7 @@ function compilePattern(pattern: string): RegExp {
   if (isPlainPattern(pattern)) {
     return wildcardToRegex(pattern);
   }
+  // regex: 前缀的正则同样强制 "i" 标志，保证整体忽略大小写。
   const raw = pattern.slice(REGEX_PREFIX.length);
   return new RegExp(raw, "i");
 }
