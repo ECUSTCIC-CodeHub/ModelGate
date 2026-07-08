@@ -431,7 +431,7 @@ async function backfillStats(db: DatabaseAdapter) {
   if (db.driver === "mysql") {
     await db.exec(`INSERT IGNORE INTO stats (id, total_requests, total_tokens, failed_requests, rate_limited_requests, retry_requests) ${selectSql}`);
   } else {
-    await db.exec(`INSERT INTO stats (id, total_requests, total_tokens, failed_requests, rate_limited_requests, retry_requests) ${selectSql} ON CONFLICT(id) DO NOTHING`);
+    await db.exec(`INSERT OR IGNORE INTO stats (id, total_requests, total_tokens, failed_requests, rate_limited_requests, retry_requests) ${selectSql}`);
   }
 }
 
