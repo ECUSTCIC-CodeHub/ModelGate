@@ -68,7 +68,7 @@ export async function handleMultipartGatewayRequest(request: Request) {
       modelRules: [],
     });
     if (globalMatch.matched && !globalMatch.allowed) {
-      logRejected(globalMatch.rule.error_code, globalMatch.rule.error_message, null);
+      logRejected(429, globalMatch.rule.error_message, null);
       return jsonError(globalMatch.rule.error_message, globalMatch.rule.error_code, {
         type: "invalid_request_error",
         param: "user-agent",
@@ -142,7 +142,7 @@ export async function handleMultipartGatewayRequest(request: Request) {
       modelRules: modelUaRules,
     });
     if (scopedMatch.matched && !scopedMatch.allowed) {
-      logRejected(scopedMatch.rule.error_code, scopedMatch.rule.error_message, alias);
+      logRejected(429, scopedMatch.rule.error_message, alias);
       return jsonError(scopedMatch.rule.error_message, scopedMatch.rule.error_code, {
         type: "invalid_request_error",
         param: "user-agent",

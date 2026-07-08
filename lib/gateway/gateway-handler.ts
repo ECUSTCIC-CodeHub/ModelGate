@@ -14,7 +14,6 @@ import { checkUserRateLimit } from "@/lib/gateway/ratelimit";
 import { selectModelRoute, type RoutedModel } from "@/lib/gateway/router";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { checkUserAgentRestrictions, parseUaRestrictions, type UaRestrictionMatch } from "@/lib/gateway/ua-restrictions";
-import { buildSyntheticAssistantResponse } from "@/lib/gateway/ua-deny-response";
 import { isFeatureEnabled } from "@/lib/core/features";
 import { resolveClientIp } from "@/lib/core/client-ip";
 import { resolveTokenUsage, tokenUsageMetadata } from "@/lib/gateway/token-usage";
@@ -44,13 +43,11 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   const allowedChannelIds = await getUserAllowedChannelIds(auth.user);
 
   const denyByUa = (match: UaRestrictionMatch & { matched: true }): Response => {
-    logRejected(match.rule.error_code, match.rule.error_message, null);
-    return buildSyntheticAssistantResponse({
-      inboundAdapter,
-      body,
-      model: typeof alias === "string" ? alias : "",
-      text: match.rule.error_message,
-      responseOptions,
+    logRejected(429, match.rule.error_message, null);
+    return jsonError(match.rule.error_message, match.rule.error_code, {
+      type: "invalid_request_error",
+      param: "user-agent",
+      code: String(match.rule.error_code),
     });
   };
 
@@ -73,6 +70,21 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       user_agent: clientUserAgent,
     });
   };
+
+  const globalUaRules = isFeatureEnabled("uaRestrictions")
+    ? parseUaRestrictions((await getGatewaySettings()).ua_restrictions)
+    : [];
+  if (globalUaRules.length > 0) {
+    const globalMatch = checkUserAgentRestrictions({
+      userAgent: clientUserAgent,
+      globalRules: globalUaRules,
+      channelRules: [],
+      modelRules: [],
+    });
+    if (globalMatch.matched && !globalMatch.allowed) {
+      return denyByUa(globalMatch);
+    }
+  }
 
   const contentLength = parseInt(request.headers.get("content-length") || "0");
   if (contentLength > 10 * 1024 * 1024) {
@@ -104,21 +116,6 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   if (typeof alias !== "string" || alias.length === 0) {
     logRejected(400, "缺少模型参数 model", null);
     return jsonError("缺少模型参数 model", 400);
-  }
-
-  const globalUaRules = isFeatureEnabled("uaRestrictions")
-    ? parseUaRestrictions((await getGatewaySettings()).ua_restrictions)
-    : [];
-  if (globalUaRules.length > 0) {
-    const globalMatch = checkUserAgentRestrictions({
-      userAgent: clientUserAgent,
-      globalRules: globalUaRules,
-      channelRules: [],
-      modelRules: [],
-    });
-    if (globalMatch.matched && !globalMatch.allowed) {
-      return denyByUa(globalMatch);
-    }
   }
 
   const estimatedTokens = inboundAdapter.estimateRequestTokens(body);
