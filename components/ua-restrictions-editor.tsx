@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,21 +64,42 @@ export function UaRestrictionsEditor({
   rules: UaRestrictionRuleDraft[];
   onChange: (rules: UaRestrictionRuleDraft[]) => void;
 }) {
+  const [internal, setInternal] = useState<UaRestrictionRuleDraft[]>(() => rules);
+  const lastEmitted = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    const serialized = rulesToJson(rules);
+    if (serialized !== lastEmitted.current) {
+      setInternal(rules);
+    }
+  }, [rules]);
+
+  function emit(next: UaRestrictionRuleDraft[]) {
+    lastEmitted.current = rulesToJson(next);
+    onChange(next);
+  }
+
   function update(index: number, patch: Partial<UaRestrictionRuleDraft>) {
-    onChange(rules.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+    const next = internal.map((item, i) => (i === index ? { ...item, ...patch } : item));
+    setInternal(next);
+    emit(next);
   }
 
   function remove(index: number) {
-    onChange(rules.filter((_, i) => i !== index));
+    const next = internal.filter((_, i) => i !== index);
+    setInternal(next);
+    emit(next);
   }
 
   function add() {
-    onChange([...rules, { ...EMPTY_RULE }]);
+    const next = [...internal, { ...EMPTY_RULE }];
+    setInternal(next);
+    emit(next);
   }
 
   return (
     <div className="space-y-3">
-      {rules.map((rule, index) => (
+      {internal.map((rule, index) => (
         <div key={index} className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-3">
           <div className="flex items-center justify-between gap-2">
             <Label className="text-xs">规则 #{index + 1}</Label>
