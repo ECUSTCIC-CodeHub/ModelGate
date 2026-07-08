@@ -1,5 +1,4 @@
 import { createLog, type CreateLogInput } from "@/lib/data/repositories/log-repository";
-import { getJsonlLogWriter } from "@/lib/gateway/jsonl-log-writer";
 
 export type ChatLogInput = CreateLogInput;
 
@@ -48,6 +47,15 @@ function buildJsonlRecord(input: ChatLogInput): Record<string, unknown> {
   };
 }
 
+async function getWriter() {
+  try {
+    const mod = await import("@/lib/gateway/jsonl-log-writer");
+    return mod.getJsonlLogWriter();
+  } catch {
+    return null;
+  }
+}
+
 export async function insertChatLog(input: ChatLogInput) {
   const cache = input.metadata ? extractCacheTokens(input.metadata) : { read: 0, creation: 0 };
   const cacheTokens = cache.read + cache.creation;
@@ -61,10 +69,11 @@ export async function insertChatLog(input: ChatLogInput) {
     await createLog(input);
   }
 
-  const writer = getJsonlLogWriter();
+  const writer = await getWriter();
   if (writer) {
     writer.enqueue(buildJsonlRecord(input)).catch(() => {
       // JSONL write failure is non-critical
     });
   }
 }
+
