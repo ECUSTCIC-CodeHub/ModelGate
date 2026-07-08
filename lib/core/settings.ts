@@ -65,6 +65,7 @@ const GATEWAY_KEYS = [
   "upstream_retry_same_channel",
   "upstream_circuit_breaker_enabled",
   "upstream_strict_priority",
+  "ua_restrictions",
   ...OIDC_KEYS,
   "announcement_content",
   "announcement_display_count",
