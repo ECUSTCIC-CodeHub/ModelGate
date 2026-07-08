@@ -72,6 +72,8 @@ export type IntermediateResponse = {
 export type ResponseAdapterOptions = {
   thinkingEnabled?: boolean;
   requestedModel?: string;
+  includeUsage?: boolean;
+  streamPromptTokens?: number;
 };
 
 export type ProtocolBodyAdapter = {

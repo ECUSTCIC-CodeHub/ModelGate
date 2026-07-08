@@ -79,6 +79,14 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     thinkingEnabled: thinkingRecord?.type === "enabled",
     requestedModel: typeof alias === "string" ? alias : undefined,
   };
+  const streamOptions = body.stream_options as Record<string, unknown> | undefined;
+  if (streamOptions?.include_usage === true) {
+    responseOptions.includeUsage = true;
+    const messages = body.messages as Array<Record<string, unknown>> | undefined;
+    if (messages) {
+      responseOptions.streamPromptTokens = Math.ceil(JSON.stringify(messages).length / 4);
+    }
+  }
   if (typeof alias !== "string" || alias.length === 0) {
     logRejected(400, "缺少模型参数 model", null);
     return jsonError("缺少模型参数 model", 400);
@@ -225,10 +233,12 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
         appendChannelQuotaHeaders(channelQuotaHeaders, cq.quota);
       }
     }
-    const failureStatus = picked.lastUpstreamStatus > 0 ? picked.lastUpstreamStatus : 502;
+    const failureStatus = picked.lastUpstreamStatus > 0
+      ? picked.lastUpstreamStatus
+      : picked.failure?.isTimeout ? 504 : 502;
     const failureMessage = picked.failure
       ? buildFailureMessage(picked.failure.stage, picked.failure.message, picked.failure.upstreamUrl)
-      : "上游请求失败";
+      : picked.failure?.isTimeout ? "上游请求超时" : "上游请求失败";
     insertChatLog({
       user_id: auth.user.id,
       key_id: auth.key.id,
@@ -291,10 +301,13 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   }
 
   if (!("upstream" in picked)) {
-    return withQuotaHeaders(jsonError("上游请求失败", 502, {
+    const failStatus = picked.failure?.isTimeout ? 504 : 502;
+    const failMessage = picked.failure?.isTimeout ? "上游请求超时" : "上游请求失败";
+    const failCode = picked.failure?.isTimeout ? "504" : "502";
+    return withQuotaHeaders(jsonError(failMessage, failStatus, {
       type: "upstream_error",
       param: "None",
-      code: "502",
+      code: failCode,
     }));
   }
 

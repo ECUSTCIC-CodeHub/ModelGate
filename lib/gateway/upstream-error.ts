@@ -29,6 +29,17 @@ export function parseUpstreamError(text: string, status: number) {
   }
 }
 
+export function isTimeoutError(error: unknown): boolean {
+  if (error instanceof Error) {
+    if (error.name === "AbortError" || error.name === "TimeoutError") return true;
+  }
+  return false;
+}
+
+export function upstreamFailureStatus(error: unknown): number {
+  return isTimeoutError(error) ? 504 : 502;
+}
+
 export function buildErrorResponseBody(message: string, status: number, inboundProtocol: GatewayProtocol, type?: string, code?: string | number) {
   if (inboundProtocol === "anthropic_messages") {
     return JSON.stringify({

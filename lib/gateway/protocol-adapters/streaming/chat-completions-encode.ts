@@ -16,24 +16,35 @@ export function encodeChatCompletionsStream(events: ReadableStream<IntermediateS
   let roleEmitted = false;
   let finished = false;
   const toolCalls = new Map<number, { id: string; name: string }>();
+  const emittedToolCalls = new Set<number>();
+  const includeUsage = options?.includeUsage === true;
+  const promptTokens = options?.streamPromptTokens ?? 0;
+  let accumulatedText = "";
+  let accumulatedReasoning = "";
 
-  const chatUsage = () => {
-    if (!usage) return undefined;
+  const localUsage = (): StreamUsage => {
+    const completionTokens = Math.max(1, Math.ceil((accumulatedText.length + accumulatedReasoning.length) / 4));
+    return {
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      total_tokens: promptTokens + completionTokens,
+    };
+  };
+
+  const chatUsage = (u: StreamUsage = usage!) => {
+    if (!u) return undefined;
     const completionDetails =
-      usage.reasoning_tokens !== undefined || usage.text_tokens !== undefined
-        ? {
-            ...(usage.reasoning_tokens !== undefined ? { reasoning_tokens: usage.reasoning_tokens } : {}),
-            ...(usage.text_tokens !== undefined ? { text_tokens: usage.text_tokens } : {}),
-          }
+      u.reasoning_tokens !== undefined
+        ? { reasoning_tokens: u.reasoning_tokens }
         : undefined;
     const promptDetails =
-      usage.cache_read_tokens !== undefined || usage.cache_creation_tokens !== undefined
+      u.cache_read_tokens !== undefined || u.cache_creation_tokens !== undefined
         ? {
-            ...(usage.cache_read_tokens !== undefined ? { cached_tokens: usage.cache_read_tokens } : {}),
-            ...(usage.cache_creation_tokens !== undefined
+            ...(u.cache_read_tokens !== undefined ? { cached_tokens: u.cache_read_tokens } : {}),
+            ...(u.cache_creation_tokens !== undefined
               ? {
                   cache_creation: {
-                    cache_creation_input_tokens: usage.cache_creation_tokens,
+                    cache_creation_input_tokens: u.cache_creation_tokens,
                     cache_type: "ephemeral",
                   },
                 }
@@ -41,9 +52,9 @@ export function encodeChatCompletionsStream(events: ReadableStream<IntermediateS
           }
         : undefined;
     return {
-      prompt_tokens: usage.prompt_tokens,
-      completion_tokens: usage.completion_tokens,
-      total_tokens: usage.total_tokens,
+      prompt_tokens: u.prompt_tokens,
+      completion_tokens: u.completion_tokens,
+      total_tokens: u.total_tokens,
       ...(completionDetails ? { completion_tokens_details: completionDetails } : {}),
       ...(promptDetails ? { prompt_tokens_details: promptDetails } : {}),
     };
@@ -54,7 +65,7 @@ export function encodeChatCompletionsStream(events: ReadableStream<IntermediateS
     delta: JsonRecord,
     reason: string | null = null,
   ) => {
-    controller.enqueue(encoder.encode(toSseBlock(null, {
+    const chunkPayload: JsonRecord = {
       id,
       object: "chat.completion.chunk",
       created,
@@ -64,8 +75,13 @@ export function encodeChatCompletionsStream(events: ReadableStream<IntermediateS
         delta,
         finish_reason: reason,
       }],
-      ...(usage ? { usage: chatUsage() } : {}),
-    })));
+    };
+    if (includeUsage) {
+      chunkPayload.usage = null;
+    } else if (usage) {
+      chunkPayload.usage = chatUsage();
+    }
+    controller.enqueue(encoder.encode(toSseBlock(null, chunkPayload)));
   };
 
   const emitRole = (controller: ReadableStreamDefaultController<Uint8Array>) => {
@@ -79,6 +95,19 @@ export function encodeChatCompletionsStream(events: ReadableStream<IntermediateS
     finished = true;
     const finishReason = reason === "tool_use" ? "tool_calls" : reason ?? "stop";
     emit(controller, {}, finishReason);
+    if (includeUsage) {
+      const finalUsage = usage ? chatUsage() : chatUsage(localUsage());
+      if (finalUsage) {
+        controller.enqueue(encoder.encode(toSseBlock(null, {
+          id,
+          object: "chat.completion.chunk",
+          created,
+          model,
+          choices: [],
+          usage: finalUsage,
+        })));
+      }
+    }
     controller.enqueue(encoder.encode("data: [DONE]\n\n"));
   };
 
@@ -106,12 +135,14 @@ export function encodeChatCompletionsStream(events: ReadableStream<IntermediateS
           if (value.type === "text_delta") {
             emitRole(controller);
             emit(controller, { content: value.text });
+            accumulatedText += value.text;
             continue;
           }
 
           if (value.type === "reasoning_delta") {
             emitRole(controller);
             emit(controller, { reasoning: value.text });
+            accumulatedReasoning += value.text;
             continue;
           }
 
@@ -138,18 +169,30 @@ export function encodeChatCompletionsStream(events: ReadableStream<IntermediateS
 
           if (value.type === "tool_call_delta") {
             emitRole(controller);
-            const toolCall = toolCalls.get(value.index);
-            emit(controller, {
-              tool_calls: [{
-                index: value.index,
-                id: value.id ?? toolCall?.id ?? `call_${crypto.randomUUID().replace(/-/g, "")}`,
-                type: "function",
-                function: {
-                  name: value.name ?? toolCall?.name ?? "",
-                  arguments: value.arguments,
-                },
-              }],
-            });
+            if (emittedToolCalls.has(value.index)) {
+              emit(controller, {
+                tool_calls: [{
+                  index: value.index,
+                  function: {
+                    arguments: value.arguments,
+                  },
+                }],
+              });
+            } else {
+              const toolCall = toolCalls.get(value.index);
+              emit(controller, {
+                tool_calls: [{
+                  index: value.index,
+                  id: value.id ?? toolCall?.id ?? `call_${crypto.randomUUID().replace(/-/g, "")}`,
+                  type: "function",
+                  function: {
+                    name: value.name ?? toolCall?.name ?? "",
+                    arguments: value.arguments,
+                  },
+                }],
+              });
+              emittedToolCalls.add(value.index);
+            }
             continue;
           }
 

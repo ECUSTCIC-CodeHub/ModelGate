@@ -19,11 +19,8 @@ const RESPONSE_KEYS = ["id", "object", "created", "model", "choices", "usage"];
 function chatUsageFromIntermediate(usage: IntermediateResponse["usage"]) {
   if (!usage) return undefined;
   const completionDetails =
-    usage.reasoning_tokens !== undefined || usage.text_tokens !== undefined
-      ? {
-          ...(usage.reasoning_tokens !== undefined ? { reasoning_tokens: usage.reasoning_tokens } : {}),
-          ...(usage.text_tokens !== undefined ? { text_tokens: usage.text_tokens } : {}),
-        }
+    usage.reasoning_tokens !== undefined
+      ? { reasoning_tokens: usage.reasoning_tokens }
       : undefined;
   const promptDetails =
     usage.cache_read_tokens !== undefined || usage.cache_creation_tokens !== undefined

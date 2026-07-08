@@ -3,6 +3,7 @@ import type { DbChannel, DbModel } from "@/lib/core/db";
 import type { RoutedModel } from "@/lib/gateway/router";
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 import { withUpstreamProxy } from "@/lib/gateway/upstream-proxy";
+import { isTimeoutError, upstreamFailureStatus } from "@/lib/gateway/upstream-error";
 import { Agent, type Dispatcher } from "undici";
 
 function normalizeProviderBaseUrl(baseUrl: string) {
@@ -340,11 +341,13 @@ export async function proxyChatCompletion(
         "content-type": upstream.headers.get("content-type") ?? "application/json",
       },
     });
-  } catch {
-    return jsonError("上游请求失败", 502, {
+  } catch (error) {
+    const status = upstreamFailureStatus(error);
+    const message = isTimeoutError(error) ? "上游请求超时" : "上游请求失败";
+    return jsonError(message, status, {
       type: "upstream_error",
       param: "None",
-      code: "502",
+      code: String(status),
     });
   }
 }

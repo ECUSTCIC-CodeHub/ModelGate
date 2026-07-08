@@ -2,7 +2,7 @@ import { acquireChannel, type ChannelLease, makeModelRuntimeKey } from "@/lib/ga
 import { checkChannelQuota } from "@/lib/gateway/channel-quota";
 import { buildUpstreamUrl, fetchUpstreamRequest } from "@/lib/gateway/proxy";
 import { selectModelRoute, type RoutedModel } from "@/lib/gateway/router";
-import { shouldRetryUpstreamStatus } from "@/lib/gateway/upstream-error";
+import { isTimeoutError, shouldRetryUpstreamStatus } from "@/lib/gateway/upstream-error";
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 
 type ChannelAcquireResult = Awaited<ReturnType<typeof acquireChannel>>;
@@ -14,6 +14,7 @@ type UpstreamFailureInfo = {
   message: string;
   name: string | null;
   upstreamUrl: string | null;
+  isTimeout: boolean;
 };
 
 export type UpstreamPickResult =
@@ -51,12 +52,14 @@ function summarizeError(error: unknown) {
     return {
       message: error.message || error.name || "未知错误",
       name: error.name || null,
+      isTimeout: error.name === "AbortError",
     };
   }
 
   return {
     message: typeof error === "string" && error.trim() ? error : "未知错误",
     name: null,
+    isTimeout: false,
   };
 }
 

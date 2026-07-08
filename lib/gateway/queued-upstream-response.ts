@@ -6,7 +6,7 @@ import type { GatewayProtocol } from "@/lib/gateway/protocols";
 import type { StreamTransformResult } from "@/lib/gateway/protocol-adapters/streaming";
 import type { RoutedModel } from "@/lib/gateway/router";
 import { resolveTokenUsage, tokenUsageMetadata } from "@/lib/gateway/token-usage";
-import { buildErrorResponseBody, parseUpstreamError } from "@/lib/gateway/upstream-error";
+import { buildErrorResponseBody, isTimeoutError, parseUpstreamError, upstreamFailureStatus } from "@/lib/gateway/upstream-error";
 import type { UpstreamPickResult } from "@/lib/gateway/upstream-routing";
 import { addUsage } from "@/lib/gateway/usage-accounting";
 
@@ -261,8 +261,10 @@ export function createQueuedUpstreamResponse({
             } finally {
               finalize();
             }
-          } catch {
+          } catch (error) {
             lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+            const failStatus = upstreamFailureStatus(error);
+            const failMessage = isTimeoutError(error) ? "上游请求超时" : "上游请求失败";
             insertChatLog({
               user_id: auth.user.id,
               key_id: auth.key.id,
@@ -270,7 +272,7 @@ export function createQueuedUpstreamResponse({
               model_alias: alias,
               real_model: route.model.real_model,
               stream: true,
-              status_code: 502,
+              status_code: failStatus,
               estimated_tokens: estimatedTokens,
               prompt_tokens: localPromptTokens,
               completion_tokens: 0,
@@ -280,11 +282,11 @@ export function createQueuedUpstreamResponse({
               output_tps: null,
               route_attempts: Math.max(1, attemptedChannels.length),
               attempted_channels: attemptedChannelNames.join(" -> "),
-              error_message: "上游请求失败",
+              error_message: failMessage,
               client_ip: clientIp,
               user_agent: clientUserAgent,
             });
-            controller.enqueue(toSseDataBlock(buildErrorResponseBody("上游请求失败", 502, inboundProtocol, "upstream_error", "502")));
+            controller.enqueue(toSseDataBlock(buildErrorResponseBody(failMessage, failStatus, inboundProtocol, "upstream_error", String(failStatus))));
             controller.enqueue(encoder.encode("data: [DONE]\n\n"));
             controller.close();
           }
@@ -407,8 +409,10 @@ export function createQueuedUpstreamResponse({
 
           controller.enqueue(encoder.encode(adaptedText));
           controller.close();
-        } catch {
+        } catch (error) {
           lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+          const failStatus = upstreamFailureStatus(error);
+          const failMessage = isTimeoutError(error) ? "上游请求超时" : "上游请求失败";
           insertChatLog({
             user_id: auth.user.id,
             key_id: auth.key.id,
@@ -416,7 +420,7 @@ export function createQueuedUpstreamResponse({
             model_alias: alias,
             real_model: route.model.real_model,
             stream: false,
-            status_code: 502,
+            status_code: failStatus,
             estimated_tokens: estimatedTokens,
             prompt_tokens: localPromptTokens,
             completion_tokens: 0,
@@ -425,11 +429,11 @@ export function createQueuedUpstreamResponse({
             output_tps: null,
             route_attempts: Math.max(1, attemptedChannels.length),
             attempted_channels: attemptedChannelNames.join(" -> "),
-            error_message: "上游请求失败",
+            error_message: failMessage,
             client_ip: clientIp,
             user_agent: clientUserAgent,
           });
-          controller.enqueue(encoder.encode(buildErrorResponseBody("上游请求失败", 502, inboundProtocol, "upstream_error", "502")));
+          controller.enqueue(encoder.encode(buildErrorResponseBody(failMessage, failStatus, inboundProtocol, "upstream_error", String(failStatus))));
           controller.close();
         }
       } catch {

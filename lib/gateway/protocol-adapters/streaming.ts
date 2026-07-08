@@ -19,7 +19,7 @@ export function createTransformedStream(
     if (!passthroughAdapter) {
       return createPassthroughStream(upstream, () => null);
     }
-    if (outboundProtocol === "responses") {
+    if (options?.includeUsage || options?.requestedModel || outboundProtocol === "responses") {
       const decoded = passthroughAdapter.decode(upstream);
       return {
         stream: passthroughAdapter.encode(decoded.stream, options),
