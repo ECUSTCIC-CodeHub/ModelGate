@@ -59,10 +59,10 @@ async function getWriter() {
 export async function insertChatLog(input: ChatLogInput) {
   const cache = input.metadata ? extractCacheTokens(input.metadata) : { read: 0, creation: 0 };
   const cacheTokens = cache.read + cache.creation;
-  if (cacheTokens > 0 && input.prompt_tokens !== null) {
+  if (cacheTokens > 0 && input.prompt_tokens != null) {
     await createLog({
       ...input,
-      prompt_tokens: input.prompt_tokens + cacheTokens,
+      prompt_tokens: (input.prompt_tokens ?? 0) + cacheTokens,
       total_tokens: (input.total_tokens ?? 0) + cacheTokens,
     });
   } else {
