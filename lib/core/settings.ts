@@ -49,7 +49,7 @@ function positiveInt(value: string | null | undefined, fallback: number) {
 
 function retentionDays(value: string | null | undefined): number {
   const num = Number(value);
-  if (!Number.isFinite(num) || num < 0) return 30;
+  if (!Number.isFinite(num) || num < 0) return 0;
   return Math.min(Math.trunc(num), 3650);
 }
 

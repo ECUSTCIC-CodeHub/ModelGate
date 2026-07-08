@@ -107,6 +107,7 @@ async function initSqlite(): Promise<DatabaseAdapter> {
     await db.exec(POST_MIGRATION_INDEXES_SQL);
     await db.exec(DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL);
     await seedDefaultSettings(db);
+    await backfillStats(db);
     await migrateUnlimitedLimitSemantics(db);
     await ensureDefaultGroup(db);
     await cleanupModelUserUsage(db);
@@ -402,6 +403,7 @@ async function initMysql(): Promise<DatabaseAdapter> {
     for (const idx of MYSQL_POST_MIGRATION_INDEXES) await createIndexIdempotent(db, idx);
     await db.exec(MYSQL_DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL);
     await seedDefaultSettings(db);
+    await backfillStats(db);
     await migrateUnlimitedLimitSemantics(db);
     await normalizeMysqlDatetimes(db);
     await ensureDefaultGroup(db);
@@ -418,6 +420,21 @@ async function initMysql(): Promise<DatabaseAdapter> {
   return db;
 }
 
+async function backfillStats(db: DatabaseAdapter) {
+  const selectSql = `SELECT 1 AS id,
+      COUNT(*) AS total_requests,
+      COALESCE(SUM(total_tokens), 0) AS total_tokens,
+      COALESCE(SUM(CASE WHEN status_code >= 400 AND status_code != 429 THEN 1 ELSE 0 END), 0) AS failed_requests,
+      COALESCE(SUM(CASE WHEN status_code = 429 THEN 1 ELSE 0 END), 0) AS rate_limited_requests,
+      COALESCE(SUM(CASE WHEN route_attempts > 1 THEN 1 ELSE 0 END), 0) AS retry_requests
+    FROM logs`;
+  if (db.driver === "mysql") {
+    await db.exec(`INSERT IGNORE INTO stats (id, total_requests, total_tokens, failed_requests, rate_limited_requests, retry_requests) ${selectSql}`);
+  } else {
+    await db.exec(`INSERT INTO stats (id, total_requests, total_tokens, failed_requests, rate_limited_requests, retry_requests) ${selectSql} ON CONFLICT(id) DO NOTHING`);
+  }
+}
+
 async function seedDefaultSettings(db: DatabaseAdapter) {
   const defaults: Array<[string, string]> = [
     ["registration_enabled", "1"],
@@ -430,7 +447,7 @@ async function seedDefaultSettings(db: DatabaseAdapter) {
     ["upstream_retry_same_channel", "0"],
     ["upstream_circuit_breaker_enabled", "1"],
     ["ua_restrictions", ""],
-    ["log_retention_days", "30"],
+    ["log_retention_days", "0"],
     ["oidc_enabled", "0"],
     ["oidc_issuer_url", ""],
     ["oidc_client_id", ""],

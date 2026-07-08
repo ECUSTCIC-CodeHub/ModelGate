@@ -17,7 +17,7 @@ export function LogRetentionSettingsCard({
       <CardHeader>
         <SectionTitle
           title="日志保留"
-          description="请求日志超过保留天数后自动清理，避免日志表无限膨胀。设为 0 关闭自动清理。"
+          description="请求日志超过保留天数后自动清理，避免日志表无限膨胀。默认 0 表示不清理；设为正数启用。"
         />
       </CardHeader>
       <CardContent>

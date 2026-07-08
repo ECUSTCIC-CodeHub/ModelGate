@@ -57,8 +57,7 @@ export async function GET(request: Request) {
   const whereSql = isAdmin ? "" : "WHERE user_id = ?";
   const whereArgs = isAdmin ? [] : [guard.auth.user.id];
 
-  const summary = await gatewayDb
-    .queryOne<{
+  type SummaryCore = {
     total_requests: number;
     total_tokens: number;
     failed_requests: number;
@@ -66,7 +65,34 @@ export async function GET(request: Request) {
     avg_latency_ms: number;
     avg_output_tps: number;
     retry_requests: number;
-  }>(
+  };
+
+  let summary: SummaryCore;
+  if (isAdmin) {
+    const stats = await gatewayDb.queryOne<{
+      total_requests: number;
+      total_tokens: number;
+      failed_requests: number;
+      rate_limited_requests: number;
+      retry_requests: number;
+    }>("SELECT total_requests, total_tokens, failed_requests, rate_limited_requests, retry_requests FROM stats WHERE id = 1");
+    const avgRow = await gatewayDb.queryOne<{ avg_latency_ms: number; avg_output_tps: number }>(
+      `SELECT
+         COALESCE(AVG(CASE WHEN status_code < 400 THEN latency_ms END), 0) AS avg_latency_ms,
+         COALESCE(AVG(CASE WHEN status_code < 400 THEN output_tps END), 0) AS avg_output_tps
+       FROM logs`,
+    );
+    summary = {
+      total_requests: stats?.total_requests ?? 0,
+      total_tokens: stats?.total_tokens ?? 0,
+      failed_requests: stats?.failed_requests ?? 0,
+      rate_limited_requests: stats?.rate_limited_requests ?? 0,
+      retry_requests: stats?.retry_requests ?? 0,
+      avg_latency_ms: avgRow?.avg_latency_ms ?? 0,
+      avg_output_tps: avgRow?.avg_output_tps ?? 0,
+    };
+  } else {
+    const row = await gatewayDb.queryOne<SummaryCore>(
       `SELECT
          COUNT(*) AS total_requests,
          COALESCE(SUM(total_tokens), 0) AS total_tokens,
@@ -78,15 +104,17 @@ export async function GET(request: Request) {
        FROM logs
        ${whereSql}`,
       whereArgs,
-    ) as {
-    total_requests: number;
-    total_tokens: number;
-    failed_requests: number;
-    rate_limited_requests: number;
-    avg_latency_ms: number;
-    avg_output_tps: number;
-    retry_requests: number;
-  };
+    );
+    summary = {
+      total_requests: row?.total_requests ?? 0,
+      total_tokens: row?.total_tokens ?? 0,
+      failed_requests: row?.failed_requests ?? 0,
+      rate_limited_requests: row?.rate_limited_requests ?? 0,
+      avg_latency_ms: row?.avg_latency_ms ?? 0,
+      avg_output_tps: row?.avg_output_tps ?? 0,
+      retry_requests: row?.retry_requests ?? 0,
+    };
+  }
 
   const activeUserData = isAdmin
     ? await gatewayDb.queryOne<{ active_users: number }>(

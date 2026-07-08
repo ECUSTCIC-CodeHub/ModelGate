@@ -60,7 +60,7 @@ export default function AdminSettingsPage() {
   const [logoUrl, setLogoUrl] = useState("");
   const [logoSquareUrl, setLogoSquareUrl] = useState("");
   const [uaRestrictions, setUaRestrictions] = useState("");
-  const [logRetentionDays, setLogRetentionDays] = useState(30);
+  const [logRetentionDays, setLogRetentionDays] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const oidcFeatureEnabled = modelGateFeatures.oidc;
@@ -95,7 +95,7 @@ export default function AdminSettingsPage() {
     if (webhookFeatureEnabled) setWebhookSecret(stringValue(settings.webhook_secret));
     if (uaRestrictionsFeatureEnabled) setUaRestrictions(stringValue(settings.ua_restrictions));
     const retentionRaw = Number(settings.log_retention_days);
-    setLogRetentionDays(Number.isFinite(retentionRaw) && retentionRaw >= 0 ? Math.min(Math.trunc(retentionRaw), 3650) : 30);
+    setLogRetentionDays(Number.isFinite(retentionRaw) && retentionRaw >= 0 ? Math.min(Math.trunc(retentionRaw), 3650) : 0);
     setCorsEnabled(settings.cors_enabled === 1);
     setIcpFilingNumber(stringValue(settings.icp_filing_number));
     setPublicSecurityFilingNumber(stringValue(settings.public_security_filing_number));

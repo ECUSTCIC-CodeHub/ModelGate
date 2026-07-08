@@ -126,6 +126,15 @@ CREATE TABLE IF NOT EXISTS announcements (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_announcements_pinned_created ON announcements(pinned, created_at);
+
+CREATE TABLE IF NOT EXISTS stats (
+  id INTEGER PRIMARY KEY,
+  total_requests INTEGER NOT NULL DEFAULT 0,
+  total_tokens INTEGER NOT NULL DEFAULT 0,
+  failed_requests INTEGER NOT NULL DEFAULT 0,
+  rate_limited_requests INTEGER NOT NULL DEFAULT 0,
+  retry_requests INTEGER NOT NULL DEFAULT 0
+);
 `;
 
 export const POST_MIGRATION_INDEXES_SQL = `

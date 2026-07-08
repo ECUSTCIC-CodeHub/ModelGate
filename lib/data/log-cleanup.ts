@@ -5,7 +5,7 @@ const INITIAL_DELAY_MS = 60_000;
 const BATCH_SIZE = 5000;
 const SLEEP_BETWEEN_BATCHES_MS = 400;
 const MAX_RETENTION_DAYS = 3650;
-const DEFAULT_RETENTION_DAYS = 30;
+const DEFAULT_RETENTION_DAYS = 0;
 
 let started = false;
 let running = false;

@@ -162,6 +162,15 @@ CREATE TABLE IF NOT EXISTS announcements (
   pinned TINYINT(1) DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS stats (
+  id INT PRIMARY KEY,
+  total_requests BIGINT NOT NULL DEFAULT 0,
+  total_tokens BIGINT NOT NULL DEFAULT 0,
+  failed_requests BIGINT NOT NULL DEFAULT 0,
+  rate_limited_requests BIGINT NOT NULL DEFAULT 0,
+  retry_requests BIGINT NOT NULL DEFAULT 0
+);
 `;
 
 export const MYSQL_BASE_INDEXES = [

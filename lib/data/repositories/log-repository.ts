@@ -35,34 +35,50 @@ function serializeMetadata(value: unknown) {
 }
 
 export async function createLog(input: CreateLogInput) {
-  await gatewayDb.execute(
-    `INSERT INTO logs (
+  const failed = input.status_code >= 400 && input.status_code !== 429 ? 1 : 0;
+  const rateLimited = input.status_code === 429 ? 1 : 0;
+  const retry = (input.route_attempts ?? 1) > 1 ? 1 : 0;
+  const tokens = input.total_tokens ?? 0;
+  await gatewayDb.transaction(async (tx) => {
+    await tx.execute(
+      `INSERT INTO logs (
          user_id, key_id, channel_id, model_alias, real_model,
          stream, status_code, estimated_tokens, prompt_tokens, completion_tokens, total_tokens,
          token_source, metadata, latency_ms, first_token_latency_ms, output_tps, route_attempts, attempted_channels, error_message, client_ip, user_agent
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      input.user_id,
-      input.key_id,
-      input.channel_id,
-      input.model_alias,
-      input.real_model,
-      input.stream ? 1 : 0,
-      input.status_code,
-      input.estimated_tokens,
-      input.prompt_tokens ?? null,
-      input.completion_tokens ?? null,
-      input.total_tokens ?? null,
-      input.token_source ?? null,
-      serializeMetadata(input.metadata),
-      input.latency_ms,
-      input.first_token_latency_ms ?? null,
-      input.output_tps ?? null,
-      input.route_attempts ?? 1,
-      input.attempted_channels ?? null,
-      input.error_message ?? null,
-      input.client_ip ?? null,
-      input.user_agent ?? null,
-    ],
-  );
+      [
+        input.user_id,
+        input.key_id,
+        input.channel_id,
+        input.model_alias,
+        input.real_model,
+        input.stream ? 1 : 0,
+        input.status_code,
+        input.estimated_tokens,
+        input.prompt_tokens ?? null,
+        input.completion_tokens ?? null,
+        input.total_tokens ?? null,
+        input.token_source ?? null,
+        serializeMetadata(input.metadata),
+        input.latency_ms,
+        input.first_token_latency_ms ?? null,
+        input.output_tps ?? null,
+        input.route_attempts ?? 1,
+        input.attempted_channels ?? null,
+        input.error_message ?? null,
+        input.client_ip ?? null,
+        input.user_agent ?? null,
+      ],
+    );
+    await tx.execute(
+      `UPDATE stats SET
+         total_requests = total_requests + 1,
+         total_tokens = total_tokens + ?,
+         failed_requests = failed_requests + ?,
+         rate_limited_requests = rate_limited_requests + ?,
+         retry_requests = retry_requests + ?
+       WHERE id = 1`,
+      [tokens, failed, rateLimited, retry],
+    );
+  });
 }
