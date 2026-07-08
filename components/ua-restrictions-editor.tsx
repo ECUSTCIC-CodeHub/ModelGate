@@ -65,7 +65,7 @@ export function UaRestrictionsEditor({
   onChange: (rules: UaRestrictionRuleDraft[]) => void;
 }) {
   const [internal, setInternal] = useState<UaRestrictionRuleDraft[]>(() => rules);
-  const lastEmitted = useRef<string | undefined>(undefined);
+  const lastEmitted = useRef<string>(rulesToJson(rules));
 
   useEffect(() => {
     const serialized = rulesToJson(rules);
