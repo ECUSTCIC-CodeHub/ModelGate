@@ -52,6 +52,7 @@ export type LogSummary = {
   failed_requests: number;
   rate_limited_requests: number;
   total_tokens: number;
+  cache_read_tokens: number;
   avg_latency_ms: number;
   avg_first_token_latency_ms: number;
   avg_output_tps: number;

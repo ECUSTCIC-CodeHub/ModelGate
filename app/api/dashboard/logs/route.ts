@@ -193,6 +193,9 @@ export async function GET(request: Request) {
          ${FAILED_REQUESTS_EXPR} AS failed_requests,
          ${RATE_LIMITED_REQUESTS_EXPR} AS rate_limited_requests,
          COALESCE(SUM(total_tokens), 0) AS total_tokens,
+         COALESCE(SUM(
+           COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(l.metadata, '$.token_usage.remote.cache.read_tokens')) AS INTEGER), 0)
+         ), 0) AS cache_read_tokens,
          COALESCE(AVG(CASE WHEN status_code < 400 THEN latency_ms END), 0) AS avg_latency_ms,
          COALESCE(AVG(CASE WHEN status_code < 400 THEN first_token_latency_ms END), 0) AS avg_first_token_latency_ms,
          COALESCE(AVG(CASE WHEN status_code < 400 THEN output_tps END), 0) AS avg_output_tps

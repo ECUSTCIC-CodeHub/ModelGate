@@ -1575,6 +1575,7 @@ email matches ".*@company\\.com"
     "failed_requests": 5,
     "rate_limited_requests": 2,
     "total_tokens": 123456,
+    "cache_read_tokens": 5000,
     "avg_latency_ms": 500,
     "avg_first_token_latency_ms": 200,
     "avg_output_tps": 50.5
@@ -2296,8 +2297,29 @@ OpenAI Images Edits 兼容端点，直通上游 `/images/edits`，支持 multipa
 | 409 | 冲突（如重名） |
 | 429 | 请求过于频繁 |
 | 502 | 上游服务错误 |
+| 504 | 上游请求超时 |
 
 ---
+
+## JSONL 请求日志
+
+支持将请求日志以 JSONL 格式写入文件，用于审计和分析。
+
+**环境变量:**
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `JSONL_LOG_ENABLED` | 未设置（禁用） | 设为 `1` 启用 JSONL 日志 |
+| `JSONL_LOG_PATH` | `<data_dir>/request-logs.jsonl` | JSONL 文件路径 |
+
+启用后每个请求完成时异步写入一行 JSON 记录，采用批量异步写入避免阻塞请求处理。
+
+**JSONL 行格式:**
+```json
+{"timestamp":"2026-05-08T12:00:00.000Z","user_id":1,"key_id":7,"channel_id":2,"model_alias":"gpt-4","real_model":"gpt-4-turbo","stream":1,"status_code":200,"estimated_tokens":200,"prompt_tokens":100,"completion_tokens":50,"total_tokens":150,"token_source":"usage","metadata":{"token_usage":{"remote":{"prompt_tokens":100,"completion_tokens":50,"total_tokens":150,"cache":{"read_tokens":32,"creation_tokens":0,"miss_tokens":68}}}},"latency_ms":1234,"first_token_latency_ms":300,"output_tps":45.5,"route_attempts":1,"attempted_channels":"openai-main","error_message":null,"client_ip":"1.2.3.4","user_agent":"OpenAI/JS 6.39.0"}
+```
+
+> 异步批量写入：队列容量 1024，每批 64 条或 100ms 间隔刷新落盘。队列满时请求会等待入队（不丢日志）。
 
 ## 速率限制与配额
 

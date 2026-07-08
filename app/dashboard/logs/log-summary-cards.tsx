@@ -44,7 +44,9 @@ export function LogSummaryCards({ summary }: LogSummaryCardsProps) {
       <MetricCard
         label="总 Token"
         value={formatTokenCount(summary?.total_tokens)}
-        hint={summary ? `完整值 ${formatNumber(summary.total_tokens)}` : "累计 Token 消耗"}
+        hint={summary
+          ? `缓存命中 ${summary.cache_read_tokens ?? 0}，完整值 ${formatNumber(summary.total_tokens)}`
+          : "累计 Token 消耗"}
         icon={Search}
       />
       <MetricCard
