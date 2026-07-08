@@ -13,6 +13,7 @@ import {
   AppearanceSettingsCard,
   CorsSettingsCard,
   FilingSettingsCard,
+  LogRetentionSettingsCard,
   LoginSettingsCard,
   OidcSettingsCard,
   SaveSettingsCard,
@@ -59,6 +60,7 @@ export default function AdminSettingsPage() {
   const [logoUrl, setLogoUrl] = useState("");
   const [logoSquareUrl, setLogoSquareUrl] = useState("");
   const [uaRestrictions, setUaRestrictions] = useState("");
+  const [logRetentionDays, setLogRetentionDays] = useState(30);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const oidcFeatureEnabled = modelGateFeatures.oidc;
@@ -92,6 +94,8 @@ export default function AdminSettingsPage() {
     if (accessGuideNoticeFeatureEnabled) setAccessGuideNotice(stringValue(settings.access_guide_notice));
     if (webhookFeatureEnabled) setWebhookSecret(stringValue(settings.webhook_secret));
     if (uaRestrictionsFeatureEnabled) setUaRestrictions(stringValue(settings.ua_restrictions));
+    const retentionRaw = Number(settings.log_retention_days);
+    setLogRetentionDays(Number.isFinite(retentionRaw) && retentionRaw >= 0 ? Math.min(Math.trunc(retentionRaw), 3650) : 30);
     setCorsEnabled(settings.cors_enabled === 1);
     setIcpFilingNumber(stringValue(settings.icp_filing_number));
     setPublicSecurityFilingNumber(stringValue(settings.public_security_filing_number));
@@ -140,6 +144,7 @@ export default function AdminSettingsPage() {
         ...(accessGuideNoticeFeatureEnabled ? { access_guide_notice: accessGuideNotice } : {}),
         ...(webhookFeatureEnabled ? { webhook_secret: webhookSecret } : {}),
         ...(uaRestrictionsFeatureEnabled ? { ua_restrictions: uaRestrictions } : {}),
+        log_retention_days: logRetentionDays,
         cors_enabled: corsEnabled,
         icp_filing_number: icpFilingNumber,
         public_security_filing_number: publicSecurityFilingNumber,
@@ -269,6 +274,8 @@ export default function AdminSettingsPage() {
           setIcpFilingNumber={setIcpFilingNumber}
           setPublicSecurityFilingNumber={setPublicSecurityFilingNumber}
         />
+
+        <LogRetentionSettingsCard days={logRetentionDays} setDays={setLogRetentionDays} />
 
         <SaveSettingsCard disabled={isSaving} onSave={() => void save()} />
       </div>

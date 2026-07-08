@@ -430,6 +430,7 @@ async function seedDefaultSettings(db: DatabaseAdapter) {
     ["upstream_retry_same_channel", "0"],
     ["upstream_circuit_breaker_enabled", "1"],
     ["ua_restrictions", ""],
+    ["log_retention_days", "30"],
     ["oidc_enabled", "0"],
     ["oidc_issuer_url", ""],
     ["oidc_client_id", ""],

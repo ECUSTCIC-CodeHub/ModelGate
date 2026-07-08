@@ -9,8 +9,6 @@ services:
       - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET:-change-me-to-a-random-string}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-change-me-to-another-random-string}
       - TZ=Asia/Shanghai
-      # 日志保留天数，超过自动清理；设为 0 关闭（默认 30）
-      # - LOG_RETENTION_DAYS=30
       # - AUTH_DISABLED=1
       # MySQL 模式（取消注释并填写以下配置）
       # - DB_DRIVER=mysql

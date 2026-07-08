@@ -31,6 +31,7 @@ const schema = z.object({
   icp_filing_number: z.string().max(200).optional(),
   public_security_filing_number: z.string().max(200).optional(),
   ua_restrictions: z.string().max(20000).optional(),
+  log_retention_days: z.number().int().min(0).max(3650).optional(),
   theme_color: z.string().regex(/^(|#[0-9a-fA-F]{6})$/, "主题色格式不正确").optional(),
   logo_url: z.string().max(2000).optional(),
   logo_square_url: z.string().max(2000).optional(),

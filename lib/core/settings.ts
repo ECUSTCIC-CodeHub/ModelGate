@@ -18,6 +18,7 @@ export type GatewaySettings = {
   upstream_circuit_breaker_enabled: number;
   upstream_strict_priority: number;
   ua_restrictions: string;
+  log_retention_days: number;
   oidc_enabled: number;
   oidc_issuer_url: string;
   oidc_client_id: string;
@@ -46,6 +47,12 @@ function positiveInt(value: string | null | undefined, fallback: number) {
   return Math.max(1, Math.trunc(num));
 }
 
+function retentionDays(value: string | null | undefined): number {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < 0) return 30;
+  return Math.min(Math.trunc(num), 3650);
+}
+
 const OIDC_KEYS = [
   "oidc_enabled",
   "oidc_issuer_url",
@@ -66,6 +73,7 @@ const GATEWAY_KEYS = [
   "upstream_circuit_breaker_enabled",
   "upstream_strict_priority",
   "ua_restrictions",
+  "log_retention_days",
   ...OIDC_KEYS,
   "announcement_content",
   "announcement_display_count",
@@ -93,6 +101,7 @@ async function readGatewaySettingsFromDb(): Promise<GatewaySettings> {
     upstream_circuit_breaker_enabled: map.get("upstream_circuit_breaker_enabled") === "0" ? 0 : 1,
     upstream_strict_priority: map.get("upstream_strict_priority") === "1" ? 1 : 0,
     ua_restrictions: map.get("ua_restrictions") ?? "",
+    log_retention_days: retentionDays(map.get("log_retention_days")),
     upstream_retry_max_attempts: positiveInt(
       map.get("upstream_retry_max_attempts"),
       DEFAULTS.upstream_retry_max_attempts,
@@ -139,6 +148,7 @@ export async function setGatewaySettings(input: {
   upstream_circuit_breaker_enabled: boolean;
   upstream_strict_priority: boolean;
   ua_restrictions?: string;
+  log_retention_days?: number;
   oidc_enabled?: boolean;
   oidc_issuer_url?: string;
   oidc_client_id?: string;
@@ -169,6 +179,7 @@ export async function setGatewaySettings(input: {
     upstream_retry_same_channel: input.upstream_retry_same_channel ? "1" : "0",
   };
 
+  if (input.log_retention_days !== undefined) values.log_retention_days = String(Math.max(0, Math.min(3650, Math.trunc(input.log_retention_days))));
   if (input.oidc_enabled !== undefined) values.oidc_enabled = input.oidc_enabled ? "1" : "0";
   if (input.oidc_issuer_url !== undefined) values.oidc_issuer_url = input.oidc_issuer_url.trim();
   if (input.oidc_client_id !== undefined) values.oidc_client_id = input.oidc_client_id.trim();

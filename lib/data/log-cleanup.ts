@@ -5,14 +5,22 @@ const INITIAL_DELAY_MS = 60_000;
 const BATCH_SIZE = 5000;
 const SLEEP_BETWEEN_BATCHES_MS = 400;
 const MAX_RETENTION_DAYS = 3650;
+const DEFAULT_RETENTION_DAYS = 30;
 
 let started = false;
 let running = false;
 
-function retentionDays(): number {
-  const raw = Number(process.env.LOG_RETENTION_DAYS ?? 30);
-  if (!Number.isFinite(raw) || raw <= 0) return 0;
+function clampRetention(raw: number): number {
+  if (!Number.isFinite(raw) || raw < 0) return DEFAULT_RETENTION_DAYS;
   return Math.min(Math.trunc(raw), MAX_RETENTION_DAYS);
+}
+
+async function readRetentionDays(db: DatabaseAdapter): Promise<number> {
+  const row = await db.queryOne<{ value: string }>(
+    "SELECT value FROM settings WHERE `key` = ?",
+    ["log_retention_days"],
+  );
+  return clampRetention(Number(row?.value ?? DEFAULT_RETENTION_DAYS));
 }
 
 function sleep(ms: number) {
@@ -37,13 +45,12 @@ export async function pruneOldLogs(db: DatabaseAdapter, days: number): Promise<n
 export function startLogRetentionJob(db: DatabaseAdapter) {
   if (started) return;
   started = true;
-  const days = retentionDays();
-  if (days <= 0) return;
   const run = async () => {
     if (running) return;
     running = true;
     try {
-      await pruneOldLogs(db, days);
+      const days = await readRetentionDays(db);
+      if (days > 0) await pruneOldLogs(db, days);
     } catch {
       // 清理失败不影响网关运行，下次定时再试
     } finally {
