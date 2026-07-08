@@ -136,14 +136,14 @@ function mapRowToRoute(row: CandidateRow, inboundProtocol?: GatewayProtocol): Ro
     : channelProtocols;
   const effectiveUpstreamProtocol = inboundProtocol && modelProtocols.includes(inboundProtocol) && channelProtocols.includes(inboundProtocol)
     ? inboundProtocol
-    : row.upstream_protocol;
+    : row.upstream_protocol ?? "chat_completions";
   return {
     model: {
       id: row.model_id,
       alias: row.alias,
       real_model: row.real_model,
       channel_id: row.channel_id,
-      upstream_protocol: row.upstream_protocol,
+      upstream_protocol: row.upstream_protocol ?? "chat_completions",
       supported_protocols: row.model_supported_protocols ?? "",
       is_public: row.is_public,
       enabled: row.model_enabled,
@@ -219,7 +219,7 @@ export async function listModelRoutes(alias: string, options?: { excludeChannelI
       const modelProtocols = row.model_supported_protocols
         ? parseSupportedProtocols(row.model_supported_protocols)
         : channelProtocols;
-      if (!isProtocolCompatible(protocol, row.upstream_protocol, modelProtocols, channelProtocols)) return false;
+      if (!isProtocolCompatible(protocol, row.upstream_protocol ?? "chat_completions", modelProtocols, channelProtocols)) return false;
     }
     return true;
   });

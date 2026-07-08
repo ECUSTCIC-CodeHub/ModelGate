@@ -35,7 +35,11 @@ function makeTxContext(conn: PoolConnection): TransactionContext {
 }
 
 function stripTextDefaultClause(ddl: string): string {
-  if (/\b(TEXT|BLOB|JSON|GEOMETRY|TINYTEXT|MEDIUMTEXT|LONGTEXT)\b/i.test(ddl)) {
+  // 只在列类型定义部分（DEFAULT 关键字之前）检测大对象类型，
+  // 避免 DEFAULT 值字符串里恰好含 text/json 等单词时误判为 TEXT 列而误剥默认值。
+  const defaultIdx = ddl.search(/\bDEFAULT\b/i);
+  const typePart = defaultIdx === -1 ? ddl : ddl.slice(0, defaultIdx);
+  if (/\b(TEXT|BLOB|JSON|GEOMETRY|TINYTEXT|MEDIUMTEXT|LONGTEXT)\b/i.test(typePart)) {
     return ddl
       .replace(/\s+DEFAULT\s+'[^']*'/gi, "")
       .replace(/\s+DEFAULT\s+NULL\b/gi, "");
