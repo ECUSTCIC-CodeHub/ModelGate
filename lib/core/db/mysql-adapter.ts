@@ -34,6 +34,15 @@ function makeTxContext(conn: PoolConnection): TransactionContext {
   };
 }
 
+function stripTextDefaultClause(ddl: string): string {
+  if (/\b(TEXT|BLOB|JSON|GEOMETRY|TINYTEXT|MEDIUMTEXT|LONGTEXT)\b/i.test(ddl)) {
+    return ddl
+      .replace(/\s+DEFAULT\s+'[^']*'/gi, "")
+      .replace(/\s+DEFAULT\s+NULL\b/gi, "");
+  }
+  return ddl;
+}
+
 export class MysqlAdapter implements DatabaseAdapter {
   readonly driver = "mysql" as const;
   async getDriver() { return this.driver; }
@@ -107,7 +116,7 @@ export class MysqlAdapter implements DatabaseAdapter {
     );
     if (rows.length > 0) return false;
     try {
-      await this.pool.execute(`ALTER TABLE \`${table}\` ADD COLUMN ${ddl}`);
+      await this.pool.execute(`ALTER TABLE \`${table}\` ADD COLUMN ${stripTextDefaultClause(ddl)}`);
       return true;
     } catch (error) {
       if (error instanceof Error && /duplicate column name/i.test(error.message)) {
