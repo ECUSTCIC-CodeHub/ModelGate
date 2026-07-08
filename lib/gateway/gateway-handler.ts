@@ -233,12 +233,12 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
         appendChannelQuotaHeaders(channelQuotaHeaders, cq.quota);
       }
     }
-    const failureStatus = picked.lastUpstreamStatus > 0
-      ? picked.lastUpstreamStatus
-      : picked.failure?.isTimeout ? 504 : 502;
+    const failureStatus = picked.failure?.isTimeout ? 504
+      : picked.lastUpstreamStatus > 0 ? picked.lastUpstreamStatus
+      : 502;
     const failureMessage = picked.failure
       ? buildFailureMessage(picked.failure.stage, picked.failure.message, picked.failure.upstreamUrl)
-      : picked.failure?.isTimeout ? "上游请求超时" : "上游请求失败";
+      : "上游请求失败";
     insertChatLog({
       user_id: auth.user.id,
       key_id: auth.key.id,
