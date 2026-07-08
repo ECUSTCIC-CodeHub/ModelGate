@@ -14,6 +14,7 @@ export const modelGateFeatures = {
   announcement: modelGateEdition === "full",
   webhook: modelGateEdition === "full",
   accessGuideNotice: modelGateEdition === "full",
+  uaRestrictions: modelGateEdition === "full",
 } as const;
 
 export type ModelGateFeature = keyof typeof modelGateFeatures;
@@ -24,6 +25,7 @@ const featureNames: Record<ModelGateFeature, string> = {
   announcement: "公告",
   webhook: "Webhook",
   accessGuideNotice: "接入指南通知",
+  uaRestrictions: "User-Agent 限制",
 };
 
 export function featureUnavailableMessage(featureName: string) {
@@ -66,6 +68,7 @@ export type EditionSettingsInput = {
   announcement_display_count?: number;
   access_guide_notice?: string;
   webhook_secret?: string;
+  ua_restrictions?: string;
   theme_color?: string;
   logo_url?: string;
   logo_square_url?: string;
@@ -93,6 +96,9 @@ export function filterSettingsInputForEdition<T extends EditionSettingsInput>(in
   if (!modelGateFeatures.accessGuideNotice) {
     delete next.access_guide_notice;
   }
+  if (!modelGateFeatures.uaRestrictions) {
+    delete next.ua_restrictions;
+  }
   return next;
 }
 
@@ -109,6 +115,7 @@ export function maskSettingsForEdition<T extends {
   announcement_display_count: number;
   access_guide_notice: string;
   webhook_secret: string;
+  ua_restrictions: string;
   theme_color: string;
   logo_url: string;
   logo_square_url: string;
@@ -127,6 +134,7 @@ export function maskSettingsForEdition<T extends {
     announcement_display_count: modelGateFeatures.announcement ? settings.announcement_display_count : 3,
     access_guide_notice: modelGateFeatures.accessGuideNotice ? settings.access_guide_notice : "",
     webhook_secret: modelGateFeatures.webhook && settings.webhook_secret ? "••••••••" : "",
+    ua_restrictions: modelGateFeatures.uaRestrictions ? settings.ua_restrictions : "",
     theme_color: settings.theme_color,
   };
 }

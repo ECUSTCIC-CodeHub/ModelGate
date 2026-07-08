@@ -289,6 +289,7 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("channels", "period_reset_at", "period_reset_at DATETIME");
   await db.ensureColumn("channels", "deleted_at", "deleted_at DATETIME");
   await db.ensureColumn("channels", "force_include_usage", "force_include_usage INTEGER DEFAULT 1");
+  await db.ensureColumn("channels", "ua_restrictions", "ua_restrictions TEXT DEFAULT ''");
   await db.ensureColumn("models", "deleted_at", "deleted_at DATETIME");
   await db.ensureColumn("models", "is_public", "is_public INTEGER DEFAULT 1");
   await db.ensureColumn("models", "upstream_protocol", `upstream_protocol TEXT DEFAULT 'chat_completions'`);
@@ -306,6 +307,7 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("models", "period_reset_at", "period_reset_at DATETIME");
   await db.ensureColumn("models", "supported_protocols", "supported_protocols TEXT");
   await db.ensureColumn("models", "copilot_compatibility", "copilot_compatibility INTEGER DEFAULT 0");
+  await db.ensureColumn("models", "ua_restrictions", "ua_restrictions TEXT DEFAULT ''");
   await db.ensureColumn("logs", "first_token_latency_ms", "first_token_latency_ms INTEGER");
   await db.ensureColumn("logs", "output_tps", "output_tps REAL");
   await db.ensureColumn("logs", "token_source", "token_source TEXT");
@@ -426,6 +428,7 @@ async function seedDefaultSettings(db: DatabaseAdapter) {
     ["upstream_retry_max_attempts", "3"],
     ["upstream_retry_same_channel", "0"],
     ["upstream_circuit_breaker_enabled", "1"],
+    ["ua_restrictions", ""],
     ["oidc_enabled", "0"],
     ["oidc_issuer_url", ""],
     ["oidc_client_id", ""],

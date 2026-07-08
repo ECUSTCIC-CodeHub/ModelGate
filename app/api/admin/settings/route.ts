@@ -5,6 +5,7 @@ import { filterSettingsInputForEdition, maskSettingsForEdition } from "@/lib/cor
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { getGatewaySettings, setGatewaySettings } from "@/lib/core/settings";
+import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
 
 const schema = z.object({
   registration_enabled: z.boolean(),
@@ -29,6 +30,7 @@ const schema = z.object({
   cors_enabled: z.boolean().optional(),
   icp_filing_number: z.string().max(200).optional(),
   public_security_filing_number: z.string().max(200).optional(),
+  ua_restrictions: z.string().max(20000).optional(),
   theme_color: z.string().regex(/^(|#[0-9a-fA-F]{6})$/, "主题色格式不正确").optional(),
   logo_url: z.string().max(2000).optional(),
   logo_square_url: z.string().max(2000).optional(),
@@ -49,6 +51,11 @@ export async function PUT(request: Request) {
   const body = await request.json().catch(() => null);
   const parsed = schema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
+
+  if (parsed.data.ua_restrictions !== undefined) {
+    const validation = validateUaRestrictionRules(parsed.data.ua_restrictions);
+    if (!validation.valid) return jsonError(validation.error, 400);
+  }
 
   const input = filterSettingsInputForEdition({ ...parsed.data });
   if (input.oidc_client_secret === "••••••••") {

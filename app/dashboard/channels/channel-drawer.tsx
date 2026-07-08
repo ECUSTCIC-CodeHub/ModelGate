@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/sheet";
 import { ModelDraftCard } from "./model-draft-card";
 import { ChannelQuotaFields } from "./channel-quota-fields";
+import { UaRestrictionsEditor, type UaRestrictionRuleDraft, rulesToJson, jsonToRules } from "@/components/ua-restrictions-editor";
 import {
   protocolOptions,
   type ChannelForm,
@@ -155,6 +156,16 @@ export function ChannelDrawer({
               </Label>
               <p className="text-xs text-[var(--color-foreground-muted)]">
                 开启后该渠道请求向上游注入 stream_options.include_usage，部分上游（如微软）不支持此参数时请关闭。
+              </p>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>User-Agent 限制</Label>
+              <UaRestrictionsEditor
+                rules={jsonToRules(form.ua_restrictions)}
+                onChange={(rules: UaRestrictionRuleDraft[]) => onFormChange({ ua_restrictions: rulesToJson(rules) })}
+              />
+              <p className="text-xs text-[var(--color-foreground-muted)]">
+                配置后仅匹配规则的客户端可访问该渠道；留空则不限制。优先级低于全站限制。
               </p>
             </div>
           </div>

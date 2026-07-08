@@ -23,6 +23,7 @@ export type DbChannel = {
   created_at: string;
   deleted_at: string | null;
   force_include_usage: number;
+  ua_restrictions: string;
 };
 
 export type ModelQuotaMode = "follow_group" | "bypass_group" | "independent";
@@ -52,6 +53,7 @@ export type DbModel = {
   period_reset_at: string | null;
   created_at: string;
   deleted_at: string | null;
+  ua_restrictions: string;
 };
 
 export type DbGroup = {

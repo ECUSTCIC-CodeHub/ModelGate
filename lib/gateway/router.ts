@@ -35,6 +35,7 @@ type CandidateRow = {
   model_period_reset_at: string | null;
   model_created_at: string;
   model_deleted_at: string | null;
+  model_ua_restrictions: string;
   channel_id_2: number;
   name: string;
   base_url: string;
@@ -57,6 +58,7 @@ type CandidateRow = {
   channel_created_at: string;
   channel_deleted_at: string | null;
   channel_force_include_usage: number;
+  channel_ua_restrictions: string;
 };
 
 const LIST_ENABLED_ALIASES_SQL = `SELECT DISTINCT m.alias
@@ -90,6 +92,7 @@ const LIST_MODEL_ROUTES_SQL = `SELECT
       m.period_reset_at as model_period_reset_at,
       m.created_at as model_created_at,
       m.deleted_at as model_deleted_at,
+      m.ua_restrictions as model_ua_restrictions,
       c.id as channel_id_2,
       c.name,
       c.base_url,
@@ -111,7 +114,8 @@ const LIST_MODEL_ROUTES_SQL = `SELECT
       c.period_reset_at as channel_period_reset_at,
       c.created_at as channel_created_at,
       c.deleted_at as channel_deleted_at,
-      c.force_include_usage as channel_force_include_usage
+      c.force_include_usage as channel_force_include_usage,
+      c.ua_restrictions as channel_ua_restrictions
    FROM models m
    JOIN channels c ON c.id = m.channel_id
    WHERE m.alias = ? AND m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL AND c.deleted_at IS NULL`;
@@ -159,6 +163,7 @@ function mapRowToRoute(row: CandidateRow, inboundProtocol?: GatewayProtocol): Ro
       period_reset_at: row.model_period_reset_at,
       created_at: row.model_created_at,
       deleted_at: row.model_deleted_at,
+      ua_restrictions: row.model_ua_restrictions ?? "",
     },
     channel: {
       id: row.channel_id_2,
@@ -183,6 +188,7 @@ function mapRowToRoute(row: CandidateRow, inboundProtocol?: GatewayProtocol): Ro
       created_at: row.channel_created_at,
       deleted_at: row.channel_deleted_at,
       force_include_usage: row.channel_force_include_usage ?? 1,
+      ua_restrictions: row.channel_ua_restrictions ?? "",
     },
     effective_upstream_protocol: effectiveUpstreamProtocol,
   };

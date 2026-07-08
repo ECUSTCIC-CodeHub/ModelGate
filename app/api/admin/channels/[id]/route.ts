@@ -6,6 +6,7 @@ import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { GATEWAY_PROTOCOLS, normalizeSupportedProtocols, parseSupportedProtocols, stringifySupportedProtocols } from "@/lib/gateway/protocols";
 import { isValidProxyUrl, normalizeProxyUrl } from "@/lib/gateway/upstream-proxy";
+import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
 
 const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
 
@@ -26,6 +27,7 @@ const updateSchema = z.object({
   period_quota_tokens: z.number().int().min(0).nullable().optional(),
   period_quota_requests: z.number().int().min(0).nullable().optional(),
   force_include_usage: z.boolean().optional(),
+  ua_restrictions: z.string().max(20000).optional(),
 });
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -36,6 +38,11 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const body = await request.json().catch(() => null);
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
+
+  if (parsed.data.ua_restrictions !== undefined && parsed.data.ua_restrictions.trim() !== "") {
+    const validation = validateUaRestrictionRules(parsed.data.ua_restrictions);
+    if (!validation.valid) return jsonError(validation.error, 400);
+  }
 
   const existing = await gatewayDb.queryOne("SELECT * FROM channels WHERE id = ? AND deleted_at IS NULL", [id]);
   if (!existing) return jsonError("渠道不存在", 404);
@@ -81,6 +88,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       parsed.data.proxy_url === undefined
         ? (existing as { proxy_url?: string | null }).proxy_url ?? ""
         : normalizeProxyUrl(parsed.data.proxy_url),
+    ua_restrictions:
+      parsed.data.ua_restrictions === undefined
+        ? (existing as { ua_restrictions?: string | null }).ua_restrictions ?? ""
+        : parsed.data.ua_restrictions.trim(),
     enabled: nextEnabled,
   };
 
@@ -89,7 +100,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       .execute(
         `UPDATE channels
          SET name = ?, base_url = ?, api_key = ?, supported_protocols = ?, user_agent = ?, proxy_url = ?, enabled = ?, weight = ?, max_concurrency = ?, timeout = ?,
-             quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, force_include_usage = ?
+             quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, force_include_usage = ?, ua_restrictions = ?
          WHERE id = ?`,
         [
           (merged as { name: string }).name,
@@ -112,6 +123,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
             : parsed.data.force_include_usage
               ? 1
               : 0,
+          (merged as { ua_restrictions: string }).ua_restrictions,
           id,
         ],
       );

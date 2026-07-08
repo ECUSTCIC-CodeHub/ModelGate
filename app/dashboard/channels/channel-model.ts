@@ -77,6 +77,7 @@ export type ModelRow = {
   quota_period: number | null;
   period_quota_tokens: number | null;
   period_quota_requests: number | null;
+  ua_restrictions: string;
 };
 
 export type Channel = {
@@ -97,6 +98,7 @@ export type Channel = {
   period_quota_tokens: number | null;
   period_quota_requests: number | null;
   force_include_usage: number;
+  ua_restrictions: string;
   models?: ModelRow[];
 };
 
@@ -132,6 +134,7 @@ export type ChannelForm = {
   period_quota_tokens: string;
   period_quota_requests: string;
   force_include_usage: boolean;
+  ua_restrictions: string;
 };
 
 export type ModelForm = {
@@ -154,6 +157,7 @@ export type ModelForm = {
   period_quota_tokens: string;
   period_quota_requests: string;
   enabled: boolean;
+  ua_restrictions: string;
 };
 
 export type UpstreamModelOption = {
@@ -184,6 +188,7 @@ export const initialChannelForm: ChannelForm = {
   period_quota_tokens: "",
   period_quota_requests: "",
   force_include_usage: true,
+  ua_restrictions: "",
 };
 
 export const initialModelDraft: ChannelModelDraft = {
@@ -221,4 +226,5 @@ export const initialModelForm: ModelForm = {
   period_quota_tokens: "",
   period_quota_requests: "",
   enabled: true,
+  ua_restrictions: "",
 };

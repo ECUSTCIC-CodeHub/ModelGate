@@ -13,6 +13,8 @@ import { createQueuedUpstreamResponse, normalizeUserAgent } from "@/lib/gateway/
 import { checkUserRateLimit } from "@/lib/gateway/ratelimit";
 import { selectModelRoute, type RoutedModel } from "@/lib/gateway/router";
 import { getGatewaySettings } from "@/lib/core/settings";
+import { checkUserAgentRestrictions, parseUaRestrictions, type UaRestrictionMatch } from "@/lib/gateway/ua-restrictions";
+import { isFeatureEnabled } from "@/lib/core/features";
 import { resolveClientIp } from "@/lib/core/client-ip";
 import { resolveTokenUsage, tokenUsageMetadata } from "@/lib/gateway/token-usage";
 import { buildErrorResponseBody, parseUpstreamError } from "@/lib/gateway/upstream-error";
@@ -39,6 +41,30 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   }
   const auth = authResult.context;
   const allowedChannelIds = await getUserAllowedChannelIds(auth.user);
+
+  const denyByUa = (match: UaRestrictionMatch & { matched: true }): Response => {
+    logRejected(match.rule.error_code, match.rule.error_message, null);
+    return jsonError(match.rule.error_message, match.rule.error_code, {
+      type: "invalid_request_error",
+      param: "user-agent",
+      code: String(match.rule.error_code),
+    });
+  };
+
+  const globalUaRules = isFeatureEnabled("uaRestrictions")
+    ? parseUaRestrictions((await getGatewaySettings()).ua_restrictions)
+    : [];
+  if (globalUaRules.length > 0) {
+    const globalMatch = checkUserAgentRestrictions({
+      userAgent: clientUserAgent,
+      globalRules: globalUaRules,
+      channelRules: [],
+      modelRules: [],
+    });
+    if (globalMatch.matched && !globalMatch.allowed) {
+      return denyByUa(globalMatch);
+    }
+  }
 
   const logRejected = (statusCode: number, message: string, alias: string | null, estimatedTokens?: number) => {
     insertChatLog({
@@ -119,6 +145,24 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
 
   const quotaMode = existingRoute.model.quota_mode;
   const bypassUserLimits = quotaMode === "bypass_group" || quotaMode === "independent";
+
+  const scopedUaRules = isFeatureEnabled("uaRestrictions")
+    ? parseUaRestrictions(existingRoute.channel.ua_restrictions)
+    : [];
+  const modelUaRules = isFeatureEnabled("uaRestrictions")
+    ? parseUaRestrictions(existingRoute.model.ua_restrictions)
+    : [];
+  if (scopedUaRules.length > 0 || modelUaRules.length > 0) {
+    const scopedMatch = checkUserAgentRestrictions({
+      userAgent: clientUserAgent,
+      globalRules: [],
+      channelRules: scopedUaRules,
+      modelRules: modelUaRules,
+    });
+    if (scopedMatch.matched && !scopedMatch.allowed) {
+      return denyByUa(scopedMatch);
+    }
+  }
 
   const quotaHeaders: Record<string, string> = {};
   let channelQuotaHeaders: Record<string, string> | null = null;
