@@ -6,6 +6,7 @@ import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { GATEWAY_PROTOCOLS, normalizeSupportedProtocols, stringifySupportedProtocols } from "@/lib/gateway/protocols";
 import { isValidProxyUrl, normalizeProxyUrl } from "@/lib/gateway/upstream-proxy";
+import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
 
 const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
 
@@ -26,6 +27,7 @@ const createSchema = z.object({
   period_quota_tokens: z.number().int().min(0).nullable().optional(),
   period_quota_requests: z.number().int().min(0).nullable().optional(),
   force_include_usage: z.boolean().optional(),
+  ua_restrictions: z.string().max(20000).optional(),
   models: z
     .array(
       z.object({
@@ -96,6 +98,11 @@ export async function POST(request: Request) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
+  if (parsed.data.ua_restrictions !== undefined && parsed.data.ua_restrictions.trim() !== "") {
+    const validation = validateUaRestrictionRules(parsed.data.ua_restrictions);
+    if (!validation.valid) return jsonError(validation.error, 400);
+  }
+
   const supportedProtocols = normalizeSupportedProtocols(parsed.data.supported_protocols);
   for (const model of parsed.data.models ?? []) {
     const upstreamProtocol = model.upstream_protocol ?? supportedProtocols[0] ?? "chat_completions";
@@ -108,8 +115,8 @@ export async function POST(request: Request) {
     const channelEnabled = parsed.data.enabled === false ? 0 : 1;
     const result = await tx
       .execute(
-        `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, force_include_usage)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, force_include_usage, ua_restrictions)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           parsed.data.name,
           parsed.data.base_url,
@@ -127,6 +134,7 @@ export async function POST(request: Request) {
           parsed.data.period_quota_tokens ?? null,
           parsed.data.period_quota_requests ?? null,
           parsed.data.force_include_usage === false ? 0 : 1,
+          parsed.data.ua_restrictions?.trim() ?? "",
         ],
       );
 

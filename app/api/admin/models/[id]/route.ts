@@ -7,6 +7,7 @@ import { jsonError, jsonOk } from "@/lib/core/http";
 import { GATEWAY_PROTOCOLS, type GatewayProtocol, normalizeSupportedProtocols, parseSupportedProtocols, stringifySupportedProtocols, supportsProtocol } from "@/lib/gateway/protocols";
 import type { ModelQuotaMode } from "@/lib/core/db/types";
 import { softDeleteModel } from "@/lib/services/soft-delete-service";
+import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
 
 const QUOTA_MODES = ["follow_group", "bypass_group", "independent"] as const;
 
@@ -29,6 +30,7 @@ const updateSchema = z.object({
   quota_period: z.number().int().min(0).nullable().optional(),
   period_quota_tokens: z.number().int().min(0).nullable().optional(),
   period_quota_requests: z.number().int().min(0).nullable().optional(),
+  ua_restrictions: z.string().max(20000).optional(),
 });
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -57,6 +59,11 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
+  if (parsed.data.ua_restrictions !== undefined && parsed.data.ua_restrictions.trim() !== "") {
+    const validation = validateUaRestrictionRules(parsed.data.ua_restrictions);
+    if (!validation.valid) return jsonError(validation.error, 400);
+  }
+
   const existing = await gatewayDb.queryOne<{
         id: number;
         alias: string;
@@ -77,6 +84,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         quota_period: number | null;
         period_quota_tokens: number | null;
         period_quota_requests: number | null;
+        ua_restrictions: string;
       }>("SELECT * FROM models WHERE id = ? AND deleted_at IS NULL", [id]);
   if (!existing) return jsonError("模型不存在", 404);
 
@@ -118,6 +126,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         : parsed.data.is_public
           ? 1
           : 0,
+    ua_restrictions: parsed.data.ua_restrictions === undefined ? existing.ua_restrictions ?? "" : parsed.data.ua_restrictions.trim(),
     enabled: targetEnabled,
   };
 
@@ -125,7 +134,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     .execute(
       `UPDATE models
        SET alias = ?, real_model = ?, channel_id = ?, upstream_protocol = ?, supported_protocols = ?, copilot_compatibility = ?, is_public = ?, enabled = ?, weight = ?, token_multiplier = ?, request_multiplier = ?, max_concurrency = ?,
-           quota_mode = ?, quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?
+           quota_mode = ?, quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, ua_restrictions = ?
        WHERE id = ?`,
       [merged.alias, merged.real_model, merged.channel_id, merged.upstream_protocol, targetSupportedProtocols, parsed.data.copilot_compatibility === true ? 1 : parsed.data.copilot_compatibility === false ? 0 : existing.copilot_compatibility ?? 0, merged.is_public, merged.enabled, merged.weight, merged.token_multiplier, merged.request_multiplier, merged.max_concurrency,
         merged.quota_mode ?? existing.quota_mode ?? "follow_group",
@@ -134,6 +143,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         merged.quota_period ?? existing.quota_period ?? null,
         merged.period_quota_tokens ?? existing.period_quota_tokens ?? null,
         merged.period_quota_requests ?? existing.period_quota_requests ?? null,
+        merged.ua_restrictions ?? existing.ua_restrictions ?? "",
         id],
     );
 

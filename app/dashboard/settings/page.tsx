@@ -16,6 +16,7 @@ import {
   LoginSettingsCard,
   OidcSettingsCard,
   SaveSettingsCard,
+  UaRestrictionsSettingsCard,
   UpstreamSettingsCard,
   WebhookSettingsCard,
 } from "./settings-cards";
@@ -57,12 +58,14 @@ export default function AdminSettingsPage() {
   const [themeColor, setThemeColor] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [logoSquareUrl, setLogoSquareUrl] = useState("");
+  const [uaRestrictions, setUaRestrictions] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const oidcFeatureEnabled = modelGateFeatures.oidc;
   const announcementFeatureEnabled = modelGateFeatures.announcement;
   const accessGuideNoticeFeatureEnabled = modelGateFeatures.accessGuideNotice;
   const webhookFeatureEnabled = modelGateFeatures.webhook;
+  const uaRestrictionsFeatureEnabled = modelGateFeatures.uaRestrictions;
 
   const applySettings = useCallback((settings: Record<string, unknown>) => {
     setRegistrationEnabled(settings.registration_enabled === 1);
@@ -88,13 +91,14 @@ export default function AdminSettingsPage() {
     if (announcementFeatureEnabled) setAnnouncementDisplayCount(Number(settings.announcement_display_count ?? 3));
     if (accessGuideNoticeFeatureEnabled) setAccessGuideNotice(stringValue(settings.access_guide_notice));
     if (webhookFeatureEnabled) setWebhookSecret(stringValue(settings.webhook_secret));
+    if (uaRestrictionsFeatureEnabled) setUaRestrictions(stringValue(settings.ua_restrictions));
     setCorsEnabled(settings.cors_enabled === 1);
     setIcpFilingNumber(stringValue(settings.icp_filing_number));
     setPublicSecurityFilingNumber(stringValue(settings.public_security_filing_number));
     setThemeColor(stringValue(settings.theme_color));
     setLogoUrl(stringValue(settings.logo_url));
     setLogoSquareUrl(stringValue(settings.logo_square_url));
-  }, [accessGuideNoticeFeatureEnabled, announcementFeatureEnabled, oidcFeatureEnabled, webhookFeatureEnabled]);
+  }, [accessGuideNoticeFeatureEnabled, announcementFeatureEnabled, oidcFeatureEnabled, webhookFeatureEnabled, uaRestrictionsFeatureEnabled]);
 
   useEffect(() => {
     let cancelled = false;
@@ -135,6 +139,7 @@ export default function AdminSettingsPage() {
         ...(announcementFeatureEnabled ? { announcement_display_count: announcementDisplayCount } : {}),
         ...(accessGuideNoticeFeatureEnabled ? { access_guide_notice: accessGuideNotice } : {}),
         ...(webhookFeatureEnabled ? { webhook_secret: webhookSecret } : {}),
+        ...(uaRestrictionsFeatureEnabled ? { ua_restrictions: uaRestrictions } : {}),
         cors_enabled: corsEnabled,
         icp_filing_number: icpFilingNumber,
         public_security_filing_number: publicSecurityFilingNumber,
@@ -227,6 +232,13 @@ export default function AdminSettingsPage() {
         ) : null}
 
         <CorsSettingsCard corsEnabled={corsEnabled} setCorsEnabled={setCorsEnabled} />
+
+        {uaRestrictionsFeatureEnabled ? (
+          <UaRestrictionsSettingsCard
+            value={uaRestrictions}
+            onChange={setUaRestrictions}
+          />
+        ) : null}
 
         {webhookFeatureEnabled ? (
           <WebhookSettingsCard

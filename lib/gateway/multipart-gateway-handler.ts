@@ -10,6 +10,9 @@ import { normalizeUserAgent } from "@/lib/gateway/queued-upstream-response";
 import { checkUserRateLimit } from "@/lib/gateway/ratelimit";
 import { selectModelRoute } from "@/lib/gateway/router";
 import { resolveClientIp } from "@/lib/core/client-ip";
+import { getGatewaySettings } from "@/lib/core/settings";
+import { isFeatureEnabled } from "@/lib/core/features";
+import { checkUserAgentRestrictions, parseUaRestrictions, type UaRestrictionMatch } from "@/lib/gateway/ua-restrictions";
 import { buildErrorResponseBody, parseUpstreamError } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
 import { acquireChannel, makeModelRuntimeKey } from "@/lib/gateway/channel-runtime";
@@ -53,6 +56,26 @@ export async function handleMultipartGatewayRequest(request: Request) {
       user_agent: clientUserAgent,
     });
   };
+
+  const globalUaRules = isFeatureEnabled("uaRestrictions")
+    ? parseUaRestrictions((await getGatewaySettings()).ua_restrictions)
+    : [];
+  if (globalUaRules.length > 0) {
+    const globalMatch = checkUserAgentRestrictions({
+      userAgent: clientUserAgent,
+      globalRules: globalUaRules,
+      channelRules: [],
+      modelRules: [],
+    });
+    if (globalMatch.matched && !globalMatch.allowed) {
+      logRejected(globalMatch.rule.error_code, globalMatch.rule.error_message, null);
+      return jsonError(globalMatch.rule.error_message, globalMatch.rule.error_code, {
+        type: "invalid_request_error",
+        param: "user-agent",
+        code: String(globalMatch.rule.error_code),
+      });
+    }
+  }
 
   const contentType = request.headers.get("content-type") ?? "";
   if (!contentType.includes("multipart/form-data")) {
@@ -104,6 +127,29 @@ export async function handleMultipartGatewayRequest(request: Request) {
 
   const quotaMode = existingRoute.model.quota_mode;
   const bypassUserLimits = quotaMode === "bypass_group" || quotaMode === "independent";
+
+  const scopedUaRules = isFeatureEnabled("uaRestrictions")
+    ? parseUaRestrictions(existingRoute.channel.ua_restrictions)
+    : [];
+  const modelUaRules = isFeatureEnabled("uaRestrictions")
+    ? parseUaRestrictions(existingRoute.model.ua_restrictions)
+    : [];
+  if (scopedUaRules.length > 0 || modelUaRules.length > 0) {
+    const scopedMatch: UaRestrictionMatch = checkUserAgentRestrictions({
+      userAgent: clientUserAgent,
+      globalRules: [],
+      channelRules: scopedUaRules,
+      modelRules: modelUaRules,
+    });
+    if (scopedMatch.matched && !scopedMatch.allowed) {
+      logRejected(scopedMatch.rule.error_code, scopedMatch.rule.error_message, alias);
+      return jsonError(scopedMatch.rule.error_message, scopedMatch.rule.error_code, {
+        type: "invalid_request_error",
+        param: "user-agent",
+        code: String(scopedMatch.rule.error_code),
+      });
+    }
+  }
 
   const quotaHeaders: Record<string, string> = {};
   let channelQuotaHeaders: Record<string, string> | null = null;

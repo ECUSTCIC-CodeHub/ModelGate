@@ -531,6 +531,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "access_guide_notice": "## 自动配置工具\n\n```bash\nnpx cic-ai-config-helper\n```",
   "webhook_secret": "your-webhook-secret",
   "cors_enabled": false,
+  "ua_restrictions": "[]",
   "theme_color": "#00518f"
 }
 ```
@@ -559,6 +560,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | icp_filing_number | string | ICP 备案号，留空则不展示（最长 200 字符） |
 | public_security_filing_number | string | 公安联网备案号，留空则不展示（最长 200 字符） |
 | theme_color | string | 主题色（十六进制颜色代码，如 `#00518f`），留空则使用默认靛蓝色 |
+| ua_restrictions | string | 全站 User-Agent 限制规则 JSON 数组，留空或 `[]` 表示不限制（完整版功能，最长 20000 字符） |
 
 > 精简版固定保留账号密码登录；返回时会隐藏 OIDC 配置、公告内容、公告展示条数、接入指南通知和 Webhook 密钥，更新时忽略 `oidc_*`、`announcement_content`、`announcement_display_count`、`access_guide_notice` 与 `webhook_secret` 字段。
 
@@ -1151,6 +1153,7 @@ email matches ".*@company\\.com"
 | supported_protocols | string[] | 否 | ["chat_completions"] | 支持的协议：`chat_completions` / `anthropic_messages` / `responses` / `embeddings` / `images`。各协议对应的网关端点：`chat_completions` → `/api/v1/chat/completions`，`anthropic_messages` → `/api/v1/messages`，`responses` → `/api/v1/responses`，`embeddings` → `/api/v1/embeddings`，`images` → `/api/v1/images/generations` + `/api/v1/images/edits` |
 | user_agent | string | 否 | "" | 渠道级上游 User-Agent，留空时透传客户端 UA 或使用协议默认值 |
 | proxy_url | string | 否 | "" | 渠道级上游 HTTP(S) 代理地址，留空表示直连；支持 `http://` / `https://`，可在 URL 中携带代理认证信息 |
+| ua_restrictions | string | 否 | "" | 渠道级 User-Agent 限制规则 JSON 数组，留空表示不限制（完整版功能，最长 20000 字符） |
 | weight | int | 否 | 1 | 路由权重 |
 | max_concurrency | int | 否 | 64 | 最大并发数 |
 | timeout | int | 否 | 60 | 超时时间（秒） |
@@ -1300,6 +1303,7 @@ email matches ".*@company\\.com"
 | token_multiplier | float | 否 | 1 | Token 计费倍率：实际扣量 = 使用量 x 倍率 |
 | request_multiplier | float | 否 | 1 | 请求计费倍率：实际扣量 = 请求次数 x 倍率 |
 | quota_mode | enum | 否 | follow_group | `follow_group`：跟随用户组限制；`bypass_group`：跳过用户组配额和速率限制；`independent`：跳过用户组限制，使用模型自身配额 |
+| ua_restrictions | string | 否 | "" | 模型级 User-Agent 限制规则 JSON 数组，留空表示不限制（完整版功能，最长 20000 字符） |
 | quota_tokens | int\|null | 否 | null | 模型总 Token 配额（仅 `independent` 模式生效），null 表示不限制 |
 | quota_requests | int\|null | 否 | null | 模型总请求配额（仅 `independent` 模式生效），null 表示不限制 |
 | quota_period | int\|null | 否 | null | 周期配额重置间隔（秒），null 表示不启用（仅完整版） |
@@ -1936,6 +1940,27 @@ email matches ".*@company\\.com"
 
 **上游代理:** 渠道配置了 `proxy_url` 时，网关访问该渠道的普通调用、流式调用、模型测试和模型列表探测都会通过该 HTTP(S) 代理转发；未配置时直连上游。
 
+**User-Agent 限制（完整版）:** 支持在「全站 / 渠道 / 模型」三级配置 User-Agent 限制规则，用于控制哪些客户端可以访问网关。规则为 JSON 数组，每条规则结构如下：
+
+```json
+[
+  { "pattern": "Mozilla/*", "mode": "deny", "error_code": 403, "error_message": "该浏览器客户端不被允许访问。" },
+  { "pattern": "regex:.*bot.*", "mode": "deny", "error_code": 403, "error_message": "爬虫被拒绝。" },
+  { "pattern": "curl/*", "mode": "allow", "error_code": 403, "error_message": "允许 curl 访问。" }
+]
+```
+
+- `pattern`：匹配模式。支持通配符（`*` 匹配任意字符，不区分大小写），或以 `regex:` 开头表示标准正则表达式（同样不区分大小写）。留空字符串仅匹配未携带 User-Agent 的请求。
+- `mode`：`deny` 拒绝 / `allow` 允许。
+- `error_code`：拦截时返回 HTTP 状态码，范围 100-599。
+- `error_message`：拦截时返回的错误提示。
+
+匹配优先级为「全站 → 渠道 → 模型」：
+1. 全站规则优先于渠道与模型；若全站层级命中拒绝，立即拦截。
+2. 任何层级配置了规则且命中 `allow`，视为该层级放行。
+3. 所有层级均未命中任何规则，则放行请求。
+
+未配置规则（空数组或空字符串）的层级不生效。命中拒绝时返回对应 `error_code` 与 `error_message`，错误响应 `error.param` 为 `user-agent`，并写入访问日志。
 ### POST /api/v1/chat/completions
 
 OpenAI Chat Completions 兼容端点。

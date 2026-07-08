@@ -7,4 +7,5 @@ export { LoginSettingsCard } from "./login-settings-card";
 export { OidcSettingsCard } from "./oidc-settings-card";
 export { SaveSettingsCard } from "./save-settings-card";
 export { UpstreamSettingsCard } from "./upstream-settings-card";
+export { UaRestrictionsSettingsCard } from "./ua-restrictions-settings-card";
 export { WebhookSettingsCard } from "./webhook-settings-card";

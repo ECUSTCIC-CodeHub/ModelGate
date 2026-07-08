@@ -21,6 +21,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { ModelDraftCard } from "./model-draft-card";
+import { UaRestrictionsEditor, type UaRestrictionRuleDraft, rulesToJson, jsonToRules } from "@/components/ua-restrictions-editor";
 import {
   PERIOD_PRESETS,
   protocolLabel,
@@ -318,6 +319,16 @@ export function ModelDrawer({
                   <p className="text-xs text-[var(--color-foreground-muted)]">关闭后该模型映射不会被路由命中。</p>
                 </div>
                 <Checkbox checked={form.enabled} onCheckedChange={(checked) => onFormChange({ enabled: checked === true })} />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>User-Agent 限制</Label>
+                <UaRestrictionsEditor
+                  rules={jsonToRules(form.ua_restrictions)}
+                  onChange={(rules: UaRestrictionRuleDraft[]) => onFormChange({ ua_restrictions: rulesToJson(rules) })}
+                />
+                <p className="text-xs text-[var(--color-foreground-muted)]">
+                  配置后仅匹配规则的客户端可访问该模型；留空则不限制。优先级低于渠道与全站限制。
+                </p>
               </div>
             </>
           )}

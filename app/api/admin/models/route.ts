@@ -5,6 +5,7 @@ import { gatewayDb } from "@/lib/core/db";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { GATEWAY_PROTOCOLS, normalizeSupportedProtocols, parseSupportedProtocols, stringifySupportedProtocols, supportsProtocol } from "@/lib/gateway/protocols";
+import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
 
 const QUOTA_MODES = ["follow_group", "bypass_group", "independent"] as const;
 
@@ -27,6 +28,7 @@ const createSchema = z.object({
   quota_period: z.number().int().min(0).nullable().optional(),
   period_quota_tokens: z.number().int().min(0).nullable().optional(),
   period_quota_requests: z.number().int().min(0).nullable().optional(),
+  ua_restrictions: z.string().max(20000).optional(),
 });
 
 export async function GET(request: Request) {
@@ -53,6 +55,11 @@ export async function POST(request: Request) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
+  if (parsed.data.ua_restrictions !== undefined && parsed.data.ua_restrictions.trim() !== "") {
+    const validation = validateUaRestrictionRules(parsed.data.ua_restrictions);
+    if (!validation.valid) return jsonError(validation.error, 400);
+  }
+
   const channel = await gatewayDb
     .queryOne<{ id: number; supported_protocols: string; enabled: number }>("SELECT id, supported_protocols, enabled FROM channels WHERE id = ? AND deleted_at IS NULL", [parsed.data.channel_id]);
   if (!channel) return jsonError("渠道不存在", 404);
@@ -77,8 +84,8 @@ export async function POST(request: Request) {
 
   const result = await gatewayDb
     .execute(
-      `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, ua_restrictions)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         parsed.data.alias,
         parsed.data.real_model,
@@ -98,6 +105,7 @@ export async function POST(request: Request) {
         parsed.data.quota_period ?? null,
         parsed.data.period_quota_tokens ?? null,
         parsed.data.period_quota_requests ?? null,
+        parsed.data.ua_restrictions?.trim() ?? "",
       ],
     );
 

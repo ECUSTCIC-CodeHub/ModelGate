@@ -233,6 +233,8 @@ export function evaluateClaimExpr(node: ExprNode, claims: Record<string, unknown
   }
 }
 
+export { safeRegexTest };
+
 export function validateClaimExpr(expr: string): { valid: true } | { valid: false; error: string } {
   try {
     parseClaimExpr(expr);
