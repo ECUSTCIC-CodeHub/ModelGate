@@ -4,6 +4,7 @@ import path from "node:path";
 import type { DatabaseAdapter } from "@/lib/core/db/adapter";
 import { SqliteAdapter } from "@/lib/core/db/sqlite-adapter";
 import { MysqlAdapter } from "@/lib/core/db/mysql-adapter";
+import { startLogRetentionJob } from "@/lib/data/log-cleanup";
 import {
   BASE_SCHEMA_SQL,
   DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL,
@@ -566,10 +567,15 @@ let initPromise: Promise<DatabaseAdapter> | null = null;
 export async function initializeGatewayDbAsync(): Promise<DatabaseAdapter> {
   if (!initPromise) {
     const driver = getDbDriver();
-    initPromise = (driver === "mysql" ? initMysql() : initSqlite()).catch((err) => {
-      initPromise = null;
-      throw err;
-    });
+    initPromise = (driver === "mysql" ? initMysql() : initSqlite())
+      .then((db) => {
+        startLogRetentionJob(db);
+        return db;
+      })
+      .catch((err) => {
+        initPromise = null;
+        throw err;
+      });
   }
   return initPromise;
 }
