@@ -31,7 +31,7 @@ export function useUpstreamModelPicker({
   const [upstreamModelOptions, setUpstreamModelOptions] = useState<UpstreamModelOption[]>([]);
 
   async function probeUpstreamModels(baseUrl: string, apiKey: string | null, userAgent = "", proxyUrl = "", existingModels: ModelRow[] = []) {
-    if (!baseUrl.trim() || !(apiKey ?? "").trim()) {
+    if (!baseUrl.trim()) {
       toast({ variant: "error", description: "请先填写 Base URL 与 API Key。" });
       return;
     }

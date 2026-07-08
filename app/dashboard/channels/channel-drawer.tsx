@@ -137,7 +137,7 @@ export function ChannelDrawer({
             <div className="space-y-2 md:col-span-2">
               <Label>代理地址</Label>
               <Input
-                placeholder="http://127.0.0.1:7890"
+                placeholder="留空直连上游"
                 value={form.proxy_url}
                 onChange={(e) => onFormChange({ proxy_url: e.target.value })}
               />

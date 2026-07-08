@@ -9,7 +9,7 @@ const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
 
 const bodySchema = z.object({
   base_url: z.string().url(),
-  api_key: z.string().min(1),
+  api_key: z.string().max(500).optional().default(""),
   user_agent: z.string().max(500).optional(),
   proxy_url: proxyUrlSchema,
 });

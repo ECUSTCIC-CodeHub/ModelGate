@@ -59,7 +59,7 @@ export function UpstreamModelPicker({
               <Button type="button" variant="outline" size="sm" onClick={() => onSelectFiltered(false)}>清空当前筛选</Button>
             </div>
           </div>
-          <div className="max-h-[420px] overflow-y-auto rounded-xl border border-[var(--color-border)]">
+          <div className="max-h-[min(420px,45dvh)] overflow-y-auto rounded-xl border border-[var(--color-border)]">
             {filteredOptions.length > 0 ? (
               filteredOptions.map((item) => (
                 <label
