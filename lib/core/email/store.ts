@@ -256,6 +256,10 @@ function compareRemaining(a: number, b: number): number {
   return b - a;
 }
 
+export function getSenderRemainingCapacity(sender: EmailSender): number {
+  return remainingCapacity(sender, todayDateString());
+}
+
 export function planDelivery(
   senders: EmailSender[],
   recipients: Array<{ email: string; username: string }>,
@@ -272,13 +276,21 @@ export function planDelivery(
   let cursor = 0;
   let noCapacity = 0;
   for (const recipient of recipients) {
+    let maxPriority = -Infinity;
+    for (const q of queue) {
+      if (q.remaining > 0 && q.sender.priority > maxPriority) maxPriority = q.sender.priority;
+    }
+    if (!Number.isFinite(maxPriority)) {
+      noCapacity += 1;
+      continue;
+    }
     let chosen: (typeof queue)[number] | null = null;
-    let chosenIdx = -1;
     for (let i = 0; i < queue.length; i += 1) {
       const idx = (cursor + i) % queue.length;
-      if (queue[idx].remaining > 0) {
-        chosen = queue[idx];
-        chosenIdx = idx;
+      const q = queue[idx];
+      if (q.remaining > 0 && q.sender.priority === maxPriority) {
+        chosen = q;
+        cursor = (idx + 1) % queue.length;
         break;
       }
     }
@@ -288,7 +300,6 @@ export function planDelivery(
     }
     planBySender.get(chosen.sender.id)!.recipients.push(recipient);
     chosen.remaining -= 1;
-    cursor = (chosenIdx + 1) % queue.length;
   }
 
   return { plans: plans.filter((p) => p.recipients.length > 0), noCapacity };

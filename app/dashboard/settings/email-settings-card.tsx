@@ -287,7 +287,7 @@ export function EmailSettingsCard() {
       <CardHeader>
         <SectionTitle
           title="邮件通知"
-          description="配置 SMTP 发件账号，在创建或修改系统公告时向有邮箱的用户发送通知邮件。支持多个账号并按优先级与单日上限自动分流。"
+          description="配置 SMTP 发件账号，在创建或修改系统公告时向有邮箱的用户发送通知邮件。支持多个账号，优先使用高优先级账号，高优先级达到单日上限后再降级到低优先级。"
         />
       </CardHeader>
       <CardContent className="space-y-5">

@@ -9,6 +9,7 @@ import {
   markEmailLogSent,
   listSenders,
   planDelivery,
+  getSenderRemainingCapacity,
   parseBlockedDomains,
   type EmailSender,
   type EmailSendLogInput,
@@ -53,6 +54,55 @@ function isEmailDomainBlocked(email: string, blocked: string[]): boolean {
   if (blocked.length === 0) return false;
   const domain = email.split("@")[1]?.toLowerCase() ?? "";
   return blocked.includes(domain);
+}
+
+let fallbackLock: Promise<void> = Promise.resolve();
+
+function withFallbackLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = fallbackLock.then(() => fn(), () => fn());
+  fallbackLock = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+type FallbackSettings = { fromName: string; subjectTemplate: string; footer: string };
+
+async function sendWithFallback(
+  recipient: { email: string; username: string },
+  settings: FallbackSettings,
+  title: string,
+  content: string,
+  htmlContent: string,
+  candidates: EmailSender[],
+  liveRemaining: Map<number, number>,
+  opts: { countQuota: boolean; excludeSenderId?: number },
+): Promise<{ ok: boolean; senderId: number | null; error: string }> {
+  return withFallbackLock(async () => {
+  let lastError = "";
+  for (const s of candidates) {
+    if (opts.excludeSenderId === s.id) continue;
+    const rem = liveRemaining.get(s.id) ?? 0;
+    if (rem <= 0) continue;
+    liveRemaining.set(s.id, rem - 1);
+    try {
+      const res = await sendSmtpMessages(senderToSmtpConfig(s), [
+        buildMessage(s, settings, recipient, title, content, htmlContent),
+      ]);
+      if (res.sent > 0) {
+        if (opts.countQuota) {
+          await incrementSentCount(s.id, 1).catch((err) => {
+            console.error(`[ModelGate] 更新发件账号 ${s.id} 发送计数失败:`, err);
+          });
+        }
+        return { ok: true, senderId: s.id, error: "" };
+      }
+      lastError = res.errors[0] ?? "发送失败";
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+    liveRemaining.set(s.id, (liveRemaining.get(s.id) ?? 0) + 1);
+  }
+  return { ok: false, senderId: opts.excludeSenderId ?? null, error: lastError };
+  });
 }
 
 function buildMessage(
@@ -122,6 +172,12 @@ export async function sendAnnouncementEmails(
 
   if (recipients.length === 0) return { ...empty, triggered: true };
 
+  const candidates = senders
+    .filter((s) => s.enabled)
+    .sort((a, b) => b.priority - a.priority);
+  const liveRemaining = new Map<number, number>();
+  for (const s of candidates) liveRemaining.set(s.id, getSenderRemainingCapacity(s));
+
   const { plans, noCapacity } = planDelivery(senders, recipients);
   if (plans.length === 0) {
     return { ...empty, triggered: true, recipients: recipients.length, skippedNoCapacity: noCapacity };
@@ -140,25 +196,57 @@ export async function sendAnnouncementEmails(
         buildMessage(plan.sender, settings, recipient, title, content, htmlContent),
       );
       const result = await sendSmtpMessages(senderToSmtpConfig(plan.sender), messages);
-      sent += result.sent;
-      failed += result.failed;
-      allErrors.push(...result.errors);
+      if (result.sent > 0) {
+        liveRemaining.set(plan.sender.id, (liveRemaining.get(plan.sender.id) ?? 0) - result.sent);
+        await incrementSentCount(plan.sender.id, result.sent).catch((err) => {
+          console.error(`[ModelGate] 更新发件账号 ${plan.sender.id} 发送计数失败:`, err);
+        });
+      }
       for (let i = 0; i < result.items.length; i += 1) {
         const item = result.items[i];
         const recipient = plan.recipients[i];
         if (!recipient) continue;
-        logRows.push({
-          announcementId,
-          recipientEmail: recipient.email,
-          senderId: plan.sender.id,
-          status: item.ok ? "sent" : "failed",
-          error: item.error ?? "",
-        });
-      }
-      if (result.sent > 0) {
-        await incrementSentCount(plan.sender.id, result.sent).catch((err) => {
-          console.error(`[ModelGate] 更新发件账号 ${plan.sender.id} 发送计数失败:`, err);
-        });
+        if (item.ok) {
+          sent += 1;
+          logRows.push({
+            announcementId,
+            recipientEmail: recipient.email,
+            senderId: plan.sender.id,
+            status: "sent",
+            error: "",
+          });
+          continue;
+        }
+        const fb = await sendWithFallback(
+          recipient,
+          settings,
+          title,
+          content,
+          htmlContent,
+          candidates,
+          liveRemaining,
+          { countQuota: true, excludeSenderId: plan.sender.id },
+        );
+        if (fb.ok) {
+          sent += 1;
+          logRows.push({
+            announcementId,
+            recipientEmail: recipient.email,
+            senderId: fb.senderId!,
+            status: "sent",
+            error: "",
+          });
+        } else {
+          failed += 1;
+          if (fb.error) allErrors.push(fb.error);
+          logRows.push({
+            announcementId,
+            recipientEmail: recipient.email,
+            senderId: plan.sender.id,
+            status: "failed",
+            error: fb.error,
+          });
+        }
       }
     }),
   );
@@ -257,8 +345,7 @@ export async function resendFailedEmails(
   }
 
   const senders = await listSenders();
-  const sender = senders.find((s) => s.enabled);
-  if (!sender) {
+  if (senders.length === 0) {
     return {
       attempted: failed.length,
       sent: 0,
@@ -283,6 +370,12 @@ export async function resendFailedEmails(
     allEmails,
   );
   const usernameByEmail = new Map(userRows.map((r) => [r.email, r.username]));
+
+  const candidates = senders
+    .filter((s) => s.enabled)
+    .sort((a, b) => b.priority - a.priority);
+  const liveRemaining = new Map<number, number>();
+  for (const s of candidates) liveRemaining.set(s.id, Number.POSITIVE_INFINITY);
 
   let attempted = 0;
   let sent = 0;
@@ -309,22 +402,26 @@ export async function resendFailedEmails(
         username: usernameByEmail.get(email) ?? (email.split("@")[0] || email),
       }));
     if (recipients.length === 0) continue;
-    const messages = recipients.map((recipient) =>
-      buildMessage(sender, settings, recipient, announcement.title, announcement.content, htmlContent),
-    );
-    const result = await sendSmtpMessages(senderToSmtpConfig(sender), messages);
-    attempted += recipients.length;
-    sent += result.sent;
-    failedCount += result.failed;
-    for (let i = 0; i < result.items.length; i += 1) {
-      const item = result.items[i];
-      const email = emails[i];
-      if (item.ok) {
-        await markEmailLogSent(aid, email).catch((err) => {
-          console.error(`[ModelGate] 更新邮件日志失败 (${aid}/${email}):`, err);
+    for (const recipient of recipients) {
+      attempted += 1;
+      const fb = await sendWithFallback(
+        recipient,
+        settings,
+        announcement.title,
+        announcement.content,
+        htmlContent,
+        candidates,
+        liveRemaining,
+        { countQuota: false },
+      );
+      if (fb.ok) {
+        sent += 1;
+        await markEmailLogSent(aid, recipient.email).catch((err) => {
+          console.error(`[ModelGate] 更新邮件日志失败 (${aid}/${recipient.email}):`, err);
         });
-      } else if (item.error) {
-        errors.push(`${email}: ${item.error}`);
+      } else {
+        failedCount += 1;
+        if (fb.error) errors.push(`${recipient.email}: ${fb.error}`);
       }
     }
   }
