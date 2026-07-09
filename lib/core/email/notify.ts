@@ -42,6 +42,12 @@ function escapeHtml(value: string): string {
     .replace(/>/g, "&gt;");
 }
 
+function renderFooterText(footer: string): string {
+  return footer
+    .replace(/<a\s+[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi, "$2 ($1)")
+    .replace(/<[^>]+>/g, "");
+}
+
 function buildMessage(
   sender: EmailSender,
   settings: { fromName: string; subjectTemplate: string; footer: string },
@@ -52,11 +58,11 @@ function buildMessage(
 ): SmtpMessage {
   const fromName = sender.fromName || settings.fromName || undefined;
   const footerHtml = settings.footer
-    ? `<hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0"/><p style="color:#6b7280;font-size:12px">${escapeHtml(settings.footer)}</p>`
+    ? `<hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0"/><p style="color:#6b7280;font-size:12px">${settings.footer}</p>`
     : "";
   const bodyHtml = `${htmlContent}${footerHtml}`;
 
-  const footerText = settings.footer ? `\n\n${settings.footer}` : "";
+  const footerText = settings.footer ? `\n\n${renderFooterText(settings.footer)}` : "";
   const text = `尊敬的 ${recipient.username}：\n\n${content}${footerText}`;
 
   return {

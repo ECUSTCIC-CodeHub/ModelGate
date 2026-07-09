@@ -614,7 +614,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | enabled | boolean | 是否启用邮件通知（总开关） |
 | subject_template | string | 邮件标题模板，支持 `{title}`（公告标题）与 `{date}`（日期）占位符 |
 | from_name | string | 默认发件名称，留空则使用发件账号自身的发件名称 |
-| footer | string | 邮件正文页脚，附加在公告内容之后 |
+| footer | string | 邮件正文页脚，附加在公告内容之后；支持内联 HTML（例如超链接 `<a href="https://..." target="_blank" rel="noopener noreferrer">CIC模型网关</a>`），纯文本版会自动转换为「文字 (URL)」 |
 | report_enabled | boolean | 是否在公告邮件发送完成后，向指定管理员邮箱发送结果汇报 |
 | report_to | string | 接收汇报的管理员邮箱，多个用逗号或换行分隔；`report_enabled` 为 true 时生效 |
 
