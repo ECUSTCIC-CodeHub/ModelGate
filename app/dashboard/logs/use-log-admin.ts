@@ -57,6 +57,7 @@ export function useLogAdmin() {
   const [total, setTotal] = useState(0);
   const [filters, setFilters] = useState<LogFilters>(() => ({
     ...emptyLogFilters,
+    user: searchParams.get("user") ?? "",
     status: parseStatusFilter(searchParams.get("status")),
   }));
   const loadSeqRef = useRef(0);
@@ -102,6 +103,7 @@ export function useLogAdmin() {
 
       const initialFilters: LogFilters = {
         ...emptyLogFilters,
+        user: searchParams.get("user") ?? "",
         status: parseStatusFilter(searchParams.get("status")),
       };
 

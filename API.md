@@ -1896,6 +1896,9 @@ email matches ".*@company\\.com"
     ],
     "top_channels": [
       { "channel_name": "openai-main", "request_count": 500, "total_tokens": 100000 }
+    ],
+    "top_users": [
+      { "user_id": 1, "username": "alice", "request_count": 500, "failed_requests": 3, "total_tokens": 100000, "avg_latency_ms": 420 }
     ]
   }
 }
@@ -1914,8 +1917,9 @@ email matches ".*@company\\.com"
 | success_rate | 成功率（百分比） |
 | log_retention_days | 当前日志保留天数（0 表示不删除）。前端据此把“活跃用户 / 平均延迟 / 平均输出速度 / 近 N 天失败请求”的文案窗口动态显示为保留天数或 30 天 |
 | hourly_tokens | 最近 24 小时 Token 趋势 |
-| top_models | Top 5 模型（按请求量） |
-| top_channels | Top 5 渠道（按请求量） |
+| top_models | Top 5 模型（按 Token 消耗） |
+| top_channels | Top 5 渠道（按 Token 消耗） |
+| top_users | Top 5 用户（按 Token 消耗，含 user_id / username / request_count / failed_requests / total_tokens / avg_latency_ms） |
 
 ---
 

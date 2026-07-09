@@ -220,6 +220,24 @@ export async function GET(request: Request) {
       whereArgs,
     );
 
+  const topUsers = isAdmin
+    ? await gatewayDb
+      .query(
+        `SELECT
+           user_id,
+           COALESCE(u.username, '-') AS username,
+           COUNT(*) AS request_count,
+           ${FAILED_REQUESTS_EXPR} AS failed_requests,
+           COALESCE(SUM(total_tokens), 0) AS total_tokens,
+           COALESCE(AVG(CASE WHEN status_code < 400 THEN latency_ms END), 0) AS avg_latency_ms
+         FROM logs
+         LEFT JOIN users u ON u.id = logs.user_id
+         GROUP BY user_id
+         ORDER BY total_tokens DESC, request_count DESC
+         LIMIT 5`,
+      )
+    : [];
+
   const concurrencyRows = await gatewayDb
     .query<{ end_ms: number; latency_ms: number }>(
       `SELECT
@@ -279,6 +297,7 @@ export async function GET(request: Request) {
       hourly_tokens: hourlyTokens,
       top_models: topModels,
       top_channels: topChannels,
+      top_users: topUsers,
     },
   });
 }

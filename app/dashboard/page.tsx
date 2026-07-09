@@ -37,7 +37,7 @@ export default function DashboardHomePage() {
           <DashboardQuickActionsCard isAdmin={isAdmin} announcementEnabled={modelGateFeatures.announcement} onNavigate={navigate} />
         </div>
 
-        <DashboardTopUsageTables summary={dashboard.summary} />
+        <DashboardTopUsageTables isAdmin={isAdmin} summary={dashboard.summary} />
       </div>
     </DashboardShell>
   );
