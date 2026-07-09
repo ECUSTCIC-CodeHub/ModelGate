@@ -1,6 +1,6 @@
 import { gatewayDb } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
-import { toMysqlDatetime, toMysqlDatetimeNoMs } from "@/lib/core/db/datetime";
+import { toMysqlDatetime } from "@/lib/core/db/datetime";
 
 export type ChannelQuotaInfo = {
   remaining_requests: number | null;
@@ -23,7 +23,7 @@ async function ensureChannelPeriodReset(channelId: number, period: number, reset
     `UPDATE channels
        SET period_used_tokens = 0, period_used_requests = 0, period_reset_at = ?
        WHERE id = ? AND (period_reset_at IS NULL OR period_reset_at <= ?)`,
-    [toMysqlDatetime(nextReset), channelId, toMysqlDatetimeNoMs(now)],
+    [toMysqlDatetime(nextReset), channelId, toMysqlDatetime(now)],
   );
   if (result.changes > 0) {
     return { period_used_tokens: 0, period_used_requests: 0, period_reset_at: toMysqlDatetime(nextReset) };

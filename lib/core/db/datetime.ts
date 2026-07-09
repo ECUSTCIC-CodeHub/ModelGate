@@ -22,5 +22,4 @@ export function toShanghaiDatetimeNoMs(date: Date): string {
   return toShanghaiDatetime(date).slice(0, 19);
 }
 
-export const toMysqlDatetime = toShanghaiDatetime;
-export const toMysqlDatetimeNoMs = toShanghaiDatetimeNoMs;
+export const toMysqlDatetime = toShanghaiDatetimeNoMs;
