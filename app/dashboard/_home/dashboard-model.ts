@@ -41,6 +41,7 @@ export type Summary = {
   success_rate: number;
   estimated_peak_concurrency: number;
   estimated_avg_concurrency: number;
+  log_retention_days: number;
   hourly_tokens: Array<{ hour: string; tokens: number }>;
   top_models: Array<{ model_name: string; request_count: number; total_tokens: number }>;
   top_channels: Array<{ channel_name: string; request_count: number; total_tokens: number }>;

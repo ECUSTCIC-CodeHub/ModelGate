@@ -33,6 +33,9 @@ export function LogRetentionSettingsCard({
           <p className="text-xs text-[var(--color-foreground-muted)]">
             清理任务每 6 小时执行一次，分批删除超期日志；0 表示永久保留。
           </p>
+          <p className="text-xs text-[var(--color-foreground-muted)]">
+            保留天数仅影响日志明细与首页“活跃用户 / 平均延迟 / 平均输出速度 / 近 N 天失败请求”等窗口指标的统计范围；总请求数、总 Token 等累计指标不受影响。
+          </p>
         </div>
       </CardContent>
     </Card>

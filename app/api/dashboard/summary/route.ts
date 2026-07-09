@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { gatewayDb } from "@/lib/core/db";
 import { FAILED_REQUESTS_EXPR, RATE_LIMITED_REQUESTS_EXPR } from "@/lib/core/db/log-aggregates";
+import { getGatewaySettings } from "@/lib/core/settings";
 import { ensureWebUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
 
@@ -250,6 +251,13 @@ export async function GET(request: Request) {
       ));
   const recentFailed = recentFailedData?.recent_failed_requests ?? 0;
 
+  let logRetentionDays = 0;
+  try {
+    logRetentionDays = (await getGatewaySettings()).log_retention_days;
+  } catch {
+    // 读取日志保留天数失败不影响首页统计加载，回退到默认不清理
+  }
+
   return jsonOk({
     data: {
       total_requests: summary.total_requests ?? 0,
@@ -267,6 +275,7 @@ export async function GET(request: Request) {
         : 0,
       estimated_peak_concurrency: concurrency.estimated_peak_concurrency,
       estimated_avg_concurrency: concurrency.estimated_avg_concurrency,
+      log_retention_days: logRetentionDays,
       hourly_tokens: hourlyTokens,
       top_models: topModels,
       top_channels: topChannels,

@@ -1684,10 +1684,11 @@ email matches ".*@company\\.com"
 | failed_requests | 失败请求数（不含 429 限流） |
 | rate_limited_requests | 限流请求数 |
 | total_keys | 密钥数量 |
-| active_users | 活跃用户数（普通用户始终为 1） |
-| avg_latency_ms | 平均响应延迟 |
-| avg_output_tps | 平均输出速度（token/s） |
+| active_users | 活跃用户数（普通用户始终为 1）。窗口随日志保留天数变化：未设置保留天数时为累计去重用户，设置后仅统计保留窗口内的去重用户 |
+| avg_latency_ms | 平均响应延迟。窗口同上：未设置保留天数时为全部请求均值，设置后为保留窗口内均值 |
+| avg_output_tps | 平均输出速度（token/s）。窗口同上 |
 | success_rate | 成功率（百分比） |
+| log_retention_days | 当前日志保留天数（0 表示不删除）。前端据此把“活跃用户 / 平均延迟 / 平均输出速度 / 近 N 天失败请求”的文案窗口动态显示为保留天数或 30 天 |
 | hourly_tokens | 最近 24 小时 Token 趋势 |
 | top_models | Top 5 模型（按请求量） |
 | top_channels | Top 5 渠道（按请求量） |
