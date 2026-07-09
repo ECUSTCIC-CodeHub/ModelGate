@@ -5,6 +5,7 @@ import type { DatabaseAdapter } from "@/lib/core/db/adapter";
 import { SqliteAdapter } from "@/lib/core/db/sqlite-adapter";
 import { MysqlAdapter } from "@/lib/core/db/mysql-adapter";
 import { startLogRetentionJob } from "@/lib/data/log-cleanup";
+import { startOidcGroupExpiryJob } from "@/lib/auth/oidc-group-reaper";
 import {
   BASE_SCHEMA_SQL,
   DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL,
@@ -258,6 +259,7 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("users", "group_id", "group_id INTEGER REFERENCES groups(id)");
   await db.ensureColumn("users", "oidc_issuer", "oidc_issuer TEXT");
   await db.ensureColumn("users", "oidc_subject", "oidc_subject TEXT");
+  await db.ensureColumn("users", "oidc_group_synced_at", "oidc_group_synced_at DATETIME");
   await db.ensureColumn("groups", "oidc_claim_value", "oidc_claim_value TEXT");
   await db.ensureColumn("groups", "oidc_claim_expr", "oidc_claim_expr TEXT");
   await db.ensureColumn("groups", "oidc_claim_priority", "oidc_claim_priority INTEGER DEFAULT 0");
@@ -588,6 +590,7 @@ export async function initializeGatewayDbAsync(): Promise<DatabaseAdapter> {
     initPromise = (driver === "mysql" ? initMysql() : initSqlite())
       .then((db) => {
         startLogRetentionJob(db);
+        startOidcGroupExpiryJob();
         return db;
       })
       .catch((err) => {

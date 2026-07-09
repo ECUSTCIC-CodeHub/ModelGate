@@ -63,6 +63,7 @@ export type EditionSettingsInput = {
   oidc_scopes?: string;
   oidc_auto_register?: boolean;
   oidc_button_text?: string;
+  oidc_group_expire_days?: number;
   public_base_url?: string;
   announcement_content?: string;
   announcement_display_count?: number;
@@ -85,6 +86,7 @@ export function filterSettingsInputForEdition<T extends EditionSettingsInput>(in
     delete next.oidc_scopes;
     delete next.oidc_auto_register;
     delete next.oidc_button_text;
+    delete next.oidc_group_expire_days;
   }
   if (!modelGateFeatures.announcement) {
     delete next.announcement_content;

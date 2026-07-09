@@ -3,6 +3,7 @@ import jwt, { type Algorithm } from "jsonwebtoken";
 import { gatewayDb } from "@/lib/core/db";
 import { parseClaimExpr, evaluateClaimExpr } from "@/lib/shared/claim-expr";
 import { getGatewaySettings } from "@/lib/core/settings";
+import { toMysqlDatetime } from "@/lib/core/db/datetime";
 
 export type OidcDiscovery = {
   issuer: string;
@@ -302,4 +303,43 @@ export async function resolveGroupFromClaims(
   }
 
   return null;
+}
+
+export async function syncUserGroupFromClaims(
+  userId: number,
+  claims: Record<string, unknown>,
+  email: string | null,
+): Promise<void> {
+  const syncedAt = toMysqlDatetime(new Date());
+  const claimGroupId = await resolveGroupFromClaims(claims);
+  if (claimGroupId !== null) {
+    await gatewayDb
+      .execute("UPDATE users SET group_id = ?, oidc_group_synced_at = ?, email = COALESCE(?, email) WHERE id = ?", [claimGroupId, syncedAt, email, userId]);
+    return;
+  }
+
+  const current = await gatewayDb
+    .queryOne<{ group_id: number | null }>("SELECT group_id FROM users WHERE id = ?", [userId]);
+  const currentGroupId = current?.group_id ?? null;
+
+  const currentIsOidcMapped = currentGroupId !== null
+    && (await gatewayDb
+      .queryOne<{ id: number }>(
+        "SELECT id FROM `groups` WHERE id = ? AND oidc_claim_expr IS NOT NULL AND oidc_claim_expr != '' AND deleted_at IS NULL",
+        [currentGroupId],
+      )) !== null;
+
+  if (!currentIsOidcMapped) {
+    if (email) {
+      await gatewayDb.execute("UPDATE users SET email = ?, oidc_group_synced_at = NULL WHERE id = ?", [email, userId]);
+    } else {
+      await gatewayDb.execute("UPDATE users SET oidc_group_synced_at = NULL WHERE id = ?", [userId]);
+    }
+    return;
+  }
+
+  const defaultGroup = await gatewayDb
+    .queryOne<{ id: number }>("SELECT id FROM `groups` WHERE is_default = 1 AND deleted_at IS NULL");
+  await gatewayDb
+    .execute("UPDATE users SET group_id = ?, oidc_group_synced_at = NULL, email = COALESCE(?, email) WHERE id = ?", [defaultGroup?.id ?? null, email, userId]);
 }

@@ -16,10 +16,11 @@ import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { requireFeature } from "@/lib/core/features";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { checkLoginRateLimit } from "@/lib/auth/login-ratelimit";
-import { deriveUsername, resolveGroupFromClaims, getOidcConfig } from "@/lib/auth/oidc";
+import { deriveUsername, resolveGroupFromClaims, syncUserGroupFromClaims, getOidcConfig } from "@/lib/auth/oidc";
 import { USERNAME_SCHEMA } from "@/lib/auth/username";
 import { randomBytes } from "node:crypto";
 import { getGatewaySettings } from "@/lib/core/settings";
+import { toMysqlDatetime } from "@/lib/core/db/datetime";
 
 const linkSchema = z.object({
   mode: z.literal("link"),
@@ -82,14 +83,9 @@ export async function POST(request: Request) {
       .execute("UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL WHERE oidc_issuer = ? AND oidc_subject = ? AND id != ?", [pending.issuer, pending.sub, user.id]);
 
     const linkEmail = pending.email?.toLowerCase() ?? null;
-    const claimGroupId = await resolveGroupFromClaims(pending.rawClaims);
-    if (claimGroupId !== null) {
-      await gatewayDb
-        .execute("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, email = COALESCE(?, email), group_id = ? WHERE id = ?", [pending.issuer, pending.sub, linkEmail, claimGroupId, user.id]);
-    } else {
-      await gatewayDb
-        .execute("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, email = COALESCE(?, email) WHERE id = ?", [pending.issuer, pending.sub, linkEmail, user.id]);
-    }
+    await gatewayDb
+      .execute("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, email = COALESCE(?, email) WHERE id = ?", [pending.issuer, pending.sub, linkEmail, user.id]);
+    await syncUserGroupFromClaims(user.id, pending.rawClaims, linkEmail);
 
     if (user.totp_enabled === 1 && user.totp_secret) {
       const pendingToken = signTotpPendingToken(user);
@@ -164,10 +160,10 @@ export async function POST(request: Request) {
 
     await gatewayDb
       .execute(
-        `INSERT INTO users (username, password_hash, role, group_id, oidc_issuer, oidc_subject, email,
+        `INSERT INTO users (username, password_hash, role, group_id, oidc_issuer, oidc_subject, oidc_group_synced_at, email,
            rpm, qps, tpm, quota_tokens, quota_requests, enabled)
-         VALUES (?, ?, ?, ?, ?, ?, ?, -1, -1, -1, NULL, NULL, 1)`,
-        [username, placeholderHash, role, groupId, pending.issuer, pending.sub, createEmail],
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, -1, -1, -1, NULL, NULL, 1)`,
+        [username, placeholderHash, role, groupId, pending.issuer, pending.sub, claimGroupId !== null ? toMysqlDatetime(new Date()) : null, createEmail],
       );
 
     const user = await gatewayDb

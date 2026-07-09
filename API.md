@@ -562,6 +562,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | oidc_scopes | string | OIDC scopes，默认 `openid profile email` |
 | oidc_auto_register | boolean | 是否允许 OIDC 首次登录自动创建用户 |
 | oidc_button_text | string | 登录页 OIDC 按钮文案 |
+| oidc_group_expire_days | int | OIDC 身份组有效期（天，0-3650，默认 30）；通过 Claim 匹配到的身份组在该有效期内未重新登录确认则自动过期并回退默认组，设为 0 关闭自动过期 |
 | public_base_url | string | 对外服务域名 |
 | announcement_content | string | 系统公告内容（支持 Markdown，最长 5000 字符）；已弃用，公告内容现通过公告管理接口维护 |
 | announcement_display_count | number | 首页公告展示条数（1-20，默认 3） |
@@ -1253,6 +1254,10 @@ email matches ".*@company\\.com"
 ```
 
 `oidc_claim_priority` 越高越优先匹配，用于解决多个组表达式同时满足时的冲突。
+
+OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Claim 当前匹配某个组，则加入该组并刷新同步时间；若 Claim 不再匹配任何组，且用户当前所在的组本身是通过 OIDC Claim 表达式映射的组，则自动过期并回退到默认组（无默认组时置空）。管理员手动分配的、未配置 `oidc_claim_expr` 的组不会被自动覆盖或回退。
+
+匹配到的身份组附带同步时间，受 `oidc_group_expire_days` 控制的有效期约束。网关后台定时任务会扫描超过有效期且期间未重新登录确认的用户，将这类 OIDC 映射组自动回退到默认组，因此即使该用户长期不登录，身份组也会按有效期自动过期，不会永久保留。
 
 > 精简版忽略周期配额字段和 `oidc_claim_expr` / `oidc_claim_priority`；更新用户组时会保留数据库中已有的 OIDC Claim 映射值。
 

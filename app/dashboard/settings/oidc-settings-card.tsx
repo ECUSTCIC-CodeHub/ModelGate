@@ -15,6 +15,7 @@ export function OidcSettingsCard({
   oidcScopes,
   oidcAutoRegister,
   oidcButtonText,
+  oidcGroupExpireDays,
   publicBaseUrl,
   setOidcEnabled,
   setOidcIssuerUrl,
@@ -23,6 +24,7 @@ export function OidcSettingsCard({
   setOidcScopes,
   setOidcAutoRegister,
   setOidcButtonText,
+  setOidcGroupExpireDays,
   setPublicBaseUrl,
   copyPublicUrl,
 }: {
@@ -33,6 +35,7 @@ export function OidcSettingsCard({
   oidcScopes: string;
   oidcAutoRegister: boolean;
   oidcButtonText: string;
+  oidcGroupExpireDays: number;
   publicBaseUrl: string;
   setOidcEnabled: (value: boolean) => void;
   setOidcIssuerUrl: (value: string) => void;
@@ -41,6 +44,7 @@ export function OidcSettingsCard({
   setOidcScopes: (value: string) => void;
   setOidcAutoRegister: (value: boolean) => void;
   setOidcButtonText: (value: string) => void;
+  setOidcGroupExpireDays: (value: number) => void;
   setPublicBaseUrl: (value: string) => void;
   copyPublicUrl: (path: string) => void;
 }) {
@@ -148,6 +152,17 @@ export function OidcSettingsCard({
           checked={oidcAutoRegister}
           onCheckedChange={setOidcAutoRegister}
         />
+        <div className="space-y-2">
+          <Label>身份组有效期（天）</Label>
+          <Input
+            type="number"
+            min={0}
+            max={3650}
+            value={oidcGroupExpireDays}
+            onChange={(e) => setOidcGroupExpireDays(Number(e.target.value))}
+          />
+          <p className="text-xs text-[var(--color-foreground-muted)]">通过 OIDC Claim 匹配到的身份组在有效期内未重新登录确认则自动过期，回退到默认组。设为 30 天即最多 30 天未登录即过期；设为 0 关闭自动过期。</p>
+        </div>
       </CardContent>
     </Card>
   );

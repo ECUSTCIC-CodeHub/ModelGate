@@ -49,6 +49,7 @@ export default function AdminSettingsPage() {
   const [oidcScopes, setOidcScopes] = useState("openid profile email");
   const [oidcAutoRegister, setOidcAutoRegister] = useState(true);
   const [oidcButtonText, setOidcButtonText] = useState("OIDC 登录");
+  const [oidcGroupExpireDays, setOidcGroupExpireDays] = useState(30);
   const [publicBaseUrl, setPublicBaseUrl] = useState("");
   const [announcementContent, setAnnouncementContent] = useState("");
   const [announcementDisplayCount, setAnnouncementDisplayCount] = useState(3);
@@ -86,6 +87,8 @@ export default function AdminSettingsPage() {
       setOidcScopes(stringValue(settings.oidc_scopes, "openid profile email"));
       setOidcAutoRegister(settings.oidc_auto_register !== 0);
       setOidcButtonText(stringValue(settings.oidc_button_text, "OIDC 登录"));
+      const expireRaw = Number(settings.oidc_group_expire_days);
+      setOidcGroupExpireDays(Number.isFinite(expireRaw) && expireRaw >= 0 ? Math.min(Math.trunc(expireRaw), 3650) : 30);
     }
 
     const savedBase = stringValue(settings.public_base_url);
@@ -138,6 +141,7 @@ export default function AdminSettingsPage() {
           oidc_scopes: oidcScopes,
           oidc_auto_register: oidcAutoRegister,
           oidc_button_text: oidcButtonText,
+          oidc_group_expire_days: oidcGroupExpireDays,
         } : {}),
         public_base_url: publicBaseUrl,
         ...(announcementFeatureEnabled ? { announcement_content: announcementContent } : {}),
@@ -224,6 +228,7 @@ export default function AdminSettingsPage() {
             oidcScopes={oidcScopes}
             oidcAutoRegister={oidcAutoRegister}
             oidcButtonText={oidcButtonText}
+            oidcGroupExpireDays={oidcGroupExpireDays}
             publicBaseUrl={publicBaseUrl}
             setOidcEnabled={setOidcEnabled}
             setOidcIssuerUrl={setOidcIssuerUrl}
@@ -232,6 +237,7 @@ export default function AdminSettingsPage() {
             setOidcScopes={setOidcScopes}
             setOidcAutoRegister={setOidcAutoRegister}
             setOidcButtonText={setOidcButtonText}
+            setOidcGroupExpireDays={setOidcGroupExpireDays}
             setPublicBaseUrl={setPublicBaseUrl}
             copyPublicUrl={copyPublicUrl}
           />

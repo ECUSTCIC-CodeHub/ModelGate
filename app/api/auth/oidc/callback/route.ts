@@ -12,6 +12,7 @@ import {
   fetchUserInfo,
   deriveUsername,
   resolveGroupFromClaims,
+  syncUserGroupFromClaims,
   resolveRedirectUri,
   getPublicOrigin,
   normalizeOidcIssuerUrl,
@@ -154,14 +155,9 @@ export async function GET(request: Request) {
     }
 
     const email = userInfo.email?.toLowerCase() ?? null;
-    const claimGroupId = await resolveGroupFromClaims(rawClaims);
-    if (claimGroupId !== null) {
-      await gatewayDb
-        .execute("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, email = COALESCE(?, email), group_id = ? WHERE id = ?", [issuer, userInfo.sub, email, claimGroupId, auth.user.id]);
-    } else {
-      await gatewayDb
-        .execute("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, email = COALESCE(?, email) WHERE id = ?", [issuer, userInfo.sub, email, auth.user.id]);
-    }
+    await gatewayDb
+      .execute("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, email = COALESCE(?, email) WHERE id = ?", [issuer, userInfo.sub, email, auth.user.id]);
+    await syncUserGroupFromClaims(auth.user.id, rawClaims, email);
 
     const res = NextResponse.redirect(`${origin}/dashboard?oidc_bound=1`, 302);
     return clearStateCookie(res);
@@ -263,12 +259,7 @@ export async function GET(request: Request) {
   }
 
   {
-    const claimGroupId = await resolveGroupFromClaims(rawClaims);
-    const email = userInfo.email?.toLowerCase() ?? null;
-    if ((claimGroupId !== null && claimGroupId !== user.group_id) || (email && email !== user.email)) {
-      await gatewayDb
-        .execute("UPDATE users SET group_id = COALESCE(?, group_id), email = COALESCE(?, email) WHERE id = ?", [claimGroupId, email, user.id]);
-    }
+    await syncUserGroupFromClaims(user.id, rawClaims, userInfo.email?.toLowerCase() ?? null);
   }
 
   if (user.totp_enabled === 1 && user.totp_secret) {

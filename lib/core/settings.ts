@@ -26,6 +26,7 @@ export type GatewaySettings = {
   oidc_scopes: string;
   oidc_auto_register: number;
   oidc_button_text: string;
+  oidc_group_expire_days: number;
   public_base_url: string;
   announcement_content: string;
   announcement_display_count: number;
@@ -53,6 +54,13 @@ function retentionDays(value: string | null | undefined): number {
   return Math.min(Math.trunc(num), 3650);
 }
 
+function clampOidcGroupExpireDays(value: string | null | undefined): number {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < 0) return 30;
+  if (num === 0) return 0;
+  return Math.min(Math.trunc(num), 3650);
+}
+
 const OIDC_KEYS = [
   "oidc_enabled",
   "oidc_issuer_url",
@@ -61,6 +69,7 @@ const OIDC_KEYS = [
   "oidc_scopes",
   "oidc_auto_register",
   "oidc_button_text",
+  "oidc_group_expire_days",
   "public_base_url",
 ] as const;
 
@@ -114,6 +123,7 @@ async function readGatewaySettingsFromDb(): Promise<GatewaySettings> {
     oidc_scopes: map.get("oidc_scopes") ?? "openid profile email",
     oidc_auto_register: map.get("oidc_auto_register") === "0" ? 0 : 1,
     oidc_button_text: map.get("oidc_button_text") || "OIDC 登录",
+    oidc_group_expire_days: clampOidcGroupExpireDays(map.get("oidc_group_expire_days")),
     public_base_url: map.get("public_base_url") ?? "",
     announcement_content: map.get("announcement_content") ?? "",
     announcement_display_count: positiveInt(map.get("announcement_display_count"), 3),
@@ -156,6 +166,7 @@ export async function setGatewaySettings(input: {
   oidc_scopes?: string;
   oidc_auto_register?: boolean;
   oidc_button_text?: string;
+  oidc_group_expire_days?: number;
   public_base_url?: string;
   announcement_content?: string;
   announcement_display_count?: number;
@@ -187,6 +198,7 @@ export async function setGatewaySettings(input: {
   if (input.oidc_scopes !== undefined) values.oidc_scopes = input.oidc_scopes.trim() || "openid profile email";
   if (input.oidc_auto_register !== undefined) values.oidc_auto_register = input.oidc_auto_register ? "1" : "0";
   if (input.oidc_button_text !== undefined) values.oidc_button_text = input.oidc_button_text.trim() || "OIDC 登录";
+  if (input.oidc_group_expire_days !== undefined) values.oidc_group_expire_days = String(Math.min(3650, Math.max(0, Math.trunc(input.oidc_group_expire_days))));
   if (input.public_base_url !== undefined) values.public_base_url = input.public_base_url.trim().replace(/\/+$/, "");
   if (input.announcement_content !== undefined) values.announcement_content = input.announcement_content;
   if (input.announcement_display_count !== undefined) values.announcement_display_count = String(Math.max(1, Math.trunc(input.announcement_display_count)));

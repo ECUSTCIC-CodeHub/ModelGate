@@ -22,6 +22,7 @@ const schema = z.object({
   oidc_scopes: z.string().optional(),
   oidc_auto_register: z.boolean().optional(),
   oidc_button_text: z.string().optional(),
+  oidc_group_expire_days: z.number().int().min(0).max(3650).optional(),
   public_base_url: z.string().optional(),
   announcement_content: z.string().max(5000).optional(),
   announcement_display_count: z.number().int().min(1).max(20).optional(),
