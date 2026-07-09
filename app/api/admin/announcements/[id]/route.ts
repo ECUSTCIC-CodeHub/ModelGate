@@ -5,11 +5,13 @@ import { requireFeature } from "@/lib/core/features";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { gatewayDb } from "@/lib/core/db";
+import { notifyAnnouncementAsync } from "@/lib/core/email";
 
 const updateSchema = z.object({
   title: z.string().min(1).max(255).optional(),
   content: z.string().min(1).max(10000).optional(),
   pinned: z.boolean().optional(),
+  notify_email: z.boolean().optional(),
 });
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -52,15 +54,24 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   params.push(id);
   await gatewayDb.execute(`UPDATE announcements SET ${sets.join(", ")} WHERE id = ?`, params);
 
-  const row = await gatewayDb.queryOne<{
+  const row = (await gatewayDb.queryOne<{
     id: number;
     title: string;
     content: string;
     pinned: number;
     created_at: string;
-  }>("SELECT id, title, content, pinned, created_at FROM announcements WHERE id = ?", [id]);
+  }>("SELECT id, title, content, pinned, created_at FROM announcements WHERE id = ?", [id]))!;
 
-  return jsonOk({ message: "公告更新成功。", data: row });
+  const emailTriggered = parsed.data.notify_email === true
+    && (parsed.data.title !== undefined || parsed.data.content !== undefined);
+  if (emailTriggered) {
+    notifyAnnouncementAsync(row.title, row.content, row.id);
+  }
+
+  return jsonOk({
+    message: emailTriggered ? "公告更新成功，邮件通知将在后台发送。" : "公告更新成功。",
+    data: row,
+  });
 }
 
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {

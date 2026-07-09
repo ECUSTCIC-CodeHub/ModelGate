@@ -36,7 +36,7 @@ export function UserBasicFields({ form, editingId, groupOptions, onChange }: Use
           <Label>邮箱</Label>
           <Input
             type="email"
-            placeholder="用于 OIDC 账号关联"
+            placeholder="用于 OIDC 账号关联与接收邮件通知"
             value={form.email}
             onChange={(e) => onChange({ email: e.target.value })}
           />

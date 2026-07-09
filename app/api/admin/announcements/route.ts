@@ -5,11 +5,13 @@ import { requireFeature } from "@/lib/core/features";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { gatewayDb } from "@/lib/core/db";
+import { notifyAnnouncementAsync } from "@/lib/core/email";
 
 const createSchema = z.object({
   title: z.string().min(1).max(255),
   content: z.string().min(1).max(10000),
   pinned: z.boolean().optional(),
+  notify_email: z.boolean().optional(),
 });
 
 export async function GET(request: Request) {
@@ -47,13 +49,21 @@ export async function POST(request: Request) {
     [title, content, pinned ? 1 : 0],
   );
 
-  const row = await gatewayDb.queryOne<{
+  const row = (await gatewayDb.queryOne<{
     id: number;
     title: string;
     content: string;
     pinned: number;
     created_at: string;
-  }>("SELECT id, title, content, pinned, created_at FROM announcements WHERE id = ?", [result.lastInsertRowid]);
+  }>("SELECT id, title, content, pinned, created_at FROM announcements WHERE id = ?", [result.lastInsertRowid]))!;
 
-  return jsonOk({ message: "公告创建成功。", data: row }, 201);
+  const emailTriggered = parsed.data.notify_email === true;
+  if (emailTriggered) {
+    notifyAnnouncementAsync(row.title, row.content, row.id);
+  }
+
+  return jsonOk({
+    message: emailTriggered ? "公告创建成功，邮件通知将在后台发送。" : "公告创建成功。",
+    data: row,
+  }, 201);
 }

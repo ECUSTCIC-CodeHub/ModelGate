@@ -42,6 +42,21 @@ export async function pruneOldLogs(db: DatabaseAdapter, days: number): Promise<n
   return deleted;
 }
 
+export async function pruneOldEmailLogs(db: DatabaseAdapter, days: number): Promise<number> {
+  const cutoffExpr = db.driver === "mysql"
+    ? `(NOW() - INTERVAL ${days} DAY)`
+    : `strftime('%Y-%m-%d %H:%M:%S', 'now', '-${days} days', 'localtime')`;
+  const sql = `DELETE FROM email_send_log WHERE id IN (SELECT id FROM (SELECT id FROM email_send_log WHERE created_at < ${cutoffExpr} ORDER BY id ASC LIMIT ${BATCH_SIZE}) AS t)`;
+  let deleted = 0;
+  for (;;) {
+    const result = await db.execute(sql);
+    deleted += result.changes;
+    if (result.changes < BATCH_SIZE) break;
+    await sleep(SLEEP_BETWEEN_BATCHES_MS);
+  }
+  return deleted;
+}
+
 export function startLogRetentionJob(db: DatabaseAdapter) {
   if (started) return;
   started = true;
@@ -50,7 +65,10 @@ export function startLogRetentionJob(db: DatabaseAdapter) {
     running = true;
     try {
       const days = await readRetentionDays(db);
-      if (days > 0) await pruneOldLogs(db, days);
+      if (days > 0) {
+        await pruneOldLogs(db, days);
+        await pruneOldEmailLogs(db, days);
+      }
     } catch {
       // 清理失败不影响网关运行，下次定时再试
     } finally {

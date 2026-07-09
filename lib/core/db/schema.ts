@@ -135,6 +135,37 @@ CREATE TABLE IF NOT EXISTS stats (
   rate_limited_requests INTEGER NOT NULL DEFAULT 0,
   retry_requests INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS email_senders (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  host TEXT NOT NULL,
+  port INTEGER NOT NULL DEFAULT 25,
+  secure INTEGER DEFAULT 0,
+  auth_user TEXT DEFAULT '',
+  auth_pass TEXT DEFAULT '',
+  from_address TEXT NOT NULL,
+  from_name TEXT DEFAULT '',
+  daily_limit INTEGER DEFAULT 0,
+  priority INTEGER DEFAULT 0,
+  enabled INTEGER DEFAULT 1,
+  sent_today INTEGER DEFAULT 0,
+  sent_date TEXT DEFAULT '',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_email_senders_enabled ON email_senders(enabled);
+
+CREATE TABLE IF NOT EXISTS email_send_log (
+  id INTEGER PRIMARY KEY,
+  announcement_id INTEGER NOT NULL,
+  recipient_email TEXT NOT NULL,
+  sender_id INTEGER,
+  status TEXT NOT NULL,
+  error TEXT DEFAULT '',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_email_send_log_announcement ON email_send_log(announcement_id);
+CREATE INDEX IF NOT EXISTS idx_email_send_log_status ON email_send_log(status);
 `;
 
 export const POST_MIGRATION_INDEXES_SQL = `

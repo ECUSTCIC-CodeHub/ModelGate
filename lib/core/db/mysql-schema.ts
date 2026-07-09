@@ -171,6 +171,34 @@ CREATE TABLE IF NOT EXISTS stats (
   rate_limited_requests BIGINT NOT NULL DEFAULT 0,
   retry_requests BIGINT NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS email_senders (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  host VARCHAR(255) NOT NULL,
+  port INT NOT NULL DEFAULT 25,
+  secure TINYINT(1) DEFAULT 0,
+  auth_user TEXT DEFAULT '',
+  auth_pass TEXT DEFAULT '',
+  from_address VARCHAR(255) NOT NULL,
+  from_name VARCHAR(255) DEFAULT '',
+  daily_limit INT DEFAULT 0,
+  priority INT DEFAULT 0,
+  enabled TINYINT(1) DEFAULT 1,
+  sent_today INT DEFAULT 0,
+  sent_date VARCHAR(10) DEFAULT '',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS email_send_log (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  announcement_id INT NOT NULL,
+  recipient_email VARCHAR(255) NOT NULL,
+  sender_id INT,
+  status VARCHAR(16) NOT NULL,
+  error TEXT DEFAULT '',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 `;
 
 export const MYSQL_BASE_INDEXES = [
@@ -186,6 +214,9 @@ export const MYSQL_BASE_INDEXES = [
   { name: "idx_logs_key_id", table: "logs", expr: "(key_id)" },
   { name: "idx_keys_key", table: "`keys`", expr: "(`key`)" },
   { name: "idx_announcements_pinned_created", table: "announcements", expr: "(pinned, created_at)" },
+  { name: "idx_email_senders_enabled", table: "email_senders", expr: "(enabled)" },
+  { name: "idx_email_send_log_announcement", table: "email_send_log", expr: "(announcement_id)" },
+  { name: "idx_email_send_log_status", table: "email_send_log", expr: "(status)" },
 ] as const;
 
 export const MYSQL_POST_MIGRATION_INDEXES = [

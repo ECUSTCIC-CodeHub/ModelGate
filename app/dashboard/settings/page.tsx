@@ -12,6 +12,7 @@ import {
   AnnouncementSettingsCard,
   AppearanceSettingsCard,
   CorsSettingsCard,
+  EmailSettingsCard,
   FilingSettingsCard,
   LogRetentionSettingsCard,
   LoginSettingsCard,
@@ -267,6 +268,10 @@ export default function AdminSettingsPage() {
             setAccessGuideNotice={setAccessGuideNotice}
           />
         ) : null}
+
+        {announcementFeatureEnabled ? <EmailSettingsCard /> : null}
+
+
 
         <FilingSettingsCard
           icpFilingNumber={icpFilingNumber}

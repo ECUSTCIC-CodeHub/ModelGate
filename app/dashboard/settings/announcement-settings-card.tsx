@@ -33,6 +33,7 @@ export function AnnouncementSettingsCard({
   const [formTitle, setFormTitle] = useState("");
   const [formContent, setFormContent] = useState("");
   const [formPinned, setFormPinned] = useState(false);
+  const [formNotifyEmail, setFormNotifyEmail] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   const fetchAnnouncements = useCallback(async () => {
@@ -56,6 +57,7 @@ export function AnnouncementSettingsCard({
     setFormTitle("");
     setFormContent("");
     setFormPinned(false);
+    setFormNotifyEmail(true);
     setEditingId(null);
     setShowForm(false);
   }
@@ -83,10 +85,15 @@ export function AnnouncementSettingsCard({
       const isEdit = editingId !== null;
       const url = isEdit ? `/api/admin/announcements/${editingId}` : "/api/admin/announcements";
       const method = isEdit ? "PUT" : "POST";
+      const original = isEdit ? announcements.find((a) => a.id === editingId) : undefined;
+      const contentChanged = original
+        ? formTitle !== original.title || formContent !== original.content
+        : true;
       const body: Record<string, unknown> = {
         title: formTitle.trim(),
         content: formContent.trim(),
         pinned: formPinned,
+        notify_email: formNotifyEmail && contentChanged,
       };
       const response = await authedFetch(url, { method, body: JSON.stringify(body) });
       const data = await response.json().catch(() => null);
@@ -185,6 +192,15 @@ export function AnnouncementSettingsCard({
                 className="h-4 w-4 rounded border-[var(--color-border)]"
               />
               置顶（展示时排在最前面）
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[var(--color-foreground)]">
+              <input
+                type="checkbox"
+                checked={formNotifyEmail}
+                onChange={(e) => setFormNotifyEmail(e.target.checked)}
+                className="h-4 w-4 rounded border-[var(--color-border)]"
+              />
+              同时邮件通知用户（需先在「邮件通知」中启用并配置发件账号）
             </label>
             <div className="flex gap-2">
               <Button onClick={() => void submitForm()} disabled={submitting}>
