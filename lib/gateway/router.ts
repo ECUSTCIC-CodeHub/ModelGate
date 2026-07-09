@@ -3,6 +3,7 @@ import type { ModelQuotaMode } from "@/lib/core/db/types";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { makeModelRuntimeKey, scoreChannel } from "@/lib/gateway/channel-runtime";
 import { parseSupportedProtocols, type GatewayProtocol } from "@/lib/gateway/protocols";
+import { checkScopedUaRestrictions, type UaRestrictionMatch } from "@/lib/gateway/ua-restrictions";
 
 export type RoutedModel = {
   model: DbModel;
@@ -203,9 +204,10 @@ function isProtocolCompatible(inboundProtocol: GatewayProtocol, upstreamProtocol
   return !PASSTHROUGH_PROTOCOLS.includes(upstreamProtocol);
 }
 
-export async function listModelRoutes(alias: string, options?: { excludeChannelIds?: number[]; protocol?: GatewayProtocol; allowedChannelIds?: number[] | null }): Promise<RoutedModel[]> {
+export async function listModelRoutes(alias: string, options?: { excludeChannelIds?: number[]; protocol?: GatewayProtocol; allowedChannelIds?: number[] | null; userAgent?: string | null }): Promise<RoutedModel[]> {
   const exclude = new Set(options?.excludeChannelIds ?? []);
   const protocol = options?.protocol;
+  const userAgent = options?.userAgent;
   const allowSet = options?.allowedChannelIds && options.allowedChannelIds.length > 0
     ? new Set(options.allowedChannelIds)
     : null;
@@ -220,6 +222,10 @@ export async function listModelRoutes(alias: string, options?: { excludeChannelI
         ? parseSupportedProtocols(row.model_supported_protocols)
         : channelProtocols;
       if (!isProtocolCompatible(protocol, row.upstream_protocol ?? "chat_completions", modelProtocols, channelProtocols)) return false;
+    }
+    if (userAgent !== undefined) {
+      const scoped = checkScopedUaRestrictions(userAgent, row.channel_ua_restrictions, row.model_ua_restrictions);
+      if (scoped.matched && !scoped.allowed) return false;
     }
     return true;
   });
@@ -253,7 +259,26 @@ export async function listModelRoutes(alias: string, options?: { excludeChannelI
     .map((item) => item.route);
 }
 
-export async function selectModelRoute(alias: string, options?: { excludeChannelIds?: number[]; protocol?: GatewayProtocol; allowedChannelIds?: number[] | null }): Promise<RoutedModel | null> {
+export async function selectModelRoute(alias: string, options?: { excludeChannelIds?: number[]; protocol?: GatewayProtocol; allowedChannelIds?: number[] | null; userAgent?: string | null }): Promise<RoutedModel | null> {
   const routes = await listModelRoutes(alias, options);
   return routes[0] ?? null;
+}
+
+/**
+ * 在允许访问的渠道中逐个校验渠道/模型级 UA 限制，返回第一个命中 deny 的限制。
+ * 仅在 selectModelRoute（带 userAgent）返回 null、但存在未过滤候选时调用，
+ * 用于区分「无可用渠道」与「全部渠道都拒绝该 UA」。
+ */
+export async function findUaDenyMatchForAlias(
+  alias: string,
+  userAgent: string | null,
+  allowedChannelIds?: number[] | null,
+  protocol?: GatewayProtocol,
+): Promise<(UaRestrictionMatch & { matched: true }) | null> {
+  const routes = await listModelRoutes(alias, { protocol, allowedChannelIds });
+  for (const route of routes) {
+    const match = checkScopedUaRestrictions(userAgent, route.channel.ua_restrictions, route.model.ua_restrictions);
+    if (match.matched && !match.allowed) return match;
+  }
+  return null;
 }

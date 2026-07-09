@@ -124,6 +124,21 @@ export function checkUserAgentRestrictions(params: {
   return { matched: false };
 }
 
+/**
+ * 仅针对「渠道 + 模型」层级的 UA 限制做校验（不含全站规则）。
+ * 用于路由选择阶段：返回未命中或放行的路由可用，命中 deny 的路由应被排除。
+ */
+export function checkScopedUaRestrictions(
+  userAgent: string | null,
+  channelRulesRaw: string | null | undefined,
+  modelRulesRaw: string | null | undefined,
+): UaRestrictionMatch {
+  const channelRules = parseUaRestrictions(channelRulesRaw);
+  const modelRules = parseUaRestrictions(modelRulesRaw);
+  if (channelRules.length === 0 && modelRules.length === 0) return { matched: false };
+  return checkUserAgentRestrictions({ userAgent, globalRules: [], channelRules, modelRules });
+}
+
 export function validateUaRestrictionRules(input: unknown): { valid: true; rules: UaRestrictionRule[] } | { valid: false; error: string } {
   if (input === null || input === undefined) {
     return { valid: true, rules: [] };

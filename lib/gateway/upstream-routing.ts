@@ -71,6 +71,7 @@ export async function requestUpstreamWithFallback({
   requestSignal,
   inboundHeaders,
   allowedChannelIds,
+  userAgent,
   startedAt,
   estimatedTokens,
   buildRequestBody,
@@ -82,6 +83,7 @@ export async function requestUpstreamWithFallback({
   requestSignal: AbortSignal;
   inboundHeaders: Headers;
   allowedChannelIds?: number[] | null;
+  userAgent?: string | null;
   startedAt: number;
   estimatedTokens: number;
   buildRequestBody: (route: RoutedModel) => Record<string, unknown>;
@@ -99,6 +101,7 @@ export async function requestUpstreamWithFallback({
       excludeChannelIds: [...attemptedChannels],
       protocol: inboundProtocol,
       allowedChannelIds,
+      userAgent,
     });
 
     if (!route) {

@@ -1969,6 +1969,8 @@ email matches ".*@company\\.com"
 3. 所有层级均未命中任何规则，则放行请求。
 
 未配置规则（空数组或空字符串）的层级不生效。命中拒绝时返回对应 `error_code` 与 `error_message`，错误响应 `error.param` 为 `user-agent`，并写入访问日志。
+
+渠道/模型级限制在路由选择阶段生效：网关优先选择允许该 User-Agent 的渠道；只有当该模型在用户可访问范围内的所有候选渠道都拒绝该 User-Agent 时，才返回对应的拦截错误。因此某个渠道拒绝并不会直接中断请求，网关会顺延到其它允许该 User-Agent 的可用渠道；全站级命中拒绝仍会立即拦截，不触发顺延。
 ### POST /api/v1/chat/completions
 
 OpenAI Chat Completions 兼容端点。

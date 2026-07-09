@@ -11,7 +11,7 @@ import { createTransformedStream } from "@/lib/gateway/protocol-adapters/streami
 import { appendQuotaHeaders, checkQuota } from "@/lib/gateway/quota";
 import { createQueuedUpstreamResponse, normalizeUserAgent } from "@/lib/gateway/queued-upstream-response";
 import { checkUserRateLimit } from "@/lib/gateway/ratelimit";
-import { selectModelRoute, type RoutedModel } from "@/lib/gateway/router";
+import { selectModelRoute, findUaDenyMatchForAlias, type RoutedModel } from "@/lib/gateway/router";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { checkUserAgentRestrictions, parseUaRestrictions, type UaRestrictionMatch } from "@/lib/gateway/ua-restrictions";
 import { isFeatureEnabled } from "@/lib/core/features";
@@ -42,8 +42,8 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   const auth = authResult.context;
   const allowedChannelIds = await getUserAllowedChannelIds(auth.user);
 
-  const denyByUa = (match: UaRestrictionMatch & { matched: true }): Response => {
-    logRejected(429, match.rule.error_message, null);
+  const denyByUa = (match: UaRestrictionMatch & { matched: true }, alias: string | null): Response => {
+    logRejected(429, match.rule.error_message, alias);
     return jsonError(match.rule.error_message, match.rule.error_code, {
       type: "invalid_request_error",
       param: "user-agent",
@@ -71,7 +71,8 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     });
   };
 
-  const globalUaRules = isFeatureEnabled("uaRestrictions")
+  const uaEnabled = isFeatureEnabled("uaRestrictions");
+  const globalUaRules = uaEnabled
     ? parseUaRestrictions((await getGatewaySettings()).ua_restrictions)
     : [];
   if (globalUaRules.length > 0) {
@@ -82,7 +83,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       modelRules: [],
     });
     if (globalMatch.matched && !globalMatch.allowed) {
-      return denyByUa(globalMatch);
+      return denyByUa(globalMatch, null);
     }
   }
 
@@ -130,8 +131,19 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   }
   const resolvedAlias = resolved.alias;
 
-  const existingRoute = await selectModelRoute(resolvedAlias, { protocol: inboundProtocol, allowedChannelIds });
+  const existingRoute = await selectModelRoute(resolvedAlias, {
+    protocol: inboundProtocol,
+    allowedChannelIds,
+    userAgent: uaEnabled ? clientUserAgent : undefined,
+  });
   if (!existingRoute) {
+    if (uaEnabled) {
+      const nonUaRoute = await selectModelRoute(resolvedAlias, { protocol: inboundProtocol, allowedChannelIds });
+      if (nonUaRoute !== null) {
+        const denyMatch = await findUaDenyMatchForAlias(resolvedAlias, clientUserAgent, allowedChannelIds, inboundProtocol);
+        if (denyMatch) return denyByUa(denyMatch, alias);
+      }
+    }
     if (allowedChannelIds) {
       const withoutRestriction = await selectModelRoute(resolvedAlias, { protocol: inboundProtocol });
       if (withoutRestriction !== null) {
@@ -145,24 +157,6 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
 
   const quotaMode = existingRoute.model.quota_mode;
   const bypassUserLimits = quotaMode === "bypass_group" || quotaMode === "independent";
-
-  const scopedUaRules = isFeatureEnabled("uaRestrictions")
-    ? parseUaRestrictions(existingRoute.channel.ua_restrictions)
-    : [];
-  const modelUaRules = isFeatureEnabled("uaRestrictions")
-    ? parseUaRestrictions(existingRoute.model.ua_restrictions)
-    : [];
-  if (scopedUaRules.length > 0 || modelUaRules.length > 0) {
-    const scopedMatch = checkUserAgentRestrictions({
-      userAgent: clientUserAgent,
-      globalRules: [],
-      channelRules: scopedUaRules,
-      modelRules: modelUaRules,
-    });
-    if (scopedMatch.matched && !scopedMatch.allowed) {
-      return denyByUa(scopedMatch);
-    }
-  }
 
   const quotaHeaders: Record<string, string> = {};
   let channelQuotaHeaders: Record<string, string> | null = null;
@@ -260,6 +254,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     requestSignal: request.signal,
     inboundHeaders: request.headers,
     allowedChannelIds,
+    userAgent: uaEnabled ? clientUserAgent : undefined,
     startedAt,
     estimatedTokens,
     buildRequestBody: adaptRequestBodyForRoute,

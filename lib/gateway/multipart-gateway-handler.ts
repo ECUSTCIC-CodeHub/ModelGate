@@ -8,11 +8,11 @@ import { resolveAccessibleModelAlias } from "@/lib/gateway/model-access";
 import { appendQuotaHeaders, checkQuota } from "@/lib/gateway/quota";
 import { normalizeUserAgent } from "@/lib/gateway/queued-upstream-response";
 import { checkUserRateLimit } from "@/lib/gateway/ratelimit";
-import { selectModelRoute } from "@/lib/gateway/router";
+import { selectModelRoute, findUaDenyMatchForAlias } from "@/lib/gateway/router";
 import { resolveClientIp } from "@/lib/core/client-ip";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { isFeatureEnabled } from "@/lib/core/features";
-import { checkUserAgentRestrictions, parseUaRestrictions, type UaRestrictionMatch } from "@/lib/gateway/ua-restrictions";
+import { checkUserAgentRestrictions, parseUaRestrictions } from "@/lib/gateway/ua-restrictions";
 import { buildErrorResponseBody, parseUpstreamError } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
 import { acquireChannel, makeModelRuntimeKey } from "@/lib/gateway/channel-runtime";
@@ -57,7 +57,8 @@ export async function handleMultipartGatewayRequest(request: Request) {
     });
   };
 
-  const globalUaRules = isFeatureEnabled("uaRestrictions")
+  const uaEnabled = isFeatureEnabled("uaRestrictions");
+  const globalUaRules = uaEnabled
     ? parseUaRestrictions((await getGatewaySettings()).ua_restrictions)
     : [];
   if (globalUaRules.length > 0) {
@@ -112,8 +113,26 @@ export async function handleMultipartGatewayRequest(request: Request) {
   }
   const resolvedAlias = resolved.alias;
 
-  const existingRoute = await selectModelRoute(resolvedAlias, { protocol: "images", allowedChannelIds });
+  const existingRoute = await selectModelRoute(resolvedAlias, {
+    protocol: "images",
+    allowedChannelIds,
+    userAgent: uaEnabled ? clientUserAgent : undefined,
+  });
   if (!existingRoute) {
+    if (uaEnabled) {
+      const nonUaRoute = await selectModelRoute(resolvedAlias, { protocol: "images", allowedChannelIds });
+      if (nonUaRoute !== null) {
+        const denyMatch = await findUaDenyMatchForAlias(resolvedAlias, clientUserAgent, allowedChannelIds, "images");
+        if (denyMatch) {
+          logRejected(429, denyMatch.rule.error_message, alias);
+          return jsonError(denyMatch.rule.error_message, denyMatch.rule.error_code, {
+            type: "invalid_request_error",
+            param: "user-agent",
+            code: String(denyMatch.rule.error_code),
+          });
+        }
+      }
+    }
     if (allowedChannelIds) {
       const withoutRestriction = await selectModelRoute(resolvedAlias, { protocol: "images" });
       if (withoutRestriction !== null) {
@@ -127,29 +146,6 @@ export async function handleMultipartGatewayRequest(request: Request) {
 
   const quotaMode = existingRoute.model.quota_mode;
   const bypassUserLimits = quotaMode === "bypass_group" || quotaMode === "independent";
-
-  const scopedUaRules = isFeatureEnabled("uaRestrictions")
-    ? parseUaRestrictions(existingRoute.channel.ua_restrictions)
-    : [];
-  const modelUaRules = isFeatureEnabled("uaRestrictions")
-    ? parseUaRestrictions(existingRoute.model.ua_restrictions)
-    : [];
-  if (scopedUaRules.length > 0 || modelUaRules.length > 0) {
-    const scopedMatch: UaRestrictionMatch = checkUserAgentRestrictions({
-      userAgent: clientUserAgent,
-      globalRules: [],
-      channelRules: scopedUaRules,
-      modelRules: modelUaRules,
-    });
-    if (scopedMatch.matched && !scopedMatch.allowed) {
-      logRejected(429, scopedMatch.rule.error_message, alias);
-      return jsonError(scopedMatch.rule.error_message, scopedMatch.rule.error_code, {
-        type: "invalid_request_error",
-        param: "user-agent",
-        code: String(scopedMatch.rule.error_code),
-      });
-    }
-  }
 
   const quotaHeaders: Record<string, string> = {};
   let channelQuotaHeaders: Record<string, string> | null = null;
