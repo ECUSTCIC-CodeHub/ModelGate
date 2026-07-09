@@ -178,8 +178,8 @@ CREATE TABLE IF NOT EXISTS email_senders (
   host VARCHAR(255) NOT NULL,
   port INT NOT NULL DEFAULT 25,
   secure TINYINT(1) DEFAULT 0,
-  auth_user TEXT DEFAULT '',
-  auth_pass TEXT DEFAULT '',
+  auth_user TEXT DEFAULT NULL,
+  auth_pass TEXT DEFAULT NULL,
   from_address VARCHAR(255) NOT NULL,
   from_name VARCHAR(255) DEFAULT '',
   daily_limit INT DEFAULT 0,
@@ -196,7 +196,7 @@ CREATE TABLE IF NOT EXISTS email_send_log (
   recipient_email VARCHAR(255) NOT NULL,
   sender_id INT,
   status VARCHAR(16) NOT NULL,
-  error TEXT DEFAULT '',
+  error TEXT DEFAULT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 `;

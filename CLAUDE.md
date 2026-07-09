@@ -43,6 +43,7 @@
 - 错误信息使用中文
 - TypeScript strict 模式，CI 构建用 Next.js 的类型检查（比本地 tsc 更严格）
 - 新增 DB 列用 `ensureColumn`，不改 CREATE TABLE
+- MySQL 建表时 `TEXT`/`BLOB` 列不可用非空字面量默认值（如 `DEFAULT ''`），需写 `DEFAULT NULL`；SQLite 版无此限制，两套 schema 按各自语法书写
 - `lib` 下按职责分类，避免无边界堆放代码
 - 可拆成组件或协议模块的大文件要拆薄；抽象必须服务于复用或边界清晰，不做空泛抽象
 - 不保留未使用的 SVG、组件、API route 别名或兼容入口
