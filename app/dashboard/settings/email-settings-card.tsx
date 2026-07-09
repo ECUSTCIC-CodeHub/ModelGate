@@ -43,6 +43,7 @@ type EmailSettingsForm = {
   footer: string;
   report_enabled: boolean;
   report_to: string;
+  blocked_domains: string;
 };
 
 type SenderRow = SenderForm & {
@@ -61,6 +62,7 @@ export function EmailSettingsCard() {
     footer: "",
     report_enabled: false,
     report_to: "",
+    blocked_domains: "",
   });
   const [senders, setSenders] = useState<SenderRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,6 +91,7 @@ export function EmailSettingsCard() {
       footer: "",
       report_enabled: false,
       report_to: "",
+      blocked_domains: "",
     };
     if (sRes.ok) {
       const data = await sRes.json();
@@ -100,6 +103,7 @@ export function EmailSettingsCard() {
         footer: d.footer || "",
         report_enabled: d.report_enabled === true,
         report_to: d.report_to || "",
+        blocked_domains: d.blocked_domains || "",
       };
     }
     let nextSenders: SenderRow[] = [];
@@ -148,6 +152,7 @@ export function EmailSettingsCard() {
           footer: d.footer || "",
           report_enabled: d.report_enabled === true,
           report_to: d.report_to || "",
+          blocked_domains: d.blocked_domains || "",
         });
         toast({ variant: "success", description: getApiMessage(data, "保存成功。") });
         return;
@@ -320,6 +325,18 @@ export function EmailSettingsCard() {
             onChange={(e) => patchSetting({ footer: e.target.value })}
             maxLength={2000}
           />
+        </div>
+
+        <div className="space-y-2">
+          <Label>屏蔽邮箱域名</Label>
+          <textarea
+            className="flex min-h-16 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-3 text-sm text-[var(--color-foreground)] shadow-[var(--shadow-inner-highlight)] placeholder:text-[var(--color-foreground-muted)] focus-visible:border-[var(--color-accent)]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/20"
+            placeholder="可选，屏蔽的收件邮箱域名，多个用逗号或换行分隔。仅精确匹配完整域名，不含其子域，如：ecust.edu.cn"
+            value={settings.blocked_domains}
+            onChange={(e) => patchSetting({ blocked_domains: e.target.value })}
+            maxLength={2000}
+          />
+          <p className="text-xs text-[var(--color-foreground-muted)]">精确匹配完整域名（不含子域）。例如配置 ecust.edu.cn 会屏蔽 a@ecust.edu.cn，但不会屏蔽 a@mail.ecust.edu.cn。</p>
         </div>
 
         <div className="space-y-3 rounded-lg border border-[var(--color-border)] p-4">

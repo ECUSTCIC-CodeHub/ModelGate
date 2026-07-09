@@ -9,6 +9,7 @@ import {
   markEmailLogSent,
   listSenders,
   planDelivery,
+  parseBlockedDomains,
   type EmailSender,
   type EmailSendLogInput,
 } from "./store";
@@ -46,6 +47,12 @@ function renderFooterText(footer: string): string {
   return footer
     .replace(/<a\s+[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi, "$2 ($1)")
     .replace(/<[^>]+>/g, "");
+}
+
+function isEmailDomainBlocked(email: string, blocked: string[]): boolean {
+  if (blocked.length === 0) return false;
+  const domain = email.split("@")[1]?.toLowerCase() ?? "";
+  return blocked.includes(domain);
 }
 
 function buildMessage(
@@ -103,12 +110,14 @@ export async function sendAnnouncementEmails(
   const senders = await listSenders();
   if (senders.length === 0) return empty;
 
+  const blocked = parseBlockedDomains(settings.blockedDomains);
   const rows = await gatewayDb.query<{ username: string; email: string }>(
     `SELECT username, email FROM users
      WHERE deleted_at IS NULL AND enabled = 1 AND email IS NOT NULL AND email != ''`,
   );
   const recipients = rows
     .filter((r) => /.+@.+\..+/.test(r.email))
+    .filter((r) => !isEmailDomainBlocked(r.email, blocked))
     .map((r) => ({ email: r.email, username: r.username }));
 
   if (recipients.length === 0) return { ...empty, triggered: true };
@@ -260,6 +269,7 @@ export async function resendFailedEmails(
   }
 
   const settings = await getEmailSettings();
+  const blocked = parseBlockedDomains(settings.blockedDomains);
   const byAnnouncement = new Map<number, string[]>();
   for (const f of failed) {
     const arr = byAnnouncement.get(f.announcementId) ?? [];
@@ -292,15 +302,18 @@ export async function resendFailedEmails(
       htmlContent = await renderMarkdown(announcement.content);
       htmlCache.set(aid, htmlContent);
     }
-    const recipients = emails.map((email) => ({
-      email,
-      username: usernameByEmail.get(email) ?? (email.split("@")[0] || email),
-    }));
+    const recipients = emails
+      .filter((email) => !isEmailDomainBlocked(email, blocked))
+      .map((email) => ({
+        email,
+        username: usernameByEmail.get(email) ?? (email.split("@")[0] || email),
+      }));
+    if (recipients.length === 0) continue;
     const messages = recipients.map((recipient) =>
       buildMessage(sender, settings, recipient, announcement.title, announcement.content, htmlContent),
     );
     const result = await sendSmtpMessages(senderToSmtpConfig(sender), messages);
-    attempted += emails.length;
+    attempted += recipients.length;
     sent += result.sent;
     failedCount += result.failed;
     for (let i = 0; i < result.items.length; i += 1) {

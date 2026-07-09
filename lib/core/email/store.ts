@@ -9,6 +9,7 @@ export type EmailSettings = {
   footer: string;
   reportEnabled: boolean;
   reportTo: string;
+  blockedDomains: string;
 };
 
 export type EmailSender = {
@@ -51,9 +52,26 @@ const EMAIL_SETTINGS_KEYS = [
   "email_footer",
   "email_report_enabled",
   "email_report_to",
+  "email_blocked_domains",
 ] as const;
 
 const DEFAULT_SUBJECT_TEMPLATE = "【系统公告】{title}";
+
+export function parseBlockedDomains(value: string): string[] {
+  if (!value) return [];
+  return Array.from(
+    new Set(
+      value
+        .split(/[,;\s]+/)
+        .map((d) => d.trim().toLowerCase())
+        .filter((d) => d.length > 0 && d.includes(".")),
+    ),
+  );
+}
+
+export function normalizeBlockedDomains(value: string): string {
+  return parseBlockedDomains(value).join(", ");
+}
 
 function todayDateString(): string {
   const d = new Date();
@@ -76,6 +94,7 @@ export async function getEmailSettings(): Promise<EmailSettings> {
     footer: map.get("email_footer") ?? "",
     reportEnabled: map.get("email_report_enabled") === "1",
     reportTo: map.get("email_report_to") ?? "",
+    blockedDomains: map.get("email_blocked_domains") ?? "",
   };
 }
 
@@ -87,6 +106,7 @@ export async function setEmailSettings(input: Partial<EmailSettings>): Promise<E
   if (input.footer !== undefined) values.email_footer = input.footer;
   if (input.reportEnabled !== undefined) values.email_report_enabled = input.reportEnabled ? "1" : "0";
   if (input.reportTo !== undefined) values.email_report_to = input.reportTo.trim();
+  if (input.blockedDomains !== undefined) values.email_blocked_domains = normalizeBlockedDomains(input.blockedDomains);
 
   const isMysql = (await gatewayDb.getDriver()) === "mysql";
   const upsertSql = isMysql

@@ -12,6 +12,7 @@ const schema = z.object({
   footer: z.string().max(2000),
   report_enabled: z.boolean().optional(),
   report_to: z.string().max(2000).optional(),
+  blocked_domains: z.string().max(2000).optional(),
 });
 
 export async function GET(request: Request) {
@@ -26,6 +27,7 @@ export async function GET(request: Request) {
       footer: settings.footer,
       report_enabled: settings.reportEnabled,
       report_to: settings.reportTo,
+      blocked_domains: settings.blockedDomains,
     },
   });
 }
@@ -45,6 +47,7 @@ export async function PUT(request: Request) {
     footer: parsed.data.footer,
     reportEnabled: parsed.data.report_enabled,
     reportTo: parsed.data.report_to,
+    blockedDomains: parsed.data.blocked_domains,
   });
 
   return jsonOk({
@@ -56,6 +59,7 @@ export async function PUT(request: Request) {
       footer: settings.footer,
       report_enabled: settings.reportEnabled,
       report_to: settings.reportTo,
+      blocked_domains: settings.blockedDomains,
     },
   });
 }
