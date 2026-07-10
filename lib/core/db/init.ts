@@ -275,10 +275,10 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("users", "oidc_issuer", "oidc_issuer TEXT");
   await db.ensureColumn("users", "oidc_subject", "oidc_subject TEXT");
   await db.ensureColumn("users", "oidc_group_synced_at", "oidc_group_synced_at DATETIME");
-  await backfillOidcGroupSyncedAt(db);
   await db.ensureColumn("groups", "oidc_claim_value", "oidc_claim_value TEXT");
   await db.ensureColumn("groups", "oidc_claim_expr", "oidc_claim_expr TEXT");
   await db.ensureColumn("groups", "oidc_claim_priority", "oidc_claim_priority INTEGER DEFAULT 0");
+  await backfillOidcGroupSyncedAt(db);
   await db.ensureColumn("groups", "quota_period", "quota_period INTEGER");
   await db.ensureColumn("groups", "period_quota_tokens", "period_quota_tokens INTEGER");
   await db.ensureColumn("groups", "period_quota_requests", "period_quota_requests INTEGER");
