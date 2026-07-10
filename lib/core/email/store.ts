@@ -138,7 +138,7 @@ function mapSenderRow(row: Record<string, unknown>): EmailSender {
     dailyLimit: Number(row.daily_limit ?? 0),
     priority: Number(row.priority ?? 0),
     enabled: Number(row.enabled ?? 1) === 1,
-    sentToday: Number(row.sent_today ?? 0),
+    sentToday: String(row.sent_date ?? "") === todayDateString() ? Number(row.sent_today ?? 0) : 0,
     sentDate: String(row.sent_date ?? ""),
   };
 }
