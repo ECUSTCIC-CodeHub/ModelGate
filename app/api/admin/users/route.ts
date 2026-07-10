@@ -28,6 +28,7 @@ const createSchema = z.object({
   period_quota_requests: z.number().int().min(-1).nullable().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
   note: z.string().max(500).nullable().optional(),
+  group_locked: z.boolean().optional(),
 });
 
 function normalizeQuota(value: number | null | undefined) {
@@ -90,7 +91,7 @@ export async function GET(request: Request) {
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
               u.quota_period, u.period_quota_tokens, u.period_quota_requests,
               u.period_used_tokens, u.period_used_requests, u.period_reset_at,
-              u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.totp_enabled, u.enabled, u.created_at
+              u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.totp_enabled, u.group_locked, u.enabled, u.created_at
        FROM users u
        LEFT JOIN \`groups\` g ON g.id = u.group_id AND g.deleted_at IS NULL
        ${whereSql}
@@ -188,11 +189,11 @@ export async function POST(request: Request) {
   const result = await gatewayDb
     .execute(
       `INSERT INTO users (
-         username, password_hash, email, role, group_id, enabled,
+         username, password_hash, email, role, group_id, enabled, group_locked,
          rpm, qps, tpm, quota_tokens, quota_requests,
          quota_period, period_quota_tokens, period_quota_requests,
          allowed_model_aliases, note
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         parsed.data.username,
         passwordHash,
@@ -200,6 +201,7 @@ export async function POST(request: Request) {
         parsed.data.role ?? "user",
         groupId,
         parsed.data.enabled === false ? 0 : 1,
+        parsed.data.group_locked === true ? 1 : 0,
         parsed.data.rpm ?? -1,
         parsed.data.qps ?? -1,
         parsed.data.tpm ?? -1,
@@ -219,7 +221,7 @@ export async function POST(request: Request) {
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
               u.quota_period, u.period_quota_tokens, u.period_quota_requests,
               u.period_used_tokens, u.period_used_requests, u.period_reset_at,
-              u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.totp_enabled, u.enabled, u.created_at
+              u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.totp_enabled, u.group_locked, u.enabled, u.created_at
        FROM users u
        LEFT JOIN \`groups\` g ON g.id = u.group_id AND g.deleted_at IS NULL
        WHERE u.id = ? AND u.deleted_at IS NULL`,

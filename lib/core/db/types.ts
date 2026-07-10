@@ -88,6 +88,7 @@ export type DbUser = {
   oidc_issuer: string | null;
   oidc_subject: string | null;
   oidc_group_synced_at: string | null;
+  group_locked: number;
   email: string | null;
   rpm: number;
   qps: number;

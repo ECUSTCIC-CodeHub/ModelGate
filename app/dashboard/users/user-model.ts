@@ -24,6 +24,7 @@ export type UserRow = {
   oidc_issuer: string | null;
   oidc_subject: string | null;
   totp_enabled: number;
+  group_locked: number;
   group_rpm: number | null;
   group_qps: number | null;
   group_tpm: number | null;
@@ -109,6 +110,7 @@ export type UserForm = {
   role: "admin" | "user";
   group_id: string;
   enabled: boolean;
+  group_locked: boolean;
   rpm: number;
   qps: number;
   tpm: number;
@@ -130,6 +132,7 @@ export const initialForm: UserForm = {
   role: "user",
   group_id: "",
   enabled: true,
+  group_locked: false,
   rpm: -1,
   qps: -1,
   tpm: -1,

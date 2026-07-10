@@ -310,6 +310,15 @@ export async function syncUserGroupFromClaims(
   claims: Record<string, unknown>,
   email: string | null,
 ): Promise<void> {
+  const lockRow = await gatewayDb
+    .queryOne<{ group_locked: number }>("SELECT group_locked FROM users WHERE id = ?", [userId]);
+  if (lockRow?.group_locked === 1) {
+    if (email) {
+      await gatewayDb.execute("UPDATE users SET email = COALESCE(?, email) WHERE id = ?", [email, userId]);
+    }
+    return;
+  }
+
   const syncedAt = toMysqlDatetime(new Date());
   const claimGroupId = await resolveGroupFromClaims(claims);
   if (claimGroupId !== null) {

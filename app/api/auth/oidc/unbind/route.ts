@@ -18,11 +18,18 @@ export async function POST(request: Request) {
     return jsonError("当前账号未绑定 OIDC", 400);
   }
 
-  const defaultGroup = await gatewayDb
-    .queryOne<{ id: number }>("SELECT id FROM `groups` WHERE is_default = 1 AND deleted_at IS NULL");
+  const profile = await gatewayDb
+    .queryOne<{ group_locked: number }>("SELECT group_locked FROM users WHERE id = ?", [user.id]);
 
-  await gatewayDb
-    .execute("UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL, group_id = ? WHERE id = ?", [defaultGroup?.id ?? null, user.id]);
+  if (profile?.group_locked === 1) {
+    await gatewayDb
+      .execute("UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL WHERE id = ?", [user.id]);
+  } else {
+    const defaultGroup = await gatewayDb
+      .queryOne<{ id: number }>("SELECT id FROM `groups` WHERE is_default = 1 AND deleted_at IS NULL");
+    await gatewayDb
+      .execute("UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL, group_id = ? WHERE id = ?", [defaultGroup?.id ?? null, user.id]);
+  }
 
   return jsonOk({ message: "OIDC 绑定已解除。" });
 }

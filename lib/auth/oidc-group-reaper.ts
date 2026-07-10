@@ -35,6 +35,7 @@ export async function expireStaleOidcGroups(): Promise<number> {
         JOIN \`groups\` g ON g.id = u.group_id
         WHERE g.oidc_claim_expr IS NOT NULL AND g.oidc_claim_expr != ''
           AND g.deleted_at IS NULL
+          AND (u.group_locked = 0 OR u.group_locked IS NULL)
           AND u.oidc_group_synced_at IS NOT NULL
           AND u.oidc_group_synced_at < ?
           AND u.deleted_at IS NULL

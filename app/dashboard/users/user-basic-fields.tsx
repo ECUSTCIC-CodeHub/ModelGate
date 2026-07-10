@@ -2,6 +2,7 @@
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -95,6 +96,13 @@ export function UserBasicFields({ form, editingId, groupOptions, onChange }: Use
               ))}
             </SelectContent>
           </Select>
+        </div>
+        <div className="space-y-2 md:col-span-2">
+          <label className="flex items-center gap-2 text-sm text-[var(--color-foreground)]">
+            <Checkbox checked={form.group_locked} onCheckedChange={(value) => onChange({ group_locked: value === true })} />
+            锁定身份组（OIDC 登录不覆盖）
+          </label>
+          <p className="text-xs text-[var(--color-foreground-muted)]">开启后该用户的身份组由管理员手动指定，OIDC 登录与过期回收都不会修改它。</p>
         </div>
         <div className="space-y-2 md:col-span-2">
           <Label>管理员备注</Label>
