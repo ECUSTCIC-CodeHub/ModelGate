@@ -174,7 +174,12 @@ export function getRefreshTokenFromRequest(request: Request) {
 }
 
 export async function getAuthContextFromAccessToken(token: string): Promise<AuthContext | null> {
-  const payload = verifyAccessToken(token);
+  let payload: TokenPayload;
+  try {
+    payload = verifyAccessToken(token);
+  } catch {
+    return null;
+  }
   if (payload.type !== "access") return null;
   const user = await findEnabledUserById(Number(payload.sub));
   if (!user) return null;
