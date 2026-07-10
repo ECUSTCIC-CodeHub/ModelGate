@@ -17,6 +17,7 @@ import {
   MYSQL_DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL,
   MYSQL_POST_MIGRATION_INDEXES,
 } from "@/lib/core/db/mysql-schema";
+import { toMysqlDatetime } from "@/lib/core/db/datetime";
 
 const dataDir = path.join(process.cwd(), "data");
 const dbPath = path.join(dataDir, "gateway.db");
@@ -252,6 +253,20 @@ async function runSqliteMigrations(db: DatabaseAdapter) {
   }
 }
 
+async function backfillOidcGroupSyncedAt(db: DatabaseAdapter) {
+  const now = toMysqlDatetime(new Date());
+  await db.execute(
+    `UPDATE users
+     SET oidc_group_synced_at = ?
+     WHERE oidc_group_synced_at IS NULL
+       AND deleted_at IS NULL
+       AND group_id IN (
+         SELECT id FROM \`groups\` WHERE oidc_claim_expr IS NOT NULL AND oidc_claim_expr != '' AND deleted_at IS NULL
+       )`,
+    [now],
+  );
+}
+
 async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("users", "deleted_at", "deleted_at DATETIME");
   await db.ensureColumn("users", "allowed_model_aliases", "allowed_model_aliases TEXT DEFAULT '[]'");
@@ -260,6 +275,7 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("users", "oidc_issuer", "oidc_issuer TEXT");
   await db.ensureColumn("users", "oidc_subject", "oidc_subject TEXT");
   await db.ensureColumn("users", "oidc_group_synced_at", "oidc_group_synced_at DATETIME");
+  await backfillOidcGroupSyncedAt(db);
   await db.ensureColumn("groups", "oidc_claim_value", "oidc_claim_value TEXT");
   await db.ensureColumn("groups", "oidc_claim_expr", "oidc_claim_expr TEXT");
   await db.ensureColumn("groups", "oidc_claim_priority", "oidc_claim_priority INTEGER DEFAULT 0");
