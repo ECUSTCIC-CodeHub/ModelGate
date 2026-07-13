@@ -1,0 +1,11 @@
+name: bug report
+description: 该模版用于反馈 bug
+labels: 
+  - 一定是bug:待鉴定
+body:
+  - type: textarea
+    attributes:
+      label: 简单描述一下问题和重现方式
+      placeholder: 仅讨论网站本身及接口转换等问题，模型调用问题（如不可用等）不要在此回复
+    validations:
+      required: true

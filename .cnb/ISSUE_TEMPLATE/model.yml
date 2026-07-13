@@ -1,0 +1,11 @@
+name: 模型不可用反馈
+description: 该模版用于反馈模型不可用问题
+labels: 
+  - 一定是bug:待鉴定
+body:
+  - type: textarea
+    attributes:
+      label: 简单描述一下问题和重现方式
+      placeholder: 例如：响应时间过长，多次请求失败等
+    validations:
+      required: true

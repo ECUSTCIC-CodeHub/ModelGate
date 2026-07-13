@@ -1,0 +1,38 @@
+name: 功能建议
+description: 对模型网关提出新功能或改进建议
+labels:
+  - 仅讨论
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你为 ecustcic/ModelGate 贡献想法！
+
+        请尽可能详细地描述你的需求，帮助我们准确理解你的意图。
+
+  - type: textarea
+    attributes:
+      label: 你希望增加什么功能？
+      description: 用一两句话概括你的想法
+      placeholder: 例如：希望在导航栏增加一个深色模式切换开关
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: 为什么需要这个功能？
+      description: 描述使用场景或当前遇到的痛点
+      placeholder: 例如：夜间使用时当前页面太亮，阅读体验差
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: 你期望的效果是什么样的？
+      description: 可以描述交互方式、页面位置、视觉效果等
+      placeholder: 例如：导航栏右侧有一个月亮/太阳图标，点击即可切换
+
+  - type: textarea
+    attributes:
+      label: 补充信息
+      description: 截图、参考链接或其他任何有助于说明的内容
