@@ -16,6 +16,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
       <div className="flex min-h-screen gap-3 px-3 py-3 lg:gap-5 lg:px-5">
         <DashboardSidebar
           menus={shell.menus}
+          feedbackUrl={shell.feedbackUrl}
           pathname={shell.pathname}
           profile={shell.profileBrief}
           oidcAvailable={shell.oidcAvailable}
@@ -45,6 +46,7 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
         open={shell.mobileNavOpen}
         onOpenChange={shell.setMobileNavOpen}
         menus={shell.menus}
+        feedbackUrl={shell.feedbackUrl}
         pathname={shell.pathname}
         profile={shell.profileBrief}
         theme={shell.theme}

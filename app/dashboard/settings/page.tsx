@@ -14,6 +14,7 @@ import {
   CorsSettingsCard,
   EmailSettingsCard,
   FilingSettingsCard,
+  FeedbackSettingsCard,
   LogRetentionSettingsCard,
   LoginSettingsCard,
   OidcSettingsCard,
@@ -61,6 +62,8 @@ export default function AdminSettingsPage() {
   const [themeColor, setThemeColor] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [logoSquareUrl, setLogoSquareUrl] = useState("");
+  const [feedbackUrl, setFeedbackUrl] = useState("");
+  const [repoName, setRepoName] = useState("");
   const [uaRestrictions, setUaRestrictions] = useState("");
   const [logRetentionDays, setLogRetentionDays] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
@@ -106,6 +109,8 @@ export default function AdminSettingsPage() {
     setThemeColor(stringValue(settings.theme_color));
     setLogoUrl(stringValue(settings.logo_url));
     setLogoSquareUrl(stringValue(settings.logo_square_url));
+    setFeedbackUrl(stringValue(settings.feedback_url));
+    setRepoName(stringValue(settings.repo_name));
   }, [accessGuideNoticeFeatureEnabled, announcementFeatureEnabled, oidcFeatureEnabled, webhookFeatureEnabled, uaRestrictionsFeatureEnabled]);
 
   useEffect(() => {
@@ -156,6 +161,8 @@ export default function AdminSettingsPage() {
         theme_color: themeColor,
         logo_url: logoUrl,
         logo_square_url: logoSquareUrl,
+        feedback_url: feedbackUrl,
+        repo_name: repoName,
       };
 
       const response = await authedFetch("/api/admin/settings", {
@@ -284,6 +291,13 @@ export default function AdminSettingsPage() {
           publicSecurityFilingNumber={publicSecurityFilingNumber}
           setIcpFilingNumber={setIcpFilingNumber}
           setPublicSecurityFilingNumber={setPublicSecurityFilingNumber}
+        />
+
+        <FeedbackSettingsCard
+          feedbackUrl={feedbackUrl}
+          repoName={repoName}
+          setFeedbackUrl={setFeedbackUrl}
+          setRepoName={setRepoName}
         />
 
         <LogRetentionSettingsCard days={logRetentionDays} setDays={setLogRetentionDays} />

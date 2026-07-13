@@ -509,7 +509,9 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
     "cors_enabled": 0,
     "icp_filing_number": "",
     "public_security_filing_number": "",
-    "theme_color": ""
+    "theme_color": "",
+    "feedback_url": "",
+    "repo_name": ""
   }
 }
 ```
@@ -543,7 +545,9 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "cors_enabled": false,
   "ua_restrictions": "[]",
   "log_retention_days": 0,
-  "theme_color": "#00518f"
+  "theme_color": "#00518f",
+  "feedback_url": "https://cnb.cool/{repo}/-/issues/new/choose",
+  "repo_name": "ecustcic/ModelGate"
 }
 ```
 
@@ -572,6 +576,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | icp_filing_number | string | ICP 备案号，留空则不展示（最长 200 字符） |
 | public_security_filing_number | string | 公安联网备案号，留空则不展示（最长 200 字符） |
 | theme_color | string | 主题色（十六进制颜色代码，如 `#00518f`），留空则使用默认靛蓝色 |
+| feedback_url | string | 自定义问题反馈链接（最长 2000 字符），必须以 `http(s)://` 开头；留空则不展示，此时若配置了 `repo_name` 则自动生成 CNB 的 Issue 链接；支持 `{repo}` 占位符，将由 `repo_name` 替换；链接以新窗口打开并附带 `noreferrer` |
+| repo_name | string | CNB 仓库路径（最长 200 字符），如 `ecustcic/ModelGate`；当 `feedback_url` 为空时，自动生成 `https://cnb.cool/<repo_name>/-/issues/new/choose` |
 | ua_restrictions | string | 全站 User-Agent 限制规则 JSON 数组，留空或 `[]` 表示不限制（完整版功能，最长 20000 字符） |
 | log_retention_days | number | 请求日志（`logs`）与邮件发送日志（`email_send_log`）的保留天数，0 表示不清理（0-3650）；超过保留期的失败邮件记录会被自动删除，无法再经「重发失败邮件」补发 |
 
@@ -803,14 +809,15 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 
 ### GET /api/site-info
 
-获取首页展示所需的公开站点信息（备案号等），无需认证。
+获取首页展示所需的公开站点信息（备案号、侧边栏问题反馈链接等），无需认证。
 
 **响应 (200):**
 ```json
 {
   "data": {
     "icp_filing_number": "苏ICP备2023000758号-3",
-    "public_security_filing_number": "沪公网安备31012102000146号"
+    "public_security_filing_number": "沪公网安备31012102000146号",
+    "feedback_url": "https://cnb.cool/ecustcic/ModelGate/-/issues/new/choose"
   }
 }
 ```

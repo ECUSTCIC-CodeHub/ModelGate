@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, MessageSquare } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { DesktopProfileCard } from "@/components/layout/dashboard-shell/profile-card";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/shared/utils";
 
 type DashboardSidebarProps = {
   menus: DashboardMenuItem[];
+  feedbackUrl: string;
   pathname: string;
   profile: ProfileBrief | null;
   oidcAvailable: boolean;
@@ -25,6 +26,7 @@ type DashboardSidebarProps = {
 
 export function DashboardSidebar({
   menus,
+  feedbackUrl,
   pathname,
   profile,
   oidcAvailable,
@@ -79,6 +81,17 @@ export function DashboardSidebar({
                 </Link>
               );
             })}
+            {feedbackUrl ? (
+              <a
+                href={feedbackUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-sm text-[var(--color-sidebar-text)] transition-colors duration-150 hover:bg-[var(--color-sidebar-hover)] hover:text-[var(--color-foreground)]"
+              >
+                <MessageSquare className="h-4 w-4 shrink-0" />
+                <span className="flex-1">问题反馈</span>
+              </a>
+            ) : null}
           </nav>
         </ScrollArea>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { LogOut, Moon, Shield, ShieldCheck, Sun } from "lucide-react";
+import { LogOut, MessageSquare, Moon, Shield, ShieldCheck, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -20,6 +20,7 @@ type MobileNavSheetProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   menus: DashboardMenuItem[];
+  feedbackUrl: string;
   pathname: string;
   profile: ProfileBrief | null;
   oidcAvailable: boolean;
@@ -38,6 +39,7 @@ export function MobileNavSheet({
   open,
   onOpenChange,
   menus,
+  feedbackUrl,
   pathname,
   profile,
   oidcAvailable,
@@ -87,6 +89,18 @@ export function MobileNavSheet({
                   </Link>
                 );
               })}
+              {feedbackUrl ? (
+                <a
+                  href={feedbackUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={close}
+                  className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-sm text-[var(--color-foreground-muted)] transition-colors duration-150 hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-foreground)]"
+                >
+                  <MessageSquare className="h-4 w-4 shrink-0" />
+                  <span>问题反馈</span>
+                </a>
+              ) : null}
             </div>
           </ScrollArea>
           <Separator />

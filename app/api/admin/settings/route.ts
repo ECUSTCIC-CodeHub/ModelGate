@@ -36,6 +36,12 @@ const schema = z.object({
   theme_color: z.string().regex(/^(|#[0-9a-fA-F]{6})$/, "主题色格式不正确").optional(),
   logo_url: z.string().max(2000).optional(),
   logo_square_url: z.string().max(2000).optional(),
+  feedback_url: z
+    .string()
+    .max(2000)
+    .refine((v) => v === "" || /^https?:\/\//i.test(v), "反馈链接必须以 http(s):// 开头")
+    .optional(),
+  repo_name: z.string().max(200).optional(),
 });
 
 export async function GET(request: Request) {

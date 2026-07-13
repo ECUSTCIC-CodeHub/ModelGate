@@ -19,6 +19,7 @@ export function useDashboardShell(role: Role) {
   const menus = useMemo(() => getDashboardMenus(role), [role]);
   const [profileBrief, setProfileBrief] = useState<ProfileBrief | null>(() => initialProfile ?? getCachedProfile());
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [feedbackUrl, setFeedbackUrl] = useState("");
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [totpDialogOpen, setTotpDialogOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -31,6 +32,16 @@ export function useDashboardShell(role: Role) {
     void getOrFetchProfile().then((next) => {
       if (next) setProfileBrief(next);
     });
+  }, []);
+
+  useEffect(() => {
+    void fetch("/api/site-info", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        const url = data?.data?.feedback_url;
+        if (typeof url === "string" && url.trim()) setFeedbackUrl(url.trim());
+      })
+      .catch(() => {});
   }, []);
 
   function openPasswordDialog() {
@@ -90,6 +101,7 @@ export function useDashboardShell(role: Role) {
 
   return {
     currentPassword,
+    feedbackUrl,
     menus,
     mobileNavOpen,
     newPassword,

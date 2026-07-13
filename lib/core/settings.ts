@@ -38,6 +38,8 @@ export type GatewaySettings = {
   theme_color: string;
   logo_url: string;
   logo_square_url: string;
+  feedback_url: string;
+  repo_name: string;
 };
 
 let cachedGatewaySettings: { value: GatewaySettings; expiresAt: number } | null = null;
@@ -94,6 +96,8 @@ const GATEWAY_KEYS = [
   "theme_color",
   "logo_url",
   "logo_square_url",
+  "feedback_url",
+  "repo_name",
 ] as const;
 
 const SETTINGS_SELECT_SQL = `SELECT \`key\`, value FROM settings WHERE \`key\` IN (${GATEWAY_KEYS.map(() => "?").join(", ")})`;
@@ -135,6 +139,8 @@ async function readGatewaySettingsFromDb(): Promise<GatewaySettings> {
     theme_color: map.get("theme_color") ?? "",
     logo_url: map.get("logo_url") ?? "",
     logo_square_url: map.get("logo_square_url") ?? "",
+    feedback_url: map.get("feedback_url") ?? "",
+    repo_name: map.get("repo_name") ?? "",
   };
 }
 
@@ -178,6 +184,8 @@ export async function setGatewaySettings(input: {
   theme_color?: string;
   logo_url?: string;
   logo_square_url?: string;
+  feedback_url?: string;
+  repo_name?: string;
 }) {
   const values: Record<string, string> = {
     registration_enabled: input.registration_enabled ? "1" : "0",
@@ -210,6 +218,8 @@ export async function setGatewaySettings(input: {
   if (input.theme_color !== undefined) values.theme_color = input.theme_color.trim();
   if (input.logo_url !== undefined) values.logo_url = input.logo_url.trim();
   if (input.logo_square_url !== undefined) values.logo_square_url = input.logo_square_url.trim();
+  if (input.feedback_url !== undefined) values.feedback_url = input.feedback_url.trim();
+  if (input.repo_name !== undefined) values.repo_name = input.repo_name.trim();
 
   const isMysql = await gatewayDb.getDriver() === "mysql";
   const upsertSql = isMysql
