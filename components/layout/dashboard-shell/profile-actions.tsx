@@ -1,18 +1,16 @@
 "use client";
 
-import { Link2, Link2Off, LockKeyhole, LogOut, RefreshCw, Shield, ShieldCheck } from "lucide-react";
+import { Link2, Link2Off, LockKeyhole, LogOut, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 
 type ProfileActionsProps = {
   oidcAvailable: boolean;
   oidcBound: boolean;
   passwordLoginEnabled: boolean;
-  totpEnabled: boolean;
   onChangePassword: () => void;
   onOidcBind: () => void;
   onOidcSync: () => void;
   onOidcUnbind: () => void;
-  onTotpManage: () => void;
   onLogout: () => void;
 };
 
@@ -44,12 +42,10 @@ export function ProfileActions({
   oidcAvailable,
   oidcBound,
   passwordLoginEnabled,
-  totpEnabled,
   onChangePassword,
   onOidcBind,
   onOidcSync,
   onOidcUnbind,
-  onTotpManage,
   onLogout,
 }: ProfileActionsProps) {
   return (
@@ -60,13 +56,6 @@ export function ProfileActions({
           <span className="flex-1 text-left">修改密码</span>
         </ActionButton>
       ) : null}
-      <ActionButton onClick={onTotpManage}>
-        {totpEnabled ? <ShieldCheck className="h-4 w-4 shrink-0" /> : <Shield className="h-4 w-4 shrink-0" />}
-        <span className="flex-1 text-left">{totpEnabled ? "双因素认证" : "双因素认证"}</span>
-        <span className={`text-[10px] ${totpEnabled ? "text-[var(--color-accent)]" : "text-[var(--color-foreground-subtle)]"}`}>
-          {totpEnabled ? "已启用" : "未启用"}
-        </span>
-      </ActionButton>
       {oidcAvailable && oidcBound ? (
         <>
           <ActionButton onClick={onOidcSync}>

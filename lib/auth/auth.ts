@@ -42,7 +42,7 @@ type TokenPayload = {
 };
 
 export type AuthContext = {
-  user: Omit<DbUser, "password_hash" | "totp_secret">;
+  user: Omit<DbUser, "password_hash">;
   token: string;
 };
 
@@ -90,13 +90,6 @@ export type OidcPendingPayload = {
   type: "oidc_pending";
 };
 
-export type TotpPendingPayload = {
-  sub: string;
-  username: string;
-  role: "admin" | "user";
-  type: "totp_pending";
-};
-
 const OIDC_PENDING_EXPIRES_SECONDS = 600;
 export const OIDC_PENDING_COOKIE_NAME = "oidc-pending";
 
@@ -114,26 +107,6 @@ export function verifyOidcPendingToken(token: string): OidcPendingPayload | null
   }
 }
 
-const TOTP_PENDING_EXPIRES_SECONDS = 300;
-
-export function signTotpPendingToken(user: Pick<DbUser, "id" | "username" | "role">): string {
-  return jwt.sign(
-    { sub: String(user.id), username: user.username, role: user.role, type: "totp_pending" } satisfies TotpPendingPayload,
-    getAccessSecret(),
-    { expiresIn: TOTP_PENDING_EXPIRES_SECONDS },
-  );
-}
-
-export function verifyTotpPendingToken(token: string): TotpPendingPayload | null {
-  try {
-    const decoded = jwt.verify(token, getAccessSecret()) as TotpPendingPayload;
-    if (decoded.type !== "totp_pending") return null;
-    return decoded;
-  } catch {
-    return null;
-  }
-}
-
 export async function hashPassword(password: string) {
   return bcrypt.hash(password, 10);
 }
@@ -142,11 +115,12 @@ export async function comparePassword(password: string, hash: string) {
   return bcrypt.compare(password, hash);
 }
 
-export function sanitizeUser(user: DbUser): Omit<DbUser, "password_hash" | "totp_secret"> {
-  const rest = { ...user };
-  delete (rest as Partial<DbUser>).password_hash;
-  delete (rest as Partial<DbUser>).totp_secret;
-  return rest as Omit<DbUser, "password_hash" | "totp_secret">;
+export function sanitizeUser(user: DbUser): Omit<DbUser, "password_hash"> {
+  const rest = { ...user } as Record<string, unknown>;
+  delete rest.password_hash;
+  delete rest.totp_secret;
+  delete rest.totp_enabled;
+  return rest as Omit<DbUser, "password_hash">;
 }
 
 async function findEnabledUserById(id: number) {

@@ -339,8 +339,6 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("logs", "user_agent", "user_agent TEXT");
   await db.ensureColumn("users", "webhook_role", "webhook_role TEXT DEFAULT ''");
   await db.ensureColumn("users", "webhook_tags", "webhook_tags TEXT DEFAULT '[]'");
-  await db.ensureColumn("users", "totp_secret", "totp_secret TEXT");
-  await db.ensureColumn("users", "totp_enabled", "totp_enabled INTEGER DEFAULT 0");
   await db.ensureColumn("users", "email", "email TEXT");
 
   if (db.driver === "sqlite") {

@@ -23,7 +23,6 @@ export type UserRow = {
   allowed_model_aliases: string[];
   oidc_issuer: string | null;
   oidc_subject: string | null;
-  totp_enabled: number;
   group_locked: number;
   group_rpm: number | null;
   group_qps: number | null;

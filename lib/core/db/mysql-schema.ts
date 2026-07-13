@@ -102,8 +102,6 @@ CREATE TABLE IF NOT EXISTS users (
   enabled TINYINT(1) DEFAULT 1,
   webhook_role VARCHAR(255) DEFAULT '',
   webhook_tags TEXT DEFAULT NULL,
-  totp_secret TEXT,
-  totp_enabled TINYINT(1) DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   deleted_at DATETIME,
   FOREIGN KEY (group_id) REFERENCES \`groups\`(id)

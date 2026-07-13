@@ -10,7 +10,6 @@ import {
   sanitizeUser,
   verifyOidcPendingToken,
   OIDC_PENDING_COOKIE_NAME,
-  signTotpPendingToken,
 } from "@/lib/auth/auth";
 import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { requireFeature } from "@/lib/core/features";
@@ -86,15 +85,6 @@ export async function POST(request: Request) {
     await gatewayDb
       .execute("UPDATE users SET oidc_issuer = ?, oidc_subject = ?, email = COALESCE(?, email) WHERE id = ?", [pending.issuer, pending.sub, linkEmail, user.id]);
     await syncUserGroupFromClaims(user.id, pending.rawClaims, linkEmail);
-
-    if (user.totp_enabled === 1 && user.totp_secret) {
-      const pendingToken = signTotpPendingToken(user);
-      return clearPendingCookie(jsonOk({
-        totp_required: true,
-        pending_token: pendingToken,
-        message: "绑定成功，请完成 TOTP 二次验证。",
-      }));
-    }
 
     const tokens = issueAuthTokens(user);
     const payload = { message: "绑定成功。", user: sanitizeUser(user), ...tokens };

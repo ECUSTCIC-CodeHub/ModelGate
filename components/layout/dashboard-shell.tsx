@@ -4,7 +4,6 @@ import { DashboardSidebar } from "@/components/layout/dashboard-shell/sidebar";
 import { DashboardTopbar } from "@/components/layout/dashboard-shell/topbar";
 import { MobileNavSheet } from "@/components/layout/dashboard-shell/mobile-nav";
 import { PasswordDialog } from "@/components/layout/dashboard-shell/password-dialog";
-import { TotpDialog } from "@/components/layout/dashboard-shell/totp-dialog";
 import type { DashboardShellProps } from "@/components/layout/dashboard-shell/types";
 import { useDashboardShell } from "@/components/layout/dashboard-shell/use-dashboard-shell";
 
@@ -25,7 +24,6 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
           onOidcBind={shell.onOidcBind}
           onOidcSync={shell.onOidcSync}
           onOidcUnbind={shell.onOidcUnbind}
-          onTotpManage={() => shell.setTotpDialogOpen(true)}
           onLogout={shell.onLogout}
         />
 
@@ -57,7 +55,6 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
         onOidcBind={shell.onOidcBind}
         onOidcSync={shell.onOidcSync}
         onOidcUnbind={shell.onOidcUnbind}
-        onTotpManage={() => shell.setTotpDialogOpen(true)}
         onLogout={shell.onLogout}
       />
 
@@ -69,14 +66,6 @@ export function DashboardShell({ role, title, subtitle, right, children }: Dashb
         onCurrentPasswordChange={shell.setCurrentPassword}
         onNewPasswordChange={shell.setNewPassword}
         onSubmit={shell.onChangePassword}
-      />
-
-      <TotpDialog
-        open={shell.totpDialogOpen}
-        onOpenChange={shell.setTotpDialogOpen}
-        totpEnabled={shell.profileBrief?.totp_enabled === 1}
-        passwordLoginEnabled={shell.passwordLoginEnabled}
-        onStatusChange={shell.refreshProfile}
       />
     </main>
   );

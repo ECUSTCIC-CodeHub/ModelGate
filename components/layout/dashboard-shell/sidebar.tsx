@@ -20,7 +20,6 @@ type DashboardSidebarProps = {
   onOidcBind: () => void;
   onOidcSync: () => void;
   onOidcUnbind: () => void;
-  onTotpManage: () => void;
   onLogout: () => void;
 };
 
@@ -35,7 +34,6 @@ export function DashboardSidebar({
   onOidcBind,
   onOidcSync,
   onOidcUnbind,
-  onTotpManage,
   onLogout,
 }: DashboardSidebarProps) {
   const { logoUrl, logoSquareUrl } = useBranding();
@@ -104,7 +102,6 @@ export function DashboardSidebar({
             onOidcBind={onOidcBind}
             onOidcSync={onOidcSync}
             onOidcUnbind={onOidcUnbind}
-            onTotpManage={onTotpManage}
             onLogout={onLogout}
           />
         ) : null}

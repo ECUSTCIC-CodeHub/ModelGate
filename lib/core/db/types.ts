@@ -106,8 +106,6 @@ export type DbUser = {
   allowed_model_aliases: string;
   note: string | null;
   enabled: number;
-  totp_secret: string | null;
-  totp_enabled: number;
   created_at: string;
   deleted_at: string | null;
 };

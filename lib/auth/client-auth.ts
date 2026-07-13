@@ -24,7 +24,6 @@ export type CachedProfile = {
   period_reset_at?: string | null;
   oidc_issuer?: string | null;
   oidc_subject?: string | null;
-  totp_enabled?: number;
 };
 
 const KEY = "vlm-session";

@@ -21,7 +21,6 @@ export function useDashboardShell(role: Role) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [feedbackUrl, setFeedbackUrl] = useState("");
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
-  const [totpDialogOpen, setTotpDialogOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const oidcAvailable = useOidcEnabled();
@@ -116,8 +115,6 @@ export function useDashboardShell(role: Role) {
     setPasswordDialogOpen,
     theme,
     toggleTheme,
-    totpDialogOpen,
-    setTotpDialogOpen,
     onChangePassword,
     onLogout,
     onOidcBind,

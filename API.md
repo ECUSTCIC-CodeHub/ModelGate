@@ -129,7 +129,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 
 ### POST /api/auth/login
 
-账号密码登录。若用户已启用 TOTP 双因素认证，返回 `totp_required: true` 和一个临时令牌，需继续调用 TOTP 验证接口完成登录。
+账号密码登录。
 
 **认证:** 无
 
@@ -141,7 +141,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 }
 ```
 
-**响应 - 无 TOTP (200):**
+**响应 (200):**
 ```json
 {
   "message": "登录成功。",
@@ -149,155 +149,10 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "access_token": "eyJ...",
   "refresh_token": "eyJ...",
   "expires_in": 900
-}
-```
-
-**响应 - 需要 TOTP (200):**
-```json
-{
-  "totp_required": true,
-  "pending_token": "eyJ..."
 }
 ```
 
 > 登录限流：每个 IP + 用户名组合每分钟最多 5 次尝试，超出返回 429。
-
----
-
-### POST /api/auth/totp/verify
-
-登录时验证 TOTP 验证码，交换临时令牌获取正式认证令牌。
-
-**认证:** 无
-
-**请求体:**
-```json
-{
-  "pending_token": "eyJ...",
-  "code": "123456"
-}
-```
-
-| 字段 | 类型 | 必填 | 说明 |
-|:---|:---|:---|:---|
-| pending_token | string | 是 | 登录接口返回的临时令牌，5 分钟有效 |
-| code | string | 是 | 6 位 TOTP 验证码 |
-
-**响应 (200):**
-```json
-{
-  "message": "登录成功。",
-  "user": { "id": 1, "username": "admin", "role": "admin" },
-  "access_token": "eyJ...",
-  "refresh_token": "eyJ...",
-  "expires_in": 900
-}
-```
-
-> 已使用的验证码会被拒绝（防重放攻击），验证尝试受登录限流保护。
-
----
-
-### POST /api/auth/totp/setup
-
-发起 TOTP 绑定，生成密钥并返回 OTP URI 和二维码。
-
-**认证:** 用户
-
-**响应 (200):**
-```json
-{
-  "secret": "JBSWY3DPEHPK3PXP",
-  "otp_uri": "otpauth://totp/ModelGate:admin?secret=JBSWY3DPEHPK3PXP&issuer=ModelGate",
-  "qr_data_url": "data:image/png;base64,..."
-}
-```
-
-> TOTP 密钥在数据库中加密存储。已启用 TOTP 的用户需先解绑才能重新设置。
-
----
-
-### POST /api/auth/totp/verify-setup
-
-验证 TOTP 绑定：输入验证器 APP 显示的验证码，确认绑定生效。
-
-**认证:** 用户
-
-**请求体:**
-```json
-{
-  "code": "123456"
-}
-```
-
-**响应 (200):**
-```json
-{ "message": "TOTP 绑定成功。" }
-```
-
----
-
-### POST /api/auth/totp/disable
-
-解绑 TOTP。密码登录开启时需验证当前密码；仅 OIDC 登录时需验证当前 TOTP 验证码。
-
-**认证:** 用户
-
-**请求体:**
-
-密码登录开启：
-```json
-{ "password": "当前密码" }
-```
-
-仅 OIDC 登录：
-```json
-{ "code": "123456" }
-```
-
-**响应 (200):**
-```json
-{ "message": "TOTP 已解绑。" }
-```
-
----
-
-### GET /api/auth/totp/status
-
-获取当前用户的 TOTP 启用状态。
-
-**认证:** 用户
-
-**响应 (200):**
-```json
-{
-  "totp_enabled": true
-}
-```
-
----
-
-### POST /api/admin/users/:id/revoke-totp
-
-管理员撤销指定用户的 TOTP 双因素认证。撤销后用户下次登录无需验证码，可重新绑定。
-
-**认证:** 管理员
-
-**路径参数:**
-| 参数 | 类型 | 说明 |
-|:---|:---|:---|
-| `id` | number | 用户 ID |
-
-**响应 (200):**
-```json
-{ "message": "已撤销该用户的 TOTP。" }
-```
-
-**错误响应:**
-| 状态码 | 说明 |
-|:---|:---|
-| 404 | 用户不存在 |
-| 400 | 该用户未启用 TOTP |
 
 ---
 

@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { applyAuthCookies, comparePassword, issueAuthTokens, sanitizeUser, signTotpPendingToken } from "@/lib/auth/auth";
+import { applyAuthCookies, comparePassword, issueAuthTokens, sanitizeUser } from "@/lib/auth/auth";
 import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { checkLoginRateLimit } from "@/lib/auth/login-ratelimit";
@@ -34,14 +34,6 @@ export async function POST(request: Request) {
 
   const ok = await comparePassword(parsed.data.password, user.password_hash);
   if (!ok) return jsonError("用户名或密码错误", 401);
-
-  if (user.totp_enabled === 1 && user.totp_secret) {
-    const pendingToken = signTotpPendingToken(user);
-    return jsonOk({
-      totp_required: true,
-      pending_token: pendingToken,
-    });
-  }
 
   const payload = {
     message: "登录成功。",
