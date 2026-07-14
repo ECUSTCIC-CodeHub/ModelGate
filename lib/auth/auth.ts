@@ -44,6 +44,7 @@ type TokenPayload = {
 export type AuthContext = {
   user: Omit<DbUser, "password_hash">;
   token: string;
+  authSource: "web" | "apikey";
 };
 
 export function signAccessToken(user: Pick<DbUser, "id" | "role" | "username">) {
@@ -157,12 +158,12 @@ export async function getAuthContextFromAccessToken(token: string): Promise<Auth
   if (payload.type !== "access") return null;
   const user = await findEnabledUserById(Number(payload.sub));
   if (!user) return null;
-  return { user: sanitizeUser(user), token };
+  return { user: sanitizeUser(user), token, authSource: "web" };
 }
 
 async function noAuthContext(): Promise<AuthContext> {
   const { user } = await getNoAuthContext();
-  return { user: sanitizeUser(user), token: "noauth" };
+  return { user: sanitizeUser(user), token: "noauth", authSource: "web" };
 }
 
 export async function requireWebAuth(request: Request): Promise<AuthContext | null> {
@@ -190,7 +191,7 @@ export async function requireWebAuthWithRefresh(request: Request): Promise<AuthC
     if (payload.type !== "refresh") return null;
     const user = await findEnabledUserById(Number(payload.sub));
     if (!user) return null;
-    return { user: sanitizeUser(user), token: refreshToken };
+    return { user: sanitizeUser(user), token: refreshToken, authSource: "web" };
   } catch {
     return null;
   }

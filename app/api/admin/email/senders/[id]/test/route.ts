@@ -4,7 +4,7 @@ import { z } from "zod";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { getEmailSettings, getSender } from "@/lib/core/email";
-import { sendSmtpMessages, type SmtpMessage } from "@/lib/core/email/smtp";
+import { sendSmtpMessages, type SmtpMessage, type SmtpSendResult } from "@/lib/core/email/smtp";
 
 const schema = z.object({
   to: z.string().max(255).optional(),
@@ -45,10 +45,21 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     auth: sender.authUser ? { user: sender.authUser, pass: sender.authPass } : undefined,
   };
 
-  const result = await sendSmtpMessages(server, [message]);
+  const TEST_TIMEOUT_MS = 10_000;
+  let result: SmtpSendResult;
+  try {
+    result = await Promise.race([
+      sendSmtpMessages(server, [message]),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("测试邮件发送超时，请检查主机地址和端口是否正确")), TEST_TIMEOUT_MS),
+      ),
+    ]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return jsonError(`测试邮件发送失败：${msg}`, 502);
+  }
   if (result.failed > 0) {
     return jsonError(`测试邮件发送失败：${result.errors.join("；")}`, 502);
   }
-
   return jsonOk({ message: `测试邮件已发送至 ${to}。` });
 }
