@@ -3,8 +3,12 @@ export {
   notifyAnnouncementAsync,
   sendCompletionReport,
   resendFailedEmails,
+  sendBroadcastEmail,
+  notifyBroadcastAsync,
+  isBroadcastSending,
   type AnnouncementEmailSummary,
   type ResendFailedSummary,
+  type BroadcastEmailSummary,
 } from "./notify";
 export {
   getEmailSettings,

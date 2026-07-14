@@ -323,34 +323,74 @@ export type EmailSendLogInput = {
   senderId: number | null;
   status: "sent" | "failed";
   error: string;
+  kind?: "announcement" | "broadcast";
+  title?: string | null;
+  content?: string | null;
 };
 
 export async function insertEmailSendLogs(rows: EmailSendLogInput[]): Promise<void> {
   if (rows.length === 0) return;
   const now = toMysqlDatetime(new Date());
   const sql =
-    `INSERT INTO email_send_log (announcement_id, recipient_email, sender_id, status, error, created_at) ` +
-    `VALUES (?, ?, ?, ?, ?, ?)`;
+    `INSERT INTO email_send_log (announcement_id, recipient_email, sender_id, status, error, kind, title, content, created_at) ` +
+    `VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
   await gatewayDb.transaction(async (tx) => {
     for (const r of rows) {
-      await tx.execute(sql, [r.announcementId, r.recipientEmail, r.senderId, r.status, r.error, now]);
+      await tx.execute(sql, [
+        r.announcementId,
+        r.recipientEmail,
+        r.senderId,
+        r.status,
+        r.error,
+        r.kind ?? "announcement",
+        r.title ?? null,
+        r.content ?? null,
+        now,
+      ]);
     }
   });
 }
 
-export async function getFailedEmailLogs(
+export type FailedEmailLogForResend = {
+  kind: "announcement" | "broadcast";
+  announcementId: number;
+  recipientEmail: string;
+  title: string | null;
+  content: string | null;
+};
+
+export async function getFailedEmailLogsForResend(
   announcementId?: number,
-): Promise<Array<{ announcementId: number; recipientEmail: string }>> {
+): Promise<FailedEmailLogForResend[]> {
+  // 指定公告时只查该公告的失败记录（kind = 'announcement'）；未指定时查全部失败（含广播）
   const rows = announcementId !== undefined
-    ? await gatewayDb.query<{ announcement_id: number; recipient_email: string }>(
-        `SELECT DISTINCT announcement_id, recipient_email
-         FROM email_send_log WHERE status = 'failed' AND announcement_id = ?`,
+    ? await gatewayDb.query<{
+        kind: string;
+        announcement_id: number;
+        recipient_email: string;
+        title: string | null;
+        content: string | null;
+      }>(
+        `SELECT kind, announcement_id, recipient_email, title, content
+         FROM email_send_log WHERE status = 'failed' AND kind = 'announcement' AND announcement_id = ?`,
         [announcementId],
       )
-    : await gatewayDb.query<{ announcement_id: number; recipient_email: string }>(
-        `SELECT DISTINCT announcement_id, recipient_email FROM email_send_log WHERE status = 'failed'`,
+    : await gatewayDb.query<{
+        kind: string;
+        announcement_id: number;
+        recipient_email: string;
+        title: string | null;
+        content: string | null;
+      }>(
+        `SELECT kind, announcement_id, recipient_email, title, content FROM email_send_log WHERE status = 'failed'`,
       );
-  return rows.map((r) => ({ announcementId: Number(r.announcement_id), recipientEmail: r.recipient_email }));
+  return rows.map((r) => ({
+    kind: r.kind === "broadcast" ? "broadcast" : "announcement",
+    announcementId: Number(r.announcement_id),
+    recipientEmail: r.recipient_email,
+    title: r.title ?? null,
+    content: r.content ?? null,
+  }));
 }
 
 export async function markEmailLogSent(announcementId: number, recipientEmail: string): Promise<void> {
@@ -360,10 +400,19 @@ export async function markEmailLogSent(announcementId: number, recipientEmail: s
   );
 }
 
+export async function markBroadcastLogSent(recipientEmail: string, title: string): Promise<void> {
+  await gatewayDb.execute(
+    `UPDATE email_send_log SET status = 'sent', error = '' WHERE kind = 'broadcast' AND recipient_email = ? AND title = ? AND status = 'failed'`,
+    [recipientEmail, title],
+  );
+}
+
 export type EmailSendLogRow = {
   id: number;
   announcementId: number;
   announcementTitle: string | null;
+  kind: "announcement" | "broadcast";
+  title: string | null;
   recipientEmail: string;
   senderId: number | null;
   status: "sent" | "failed";
@@ -376,8 +425,8 @@ export async function listEmailSendLogs(
 ): Promise<EmailSendLogRow[]> {
   const rows = status !== undefined
     ? await gatewayDb.query<Record<string, unknown>>(
-        `SELECT l.id, l.announcement_id, a.title AS announcement_title, l.recipient_email,
-                l.sender_id, l.status, l.error, l.created_at
+        `SELECT l.id, l.announcement_id, a.title AS announcement_title, l.kind, l.title,
+                l.recipient_email, l.sender_id, l.status, l.error, l.created_at
          FROM email_send_log l
          LEFT JOIN announcements a ON a.id = l.announcement_id
          WHERE l.status = ?
@@ -385,8 +434,8 @@ export async function listEmailSendLogs(
         [status],
       )
     : await gatewayDb.query<Record<string, unknown>>(
-        `SELECT l.id, l.announcement_id, a.title AS announcement_title, l.recipient_email,
-                l.sender_id, l.status, l.error, l.created_at
+        `SELECT l.id, l.announcement_id, a.title AS announcement_title, l.kind, l.title,
+                l.recipient_email, l.sender_id, l.status, l.error, l.created_at
          FROM email_send_log l
          LEFT JOIN announcements a ON a.id = l.announcement_id
          ORDER BY l.created_at DESC, l.id DESC`,
@@ -395,6 +444,8 @@ export async function listEmailSendLogs(
     id: Number(r.id),
     announcementId: Number(r.announcement_id),
     announcementTitle: r.announcement_title == null ? null : String(r.announcement_title),
+    kind: r.kind === "broadcast" ? "broadcast" : "announcement",
+    title: r.title == null ? null : String(r.title),
     recipientEmail: String(r.recipient_email),
     senderId: r.sender_id == null ? null : Number(r.sender_id),
     status: String(r.status) as "sent" | "failed",

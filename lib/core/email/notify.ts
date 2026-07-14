@@ -5,8 +5,9 @@ import {
   getEmailSettings,
   incrementSentCount,
   insertEmailSendLogs,
-  getFailedEmailLogs,
+  getFailedEmailLogsForResend,
   markEmailLogSent,
+  markBroadcastLogSent,
   listSenders,
   planDelivery,
   getSenderRemainingCapacity,
@@ -44,6 +45,13 @@ function escapeHtml(value: string): string {
     .replace(/>/g, "&gt;");
 }
 
+function buildFailedError(originalErr: string, fallbackErr: string): string {
+  if (!originalErr && !fallbackErr) return "所有发件账号额度已用尽，无法发送";
+  if (!originalErr) return fallbackErr;
+  if (!fallbackErr) return `${originalErr}（所有备选发件账号额度已用尽）`;
+  return `${originalErr}（重试后仍失败: ${fallbackErr}）`;
+}
+
 function renderFooterText(footer: string): string {
   return footer
     .replace(/<a\s+[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi, "$2 ($1)")
@@ -54,6 +62,12 @@ function isEmailDomainBlocked(email: string, blocked: string[]): boolean {
   if (blocked.length === 0) return false;
   const domain = email.split("@")[1]?.toLowerCase() ?? "";
   return blocked.includes(domain);
+}
+
+let broadcastSendInFlight = false;
+
+export function isBroadcastSending(): boolean {
+  return broadcastSendInFlight;
 }
 
 let fallbackLock: Promise<void> = Promise.resolve();
@@ -238,13 +252,14 @@ export async function sendAnnouncementEmails(
           });
         } else {
           failed += 1;
-          if (fb.error) allErrors.push(fb.error);
+          const errMsg = buildFailedError(item.error ?? "", fb.error);
+          if (errMsg) allErrors.push(errMsg);
           logRows.push({
             announcementId,
             recipientEmail: recipient.email,
             senderId: plan.sender.id,
             status: "failed",
-            error: fb.error,
+            error: errMsg,
           });
         }
       }
@@ -272,7 +287,11 @@ function parseReportRecipients(value: string): string[] {
     .filter((e) => /.+@.+\..+/.test(e));
 }
 
-export async function sendCompletionReport(summary: AnnouncementEmailSummary, title: string): Promise<void> {
+export async function sendCompletionReport(
+  summary: AnnouncementEmailSummary,
+  title: string,
+  kind: "announcement" | "broadcast" = "announcement",
+): Promise<void> {
   const settings = await getEmailSettings();
   if (!settings.reportEnabled) return;
   const recipients = parseReportRecipients(settings.reportTo);
@@ -281,12 +300,17 @@ export async function sendCompletionReport(summary: AnnouncementEmailSummary, ti
   const senders = await listSenders();
   const sender = senders.find((s) => s.enabled);
   if (!sender) {
-    console.warn("[ModelGate] 未配置可用发件账号，无法发送公告邮件完成通知。");
+    console.warn("[ModelGate] 未配置可用发件账号，无法发送邮件完成通知。");
     return;
   }
 
+  const subjectPrefix = kind === "broadcast" ? "【广播邮件】发送完成通知" : "【系统公告】邮件发送完成通知";
+  const titleLine = kind === "broadcast"
+    ? `广播邮件《${title}》已处理完毕。`
+    : `公告《${title}》的邮件通知已处理完毕。`;
+
   const lines = [
-    `公告《${title}》的邮件通知已处理完毕。`,
+    titleLine,
     "",
     `计划通知用户数：${summary.recipients}`,
     `成功发送：${summary.sent}`,
@@ -302,7 +326,7 @@ export async function sendCompletionReport(summary: AnnouncementEmailSummary, ti
   const text = lines.join("\n");
   const base: Omit<SmtpMessage, "to"> = {
     from: { address: sender.fromAddress, name: sender.fromName || settings.fromName || undefined },
-    subject: `【系统公告】邮件发送完成通知 - ${title}`,
+    subject: `${subjectPrefix} - ${title}`,
     text,
     html: `<p style="white-space:pre-wrap">${escapeHtml(text)}</p>`,
   };
@@ -310,7 +334,7 @@ export async function sendCompletionReport(summary: AnnouncementEmailSummary, ti
 
   const result = await sendSmtpMessages(senderToSmtpConfig(sender), messages);
   if (result.failed > 0) {
-    console.error("[ModelGate] 公告邮件完成通知发送失败:", result.errors.join("；"));
+    console.error("[ModelGate] 邮件完成通知发送失败:", result.errors.join("；"));
   }
 }
 
@@ -339,7 +363,7 @@ export type ResendFailedSummary = {
 export async function resendFailedEmails(
   announcementId?: number,
 ): Promise<ResendFailedSummary> {
-  const failed = await getFailedEmailLogs(announcementId);
+  const failed = await getFailedEmailLogsForResend(announcementId);
   if (failed.length === 0) {
     return { attempted: 0, sent: 0, failed: 0, skippedMissing: 0, errors: [] };
   }
@@ -357,11 +381,21 @@ export async function resendFailedEmails(
 
   const settings = await getEmailSettings();
   const blocked = parseBlockedDomains(settings.blockedDomains);
-  const byAnnouncement = new Map<number, string[]>();
-  for (const f of failed) {
-    const arr = byAnnouncement.get(f.announcementId) ?? [];
-    arr.push(f.recipientEmail);
-    byAnnouncement.set(f.announcementId, arr);
+  const announcementFailures = failed.filter((f) => f.kind === "announcement");
+  const broadcastFailures = failed.filter((f) => f.kind === "broadcast");
+
+  const byAnnouncement = new Map<number, { title: string; content: string; emails: string[] }>();
+  for (const f of announcementFailures) {
+    const entry = byAnnouncement.get(f.announcementId) ?? { title: "", content: "", emails: [] };
+    entry.emails.push(f.recipientEmail);
+    byAnnouncement.set(f.announcementId, entry);
+  }
+  for (const [aid, info] of byAnnouncement) {
+    const announcement = await getAnnouncement(aid);
+    if (announcement) {
+      info.title = announcement.title;
+      info.content = announcement.content;
+    }
   }
 
   const allEmails = Array.from(new Set(failed.map((f) => f.recipientEmail)));
@@ -382,20 +416,19 @@ export async function resendFailedEmails(
   let failedCount = 0;
   let skippedMissing = 0;
   const errors: string[] = [];
-  const htmlCache = new Map<number, string>();
+  const htmlCache = new Map<string, string>();
 
-  for (const [aid, emails] of byAnnouncement) {
-    const announcement = await getAnnouncement(aid);
-    if (!announcement) {
-      skippedMissing += emails.length;
+  for (const [aid, info] of byAnnouncement) {
+    if (!info.title) {
+      skippedMissing += info.emails.length;
       continue;
     }
-    let htmlContent = htmlCache.get(aid);
+    let htmlContent = htmlCache.get(`a:${aid}`);
     if (!htmlContent) {
-      htmlContent = await renderMarkdown(announcement.content);
-      htmlCache.set(aid, htmlContent);
+      htmlContent = await renderMarkdown(info.content);
+      htmlCache.set(`a:${aid}`, htmlContent);
     }
-    const recipients = emails
+    const recipients = info.emails
       .filter((email) => !isEmailDomainBlocked(email, blocked))
       .map((email) => ({
         email,
@@ -407,8 +440,8 @@ export async function resendFailedEmails(
       const fb = await sendWithFallback(
         recipient,
         settings,
-        announcement.title,
-        announcement.content,
+        info.title,
+        info.content,
         htmlContent,
         candidates,
         liveRemaining,
@@ -426,5 +459,210 @@ export async function resendFailedEmails(
     }
   }
 
+  for (const f of broadcastFailures) {
+    if (!f.title || !f.content) {
+      skippedMissing += 1;
+      continue;
+    }
+    if (isEmailDomainBlocked(f.recipientEmail, blocked)) continue;
+    attempted += 1;
+    const cacheKey = JSON.stringify(["b", f.title, f.content]);
+    let htmlContent = htmlCache.get(cacheKey);
+    if (!htmlContent) {
+      htmlContent = await renderMarkdown(f.content);
+      htmlCache.set(cacheKey, htmlContent);
+    }
+    const recipient = {
+      email: f.recipientEmail,
+      username: usernameByEmail.get(f.recipientEmail) ?? (f.recipientEmail.split("@")[0] || f.recipientEmail),
+    };
+    const fb = await sendWithFallback(
+      recipient,
+      settings,
+      f.title,
+      f.content,
+      htmlContent,
+      candidates,
+      liveRemaining,
+      { countQuota: false },
+    );
+    if (fb.ok) {
+      sent += 1;
+      await markBroadcastLogSent(f.recipientEmail, f.title).catch((err) => {
+        console.error(`[ModelGate] 更新广播邮件日志失败 (${f.recipientEmail}):`, err);
+      });
+    } else {
+      failedCount += 1;
+      if (fb.error) errors.push(`${recipient.email}: ${fb.error}`);
+    }
+  }
+
   return { attempted, sent, failed: failedCount, skippedMissing, errors: errors.slice(0, 20) };
+}
+
+export type BroadcastEmailSummary = {
+  triggered: boolean;
+  recipients: number;
+  sent: number;
+  failed: number;
+  skippedNoCapacity: number;
+  errors: string[];
+};
+
+export async function sendBroadcastEmail(opts: {
+  title: string;
+  content: string;
+  groupId?: number | null;
+}): Promise<BroadcastEmailSummary> {
+  const empty: BroadcastEmailSummary = {
+    triggered: false,
+    recipients: 0,
+    sent: 0,
+    failed: 0,
+    skippedNoCapacity: 0,
+    errors: [],
+  };
+
+  if (broadcastSendInFlight) {
+    return { ...empty, triggered: false, errors: ["已有广播邮件发送任务进行中"] };
+  }
+  broadcastSendInFlight = true;
+  try {
+    const settings = await getEmailSettings();
+  if (!settings.enabled) return empty;
+
+  const senders = await listSenders();
+  if (senders.length === 0) return empty;
+
+  const blocked = parseBlockedDomains(settings.blockedDomains);
+  const baseSql =
+    `SELECT username, email FROM users
+     WHERE deleted_at IS NULL AND enabled = 1 AND email IS NOT NULL AND email != ''`;
+  const rows = opts.groupId
+    ? await gatewayDb.query<{ username: string; email: string }>(
+        `${baseSql} AND group_id = ?`,
+        [opts.groupId],
+      )
+    : await gatewayDb.query<{ username: string; email: string }>(baseSql);
+  const recipients = rows
+    .filter((r) => /.+@.+\..+/.test(r.email))
+    .filter((r) => !isEmailDomainBlocked(r.email, blocked))
+    .map((r) => ({ email: r.email, username: r.username }));
+
+  if (recipients.length === 0) return { ...empty, triggered: true };
+
+  const candidates = senders
+    .filter((s) => s.enabled)
+    .sort((a, b) => b.priority - a.priority);
+  const liveRemaining = new Map<number, number>();
+  for (const s of candidates) liveRemaining.set(s.id, getSenderRemainingCapacity(s));
+
+  const { plans, noCapacity } = planDelivery(senders, recipients);
+  if (plans.length === 0) {
+    return { ...empty, triggered: true, recipients: recipients.length, skippedNoCapacity: noCapacity };
+  }
+
+  const htmlContent = await renderMarkdown(opts.content);
+
+  const allErrors: string[] = [];
+  const logRows: EmailSendLogInput[] = [];
+  let sent = 0;
+  let failed = 0;
+
+  await Promise.all(
+    plans.map(async (plan) => {
+      const messages = plan.recipients.map((recipient) =>
+        buildMessage(plan.sender, settings, recipient, opts.title, opts.content, htmlContent),
+      );
+      const result = await sendSmtpMessages(senderToSmtpConfig(plan.sender), messages);
+      if (result.sent > 0) {
+        liveRemaining.set(plan.sender.id, (liveRemaining.get(plan.sender.id) ?? 0) - result.sent);
+        await incrementSentCount(plan.sender.id, result.sent).catch((err) => {
+          console.error(`[ModelGate] 更新发件账号 ${plan.sender.id} 发送计数失败:`, err);
+        });
+      }
+      for (let i = 0; i < result.items.length; i += 1) {
+        const item = result.items[i];
+        const recipient = plan.recipients[i];
+        if (!recipient) continue;
+        if (item.ok) {
+          sent += 1;
+          logRows.push({
+            announcementId: 0,
+            recipientEmail: recipient.email,
+            senderId: plan.sender.id,
+            status: "sent",
+            error: "",
+            kind: "broadcast",
+            title: opts.title,
+            content: opts.content,
+          });
+          continue;
+        }
+        const fb = await sendWithFallback(
+          recipient,
+          settings,
+          opts.title,
+          opts.content,
+          htmlContent,
+          candidates,
+          liveRemaining,
+          { countQuota: true, excludeSenderId: plan.sender.id },
+        );
+        if (fb.ok) {
+          sent += 1;
+          logRows.push({
+            announcementId: 0,
+            recipientEmail: recipient.email,
+            senderId: fb.senderId!,
+            status: "sent",
+            error: "",
+            kind: "broadcast",
+            title: opts.title,
+            content: opts.content,
+          });
+        } else {
+          failed += 1;
+          const errMsg = buildFailedError(item.error ?? "", fb.error);
+          if (errMsg) allErrors.push(errMsg);
+          logRows.push({
+            announcementId: 0,
+            recipientEmail: recipient.email,
+            senderId: plan.sender.id,
+            status: "failed",
+            error: errMsg,
+            kind: "broadcast",
+            title: opts.title,
+            content: opts.content,
+          });
+        }
+      }
+    }),
+  );
+
+  await insertEmailSendLogs(logRows).catch((err) => {
+    console.error("[ModelGate] 写入广播邮件发送日志失败:", err);
+  });
+
+  return {
+    triggered: true,
+    recipients: recipients.length,
+    sent,
+    failed,
+    skippedNoCapacity: noCapacity,
+    errors: allErrors.slice(0, 20),
+  };
+  } finally {
+    broadcastSendInFlight = false;
+  }
+}
+
+export function notifyBroadcastAsync(opts: {
+  title: string;
+  content: string;
+  groupId?: number | null;
+}): void {
+  void sendBroadcastEmail(opts)
+    .then((summary) => sendCompletionReport(summary, opts.title, "broadcast"))
+    .catch((err) => console.error("[ModelGate] 广播邮件发送失败:", err));
 }
