@@ -604,7 +604,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 
 | 字段 | 类型 | 说明 |
 |:---|:---|:---|
-| announcement_id | number | 可选；指定只重发该公告的失败邮件，不传则重发全部公告的失败邮件 |
+| announcement_id | number | 可选；指定只重发该公告的失败邮件，不传则重发全部失败邮件（含广播邮件） |
 
 **响应 (200):**
 ```json
@@ -620,10 +620,46 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 }
 ```
 
-- `skipped_missing`：对应公告已不存在（被删除）而跳过的失败记录数。
+- `skipped_missing`：对应公告已不存在（被删除）或广播邮件正文缺失而跳过的失败记录数。
 - 没有失败邮件时返回 `message: "没有需要重发的失败邮件。"`。
 
-> 失败的邮件不会被自动重试：每次公告邮件发送会在后台异步进行，并将每封的成败写入 `email_send_log`；管理员在完成通知邮件中获知失败数后，可在此手动补发，而非等待次日。
+> 失败的邮件不会被自动重试：每次公告或广播邮件发送会在后台异步进行，并将每封的成败写入 `email_send_log`；管理员在完成通知邮件中获知失败数后，可在此手动补发（绕过单日额度），而非等待次日。广播邮件的失败记录同样在此处补发。
+
+### POST /api/admin/email/send
+
+向全部用户或指定用户组主动发送一封邮件通知，不经过系统公告。收件人取有邮箱、已启用且未删除的用户；指定用户组时再叠加 `group_id` 过滤。邮件标题使用「邮件通知」中的标题模板渲染，正文支持 Markdown，分页与页脚沿用邮件通知设置。发送沿用多账号优先级与单日额度策略，失败自动降级到其他可用发件账号。**该接口为后台异步发送**：提交后立即返回，邮件在后台逐个发送，不会阻塞请求；请勿重复提交。
+
+**认证:** 管理员（仅限 web 登录，不接受 API Key）
+
+**请求体:**
+```json
+{
+  "title": "全员通知",
+  "content": "这是一封**主动发送**的邮件。",
+  "target": "group",
+  "group_id": 3
+}
+```
+
+| 字段 | 类型 | 说明 |
+|:---|:---|:---|
+| title | string | 必填；邮件标题，最长 500 字符，用于标题模板的 `{title}` 占位符 |
+| content | string | 必填；邮件正文，支持 Markdown，最长 20000 字符 |
+| target | string | 必填；`all` 表示全部用户，`group` 表示指定用户组 |
+| group_id | number | `target` 为 `group` 时必填，且必须为存在的用户组；`target` 为 `all` 时忽略 |
+
+**响应 (200):**
+```json
+{
+  "message": "广播邮件已提交，将在后台发送，请勿重复提交。"
+}
+```
+
+- 接口仅做参数与用户组存在性校验后提交后台任务，立即返回，不返回发送结果。
+- 实际发送进度与成败由后台任务处理并记录到 `email_send_log`；邮件功能未启用或未配置发件账号时任务会在后台跳过。
+- 发送完成后若「邮件通知」中开启了「发送完成后通知管理员」，会向管理员邮箱发送一封完成汇报（沿用该配置），汇报包含计划数、成功、失败与额度跳过数量，与公告邮件一致。
+- 广播邮件的失败记录同样写入 `email_send_log`（`kind = broadcast`，并保存邮件标题与正文），可在「邮件通知」设置的「重发失败邮件」中手动补发。
+- 同一时间仅允许一个广播发送任务；若已有任务进行中，接口返回 `409` 并提示「已有广播邮件发送任务进行中，请稍后再试。」
 
 ### GET /api/admin/email/failed-logs
 
@@ -645,16 +681,32 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
       "id": 5,
       "announcement_id": 12,
       "announcement_title": "系统维护通知",
+      "kind": "announcement",
+      "title": null,
       "recipient_email": "user@example.com",
       "sender_id": 1,
       "status": "failed",
       "error": "连接失败: 认证被拒绝",
       "created_at": "2026-07-09 17:30:00"
+    },
+    {
+      "id": 6,
+      "announcement_id": 0,
+      "announcement_title": null,
+      "kind": "broadcast",
+      "title": "全员通知",
+      "recipient_email": "a@b.com",
+      "sender_id": 1,
+      "status": "failed",
+      "error": "连接失败: 认证被拒绝",
+      "created_at": "2026-07-09 18:00:00"
     }
   ]
 }
 ```
 
+- `kind` 为 `announcement`（系统公告）或 `broadcast`（广播邮件）。
+- `kind = broadcast` 时 `announcement_id` 为 `0`、`announcement_title` 为 `null`，邮件标题与正文取自 `title` 字段。
 - 关联公告已删除时 `announcement_title` 为 `null`。
 - 记录按 `created_at` 倒序返回。
 
