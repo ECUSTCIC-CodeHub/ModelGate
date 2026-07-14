@@ -162,6 +162,9 @@ CREATE TABLE IF NOT EXISTS email_send_log (
   sender_id INTEGER,
   status TEXT NOT NULL,
   error TEXT DEFAULT '',
+  kind TEXT NOT NULL DEFAULT 'announcement',
+  title TEXT,
+  content TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_email_send_log_announcement ON email_send_log(announcement_id);

@@ -340,6 +340,9 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("users", "webhook_role", "webhook_role TEXT DEFAULT ''");
   await db.ensureColumn("users", "webhook_tags", "webhook_tags TEXT DEFAULT '[]'");
   await db.ensureColumn("users", "email", "email TEXT");
+  await db.ensureColumn("email_send_log", "kind", "kind VARCHAR(16) NOT NULL DEFAULT 'announcement'");
+  await db.ensureColumn("email_send_log", "title", "title TEXT");
+  await db.ensureColumn("email_send_log", "content", "content TEXT");
 
   if (db.driver === "sqlite") {
     await db.exec(`UPDATE users SET used_tokens = ROUND(used_tokens, 6), used_requests = ROUND(used_requests, 6),

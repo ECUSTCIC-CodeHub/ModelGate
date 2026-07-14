@@ -195,6 +195,9 @@ CREATE TABLE IF NOT EXISTS email_send_log (
   sender_id INT,
   status VARCHAR(16) NOT NULL,
   error TEXT DEFAULT NULL,
+  kind VARCHAR(16) NOT NULL DEFAULT 'announcement',
+  title TEXT,
+  content TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 `;
