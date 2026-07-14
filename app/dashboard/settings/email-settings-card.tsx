@@ -23,6 +23,8 @@ type EmailSendLogRow = {
   id: number;
   announcementId: number;
   announcementTitle: string | null;
+  kind: "announcement" | "broadcast";
+  title: string | null;
   recipientEmail: string;
   senderId: number | null;
   status: "sent" | "failed";
@@ -245,7 +247,7 @@ export function EmailSettingsCard() {
   }
 
   async function resendFailed() {
-    if (!window.confirm("将向此前发送失败的用户补发公告邮件（绕过单日额度）。是否继续？")) return;
+    if (!window.confirm("将向此前发送失败的用户补发邮件（含公告与广播，绕过单日额度）。是否继续？")) return;
     setResending(true);
     try {
       const response = await authedFetch("/api/admin/email/resend-failed", {
@@ -342,7 +344,7 @@ export function EmailSettingsCard() {
         <div className="space-y-3 rounded-lg border border-[var(--color-border)] p-4">
           <ToggleRow
             title="发送完成后通知管理员"
-            description="公告邮件发送完成后，向指定管理员邮箱发送一封结果汇报邮件。"
+            description="公告或广播邮件发送完成后，向指定管理员邮箱发送一封结果汇报邮件。"
             checked={settings.report_enabled}
             onCheckedChange={(v) => patchSetting({ report_enabled: v })}
           />
@@ -366,7 +368,7 @@ export function EmailSettingsCard() {
           <div className="min-w-0">
             <p className="text-sm font-medium text-[var(--color-foreground)]">失败邮件</p>
             <p className="mt-0.5 text-xs text-[var(--color-foreground-muted)]">
-              向此前发送失败的用户补发公告邮件，绕过单日发送额度。点击「查看明细」可查看每封失败邮件的收件人与错误原因。
+              向此前发送失败的用户补发公告或广播邮件，绕过单日发送额度。点击「查看明细」可查看每封失败邮件的收件人与错误原因。
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -408,8 +410,9 @@ export function EmailSettingsCard() {
                       </span>
                     </div>
                     <p className="mt-1 truncate text-xs text-[var(--color-foreground-muted)]">
-                      公告 #{row.announcementId}
-                      {row.announcementTitle ? ` · ${row.announcementTitle}` : " · 公告已删除"}
+                      {row.kind === "broadcast"
+                        ? `广播邮件${row.title ? ` · ${row.title}` : ""}`
+                        : `公告 #${row.announcementId}${row.announcementTitle ? ` · ${row.announcementTitle}` : " · 公告已删除"}`}
                       {row.senderId !== null ? ` · 账号 #${row.senderId}` : ""}
                       {" · "}
                       {row.createdAt}

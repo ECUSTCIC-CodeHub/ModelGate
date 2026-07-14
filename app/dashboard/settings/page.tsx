@@ -12,6 +12,7 @@ import {
   AccessGuideNoticeSettingsCard,
   AnnouncementSettingsCard,
   AppearanceSettingsCard,
+  BroadcastEmailCard,
   CorsSettingsCard,
   EmailSettingsCard,
   FilingSettingsCard,
@@ -297,6 +298,7 @@ export default function AdminSettingsPage() {
             />
           ) : null}
           {announcementFeatureEnabled ? <EmailSettingsCard /> : null}
+          {announcementFeatureEnabled ? <BroadcastEmailCard /> : null}
         </TabsContent>
 
         <TabsContent value="site" className="space-y-4">
