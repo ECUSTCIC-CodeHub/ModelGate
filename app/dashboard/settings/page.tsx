@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { useToast } from "@/components/ui/toast";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getApiMessage } from "@/lib/shared/api-message";
 import { authedFetch, ensureAdmin } from "@/lib/auth/client-auth";
 import { modelGateFeatures } from "@/lib/core/features";
@@ -36,6 +37,7 @@ function stringValue(value: unknown, fallback = "") {
 
 export default function AdminSettingsPage() {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState("appearance");
   const [registrationEnabled, setRegistrationEnabled] = useState(true);
   const [passwordLoginEnabled, setPasswordLoginEnabled] = useState(true);
   const [upstreamRetryEnabled, setUpstreamRetryEnabled] = useState(true);
@@ -195,16 +197,30 @@ export default function AdminSettingsPage() {
       title="系统设置"
       subtitle={oidcFeatureEnabled ? "配置登录注册策略、上游重试与 OIDC 单点登录。" : "配置登录注册策略与上游重试。"}
     >
-      <div className="space-y-4 pb-6">
-        <AppearanceSettingsCard
-          themeColor={themeColor}
-          setThemeColor={setThemeColor}
-          logoUrl={logoUrl}
-          setLogoUrl={setLogoUrl}
-          logoSquareUrl={logoSquareUrl}
-          setLogoSquareUrl={setLogoSquareUrl}
-        />
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="pb-6">
+        <div className="-mx-1 overflow-x-auto px-1 pb-1">
+          <TabsList className="w-max gap-1">
+            <TabsTrigger value="appearance">外观</TabsTrigger>
+            <TabsTrigger value="auth">认证与安全</TabsTrigger>
+            <TabsTrigger value="gateway">网关与上游</TabsTrigger>
+            <TabsTrigger value="content">内容与通知</TabsTrigger>
+            <TabsTrigger value="site">站点信息</TabsTrigger>
+            <TabsTrigger value="system">系统维护</TabsTrigger>
+          </TabsList>
+        </div>
+
+        <TabsContent value="appearance" className="space-y-4">
+          <AppearanceSettingsCard
+            themeColor={themeColor}
+            setThemeColor={setThemeColor}
+            logoUrl={logoUrl}
+            setLogoUrl={setLogoUrl}
+            logoSquareUrl={logoSquareUrl}
+            setLogoSquareUrl={setLogoSquareUrl}
+          />
+        </TabsContent>
+
+        <TabsContent value="auth" className="space-y-4">
           <LoginSettingsCard
             oidcFeatureEnabled={oidcFeatureEnabled}
             passwordLoginEnabled={passwordLoginEnabled}
@@ -212,6 +228,32 @@ export default function AdminSettingsPage() {
             setPasswordLoginEnabled={setPasswordLoginEnabled}
             setRegistrationEnabled={setRegistrationEnabled}
           />
+          {oidcFeatureEnabled ? (
+            <OidcSettingsCard
+              oidcEnabled={oidcEnabled}
+              oidcIssuerUrl={oidcIssuerUrl}
+              oidcClientId={oidcClientId}
+              oidcClientSecret={oidcClientSecret}
+              oidcScopes={oidcScopes}
+              oidcAutoRegister={oidcAutoRegister}
+              oidcButtonText={oidcButtonText}
+              oidcGroupExpireDays={oidcGroupExpireDays}
+              publicBaseUrl={publicBaseUrl}
+              setOidcEnabled={setOidcEnabled}
+              setOidcIssuerUrl={setOidcIssuerUrl}
+              setOidcClientId={setOidcClientId}
+              setOidcClientSecret={setOidcClientSecret}
+              setOidcScopes={setOidcScopes}
+              setOidcAutoRegister={setOidcAutoRegister}
+              setOidcButtonText={setOidcButtonText}
+              setOidcGroupExpireDays={setOidcGroupExpireDays}
+              setPublicBaseUrl={setPublicBaseUrl}
+              copyPublicUrl={copyPublicUrl}
+            />
+          ) : null}
+        </TabsContent>
+
+        <TabsContent value="gateway" className="space-y-4">
           <UpstreamSettingsCard
             upstreamRetryEnabled={upstreamRetryEnabled}
             upstreamRetryMaxAttempts={upstreamRetryMaxAttempts}
@@ -224,86 +266,62 @@ export default function AdminSettingsPage() {
             setCircuitBreakerEnabled={setCircuitBreakerEnabled}
             setUpstreamStrictPriority={setUpstreamStrictPriority}
           />
+          <CorsSettingsCard corsEnabled={corsEnabled} setCorsEnabled={setCorsEnabled} />
+          {uaRestrictionsFeatureEnabled ? (
+            <UaRestrictionsSettingsCard
+              value={uaRestrictions}
+              onChange={setUaRestrictions}
+            />
+          ) : null}
+          {webhookFeatureEnabled ? (
+            <WebhookSettingsCard
+              publicBaseUrl={publicBaseUrl}
+              webhookSecret={webhookSecret}
+              setWebhookSecret={setWebhookSecret}
+              copyPublicUrl={copyPublicUrl}
+            />
+          ) : null}
+        </TabsContent>
+
+        <TabsContent value="content" className="space-y-4">
+          {announcementFeatureEnabled ? (
+            <AnnouncementSettingsCard
+              announcementDisplayCount={announcementDisplayCount}
+              setAnnouncementDisplayCount={setAnnouncementDisplayCount}
+            />
+          ) : null}
+          {accessGuideNoticeFeatureEnabled ? (
+            <AccessGuideNoticeSettingsCard
+              accessGuideNotice={accessGuideNotice}
+              setAccessGuideNotice={setAccessGuideNotice}
+            />
+          ) : null}
+          {announcementFeatureEnabled ? <EmailSettingsCard /> : null}
+        </TabsContent>
+
+        <TabsContent value="site" className="space-y-4">
+          <FilingSettingsCard
+            icpFilingNumber={icpFilingNumber}
+            publicSecurityFilingNumber={publicSecurityFilingNumber}
+            setIcpFilingNumber={setIcpFilingNumber}
+            setPublicSecurityFilingNumber={setPublicSecurityFilingNumber}
+          />
+          <FeedbackSettingsCard
+            feedbackUrl={feedbackUrl}
+            repoName={repoName}
+            setFeedbackUrl={setFeedbackUrl}
+            setRepoName={setRepoName}
+          />
+        </TabsContent>
+
+        <TabsContent value="system" className="space-y-4">
+          <LogRetentionSettingsCard days={logRetentionDays} setDays={setLogRetentionDays} />
+        </TabsContent>
+
+        <div className="pt-2">
+          <SaveSettingsCard disabled={isSaving} onSave={() => void save()} />
         </div>
-
-        {oidcFeatureEnabled ? (
-          <OidcSettingsCard
-            oidcEnabled={oidcEnabled}
-            oidcIssuerUrl={oidcIssuerUrl}
-            oidcClientId={oidcClientId}
-            oidcClientSecret={oidcClientSecret}
-            oidcScopes={oidcScopes}
-            oidcAutoRegister={oidcAutoRegister}
-            oidcButtonText={oidcButtonText}
-            oidcGroupExpireDays={oidcGroupExpireDays}
-            publicBaseUrl={publicBaseUrl}
-            setOidcEnabled={setOidcEnabled}
-            setOidcIssuerUrl={setOidcIssuerUrl}
-            setOidcClientId={setOidcClientId}
-            setOidcClientSecret={setOidcClientSecret}
-            setOidcScopes={setOidcScopes}
-            setOidcAutoRegister={setOidcAutoRegister}
-            setOidcButtonText={setOidcButtonText}
-            setOidcGroupExpireDays={setOidcGroupExpireDays}
-            setPublicBaseUrl={setPublicBaseUrl}
-            copyPublicUrl={copyPublicUrl}
-          />
-        ) : null}
-
-        <CorsSettingsCard corsEnabled={corsEnabled} setCorsEnabled={setCorsEnabled} />
-
-        {uaRestrictionsFeatureEnabled ? (
-          <UaRestrictionsSettingsCard
-            value={uaRestrictions}
-            onChange={setUaRestrictions}
-          />
-        ) : null}
-
-        {webhookFeatureEnabled ? (
-          <WebhookSettingsCard
-            publicBaseUrl={publicBaseUrl}
-            webhookSecret={webhookSecret}
-            setWebhookSecret={setWebhookSecret}
-            copyPublicUrl={copyPublicUrl}
-          />
-        ) : null}
-
-        {announcementFeatureEnabled ? (
-          <AnnouncementSettingsCard
-            announcementDisplayCount={announcementDisplayCount}
-            setAnnouncementDisplayCount={setAnnouncementDisplayCount}
-          />
-        ) : null}
-
-        {accessGuideNoticeFeatureEnabled ? (
-          <AccessGuideNoticeSettingsCard
-            accessGuideNotice={accessGuideNotice}
-            setAccessGuideNotice={setAccessGuideNotice}
-          />
-        ) : null}
-
-        {announcementFeatureEnabled ? <EmailSettingsCard /> : null}
-
-
-
-        <FilingSettingsCard
-          icpFilingNumber={icpFilingNumber}
-          publicSecurityFilingNumber={publicSecurityFilingNumber}
-          setIcpFilingNumber={setIcpFilingNumber}
-          setPublicSecurityFilingNumber={setPublicSecurityFilingNumber}
-        />
-
-        <FeedbackSettingsCard
-          feedbackUrl={feedbackUrl}
-          repoName={repoName}
-          setFeedbackUrl={setFeedbackUrl}
-          setRepoName={setRepoName}
-        />
-
-        <LogRetentionSettingsCard days={logRetentionDays} setDays={setLogRetentionDays} />
-
-        <SaveSettingsCard disabled={isSaving} onSave={() => void save()} />
-      </div>
+      </Tabs>
     </DashboardShell>
   );
 }
