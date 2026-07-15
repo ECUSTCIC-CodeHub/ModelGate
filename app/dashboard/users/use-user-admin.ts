@@ -188,6 +188,7 @@ export function useUserAdmin() {
         const unique = new Map<string, AliasOption>();
         for (const row of modelRows) {
           if (row.is_public === 1) continue;
+          if (row.enabled === 0) continue;
           if (!unique.has(row.alias)) {
             unique.set(row.alias, row);
           }

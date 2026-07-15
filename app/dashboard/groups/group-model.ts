@@ -23,6 +23,7 @@ export type AliasOption = {
   id: number;
   alias: string;
   is_public: number;
+  enabled: number;
 };
 
 export type ChannelOption = {

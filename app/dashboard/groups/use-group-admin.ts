@@ -121,6 +121,7 @@ export function useGroupAdmin() {
         const unique = new Map<string, AliasOption>();
         for (const row of items) {
           if (row.is_public === 1) continue;
+          if (row.enabled === 0) continue;
           if (!unique.has(row.alias)) unique.set(row.alias, row);
         }
         setAliasOptions([...unique.values()].sort((a, b) => a.alias.localeCompare(b.alias)));
