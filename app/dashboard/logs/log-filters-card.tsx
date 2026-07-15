@@ -31,6 +31,13 @@ export function LogFiltersCard({
   onSearch,
   onReset,
 }: LogFiltersCardProps) {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      onSearch();
+    }
+  };
+
   const baseCols = role === "admin"
     ? "grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_180px_180px_auto]"
     : "grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_180px_180px_auto]";
@@ -43,14 +50,14 @@ export function LogFiltersCard({
       <CardContent className="space-y-3">
         <div className={baseCols}>
           {role === "admin" ? (
-            <Input placeholder="搜索用户" value={filters.user} onChange={(e) => onFilterChange({ user: e.target.value })} />
+            <Input placeholder="搜索用户" value={filters.user} onChange={(e) => onFilterChange({ user: e.target.value })} onKeyDown={handleKeyDown} />
           ) : null}
-          <Input placeholder="搜索模型" value={filters.model} onChange={(e) => onFilterChange({ model: e.target.value })} />
+          <Input placeholder="搜索模型" value={filters.model} onChange={(e) => onFilterChange({ model: e.target.value })} onKeyDown={handleKeyDown} />
           {role === "admin" ? (
-            <Input placeholder="搜索渠道" value={filters.channel} onChange={(e) => onFilterChange({ channel: e.target.value })} />
+            <Input placeholder="搜索渠道" value={filters.channel} onChange={(e) => onFilterChange({ channel: e.target.value })} onKeyDown={handleKeyDown} />
           ) : null}
-          <Input placeholder="搜索密钥" value={filters.key} onChange={(e) => onFilterChange({ key: e.target.value })} />
-          <Input placeholder="搜索 IP" value={filters.ip} onChange={(e) => onFilterChange({ ip: e.target.value })} />
+          <Input placeholder="搜索密钥" value={filters.key} onChange={(e) => onFilterChange({ key: e.target.value })} onKeyDown={handleKeyDown} />
+          <Input placeholder="搜索 IP" value={filters.ip} onChange={(e) => onFilterChange({ ip: e.target.value })} onKeyDown={handleKeyDown} />
           <select
               className="h-10 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-3 py-2 text-sm font-medium text-[var(--color-foreground)] transition-colors duration-150 hover:border-[var(--color-border-hover)] focus-visible:border-[var(--color-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/25"
               value={filters.status}
