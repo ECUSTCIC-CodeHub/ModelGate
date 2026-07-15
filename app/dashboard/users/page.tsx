@@ -41,6 +41,7 @@ export default function AdminUsersPage() {
                   placeholder="搜索用户名"
                   value={admin.keyword}
                   onChange={(event) => admin.setKeyword(event.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") admin.searchUsers(); }}
                 />
                 <Select value={admin.groupFilter} onValueChange={admin.selectGroupFilter}>
                   <SelectTrigger>
