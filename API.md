@@ -735,6 +735,12 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 }
 ```
 
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| icp_filing_number | string | ICP 备案号，未配置时为空字符串 |
+| public_security_filing_number | string | 公安联网备案号，未配置时为空字符串 |
+| feedback_url | string | 问题反馈链接，未配置时为空字符串 |
+
 ---
 
 ## Webhook 回调
