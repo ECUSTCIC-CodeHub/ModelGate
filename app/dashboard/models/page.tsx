@@ -2,8 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import DOMPurify from "dompurify";
-import { marked } from "marked";
 import { ChevronDown, Copy, LayoutGrid, List, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { SectionTitle } from "@/components/dashboard/section-title";
@@ -51,17 +49,6 @@ type ModelMetrics = {
   hourly: Array<{ hours: number; success_rate: number; request_count: number }>;
 };
 
-const ENDPOINTS = [
-  { label: "Chat Completions (OpenAI)", path: "/api/v1/chat/completions", method: "POST" },
-  { label: "Chat (Ollama)", path: "/api/ollama/api/chat", method: "POST" },
-  { label: "Responses (OpenAI)", path: "/api/v1/responses", method: "POST" },
-  { label: "Messages (Anthropic Claude)", path: "/api/v1/messages", method: "POST" },
-  { label: "Embeddings (OpenAI)", path: "/api/v1/embeddings", method: "POST" },
-  { label: "Images Generations (OpenAI)", path: "/api/v1/images/generations", method: "POST" },
-  { label: "Images Edits (OpenAI)", path: "/api/v1/images/edits", method: "POST" },
-] as const;
-
-
 export default function AvailableModelsPage() {
   const router = useRouter();
   const initialProfile = useAuthProfile();
@@ -70,7 +57,6 @@ export default function AvailableModelsPage() {
   const [metricsMap, setMetricsMap] = useState<Record<string, ModelMetrics>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [noticeHtml, setNoticeHtml] = useState("");
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"card" | "list">("card");
   const [sortField, setSortField] = useState<SortField>("id");
@@ -86,22 +72,6 @@ export default function AvailableModelsPage() {
     setView(v);
     localStorage.setItem("modelGuideView", v);
   }
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const response = await authedFetch("/api/dashboard/access-guide-notice");
-        if (!response.ok) return;
-        const data = await response.json();
-        const content = (data?.content ?? "").trim();
-        if (!content) return;
-        const rendered = await marked.parse(content);
-        setNoticeHtml(DOMPurify.sanitize(rendered));
-      } catch {
-        // silently ignore
-      }
-    })();
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -174,8 +144,6 @@ export default function AvailableModelsPage() {
     return sorted;
   }, [filtered, sortField, sortOrder]);
 
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-
   function renderMultiplier(row: ModelItem, type: "token" | "request") {
     const multiplier = type === "token" ? row.token_multiplier : row.request_multiplier;
     const min = type === "token" ? row.token_multiplier_min : row.request_multiplier_min;
@@ -230,86 +198,10 @@ export default function AvailableModelsPage() {
   return (
     <DashboardShell
       role={role}
-      title="接入指南"
-      subtitle="一站式查看接入配置、协议端点与当前账号可调用的模型列表。"
+      title="模型列表"
+      subtitle="查看当前账号可调用的模型与倍率。"
     >
       <div className="space-y-4 pb-6">
-        {noticeHtml ? (
-          <Card>
-            <CardContent className="pt-6">
-              <div
-                className="markdown-body"
-                dangerouslySetInnerHTML={{ __html: noticeHtml }}
-              />
-            </CardContent>
-          </Card>
-        ) : null}
-
-        <Card>
-          <CardHeader>
-            <SectionTitle
-              title="接入配置"
-              description="将 Base URL 填入客户端配置，使用 API Key 和模型 ID 即可调用；网关同时兼容下方协议端点。"
-            />
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-3">
-              <p className="text-xs font-medium text-[var(--color-foreground-muted)]">Base URL（OpenAI）</p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 truncate rounded bg-[var(--color-surface-hover)] px-3 py-2 text-sm text-[var(--color-foreground)]">{origin}/api/v1</code>
-                <Button type="button" variant="outline" size="sm" onClick={() => copyText(`${origin}/api/v1`)}>
-                  <Copy className="mr-1.5 h-3.5 w-3.5" />
-                  复制
-                </Button>
-              </div>
-              <p className="text-xs text-[var(--color-foreground-muted)]">适用于 OpenAI SDK 等客户端的 base_url / api_base 配置项。</p>
-            </div>
-
-            <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-3">
-              <p className="text-xs font-medium text-[var(--color-foreground-muted)]">ANTHROPIC_BASE_URL</p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 truncate rounded bg-[var(--color-surface-hover)] px-3 py-2 text-sm text-[var(--color-foreground)]">{origin}/api</code>
-                <Button type="button" variant="outline" size="sm" onClick={() => copyText(`${origin}/api`)}>
-                  <Copy className="mr-1.5 h-3.5 w-3.5" />
-                  复制
-                </Button>
-              </div>
-              <p className="text-xs text-[var(--color-foreground-muted)]">适用于 Anthropic SDK 等客户端的 ANTHROPIC_BASE_URL 配置项。</p>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-[var(--color-foreground-muted)]">协议端点</p>
-              <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-                <Table className="min-w-[600px]">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>协议</TableHead>
-                      <TableHead>端点地址</TableHead>
-                      <TableHead className="w-16" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {ENDPOINTS.map((ep) => (
-                      <TableRow key={ep.path}>
-                        <TableCell className="text-sm font-medium text-[var(--color-foreground)]">{ep.label}</TableCell>
-                        <TableCell>
-                          <code className="rounded bg-[var(--color-surface-hover)] px-2 py-1 text-xs text-[var(--color-foreground-secondary)]">{origin}{ep.path}</code>
-                        </TableCell>
-                        <TableCell>
-                          <Button size="sm" variant="ghost" onClick={() => copyText(`${origin}${ep.path}`)}>
-                            <Copy className="h-3.5 w-3.5" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-              <p className="text-xs text-[var(--color-foreground-muted)]">协议端点共用同一 API Key；模型 ID 填写对应协议可用的模型映射。</p>
-            </div>
-          </CardContent>
-        </Card>
-
         <Card>
           <CardHeader>
             <SectionTitle

@@ -1,4 +1,5 @@
 import {
+  Boxes,
   Gauge,
   KeyRound,
   LayoutGrid,
@@ -16,7 +17,8 @@ const adminMenus: DashboardMenuItem[] = [
   { href: "/dashboard/logs", label: "请求日志", icon: Sparkles },
   { href: "/dashboard/keys", label: "密钥管理", icon: KeyRound },
   { href: "/dashboard/quota", label: "配额与限制", icon: Gauge },
-  { href: "/dashboard/models", label: "接入指南", icon: Shield },
+  { href: "/dashboard/models", label: "模型列表", icon: Boxes },
+  { href: "/dashboard/access", label: "接入指南", icon: Shield },
   { href: "/dashboard/channels", label: "渠道管理", icon: Waypoints },
   { href: "/dashboard/users", label: "用户管理", icon: UserCog },
   { href: "/dashboard/groups", label: "用户组管理", icon: Users },
@@ -28,7 +30,8 @@ const userMenus: DashboardMenuItem[] = [
   { href: "/dashboard/logs", label: "请求日志", icon: Sparkles },
   { href: "/dashboard/keys", label: "密钥管理", icon: KeyRound },
   { href: "/dashboard/quota", label: "配额与限制", icon: Gauge },
-  { href: "/dashboard/models", label: "接入指南", icon: Shield },
+  { href: "/dashboard/models", label: "模型列表", icon: Boxes },
+  { href: "/dashboard/access", label: "接入指南", icon: Shield },
 ];
 
 export function getDashboardMenus(role: Role) {
