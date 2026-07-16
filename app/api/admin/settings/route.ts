@@ -42,6 +42,9 @@ const schema = z.object({
     .refine((v) => v === "" || /^https?:\/\//i.test(v), "反馈链接必须以 http(s):// 开头")
     .optional(),
   repo_name: z.string().max(200).optional(),
+  model_status_light_1_hours: z.number().int().min(1).max(168).optional(),
+  model_status_light_2_hours: z.number().int().min(1).max(168).optional(),
+  model_status_light_3_hours: z.number().int().min(1).max(168).optional(),
 });
 
 export async function GET(request: Request) {

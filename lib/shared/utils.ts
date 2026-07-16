@@ -49,3 +49,11 @@ export const MARKDOWN_PURIFY_CONFIG = {
   ALLOWED_TAGS: ["p", "br", "strong", "em", "ul", "ol", "li", "a", "code", "pre", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "table", "thead", "tbody", "tr", "th", "td", "del", "s", "sub", "sup"],
   ALLOWED_ATTR: ["href", "title", "class"],
 };
+
+export const STATUS_LIGHT_MAX_HOURS = 168;
+
+export function clampStatusLightHours(value: unknown, fallback: number): number {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < 1) return fallback;
+  return Math.min(Math.trunc(num), STATUS_LIGHT_MAX_HOURS);
+}

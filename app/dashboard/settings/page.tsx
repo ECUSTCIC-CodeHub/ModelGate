@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { useToast } from "@/components/ui/toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { clampStatusLightHours } from "@/lib/shared/utils";
 import { getApiMessage } from "@/lib/shared/api-message";
 import { authedFetch, ensureAdmin } from "@/lib/auth/client-auth";
 import { modelGateFeatures } from "@/lib/core/features";
@@ -19,6 +20,7 @@ import {
   FeedbackSettingsCard,
   LogRetentionSettingsCard,
   LoginSettingsCard,
+  ModelStatusLightSettingsCard,
   OidcSettingsCard,
   SaveSettingsCard,
   UaRestrictionsSettingsCard,
@@ -69,6 +71,9 @@ export default function AdminSettingsPage() {
   const [repoName, setRepoName] = useState("");
   const [uaRestrictions, setUaRestrictions] = useState("");
   const [logRetentionDays, setLogRetentionDays] = useState(0);
+  const [statusLight1Hours, setStatusLight1Hours] = useState(1);
+  const [statusLight2Hours, setStatusLight2Hours] = useState(2);
+  const [statusLight3Hours, setStatusLight3Hours] = useState(3);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const oidcFeatureEnabled = modelGateFeatures.oidc;
@@ -114,6 +119,9 @@ export default function AdminSettingsPage() {
     setLogoSquareUrl(stringValue(settings.logo_square_url));
     setFeedbackUrl(stringValue(settings.feedback_url));
     setRepoName(stringValue(settings.repo_name));
+    setStatusLight1Hours(clampStatusLightHours(settings.model_status_light_1_hours, 1));
+    setStatusLight2Hours(clampStatusLightHours(settings.model_status_light_2_hours, 2));
+    setStatusLight3Hours(clampStatusLightHours(settings.model_status_light_3_hours, 3));
   }, [accessGuideNoticeFeatureEnabled, announcementFeatureEnabled, oidcFeatureEnabled, webhookFeatureEnabled, uaRestrictionsFeatureEnabled]);
 
   useEffect(() => {
@@ -166,6 +174,9 @@ export default function AdminSettingsPage() {
         logo_square_url: logoSquareUrl,
         feedback_url: feedbackUrl,
         repo_name: repoName,
+        model_status_light_1_hours: statusLight1Hours,
+        model_status_light_2_hours: statusLight2Hours,
+        model_status_light_3_hours: statusLight3Hours,
       };
 
       const response = await authedFetch("/api/admin/settings", {
@@ -268,6 +279,14 @@ export default function AdminSettingsPage() {
             setUpstreamStrictPriority={setUpstreamStrictPriority}
           />
           <CorsSettingsCard corsEnabled={corsEnabled} setCorsEnabled={setCorsEnabled} />
+          <ModelStatusLightSettingsCard
+            hours1={statusLight1Hours}
+            setHours1={setStatusLight1Hours}
+            hours2={statusLight2Hours}
+            setHours2={setStatusLight2Hours}
+            hours3={statusLight3Hours}
+            setHours3={setStatusLight3Hours}
+          />
           {uaRestrictionsFeatureEnabled ? (
             <UaRestrictionsSettingsCard
               value={uaRestrictions}

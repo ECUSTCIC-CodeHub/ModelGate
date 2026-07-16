@@ -48,7 +48,7 @@ type SortOrder = "asc" | "desc";
 type ModelMetrics = {
   avg_latency_ms: number;
   avg_output_tps: number;
-  hourly: Array<{ hour: number; success_rate: number; request_count: number }>;
+  hourly: Array<{ hours: number; success_rate: number; request_count: number }>;
 };
 
 const ENDPOINTS = [
@@ -468,15 +468,19 @@ export default function AvailableModelsPage() {
                                 ? `${(metrics.avg_latency_ms / 1000).toFixed(1)}s`
                                 : `${metrics.avg_latency_ms}ms`;
                               const tpsLabel = `${metrics.avg_output_tps}tps`;
+                              const hourCounts = metrics.hourly.reduce<Record<number, number>>((acc, b) => {
+                                acc[b.hours] = (acc[b.hours] ?? 0) + 1;
+                                return acc;
+                              }, {});
+                              const hourIndex: Record<number, number> = {};
                               return (
                                 <div className="flex items-center gap-2 text-xs font-mono text-[var(--color-foreground-muted)]">
                                   <span>{latencyLabel}</span>
                                   <span>{tpsLabel}</span>
                                   <div className="flex items-center gap-0.5">
-                                    {[2, 1, 0].map((h) => {
-                                      const bucket = metrics.hourly.find((b) => b.hour === h);
-                                      const rate = bucket?.success_rate ?? 0;
-                                      const count = bucket?.request_count ?? 0;
+                                    {metrics.hourly.map((bucket, idx) => {
+                                      const rate = bucket.success_rate;
+                                      const count = bucket.request_count;
                                       const color =
                                         count === 0
                                           ? "bg-gray-300 dark:bg-gray-600"
@@ -485,11 +489,14 @@ export default function AvailableModelsPage() {
                                             : rate >= 70
                                               ? "bg-amber-500"
                                               : "bg-red-500";
+                                      const suffix = (hourCounts[bucket.hours] ?? 0) > 1
+                                        ? `(${(hourIndex[bucket.hours] = (hourIndex[bucket.hours] ?? 0) + 1)})`
+                                        : "";
                                       const label = count === 0
-                                        ? `${h === 0 ? "最近1h" : h === 1 ? "第2h" : "第3h"}: 无数据`
-                                        : `${h === 0 ? "最近1h" : h === 1 ? "第2h" : "第3h"}: ${rate}% (${count}次)`;
+                                        ? `近${bucket.hours}h${suffix}: 无数据`
+                                        : `近${bucket.hours}h${suffix}: ${rate}% (${count}次)`;
                                       return (
-                                        <Tooltip key={h}>
+                                        <Tooltip key={idx}>
                                           <TooltipTrigger asChild>
                                             <span className={`inline-block h-4 w-1 rounded-sm ${color}`} />
                                           </TooltipTrigger>

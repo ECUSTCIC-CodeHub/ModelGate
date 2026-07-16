@@ -402,7 +402,10 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "log_retention_days": 0,
   "theme_color": "#00518f",
   "feedback_url": "https://cnb.cool/{repo}/-/issues/new/choose",
-  "repo_name": "ecustcic/ModelGate"
+  "repo_name": "ecustcic/ModelGate",
+  "model_status_light_1_hours": 1,
+  "model_status_light_2_hours": 2,
+  "model_status_light_3_hours": 3
 }
 ```
 
@@ -435,6 +438,9 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | repo_name | string | CNB 仓库路径（最长 200 字符），如 `ecustcic/ModelGate`；当 `feedback_url` 为空时，自动生成 `https://cnb.cool/<repo_name>/-/issues/new/choose` |
 | ua_restrictions | string | 全站 User-Agent 限制规则 JSON 数组，留空或 `[]` 表示不限制（完整版功能，最长 20000 字符） |
 | log_retention_days | number | 请求日志（`logs`）与邮件发送日志（`email_send_log`）的保留天数，0 表示不清理（0-3650）；超过保留期的失败邮件记录会被自动删除，无法再经「重发失败邮件」补发 |
+| model_status_light_1_hours | int | 模型列表成功率状态灯第 1 档（左起第 1 盏）的统计时长（小时，1-168，默认 1） |
+| model_status_light_2_hours | int | 模型列表成功率状态灯第 2 档（左起第 2 盏）的统计时长（小时，1-168，默认 2） |
+| model_status_light_3_hours | int | 模型列表成功率状态灯第 3 档（左起第 3 盏）的统计时长（小时，1-168，默认 3） |
 
 > 精简版固定保留账号密码登录；返回时会隐藏 OIDC 配置、公告内容、公告展示条数、接入指南通知和 Webhook 密钥，更新时忽略 `oidc_*`、`announcement_content`、`announcement_display_count`、`access_guide_notice` 与 `webhook_secret` 字段。
 
@@ -1899,6 +1905,31 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 ```
 
 > `token_multiplier` 和 `request_multiplier` 为计费倍率（取所有渠道中的最低值），实际扣量 = 使用量 × 倍率。`token_multiplier_min/max` 和 `request_multiplier_min/max` 为各渠道倍率范围。`max_effective_weight` 为该模型所有渠道中的最大有效权重（渠道权重 × 模型权重），列表按此降序排列。`channels` 包含各渠道的倍率和有效权重明细，按权重降序排列。
+
+### GET /api/dashboard/model-metrics
+
+获取各模型近期的平均延迟、平均输出速度与多档成功率状态灯数据。三档成功率的统计时长由系统设置「模型成功率状态灯」分别配置（默认 1 小时、2 小时、3 小时），每档统计对应时长内 `status_code < 400` 的请求占比（分母排除 429）。
+
+**认证:** 用户（非管理员仅返回其可访问模型）
+
+**响应 (200):**
+```json
+{
+  "data": {
+    "gpt-4": {
+      "avg_latency_ms": 820,
+      "avg_output_tps": 64.2,
+      "hourly": [
+        { "hours": 1, "success_rate": 99.5, "request_count": 120 },
+        { "hours": 2, "success_rate": 98.1, "request_count": 240 },
+        { "hours": 3, "success_rate": 97.4, "request_count": 360 }
+      ]
+    }
+  }
+}
+```
+
+> `hourly` 按 `hours` 升序排列，对应模型列表卡片上从左到右的三盏状态灯；`request_count` 为该时长内的请求总数，`success_rate` 为成功率（百分比），无请求时 `request_count` 为 0。
 
 ---
 

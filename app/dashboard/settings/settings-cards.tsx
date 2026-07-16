@@ -8,6 +8,7 @@ export { CorsSettingsCard } from "./cors-settings-card";
 export { FilingSettingsCard } from "./filing-settings-card";
 export { LogRetentionSettingsCard } from "./log-retention-settings-card";
 export { LoginSettingsCard } from "./login-settings-card";
+export { ModelStatusLightSettingsCard } from "./model-status-light-settings-card";
 export { OidcSettingsCard } from "./oidc-settings-card";
 export { SaveSettingsCard } from "./save-settings-card";
 export { UpstreamSettingsCard } from "./upstream-settings-card";

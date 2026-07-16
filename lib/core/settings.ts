@@ -1,10 +1,14 @@
 import { gatewayDb } from "@/lib/core/db";
+import { clampStatusLightHours } from "@/lib/shared/utils";
 
 const DEFAULTS = {
   registration_enabled: 1,
   upstream_retry_enabled: 1,
   upstream_retry_max_attempts: 3,
   upstream_retry_same_channel: 0,
+  model_status_light_1_hours: 1,
+  model_status_light_2_hours: 2,
+  model_status_light_3_hours: 3,
 } as const;
 
 const GATEWAY_SETTINGS_CACHE_TTL_MS = 30_000;
@@ -40,6 +44,9 @@ export type GatewaySettings = {
   logo_square_url: string;
   feedback_url: string;
   repo_name: string;
+  model_status_light_1_hours: number;
+  model_status_light_2_hours: number;
+  model_status_light_3_hours: number;
 };
 
 let cachedGatewaySettings: { value: GatewaySettings; expiresAt: number } | null = null;
@@ -98,6 +105,9 @@ const GATEWAY_KEYS = [
   "logo_square_url",
   "feedback_url",
   "repo_name",
+  "model_status_light_1_hours",
+  "model_status_light_2_hours",
+  "model_status_light_3_hours",
 ] as const;
 
 const SETTINGS_SELECT_SQL = `SELECT \`key\`, value FROM settings WHERE \`key\` IN (${GATEWAY_KEYS.map(() => "?").join(", ")})`;
@@ -141,6 +151,9 @@ async function readGatewaySettingsFromDb(): Promise<GatewaySettings> {
     logo_square_url: map.get("logo_square_url") ?? "",
     feedback_url: map.get("feedback_url") ?? "",
     repo_name: map.get("repo_name") ?? "",
+    model_status_light_1_hours: clampStatusLightHours(map.get("model_status_light_1_hours"), DEFAULTS.model_status_light_1_hours),
+    model_status_light_2_hours: clampStatusLightHours(map.get("model_status_light_2_hours"), DEFAULTS.model_status_light_2_hours),
+    model_status_light_3_hours: clampStatusLightHours(map.get("model_status_light_3_hours"), DEFAULTS.model_status_light_3_hours),
   };
 }
 
@@ -186,6 +199,9 @@ export async function setGatewaySettings(input: {
   logo_square_url?: string;
   feedback_url?: string;
   repo_name?: string;
+  model_status_light_1_hours?: number;
+  model_status_light_2_hours?: number;
+  model_status_light_3_hours?: number;
 }) {
   const values: Record<string, string> = {
     registration_enabled: input.registration_enabled ? "1" : "0",
@@ -220,6 +236,9 @@ export async function setGatewaySettings(input: {
   if (input.logo_square_url !== undefined) values.logo_square_url = input.logo_square_url.trim();
   if (input.feedback_url !== undefined) values.feedback_url = input.feedback_url.trim();
   if (input.repo_name !== undefined) values.repo_name = input.repo_name.trim();
+  if (input.model_status_light_1_hours !== undefined) values.model_status_light_1_hours = String(clampStatusLightHours(input.model_status_light_1_hours, DEFAULTS.model_status_light_1_hours));
+  if (input.model_status_light_2_hours !== undefined) values.model_status_light_2_hours = String(clampStatusLightHours(input.model_status_light_2_hours, DEFAULTS.model_status_light_2_hours));
+  if (input.model_status_light_3_hours !== undefined) values.model_status_light_3_hours = String(clampStatusLightHours(input.model_status_light_3_hours, DEFAULTS.model_status_light_3_hours));
 
   const isMysql = await gatewayDb.getDriver() === "mysql";
   const upsertSql = isMysql
