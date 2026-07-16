@@ -26,9 +26,9 @@ export function ModelStatusLightSettingsCard({
   }
 
   const lights = [
-    { label: "状态灯 1", value: hours1, set: setHours1, desc: "最近一档成功率统计时长" },
-    { label: "状态灯 2", value: hours2, set: setHours2, desc: "第二档成功率统计时长" },
-    { label: "状态灯 3", value: hours3, set: setHours3, desc: "第三档成功率统计时长" },
+    { label: "状态灯 1", value: hours1, set: setHours1, desc: "第 1 档状态灯统计时长" },
+    { label: "状态灯 2", value: hours2, set: setHours2, desc: "第 2 档状态灯统计时长" },
+    { label: "状态灯 3", value: hours3, set: setHours3, desc: "第 3 档状态灯统计时长" },
   ];
 
   return (
@@ -56,7 +56,7 @@ export function ModelStatusLightSettingsCard({
           ))}
         </div>
         <p className="mt-3 text-xs text-[var(--color-foreground-muted)]">
-          状态灯按统计时长从小到大依次排列：左起第一盏为最短时长。修改后最长 30 秒内在模型列表生效。
+          状态灯按统计时长从大到小依次排列：左起第一盏为最长时长。修改后最长 30 秒内在模型列表生效。
         </p>
       </CardContent>
     </Card>

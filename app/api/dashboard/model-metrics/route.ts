@@ -75,13 +75,15 @@ export async function GET(request: Request) {
   > = {};
 
   for (const row of rows) {
-    const hourly = hours.map((h, i) => {
-      const cnt = Number(row[`cnt_${i}` as keyof MetricRow] ?? 0);
-      const ok = Number(row[`ok_${i}` as keyof MetricRow] ?? 0);
-      const den = Number(row[`den_${i}` as keyof MetricRow] ?? 0);
-      const success_rate = den > 0 ? Number(((ok * 100) / den).toFixed(1)) : 0;
-      return { hours: h, success_rate, request_count: cnt };
-    });
+    const hourly = hours
+      .map((h, i) => {
+        const cnt = Number(row[`cnt_${i}` as keyof MetricRow] ?? 0);
+        const ok = Number(row[`ok_${i}` as keyof MetricRow] ?? 0);
+        const den = Number(row[`den_${i}` as keyof MetricRow] ?? 0);
+        const success_rate = den > 0 ? Number(((ok * 100) / den).toFixed(1)) : 0;
+        return { hours: h, success_rate, request_count: cnt };
+      })
+      .sort((a, b) => b.hours - a.hours);
 
     data[row.model_alias] = {
       avg_latency_ms: Math.round(row.avg_latency_ms ?? 0),

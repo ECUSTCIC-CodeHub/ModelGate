@@ -438,9 +438,9 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | repo_name | string | CNB 仓库路径（最长 200 字符），如 `ecustcic/ModelGate`；当 `feedback_url` 为空时，自动生成 `https://cnb.cool/<repo_name>/-/issues/new/choose` |
 | ua_restrictions | string | 全站 User-Agent 限制规则 JSON 数组，留空或 `[]` 表示不限制（完整版功能，最长 20000 字符） |
 | log_retention_days | number | 请求日志（`logs`）与邮件发送日志（`email_send_log`）的保留天数，0 表示不清理（0-3650）；超过保留期的失败邮件记录会被自动删除，无法再经「重发失败邮件」补发 |
-| model_status_light_1_hours | int | 模型列表成功率状态灯第 1 档（左起第 1 盏）的统计时长（小时，1-168，默认 1） |
-| model_status_light_2_hours | int | 模型列表成功率状态灯第 2 档（左起第 2 盏）的统计时长（小时，1-168，默认 2） |
-| model_status_light_3_hours | int | 模型列表成功率状态灯第 3 档（左起第 3 盏）的统计时长（小时，1-168，默认 3） |
+| model_status_light_1_hours | int | 模型列表成功率状态灯配置项 1 的统计时长（小时，1-168，默认 1） |
+| model_status_light_2_hours | int | 模型列表成功率状态灯配置项 2 的统计时长（小时，1-168，默认 2） |
+| model_status_light_3_hours | int | 模型列表成功率状态灯配置项 3 的统计时长（小时，1-168，默认 3） |
 
 > 精简版固定保留账号密码登录；返回时会隐藏 OIDC 配置、公告内容、公告展示条数、接入指南通知和 Webhook 密钥，更新时忽略 `oidc_*`、`announcement_content`、`announcement_display_count`、`access_guide_notice` 与 `webhook_secret` 字段。
 
@@ -1926,16 +1926,16 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
       "avg_latency_ms": 820,
       "avg_output_tps": 64.2,
       "hourly": [
-        { "hours": 1, "success_rate": 99.5, "request_count": 120 },
+        { "hours": 3, "success_rate": 97.4, "request_count": 360 },
         { "hours": 2, "success_rate": 98.1, "request_count": 240 },
-        { "hours": 3, "success_rate": 97.4, "request_count": 360 }
+        { "hours": 1, "success_rate": 99.5, "request_count": 120 }
       ]
     }
   }
 }
 ```
 
-> `hourly` 按 `hours` 升序排列，对应模型列表卡片上从左到右的三盏状态灯；`request_count` 为该时长内的请求总数，`success_rate` 为成功率（百分比），无请求时 `request_count` 为 0。
+> `hourly` 按 `hours` 降序（从大到小）排列，对应模型列表卡片上从左到右的三盏状态灯（左起第一盏为最长时长）；`request_count` 为该时长内的请求总数，`success_rate` 为成功率（百分比），无请求时 `request_count` 为 0。
 
 ---
 
