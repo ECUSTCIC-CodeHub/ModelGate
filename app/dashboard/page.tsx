@@ -23,7 +23,7 @@ export default function DashboardHomePage() {
     <DashboardShell
       role={dashboard.role}
       title="首页概览"
-      subtitle="查看实时请求量、成功率与 Token 消耗表现。"
+      subtitle={isAdmin || dashboard.summary?.overview_global ? "查看全站实时请求量、成功率与 Token 消耗表现。" : "查看你的实时请求量、成功率与 Token 消耗表现。"}
       right={<DashboardHeaderActions onNavigate={navigate} />}
     >
       <div className="space-y-4 pb-6">

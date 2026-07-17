@@ -55,8 +55,24 @@ export async function GET(request: Request) {
   if ("error" in guard) return guard.error;
 
   const isAdmin = guard.auth.user.role === "admin";
-  const whereSql = isAdmin ? "" : "WHERE user_id = ?";
-  const whereArgs = isAdmin ? [] : [guard.auth.user.id];
+  // 概览统计默认对普通用户展示站点级全貌；仅“密钥数量”按当前用户隔离（可管理的密钥）
+  const keyWhereArgs = isAdmin ? [] : [guard.auth.user.id];
+
+  let logRetentionDays = 0;
+  let topUsersVisible = 0;
+  let overviewGlobal = 0;
+  try {
+    const gatewaySettings = await getGatewaySettings();
+    logRetentionDays = gatewaySettings.log_retention_days;
+    topUsersVisible = gatewaySettings.top_users_visible;
+    overviewGlobal = gatewaySettings.overview_global;
+  } catch {
+    // 读取设置失败不影响首页统计加载；故障安全回退为隐藏（普通用户不显示用户排行榜与站点级概览）
+  }
+
+  const showGlobal = isAdmin || overviewGlobal === 1;
+  const overviewWhereSql = showGlobal ? "" : "WHERE user_id = ?";
+  const overviewWhereArgs = showGlobal ? [] : [guard.auth.user.id];
 
   type SummaryCore = {
     total_requests: number;
@@ -69,7 +85,7 @@ export async function GET(request: Request) {
   };
 
   let summary: SummaryCore;
-  if (isAdmin) {
+  if (showGlobal) {
     const stats = await gatewayDb.queryOne<{
       total_requests: number;
       total_tokens: number;
@@ -103,8 +119,8 @@ export async function GET(request: Request) {
          COALESCE(AVG(CASE WHEN status_code < 400 THEN output_tps END), 0) AS avg_output_tps,
          COALESCE(SUM(CASE WHEN route_attempts > 1 THEN 1 ELSE 0 END), 0) AS retry_requests
        FROM logs
-       ${whereSql}`,
-      whereArgs,
+       ${overviewWhereSql}`,
+      overviewWhereArgs,
     );
     summary = {
       total_requests: row?.total_requests ?? 0,
@@ -117,17 +133,19 @@ export async function GET(request: Request) {
     };
   }
 
-  const activeUserData = isAdmin
-    ? await gatewayDb.queryOne<{ active_users: number }>(
+  const activeUsers = showGlobal
+    ? (await gatewayDb.queryOne<{ active_users: number }>(
         `SELECT COUNT(DISTINCT user_id) AS active_users
          FROM logs`,
-      )
-    : null;
-  const activeUsers = isAdmin ? activeUserData?.active_users ?? 0 : 1;
+      ))?.active_users ?? 0
+    : 1;
 
-  const keyData = await (isAdmin
-    ? gatewayDb.queryOne<{ total_keys: number }>("SELECT COUNT(*) AS total_keys FROM `keys` WHERE deleted_at IS NULL")
-    : gatewayDb.queryOne<{ total_keys: number }>("SELECT COUNT(*) AS total_keys FROM `keys` WHERE user_id = ? AND deleted_at IS NULL", [guard.auth.user.id]));
+  const keyData = await gatewayDb.queryOne<{ total_keys: number }>(
+    isAdmin
+      ? "SELECT COUNT(*) AS total_keys FROM `keys` WHERE deleted_at IS NULL"
+      : "SELECT COUNT(*) AS total_keys FROM `keys` WHERE user_id = ? AND deleted_at IS NULL",
+    keyWhereArgs,
+  );
 
   const isMysql = await gatewayDb.getDriver() === "mysql";
   const hourBucketExpr = isMysql
@@ -149,10 +167,10 @@ export async function GET(request: Request) {
          ${hourBucketExpr} AS hour_bucket,
          COALESCE(SUM(total_tokens), 0) AS tokens
        FROM logs
-       ${whereSql ? `${whereSql} AND` : "WHERE"} created_at >= ${hoursAgo(23)}
+       ${overviewWhereSql ? `${overviewWhereSql} AND` : "WHERE"} created_at >= ${hoursAgo(23)}
        GROUP BY hour_bucket
        ORDER BY hour_bucket ASC`,
-      whereArgs,
+      overviewWhereArgs,
     );
 
   const shanghaiBucketFmt = new Intl.DateTimeFormat("en-GB", {
@@ -194,16 +212,14 @@ export async function GET(request: Request) {
          COUNT(*) AS request_count,
          COALESCE(SUM(total_tokens), 0) AS total_tokens
        FROM logs
-       ${whereSql}
+       ${overviewWhereSql}
        GROUP BY model_name
        ORDER BY total_tokens DESC, request_count DESC
        LIMIT 5`,
-      whereArgs,
+      overviewWhereArgs,
     );
 
-  const topChannelWhereSql = isAdmin
-    ? "WHERE l.status_code < 400 AND l.channel_id IS NOT NULL"
-    : "WHERE l.user_id = ? AND l.status_code < 400 AND l.channel_id IS NOT NULL";
+  const topChannelWhereSql = `${overviewWhereSql ? `${overviewWhereSql} AND` : "WHERE"} l.status_code < 400 AND l.channel_id IS NOT NULL`;
 
   const topChannels = await gatewayDb
     .query(
@@ -217,18 +233,8 @@ export async function GET(request: Request) {
        GROUP BY channel_name
        ORDER BY total_tokens DESC, request_count DESC
        LIMIT 5`,
-      whereArgs,
+      overviewWhereArgs,
     );
-
-  let logRetentionDays = 0;
-  let topUsersVisible = 0;
-  try {
-    const gatewaySettings = await getGatewaySettings();
-    logRetentionDays = gatewaySettings.log_retention_days;
-    topUsersVisible = gatewaySettings.top_users_visible;
-  } catch {
-    // 读取设置失败不影响首页统计加载；故障安全默认对普通用户隐藏用户排行榜，避免泄露其他用户数据
-  }
 
   const topUsers = (isAdmin || topUsersVisible === 1)
     ? await gatewayDb
@@ -254,29 +260,23 @@ export async function GET(request: Request) {
          ${endMsExpr} AS end_ms,
          latency_ms
        FROM logs
-       ${whereSql ? `${whereSql} AND` : "WHERE"} channel_id IS NOT NULL
+       ${overviewWhereSql ? `${overviewWhereSql} AND` : "WHERE"} channel_id IS NOT NULL
          AND latency_ms IS NOT NULL
          AND latency_ms > 0
          AND created_at >= ${hoursAgo(24)}`,
-      whereArgs,
+      overviewWhereArgs,
     );
 
   const concurrency = estimateConcurrency(concurrencyRows);
   const successRateBase = Math.max(0, (summary.total_requests ?? 0) - (summary.rate_limited_requests ?? 0));
   const successCount = Math.max(0, successRateBase - (summary.failed_requests ?? 0));
 
-  const recentFailedData = await (isAdmin
-    ? gatewayDb.queryOne<{ recent_failed_requests: number }>(
-        `SELECT ${FAILED_REQUESTS_EXPR} AS recent_failed_requests
-         FROM logs
-         WHERE created_at >= ${daysAgo(30)}`,
-      )
-    : gatewayDb.queryOne<{ recent_failed_requests: number }>(
-        `SELECT ${FAILED_REQUESTS_EXPR} AS recent_failed_requests
-         FROM logs
-         WHERE user_id = ? AND created_at >= ${daysAgo(30)}`,
-        [guard.auth.user.id],
-      ));
+  const recentFailedData = await gatewayDb.queryOne<{ recent_failed_requests: number }>(
+    `SELECT ${FAILED_REQUESTS_EXPR} AS recent_failed_requests
+     FROM logs
+     ${overviewWhereSql ? `${overviewWhereSql} AND` : "WHERE"} created_at >= ${daysAgo(30)}`,
+    overviewWhereArgs,
+  );
   const recentFailed = recentFailedData?.recent_failed_requests ?? 0;
 
   return jsonOk({
@@ -298,6 +298,7 @@ export async function GET(request: Request) {
       estimated_avg_concurrency: concurrency.estimated_avg_concurrency,
       log_retention_days: logRetentionDays,
       top_users_visible: topUsersVisible,
+      overview_global: overviewGlobal,
       hourly_tokens: hourlyTokens,
       top_models: topModels,
       top_channels: topChannels,

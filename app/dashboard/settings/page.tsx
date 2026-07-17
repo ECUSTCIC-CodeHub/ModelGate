@@ -27,6 +27,7 @@ import {
   UpstreamSettingsCard,
   WebhookSettingsCard,
   TopUsersVisibilitySettingsCard,
+  OverviewScopeSettingsCard,
 } from "./settings-cards";
 
 function responseData(payload: unknown) {
@@ -76,6 +77,7 @@ export default function AdminSettingsPage() {
   const [statusLight2Hours, setStatusLight2Hours] = useState(2);
   const [statusLight3Hours, setStatusLight3Hours] = useState(3);
   const [topUsersVisible, setTopUsersVisible] = useState(true);
+  const [overviewGlobal, setOverviewGlobal] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const oidcFeatureEnabled = modelGateFeatures.oidc;
@@ -125,6 +127,7 @@ export default function AdminSettingsPage() {
     setStatusLight2Hours(clampStatusLightHours(settings.model_status_light_2_hours, 2));
     setStatusLight3Hours(clampStatusLightHours(settings.model_status_light_3_hours, 3));
     setTopUsersVisible(settings.top_users_visible !== 0);
+    setOverviewGlobal(settings.overview_global !== 0);
   }, [accessGuideNoticeFeatureEnabled, announcementFeatureEnabled, oidcFeatureEnabled, webhookFeatureEnabled, uaRestrictionsFeatureEnabled]);
 
   useEffect(() => {
@@ -181,6 +184,7 @@ export default function AdminSettingsPage() {
         model_status_light_2_hours: statusLight2Hours,
         model_status_light_3_hours: statusLight3Hours,
         top_users_visible: topUsersVisible,
+        overview_global: overviewGlobal,
       };
 
       const response = await authedFetch("/api/admin/settings", {
@@ -325,6 +329,10 @@ export default function AdminSettingsPage() {
           <TopUsersVisibilitySettingsCard
             topUsersVisible={topUsersVisible}
             setTopUsersVisible={setTopUsersVisible}
+          />
+          <OverviewScopeSettingsCard
+            overviewGlobal={overviewGlobal}
+            setOverviewGlobal={setOverviewGlobal}
           />
         </TabsContent>
 

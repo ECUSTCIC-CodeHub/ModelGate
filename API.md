@@ -406,7 +406,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "model_status_light_1_hours": 1,
   "model_status_light_2_hours": 2,
   "model_status_light_3_hours": 3,
-  "top_users_visible": true
+  "top_users_visible": true,
+  "overview_global": true
 }
 ```
 
@@ -443,6 +444,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | model_status_light_2_hours | int | 模型列表成功率状态灯配置项 2 的统计时长（小时，1-168，默认 2） |
 | model_status_light_3_hours | int | 模型列表成功率状态灯配置项 3 的统计时长（小时，1-168，默认 3） |
 | top_users_visible | boolean | 是否允许普通用户在首页查看 Top 用户排行（默认 true）；管理员始终可见 |
+| overview_global | boolean | 是否允许普通用户在首页概览查看全局统计（默认 true）；关闭后普通用户只看自己的统计，管理员始终看全局 |
 
 > 精简版固定保留账号密码登录；返回时会隐藏 OIDC 配置、公告内容、公告展示条数、接入指南通知和 Webhook 密钥，更新时忽略 `oidc_*`、`announcement_content`、`announcement_display_count`、`access_guide_notice` 与 `webhook_secret` 字段。
 
@@ -1820,7 +1822,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 ### GET /api/dashboard/summary
 
-获取仪表盘统计数据。管理员看全局统计，普通用户看自己的统计。
+获取仪表盘统计数据。普通用户首页概览的数据范围由 `overview_global` 控制：开启时为站点级全局全貌，关闭时仅展示当前用户自己的统计；管理员始终看全局。仅密钥数量为当前用户可管理数量。Top 用户是否可见由 `top_users_visible` 控制。
 
 **认证:** 用户
 
@@ -1841,6 +1843,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
     "estimated_peak_concurrency": 10,
     "estimated_avg_concurrency": 3,
     "top_users_visible": 1,
+    "overview_global": 1,
     "hourly_tokens": [
       { "hour": "2026-05-08 00:00:00", "tokens": 1234 }
     ],
@@ -1863,13 +1866,14 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | total_tokens | 总 Token 消耗 |
 | failed_requests | 失败请求数（不含 429 限流） |
 | rate_limited_requests | 限流请求数 |
-| total_keys | 密钥数量 |
-| active_users | 活跃用户数（普通用户始终为 1）。窗口随日志保留天数变化：未设置保留天数时为累计去重用户，设置后仅统计保留窗口内的去重用户 |
+| total_keys | 密钥数量（当前用户可管理，普通用户只看自己的密钥） |
+| active_users | 活跃用户数（站点级，所有角色一致）。窗口随日志保留天数变化：未设置保留天数时为累计去重用户，设置后仅统计保留窗口内的去重用户 |
 | avg_latency_ms | 平均响应延迟。窗口同上：未设置保留天数时为全部请求均值，设置后为保留窗口内均值 |
 | avg_output_tps | 平均输出速度（token/s）。窗口同上 |
 | success_rate | 成功率（百分比） |
 | log_retention_days | 当前日志保留天数（0 表示不删除）。前端据此把“活跃用户 / 平均延迟 / 平均输出速度 / 近 N 天失败请求”的文案窗口动态显示为保留天数或 30 天 |
 | top_users_visible | 是否允许普通用户查看 Top 用户排行（1 允许 / 0 不允许）；管理员始终可见。普通用户且此项为 0 时，`top_users` 返回空数组 |
+| overview_global | 控制普通用户概览范围（1 全局 / 0 仅自己）；管理员始终为全局。普通用户且此项为 0 时，概览统计按当前用户隔离 |
 | hourly_tokens | 最近 24 小时 Token 趋势 |
 | top_models | Top 5 模型（按 Token 消耗） |
 | top_channels | Top 5 渠道（按 Token 消耗） |
