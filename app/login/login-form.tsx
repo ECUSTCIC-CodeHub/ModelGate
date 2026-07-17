@@ -29,7 +29,7 @@ export function LoginForm({ status }: { status: AuthStatus }) {
   function handleLoginSuccess(data: { access_token: string; refresh_token: string; user: { role: string } }) {
     setSession({ accessToken: data.access_token, refreshToken: data.refresh_token });
     if ("user" in data && data.user) setCachedProfile(data.user as Parameters<typeof setCachedProfile>[0]);
-    window.location.href = (data.user as { role: string }).role === "admin" ? "/dashboard" : "/dashboard/keys";
+    window.location.href = "/dashboard";
   }
 
   async function onSubmit(event: FormEvent) {

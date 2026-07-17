@@ -263,7 +263,7 @@ export async function GET(request: Request) {
   }
 
   const tokens = issueAuthTokens(user);
-  const dashboardUrl = user.role === "admin" ? "/dashboard" : "/dashboard/keys";
+  const dashboardUrl = "/dashboard";
   const res = NextResponse.redirect(`${origin}${dashboardUrl}?oidc_login=1`, 302);
   applyAuthCookies(res, tokens);
   return clearStateCookie(res);
