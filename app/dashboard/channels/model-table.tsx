@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/shared/utils";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { Button } from "@/components/ui/button";
@@ -41,7 +41,47 @@ export function ModelTable({
   onRemove: (id: number) => void;
 }) {
   const [search, setSearch] = useState("");
-  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+
+  function computeDefaultCollapsed(list: ModelWithChannel[]): Set<number> {
+    const byChannel = new Map<number, ModelWithChannel[]>();
+    for (const model of list) {
+      const arr = byChannel.get(model.channel_id);
+      if (arr) arr.push(model);
+      else byChannel.set(model.channel_id, [model]);
+    }
+    const initial = new Set<number>();
+    for (const [channelId, channelModels] of byChannel) {
+      const channelDisabled = channelModels[0]?.channel_enabled === 0;
+      const hasEnabledModel = channelModels.some((m) => m.enabled !== 0);
+      if (channelDisabled || !hasEnabledModel) initial.add(channelId);
+    }
+    return initial;
+  }
+
+  const [collapsed, setCollapsed] = useState<Set<number>>(() => computeDefaultCollapsed(models));
+  const [manualToggled, setManualToggled] = useState<Set<number>>(new Set());
+
+  const modelSignature = useMemo(
+    () => models.map((m) => `${m.channel_id}:${m.channel_enabled}:${m.enabled}`).join("|"),
+    [models],
+  );
+
+  useEffect(() => {
+    const defaults = computeDefaultCollapsed(models);
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      for (const model of models) {
+        const id = model.channel_id;
+        if (manualToggled.has(id)) continue;
+        if (defaults.has(id)) next.add(id);
+        else next.delete(id);
+      }
+      // 仅依赖 modelSignature：models/manualToggled 通过闭包取本次 render 最新值，
+      // 避免每次渲染都重算，同时保证数据（渠道禁用/模型启用状态）变化后重算默认折叠
+      if (next.size === prev.size && [...next].every((v) => prev.has(v))) return prev;
+      return next;
+    });
+  }, [modelSignature]); // eslint-disable-line react-hooks/exhaustive-deps
   const [view, setView] = useState<"card" | "list">(() => {
     if (typeof window === "undefined") return "card";
     const saved = localStorage.getItem("modelView");
@@ -81,6 +121,11 @@ export function ModelTable({
       const next = new Set(prev);
       if (next.has(channelId)) next.delete(channelId);
       else next.add(channelId);
+      return next;
+    });
+    setManualToggled((prev) => {
+      const next = new Set(prev);
+      next.add(channelId);
       return next;
     });
   }

@@ -557,6 +557,7 @@ export function useChannelAdmin() {
       ...model,
       channel_name: channel.name,
       channel_weight: channel.weight,
+      channel_enabled: channel.enabled,
     })),
   );
   const selectedChannel = channels.find((item) => item.id === modelForm.channel_id);
