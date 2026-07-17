@@ -77,6 +77,8 @@ export function useChannelAdmin() {
       period_quota_requests: row.period_quota_requests != null ? String(row.period_quota_requests) : "",
       force_include_usage: row.force_include_usage === 1,
       ua_restrictions: row.ua_restrictions ?? "",
+      expires_at: (row.expires_at ?? "").replace(" ", "T").slice(0, 16),
+      time_restrictions: row.time_restrictions ?? "",
     });
     setChannelModels([{ ...initialModelDraft, upstream_protocol: supportedProtocols[0], supported_protocols: [...supportedProtocols] }]);
     setChannelDrawerOpen(true);
@@ -201,6 +203,8 @@ export function useChannelAdmin() {
           timeout: channelForm.timeout,
           force_include_usage: channelForm.force_include_usage,
           ua_restrictions: channelForm.ua_restrictions,
+          expires_at: channelForm.expires_at,
+          time_restrictions: channelForm.time_restrictions,
           ...buildQuotaPayload(channelForm),
           models: draftModels,
         }),
@@ -228,6 +232,8 @@ export function useChannelAdmin() {
       timeout: channelForm.timeout,
       force_include_usage: channelForm.force_include_usage,
       ua_restrictions: channelForm.ua_restrictions,
+      expires_at: channelForm.expires_at,
+      time_restrictions: channelForm.time_restrictions,
       ...buildQuotaPayload(channelForm),
     };
     if (channelEditingCanViewApiKey) updateBody.api_key = channelForm.api_key;

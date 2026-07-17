@@ -4,6 +4,7 @@ import { getGatewaySettings } from "@/lib/core/settings";
 import { makeModelRuntimeKey, scoreChannel } from "@/lib/gateway/channel-runtime";
 import { parseSupportedProtocols, type GatewayProtocol } from "@/lib/gateway/protocols";
 import { checkScopedUaRestrictions, type UaRestrictionMatch } from "@/lib/gateway/ua-restrictions";
+import { isChannelExpired, isChannelTimeAllowed } from "@/lib/gateway/channel-time";
 
 export type RoutedModel = {
   model: DbModel;
@@ -60,9 +61,11 @@ type CandidateRow = {
   channel_deleted_at: string | null;
   channel_force_include_usage: number;
   channel_ua_restrictions: string;
+  channel_expires_at: string | null;
+  channel_time_restrictions: string;
 };
 
-const LIST_ENABLED_ALIASES_SQL = `SELECT DISTINCT m.alias
+const LIST_ENABLED_ALIASES_SQL = `SELECT DISTINCT m.alias, c.expires_at, c.time_restrictions
    FROM models m
    JOIN channels c ON c.id = m.channel_id
    WHERE m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL AND c.deleted_at IS NULL AND m.alias != '*'
@@ -116,13 +119,18 @@ const LIST_MODEL_ROUTES_SQL = `SELECT
       c.created_at as channel_created_at,
       c.deleted_at as channel_deleted_at,
       c.force_include_usage as channel_force_include_usage,
-      c.ua_restrictions as channel_ua_restrictions
+      c.ua_restrictions as channel_ua_restrictions,
+      c.expires_at as channel_expires_at,
+      c.time_restrictions as channel_time_restrictions
    FROM models m
    JOIN channels c ON c.id = m.channel_id
    WHERE m.alias = ? AND m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL AND c.deleted_at IS NULL`;
 
 export async function listEnabledAliases() {
-  return gatewayDb.query<{ alias: string }>(LIST_ENABLED_ALIASES_SQL);
+  const rows = await gatewayDb.query<{ alias: string; expires_at: string | null; time_restrictions: string }>(LIST_ENABLED_ALIASES_SQL);
+  return rows
+    .filter((row) => !isChannelExpired(row.expires_at) && isChannelTimeAllowed(row.time_restrictions))
+    .map((row) => ({ alias: row.alias }));
 }
 
 function effectiveMaxConcurrency(channelMax: number, modelMax: number): number {
@@ -190,6 +198,8 @@ function mapRowToRoute(row: CandidateRow, inboundProtocol?: GatewayProtocol): Ro
       deleted_at: row.channel_deleted_at,
       force_include_usage: row.channel_force_include_usage ?? 1,
       ua_restrictions: row.channel_ua_restrictions ?? "",
+      expires_at: row.channel_expires_at ?? null,
+      time_restrictions: row.channel_time_restrictions ?? "",
     },
     effective_upstream_protocol: effectiveUpstreamProtocol,
   };
@@ -227,6 +237,8 @@ export async function listModelRoutes(alias: string, options?: { excludeChannelI
       const scoped = checkScopedUaRestrictions(userAgent, row.channel_ua_restrictions, row.model_ua_restrictions);
       if (scoped.matched && !scoped.allowed) return false;
     }
+    if (isChannelExpired(row.channel_expires_at)) return false;
+    if (!isChannelTimeAllowed(row.channel_time_restrictions)) return false;
     return true;
   });
 

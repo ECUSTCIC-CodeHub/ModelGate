@@ -21,7 +21,9 @@ CREATE TABLE IF NOT EXISTS channels (
   period_reset_at DATETIME,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   deleted_at DATETIME,
-  force_include_usage TINYINT(1) DEFAULT 1
+  force_include_usage TINYINT(1) DEFAULT 1,
+  expires_at DATETIME DEFAULT NULL,
+  time_restrictions TEXT DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS models (

@@ -10,7 +10,9 @@ CREATE TABLE IF NOT EXISTS channels (
   max_concurrency INTEGER DEFAULT 64,
   timeout INTEGER DEFAULT 60,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  deleted_at DATETIME
+  deleted_at DATETIME,
+  expires_at DATETIME DEFAULT NULL,
+  time_restrictions TEXT DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS models (

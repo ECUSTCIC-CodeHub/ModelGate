@@ -1332,6 +1332,8 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | user_agent | string | 否 | "" | 渠道级上游 User-Agent，留空时透传客户端 UA 或使用协议默认值 |
 | proxy_url | string | 否 | "" | 渠道级上游 HTTP(S) 代理地址，留空表示直连；支持 `http://` / `https://`，可在 URL 中携带代理认证信息 |
 | ua_restrictions | string | 否 | "" | 渠道级 User-Agent 限制规则 JSON 数组，留空表示不限制（完整版功能，最长 20000 字符） |
+| expires_at | string\|null | 否 | null | 过期时间（本地 datetime，如 `2026-08-01T00:00`），null 或留空表示永不过期；到达该时间后渠道在路由中自动不可用，管理员对任意渠道执行操作后，已过期渠道会被彻底禁用并级联禁用其模型 |
+| time_restrictions | string | 否 | "" | 限制时段 JSON 数组，每个元素含 `days`（1-7，周一至周日）、`start`、`end`（HH:MM）；配置后渠道仅在该时段内可用（服务器本地时区），留空表示不限制；`start` 不可等于 `end`，`end` 早于 `start` 表示跨午夜 |
 | weight | int | 否 | 1 | 路由权重 |
 | max_concurrency | int | 否 | 64 | 最大并发数 |
 | timeout | int | 否 | 60 | 超时时间（秒） |
@@ -1377,6 +1379,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 - 启用渠道（`enabled` 由 `false` 变为 `true`）时，该渠道下协议在 `supported_protocols` 范围内的未删除模型同步置为启用；协议不被支持的模型保持禁用。
 - 渠道已处于启用状态时再次更新其他字段，不会改动模型的启用状态。
 - 启用渠道时若已存在使用未被支持协议的启用模型，返回 400「该渠道下存在使用未被保留协议的启用模型」。
+- 管理员对任意渠道执行创建、更新或删除操作后，系统会扫描并彻底禁用所有已到过期时间（`expires_at`）的启用渠道，并级联禁用其模型。
 
 ### DELETE /api/admin/channels/:id
 

@@ -10,6 +10,22 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useResizableColumns, type ColumnWidthDef } from "@/lib/shared/use-resizable-columns";
 import { parseSupportedProtocols, shortProtocolLabel, type Channel } from "./channel-model";
 
+function isExpired(exp?: string | null): boolean {
+  if (!exp) return false;
+  const t = new Date(exp.replace(" ", "T")).getTime();
+  return !Number.isNaN(t) && t <= Date.now();
+}
+
+function hasTimeWindow(tr?: string | null): boolean {
+  if (!tr) return false;
+  try {
+    const arr = JSON.parse(tr);
+    return Array.isArray(arr) && arr.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export function ChannelTable({
   channels,
   onCreate,
@@ -31,7 +47,7 @@ export function ChannelTable({
       { key: "name", defaultWidth: 140, minWidth: 80 },
       { key: "baseUrl", defaultWidth: 140, minWidth: 80 },
       { key: "proxy", defaultWidth: 80, minWidth: 60 },
-      { key: "status", defaultWidth: 80, minWidth: 60 },
+      { key: "status", defaultWidth: 120, minWidth: 100 },
       { key: "protocol", defaultWidth: 160, minWidth: 100 },
       { key: "weight", defaultWidth: 80, minWidth: 60 },
       { key: "concurrency", defaultWidth: 80, minWidth: 60 },
@@ -95,7 +111,15 @@ export function ChannelTable({
                 </Badge>
               </TableCell>
               <TableCell>
-                <Badge variant={row.enabled ? "default" : "secondary"}>{row.enabled ? "启用" : "禁用"}</Badge>
+                <div className="flex flex-col gap-1">
+                  <Badge variant={row.enabled ? "default" : "secondary"}>{row.enabled ? "启用" : "禁用"}</Badge>
+                  {isExpired(row.expires_at) && (
+                    <Badge variant="destructive" title="过期渠道在路由中已不可用，将在管理员下次操作任意渠道后自动禁用">已过期</Badge>
+                  )}
+                  {hasTimeWindow(row.time_restrictions) && (
+                    <Badge variant="outline">限时段</Badge>
+                  )}
+                </div>
               </TableCell>
               <TableCell>
                 <div className="flex flex-wrap gap-1">

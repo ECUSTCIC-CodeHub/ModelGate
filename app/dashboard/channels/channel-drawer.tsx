@@ -16,6 +16,7 @@ import {
 import { ModelDraftCard } from "./model-draft-card";
 import { ChannelQuotaFields } from "./channel-quota-fields";
 import { UaRestrictionsEditor, type UaRestrictionRuleDraft, rulesToJson, jsonToRules } from "@/components/ua-restrictions-editor";
+import { TimeWindowEditor, type TimeWindowDraft, windowsToJson, jsonToWindows } from "@/components/time-window-editor";
 import {
   protocolOptions,
   type ChannelForm,
@@ -187,6 +188,27 @@ export function ChannelDrawer({
               />
               <p className="text-xs text-[var(--color-foreground-muted)]">
                 配置后仅匹配规则的客户端可访问该渠道；留空则不限制。优先级低于全站限制。
+              </p>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>过期时间</Label>
+              <Input
+                type="datetime-local"
+                value={form.expires_at}
+                onChange={(e) => onFormChange({ expires_at: e.target.value })}
+              />
+              <p className="text-xs text-[var(--color-foreground-muted)]">
+                留空表示永不过期。到达该时间后渠道将自动不可用；管理员对任一渠道操作后，过期的渠道会被彻底禁用并级联禁用其模型。
+              </p>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>限制时段</Label>
+              <TimeWindowEditor
+                windows={jsonToWindows(form.time_restrictions)}
+                onChange={(windows: TimeWindowDraft[]) => onFormChange({ time_restrictions: windowsToJson(windows) })}
+              />
+              <p className="text-xs text-[var(--color-foreground-muted)]">
+                配置后渠道仅在这些时段内可用（服务器本地时区）。留空则不限制。
               </p>
             </div>
           </div>

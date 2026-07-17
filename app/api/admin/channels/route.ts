@@ -7,6 +7,8 @@ import { jsonError, jsonOk } from "@/lib/core/http";
 import { GATEWAY_PROTOCOLS, normalizeSupportedProtocols, stringifySupportedProtocols } from "@/lib/gateway/protocols";
 import { isValidProxyUrl, normalizeProxyUrl } from "@/lib/gateway/upstream-proxy";
 import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
+import { toLocalDatetime, validateTimeRestrictions, normalizeTimeRestrictions } from "@/lib/gateway/channel-time";
+import { disableExpiredChannels } from "@/lib/gateway/channel-expiry";
 
 const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
 
@@ -29,6 +31,8 @@ const createSchema = z.object({
   period_quota_requests: z.number().int().min(0).nullable().optional(),
   force_include_usage: z.boolean().optional(),
   ua_restrictions: z.string().max(20000).optional(),
+  expires_at: z.string().max(32).nullable().optional(),
+  time_restrictions: z.string().max(20000).optional(),
   models: z
     .array(
       z.object({
@@ -117,6 +121,21 @@ export async function POST(request: Request) {
     if (!validation.valid) return jsonError(validation.error, 400);
   }
 
+  let timeRestrictions = "";
+  if (parsed.data.time_restrictions !== undefined && parsed.data.time_restrictions.trim() !== "") {
+    const validation = validateTimeRestrictions(parsed.data.time_restrictions);
+    if (!validation.valid) return jsonError(validation.error, 400);
+    timeRestrictions = normalizeTimeRestrictions(validation.windows);
+  }
+
+  let expiresAt: string | null = null;
+  const expiresRaw = parsed.data.expires_at?.trim() ?? "";
+  if (expiresRaw) {
+    const t = new Date(expiresRaw.replace(" ", "T")).getTime();
+    if (Number.isNaN(t)) return jsonError("过期时间格式不正确", 400);
+    expiresAt = toLocalDatetime(new Date(expiresRaw));
+  }
+
   const supportedProtocols = normalizeSupportedProtocols(parsed.data.supported_protocols);
   for (const model of parsed.data.models ?? []) {
     const upstreamProtocol = model.upstream_protocol ?? supportedProtocols[0] ?? "chat_completions";
@@ -129,8 +148,8 @@ export async function POST(request: Request) {
     const channelEnabled = parsed.data.enabled === false ? 0 : 1;
     const result = await tx
       .execute(
-        `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, force_include_usage, ua_restrictions, created_by, api_key_private)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, force_include_usage, ua_restrictions, expires_at, time_restrictions, created_by, api_key_private)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           parsed.data.name,
           parsed.data.base_url,
@@ -149,6 +168,8 @@ export async function POST(request: Request) {
           parsed.data.period_quota_requests ?? null,
           parsed.data.force_include_usage === false ? 0 : 1,
           parsed.data.ua_restrictions?.trim() ?? "",
+          expiresAt,
+          timeRestrictions,
           guard.auth.user.id,
           parsed.data.api_key_private === true ? 1 : 0,
         ],
@@ -181,6 +202,8 @@ export async function POST(request: Request) {
           ],
         );
     }
+
+    await disableExpiredChannels(tx);
 
     return channelId;
   });

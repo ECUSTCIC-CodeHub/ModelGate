@@ -24,6 +24,8 @@ export type DbChannel = {
   deleted_at: string | null;
   force_include_usage: number;
   ua_restrictions: string;
+  expires_at: string | null;
+  time_restrictions: string;
 };
 
 export type ModelQuotaMode = "follow_group" | "bypass_group" | "independent";

@@ -7,6 +7,8 @@ import { jsonError, jsonOk } from "@/lib/core/http";
 import { GATEWAY_PROTOCOLS, normalizeSupportedProtocols, parseSupportedProtocols, stringifySupportedProtocols } from "@/lib/gateway/protocols";
 import { isValidProxyUrl, normalizeProxyUrl } from "@/lib/gateway/upstream-proxy";
 import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
+import { toLocalDatetime, validateTimeRestrictions, normalizeTimeRestrictions } from "@/lib/gateway/channel-time";
+import { disableExpiredChannels } from "@/lib/gateway/channel-expiry";
 
 const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
 
@@ -29,6 +31,8 @@ const updateSchema = z.object({
   period_quota_requests: z.number().int().min(0).nullable().optional(),
   force_include_usage: z.boolean().optional(),
   ua_restrictions: z.string().max(20000).optional(),
+  expires_at: z.string().max(32).nullable().optional(),
+  time_restrictions: z.string().max(20000).optional(),
 });
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -45,8 +49,33 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     if (!validation.valid) return jsonError(validation.error, 400);
   }
 
+  let timeRestrictions: string | null = null;
+  if (parsed.data.time_restrictions !== undefined) {
+    if (parsed.data.time_restrictions.trim() === "") {
+      timeRestrictions = "";
+    } else {
+      const validation = validateTimeRestrictions(parsed.data.time_restrictions);
+      if (!validation.valid) return jsonError(validation.error, 400);
+      timeRestrictions = normalizeTimeRestrictions(validation.windows);
+    }
+  }
+
   const existing = await gatewayDb.queryOne("SELECT * FROM channels WHERE id = ? AND deleted_at IS NULL", [id]);
   if (!existing) return jsonError("渠道不存在", 404);
+
+  let nextExpiresAt: string | null;
+  if (parsed.data.expires_at === undefined) {
+    nextExpiresAt = (existing as { expires_at?: string | null }).expires_at ?? null;
+  } else {
+    const expiresRaw = parsed.data.expires_at.trim();
+    if (expiresRaw) {
+      const t = new Date(expiresRaw.replace(" ", "T")).getTime();
+      if (Number.isNaN(t)) return jsonError("过期时间格式不正确", 400);
+      nextExpiresAt = toLocalDatetime(new Date(expiresRaw));
+    } else {
+      nextExpiresAt = null;
+    }
+  }
   const wasEnabled = (existing as { enabled: number }).enabled === 1;
   const nextProtocols = parsed.data.supported_protocols === undefined
     ? (existing as { supported_protocols: string }).supported_protocols
@@ -110,6 +139,11 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       parsed.data.ua_restrictions === undefined
         ? (existing as { ua_restrictions?: string | null }).ua_restrictions ?? ""
         : parsed.data.ua_restrictions.trim(),
+    expires_at: nextExpiresAt,
+    time_restrictions:
+      timeRestrictions === null
+        ? (existing as { time_restrictions?: string | null }).time_restrictions ?? ""
+        : timeRestrictions,
     enabled: nextEnabled,
   };
 
@@ -122,7 +156,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       .execute(
         `UPDATE channels
          SET name = ?, base_url = ?, api_key = ?, supported_protocols = ?, user_agent = ?, proxy_url = ?, enabled = ?, weight = ?, max_concurrency = ?, timeout = ?,
-             quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, force_include_usage = ?, ua_restrictions = ?, api_key_private = ?, created_by = ?
+             quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, force_include_usage = ?, ua_restrictions = ?, expires_at = ?, time_restrictions = ?, api_key_private = ?, created_by = ?
          WHERE id = ?`,
         [
           (merged as { name: string }).name,
@@ -146,6 +180,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
               ? 1
               : 0,
           (merged as { ua_restrictions: string }).ua_restrictions,
+          (merged as { expires_at: string | null }).expires_at ?? null,
+          (merged as { time_restrictions: string }).time_restrictions,
           nextPrivate,
           nextCreatedBy,
           id,
@@ -163,6 +199,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           [id, ...nextProtocolList],
         );
     }
+
+    await disableExpiredChannels(tx);
   });
 
   const row = await gatewayDb.queryOne("SELECT * FROM channels WHERE id = ? AND deleted_at IS NULL", [id]);
@@ -196,6 +234,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
   await gatewayDb.transaction(async (tx) => {
     await tx.execute("UPDATE models SET enabled = 0, deleted_at = CURRENT_TIMESTAMP WHERE channel_id = ? AND deleted_at IS NULL", [id]);
     await tx.execute("UPDATE channels SET enabled = 0, deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL", [id]);
+    await disableExpiredChannels(tx);
   });
   return jsonOk({ ok: true, message: "渠道删除成功。" });
 }

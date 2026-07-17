@@ -314,6 +314,8 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("channels", "ua_restrictions", "ua_restrictions TEXT DEFAULT ''");
   await db.ensureColumn("channels", "created_by", "created_by INTEGER REFERENCES users(id)");
   await db.ensureColumn("channels", "api_key_private", "api_key_private INTEGER DEFAULT 0");
+  await db.ensureColumn("channels", "expires_at", "expires_at DATETIME DEFAULT NULL");
+  await db.ensureColumn("channels", "time_restrictions", "time_restrictions TEXT DEFAULT NULL");
   await db.ensureColumn("models", "deleted_at", "deleted_at DATETIME");
   await db.ensureColumn("models", "is_public", "is_public INTEGER DEFAULT 1");
   await db.ensureColumn("models", "upstream_protocol", `upstream_protocol TEXT DEFAULT 'chat_completions'`);
@@ -374,7 +376,7 @@ async function normalizeMysqlDatetimes(db: DatabaseAdapter) {
     { table: "logs", columns: ["created_at"] },
     { table: "users", columns: ["created_at", "deleted_at", "period_reset_at"] },
     { table: "keys", columns: ["created_at", "deleted_at"] },
-    { table: "channels", columns: ["created_at", "deleted_at", "period_reset_at"] },
+    { table: "channels", columns: ["created_at", "deleted_at", "period_reset_at", "expires_at"] },
     { table: "models", columns: ["created_at", "deleted_at", "period_reset_at"] },
     { table: "groups", columns: ["created_at", "deleted_at"] },
     { table: "settings", columns: ["updated_at"] },

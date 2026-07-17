@@ -99,6 +99,8 @@ export type Channel = {
   period_quota_requests: number | null;
   force_include_usage: number;
   ua_restrictions: string;
+  expires_at: string | null;
+  time_restrictions: string;
   created_by?: number | null;
   created_by_username?: string | null;
   api_key_private?: number | null;
@@ -141,6 +143,8 @@ export type ChannelForm = {
   period_quota_requests: string;
   force_include_usage: boolean;
   ua_restrictions: string;
+  expires_at: string;
+  time_restrictions: string;
 };
 
 export type ModelForm = {
@@ -196,6 +200,8 @@ export const initialChannelForm: ChannelForm = {
   period_quota_requests: "",
   force_include_usage: true,
   ua_restrictions: "",
+  expires_at: "",
+  time_restrictions: "",
 };
 
 export const initialModelDraft: ChannelModelDraft = {
