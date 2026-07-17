@@ -72,6 +72,9 @@ export function ModelCard({
         {model.copilot_compatibility ? (
           <Badge variant="default">Copilot 兼容</Badge>
         ) : null}
+        {model.supports_vision ? (
+          <Badge variant="default">识图</Badge>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap gap-1">

@@ -59,9 +59,14 @@ export function ModelListRow({
         <Badge variant={model.is_public ? "default" : "secondary"}>{model.is_public ? "公开" : "白名单"}</Badge>
       </TableCell>
       <TableCell>
-        {model.copilot_compatibility ? (
-          <Badge variant="default">Copilot 兼容</Badge>
-        ) : null}
+        <div className="flex flex-wrap gap-1">
+          {model.copilot_compatibility ? (
+            <Badge variant="default">Copilot 兼容</Badge>
+          ) : null}
+          {model.supports_vision ? (
+            <Badge variant="default">识图</Badge>
+          ) : null}
+        </div>
       </TableCell>
       <TableCell className="whitespace-nowrap">{model.weight}x</TableCell>
       <TableCell className="whitespace-nowrap text-sm text-[var(--color-foreground-secondary)]">

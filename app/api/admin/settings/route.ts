@@ -15,6 +15,8 @@ const schema = z.object({
   upstream_retry_same_channel: z.boolean(),
   upstream_circuit_breaker_enabled: z.boolean(),
   upstream_strict_priority: z.boolean(),
+  vision_fallback_enabled: z.boolean().optional(),
+  vision_fallback_alias: z.string().max(255).optional(),
   oidc_enabled: z.boolean().optional(),
   oidc_issuer_url: z.string().optional(),
   oidc_client_id: z.string().optional(),

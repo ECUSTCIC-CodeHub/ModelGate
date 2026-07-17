@@ -4,18 +4,19 @@ import { checkChannelQuota, appendChannelQuotaHeaders } from "@/lib/gateway/chan
 import { insertChatLog } from "@/lib/gateway/chat-log";
 import { jsonError } from "@/lib/core/http";
 import { checkModelQuota, appendModelQuotaHeaders } from "@/lib/gateway/model-quota";
-import { resolveAccessibleModelAlias } from "@/lib/gateway/model-access";
+import { resolveAccessibleModelAlias, canUserAccessModelAlias } from "@/lib/gateway/model-access";
 import { getGatewayProtocolAdapter, type GatewayProtocolAdapter } from "@/lib/gateway/protocol-adapters";
 import type { ResponseAdapterOptions } from "@/lib/gateway/protocol-adapters/intermediate";
 import { createTransformedStream } from "@/lib/gateway/protocol-adapters/streaming";
 import { appendQuotaHeaders, checkQuota } from "@/lib/gateway/quota";
 import { createQueuedUpstreamResponse, normalizeUserAgent } from "@/lib/gateway/queued-upstream-response";
 import { checkUserRateLimit } from "@/lib/gateway/ratelimit";
-import { selectModelRoute, findUaDenyMatchForAlias, type RoutedModel } from "@/lib/gateway/router";
+import { selectModelRoute, findUaDenyMatchForAlias, findVisionFallbackRoute, type RoutedModel } from "@/lib/gateway/router";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { checkUserAgentRestrictions, parseUaRestrictions, type UaRestrictionMatch } from "@/lib/gateway/ua-restrictions";
 import { isFeatureEnabled } from "@/lib/core/features";
 import { resolveClientIp } from "@/lib/core/client-ip";
+import { requestContainsImage } from "@/lib/gateway/normalized-message/detect-image";
 import { resolveTokenUsage, tokenUsageMetadata } from "@/lib/gateway/token-usage";
 import { buildErrorResponseBody, parseUpstreamError } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
@@ -130,8 +131,29 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     return jsonError("模型别名不存在或已禁用", 404);
   }
   const resolvedAlias = resolved.alias;
+  const settings = await getGatewaySettings();
 
-  const existingRoute = await selectModelRoute(resolvedAlias, {
+  let effectiveAlias = resolvedAlias;
+  if (settings.vision_fallback_enabled === 1 && requestContainsImage(body, inboundProtocol)) {
+    const sourceRoute = await selectModelRoute(resolvedAlias, {
+      protocol: inboundProtocol,
+      allowedChannelIds,
+      userAgent: uaEnabled ? clientUserAgent : undefined,
+    });
+    if (sourceRoute && sourceRoute.model.supports_vision !== 1) {
+      const visionRoute = await findVisionFallbackRoute({
+        preferredAlias: settings.vision_fallback_alias,
+        protocol: inboundProtocol,
+        allowedChannelIds,
+        userAgent: uaEnabled ? clientUserAgent : undefined,
+      });
+      if (visionRoute && (auth.user.role === "admin" || await canUserAccessModelAlias(auth.user, visionRoute.model.alias))) {
+        effectiveAlias = visionRoute.model.alias;
+      }
+    }
+  }
+
+  const existingRoute = await selectModelRoute(effectiveAlias, {
     protocol: inboundProtocol,
     allowedChannelIds,
     userAgent: uaEnabled ? clientUserAgent : undefined,
@@ -208,7 +230,6 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     return resp;
   };
 
-  const settings = await getGatewaySettings();
   const retryEnabled = settings.upstream_retry_enabled === 1;
   const maxRouteAttempts = retryEnabled ? Math.max(1, settings.upstream_retry_max_attempts) : 1;
   const stream = inboundAdapter.getStreamFlag(body);
@@ -247,7 +268,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   };
 
   const picked = await requestUpstreamWithFallback({
-    resolvedAlias,
+    resolvedAlias: effectiveAlias,
     inboundProtocol,
     maxRouteAttempts,
     sameChannelRetry: settings.upstream_retry_same_channel === 1,

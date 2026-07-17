@@ -311,6 +311,14 @@ export function ModelDrawer({
 
               <div className="flex items-center justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
                 <div>
+                  <p className="text-sm font-medium text-[var(--color-foreground)]">支持识图</p>
+                  <p className="text-xs text-[var(--color-foreground-muted)]">标记该模型可接受图片输入；上游重试与图片自动路由会优先选择已标记的模型。</p>
+                </div>
+                <Checkbox checked={form.supports_vision} onCheckedChange={(checked) => onFormChange({ supports_vision: checked === true })} />
+              </div>
+
+              <div className="flex items-center justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+                <div>
                   <p className="text-sm font-medium text-[var(--color-foreground)]">公开模型</p>
                   <p className="text-xs text-[var(--color-foreground-muted)]">关闭后仅被授权用户可以访问该 alias。</p>
                 </div>

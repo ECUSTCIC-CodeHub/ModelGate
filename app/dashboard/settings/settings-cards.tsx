@@ -12,6 +12,7 @@ export { ModelStatusLightSettingsCard } from "./model-status-light-settings-card
 export { OidcSettingsCard } from "./oidc-settings-card";
 export { SaveSettingsCard } from "./save-settings-card";
 export { UpstreamSettingsCard } from "./upstream-settings-card";
+export { VisionFallbackSettingsCard } from "./vision-fallback-settings-card";
 export { UaRestrictionsSettingsCard } from "./ua-restrictions-settings-card";
 export { WebhookSettingsCard } from "./webhook-settings-card";
 export { TopUsersVisibilitySettingsCard } from "./top-users-visibility-settings-card";

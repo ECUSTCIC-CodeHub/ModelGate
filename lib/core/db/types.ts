@@ -38,6 +38,7 @@ export type DbModel = {
   upstream_protocol: GatewayProtocol;
   supported_protocols: string;
   copilot_compatibility: number;
+  supports_vision: number;
   is_public: number;
   enabled: number;
   weight: number;

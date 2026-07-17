@@ -407,7 +407,9 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "model_status_light_2_hours": 2,
   "model_status_light_3_hours": 3,
   "top_users_visible": true,
-  "overview_global": true
+  "overview_global": true,
+  "vision_fallback_enabled": false,
+  "vision_fallback_alias": ""
 }
 ```
 
@@ -445,6 +447,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | model_status_light_3_hours | int | 模型列表成功率状态灯配置项 3 的统计时长（小时，1-168，默认 3） |
 | top_users_visible | boolean | 是否允许普通用户在首页查看 Top 用户排行（默认 true）；管理员始终可见 |
 | overview_global | boolean | 是否允许普通用户在首页概览查看全局统计（默认 true）；关闭后普通用户只看自己的统计，管理员始终看全局 |
+| vision_fallback_enabled | boolean | 是否开启「图片自动路由到识图模型」；开启后，用户向未标记支持识图的模型发送图片时，自动改路由到支持识图的模型 |
+| vision_fallback_alias | string | 指定优先使用的识图模型别名（最长 255 字符）；留空时从已启用且标记「支持识图」的模型中自动选择 |
 
 > 精简版固定保留账号密码登录；返回时会隐藏 OIDC 配置、公告内容、公告展示条数、接入指南通知和 Webhook 密钥，更新时忽略 `oidc_*`、`announcement_content`、`announcement_display_count`、`access_guide_notice` 与 `webhook_secret` 字段。
 
@@ -1471,7 +1475,8 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
   "quota_requests": null,
   "quota_period": 86400,
   "period_quota_tokens": 500000,
-  "period_quota_requests": null
+  "period_quota_requests": null,
+  "supports_vision": false
 }
 ```
 
@@ -1483,6 +1488,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | upstream_protocol | enum | 否 | chat_completions | `chat_completions` / `anthropic_messages` / `responses` / `embeddings` / `images`。各协议对应的上游路径：`chat_completions` → `/chat/completions`，`anthropic_messages` → `/messages`，`responses` → `/responses`，`embeddings` → `/embeddings`，`images` → `/images/generations`（`/images/edits` 由 multipart 网关单独处理） |
 | supported_protocols | string[] | 否 | 渠道全部协议 | 模型可用协议，须为渠道 `supported_protocols` 的子集。入站协议在可用协议中时直接透传，否则使用 `upstream_protocol` |
 | copilot_compatibility | bool | 否 | false | GitHub Copilot 兼容模式；开启后会映射 OpenAI 风格 thinking 参数与 vLLM/Qwen thinking 参数，规范化工具调用，并将文本形式的 `<tool_call>` 转换为结构化工具调用 |
+| supports_vision | bool | 否 | false | 标记该模型支持图片（多模态）输入；开启「图片自动路由到识图模型」后，网关会优先将含图片的请求路由到标记此项的模型 |
 | is_public | bool | 否 | true | false 时仅白名单用户可访问 |
 | weight | int | 否 | 1 | 路由权重（越大流量越多） |
 | max_concurrency | int | 否 | 0 | 模型级最大并发数，0 时继承渠道配置；实际生效值为 min(模型并发, 渠道并发) |
@@ -2207,6 +2213,8 @@ OpenAI Chat Completions 兼容端点。
 **响应:** 标准 OpenAI Chat Completion 响应，支持流式输出（`stream: true`）。
 
 > 模型开启 GitHub Copilot 兼容模式后，网关会默认向上游发送 `chat_template_kwargs.enable_thinking = true` 和 `thinking_token_budget = 1024`，保持思考模式；当请求显式携带 OpenAI 风格 `reasoning_effort` 或 `reasoning.effort` 时，会映射为 vLLM/Qwen 使用的 thinking 参数，且用户已传入的 vLLM 原生参数优先生效。同时会规范化工具调用名称和 ID，并将上游误输出为文本的 `<tool_call>` 转换为结构化工具调用，避免 Copilot 客户端停止工具循环。
+
+> 当系统设置开启「图片自动路由到识图模型」且请求 `messages` 包含图片内容（`image_url` / `input_image`）时，若目标模型未标记「支持识图」，网关会自动改路由到支持识图的模型（优先使用设置中指定的别名，否则从已启用且标记「支持识图」的模型中自动挑选），后续沿用现有失败重试与渠道切换机制。
 
 > 流式 Chat Completions 请求转发到上游时，网关会自动附加 `stream_options.include_usage = true`，用于优先记录上游返回的 Token usage 和缓存 Token；上游不返回 usage 时才使用本地分词统计。
 

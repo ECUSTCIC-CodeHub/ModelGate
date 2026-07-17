@@ -41,6 +41,7 @@ const createSchema = z.object({
         upstream_protocol: z.enum(GATEWAY_PROTOCOLS).optional(),
         supported_protocols: z.array(z.enum(GATEWAY_PROTOCOLS)).optional(),
         copilot_compatibility: z.boolean().optional(),
+        supports_vision: z.boolean().optional(),
         is_public: z.boolean().optional(),
         enabled: z.boolean().optional(),
         weight: z.number().int().min(1).optional(),
@@ -67,6 +68,7 @@ export async function GET(request: Request) {
     upstream_protocol: string;
     supported_protocols: string | null;
     copilot_compatibility: number;
+    supports_vision: number;
     is_public: number;
     enabled: number;
     weight: number;
@@ -81,7 +83,7 @@ export async function GET(request: Request) {
     period_quota_requests: number | null;
     ua_restrictions: string;
     created_at: string;
-  }>("SELECT id, alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, ua_restrictions, created_at FROM models WHERE deleted_at IS NULL ORDER BY id DESC");
+  }>("SELECT id, alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, supports_vision, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, ua_restrictions, created_at FROM models WHERE deleted_at IS NULL ORDER BY id DESC");
 
   const grouped = new Map<number, typeof models>();
   for (const model of models) {
@@ -183,8 +185,8 @@ export async function POST(request: Request) {
       const finalModelProtocols = validModelProtocols.length > 0 ? validModelProtocols : [upstreamProtocol];
       await tx
         .execute(
-          `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, supports_vision, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             model.alias,
             model.real_model,
@@ -192,6 +194,7 @@ export async function POST(request: Request) {
             upstreamProtocol,
             stringifySupportedProtocols(finalModelProtocols),
             model.copilot_compatibility === true ? 1 : 0,
+            model.supports_vision === true ? 1 : 0,
             model.is_public === false ? 0 : 1,
             channelEnabled === 1 && model.enabled !== false ? 1 : 0,
             model.weight ?? 1,

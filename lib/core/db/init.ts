@@ -333,6 +333,7 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("models", "period_reset_at", "period_reset_at DATETIME");
   await db.ensureColumn("models", "supported_protocols", "supported_protocols TEXT");
   await db.ensureColumn("models", "copilot_compatibility", "copilot_compatibility INTEGER DEFAULT 0");
+  await db.ensureColumn("models", "supports_vision", "supports_vision INTEGER DEFAULT 0");
   await db.ensureColumn("models", "ua_restrictions", "ua_restrictions TEXT DEFAULT ''");
   await db.ensureColumn("logs", "first_token_latency_ms", "first_token_latency_ms INTEGER");
   await db.ensureColumn("logs", "output_tps", "output_tps REAL");
@@ -471,6 +472,8 @@ async function seedDefaultSettings(db: DatabaseAdapter) {
     ["upstream_retry_max_attempts", "3"],
     ["upstream_retry_same_channel", "0"],
     ["upstream_circuit_breaker_enabled", "1"],
+    ["vision_fallback_enabled", "0"],
+    ["vision_fallback_alias", ""],
     ["ua_restrictions", ""],
     ["log_retention_days", "0"],
     ["oidc_enabled", "0"],

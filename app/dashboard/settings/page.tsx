@@ -25,6 +25,7 @@ import {
   SaveSettingsCard,
   UaRestrictionsSettingsCard,
   UpstreamSettingsCard,
+  VisionFallbackSettingsCard,
   WebhookSettingsCard,
   TopUsersVisibilitySettingsCard,
   OverviewScopeSettingsCard,
@@ -78,6 +79,8 @@ export default function AdminSettingsPage() {
   const [statusLight3Hours, setStatusLight3Hours] = useState(3);
   const [topUsersVisible, setTopUsersVisible] = useState(true);
   const [overviewGlobal, setOverviewGlobal] = useState(true);
+  const [visionFallbackEnabled, setVisionFallbackEnabled] = useState(false);
+  const [visionFallbackAlias, setVisionFallbackAlias] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const oidcFeatureEnabled = modelGateFeatures.oidc;
@@ -128,6 +131,8 @@ export default function AdminSettingsPage() {
     setStatusLight3Hours(clampStatusLightHours(settings.model_status_light_3_hours, 3));
     setTopUsersVisible(settings.top_users_visible !== 0);
     setOverviewGlobal(settings.overview_global !== 0);
+    setVisionFallbackEnabled(settings.vision_fallback_enabled === 1);
+    setVisionFallbackAlias(stringValue(settings.vision_fallback_alias));
   }, [accessGuideNoticeFeatureEnabled, announcementFeatureEnabled, oidcFeatureEnabled, webhookFeatureEnabled, uaRestrictionsFeatureEnabled]);
 
   useEffect(() => {
@@ -185,6 +190,8 @@ export default function AdminSettingsPage() {
         model_status_light_3_hours: statusLight3Hours,
         top_users_visible: topUsersVisible,
         overview_global: overviewGlobal,
+        vision_fallback_enabled: visionFallbackEnabled,
+        vision_fallback_alias: visionFallbackAlias,
       };
 
       const response = await authedFetch("/api/admin/settings", {
@@ -287,6 +294,12 @@ export default function AdminSettingsPage() {
             setUpstreamStrictPriority={setUpstreamStrictPriority}
           />
           <CorsSettingsCard corsEnabled={corsEnabled} setCorsEnabled={setCorsEnabled} />
+          <VisionFallbackSettingsCard
+            visionFallbackEnabled={visionFallbackEnabled}
+            visionFallbackAlias={visionFallbackAlias}
+            setVisionFallbackEnabled={setVisionFallbackEnabled}
+            setVisionFallbackAlias={setVisionFallbackAlias}
+          />
           <ModelStatusLightSettingsCard
             hours1={statusLight1Hours}
             setHours1={setStatusLight1Hours}

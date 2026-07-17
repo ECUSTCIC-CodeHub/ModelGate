@@ -65,6 +65,7 @@ export type ModelRow = {
   upstream_protocol: Protocol;
   supported_protocols: string;
   copilot_compatibility: number;
+  supports_vision: number;
   is_public: number;
   enabled: number;
   weight: number;
@@ -115,6 +116,7 @@ export type ChannelModelDraft = {
   upstream_protocol: Protocol;
   supported_protocols: Protocol[];
   copilot_compatibility: boolean;
+  supports_vision: boolean;
   is_public: boolean;
   weight: number;
   token_multiplier: number;
@@ -154,6 +156,7 @@ export type ModelForm = {
   upstream_protocol: Protocol;
   supported_protocols: Protocol[];
   copilot_compatibility: boolean;
+  supports_vision: boolean;
   is_public: boolean;
   weight: number;
   token_multiplier: number;
@@ -211,6 +214,7 @@ export const initialModelDraft: ChannelModelDraft = {
   upstream_protocol: "chat_completions",
   supported_protocols: ["chat_completions"],
   copilot_compatibility: false,
+  supports_vision: false,
   is_public: true,
   weight: 1,
   token_multiplier: 1,
@@ -227,6 +231,7 @@ export const initialModelForm: ModelForm = {
   upstream_protocol: "chat_completions",
   supported_protocols: ["chat_completions"],
   copilot_compatibility: false,
+  supports_vision: false,
   is_public: true,
   weight: 1,
   token_multiplier: 1,

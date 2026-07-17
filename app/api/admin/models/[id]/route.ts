@@ -18,6 +18,7 @@ const updateSchema = z.object({
   upstream_protocol: z.enum(GATEWAY_PROTOCOLS).optional(),
   supported_protocols: z.array(z.enum(GATEWAY_PROTOCOLS)).optional(),
   copilot_compatibility: z.boolean().optional(),
+  supports_vision: z.boolean().optional(),
   is_public: z.boolean().optional(),
   enabled: z.boolean().optional(),
   weight: z.number().int().min(1).optional(),
@@ -72,6 +73,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         upstream_protocol: GatewayProtocol;
         supported_protocols: string | null;
         copilot_compatibility: number;
+        supports_vision: number;
         is_public: number;
         enabled: number;
         weight: number;
@@ -126,6 +128,12 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         : parsed.data.is_public
           ? 1
           : 0,
+    supports_vision:
+      parsed.data.supports_vision === undefined
+        ? existing.supports_vision ?? 0
+        : parsed.data.supports_vision
+          ? 1
+          : 0,
     ua_restrictions: parsed.data.ua_restrictions === undefined ? existing.ua_restrictions ?? "" : parsed.data.ua_restrictions.trim(),
     enabled: targetEnabled,
   };
@@ -133,10 +141,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   await gatewayDb
     .execute(
       `UPDATE models
-       SET alias = ?, real_model = ?, channel_id = ?, upstream_protocol = ?, supported_protocols = ?, copilot_compatibility = ?, is_public = ?, enabled = ?, weight = ?, token_multiplier = ?, request_multiplier = ?, max_concurrency = ?,
+       SET alias = ?, real_model = ?, channel_id = ?, upstream_protocol = ?, supported_protocols = ?, copilot_compatibility = ?, supports_vision = ?, is_public = ?, enabled = ?, weight = ?, token_multiplier = ?, request_multiplier = ?, max_concurrency = ?,
            quota_mode = ?, quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, ua_restrictions = ?
        WHERE id = ?`,
-      [merged.alias, merged.real_model, merged.channel_id, merged.upstream_protocol, targetSupportedProtocols, parsed.data.copilot_compatibility === true ? 1 : parsed.data.copilot_compatibility === false ? 0 : existing.copilot_compatibility ?? 0, merged.is_public, merged.enabled, merged.weight, merged.token_multiplier, merged.request_multiplier, merged.max_concurrency,
+      [merged.alias, merged.real_model, merged.channel_id, merged.upstream_protocol, targetSupportedProtocols, parsed.data.copilot_compatibility === true ? 1 : parsed.data.copilot_compatibility === false ? 0 : existing.copilot_compatibility ?? 0, merged.supports_vision ?? 0, merged.is_public, merged.enabled, merged.weight, merged.token_multiplier, merged.request_multiplier, merged.max_concurrency,
         merged.quota_mode ?? existing.quota_mode ?? "follow_group",
         merged.quota_tokens ?? existing.quota_tokens ?? null,
         merged.quota_requests ?? existing.quota_requests ?? null,

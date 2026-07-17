@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS models (
   enabled INTEGER DEFAULT 1,
   weight INTEGER DEFAULT 1,
   copilot_compatibility INTEGER DEFAULT 0,
+  supports_vision INTEGER DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   deleted_at DATETIME,
   FOREIGN KEY (channel_id) REFERENCES channels(id)

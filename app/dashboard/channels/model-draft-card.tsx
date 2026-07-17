@@ -149,6 +149,13 @@ export function ModelDraftCard({
               </div>
               <Checkbox checked={item.copilot_compatibility} onCheckedChange={(checked) => onUpdateDraft(index, { copilot_compatibility: checked === true })} />
             </div>
+            <div className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 md:col-span-2">
+              <div>
+                <p className="text-sm font-medium text-[var(--color-foreground)]">支持识图</p>
+                <p className="text-xs text-[var(--color-foreground-muted)]">标记该模型可接受图片输入。</p>
+              </div>
+              <Checkbox checked={item.supports_vision} onCheckedChange={(checked) => onUpdateDraft(index, { supports_vision: checked === true })} />
+            </div>
             <div className="grid gap-3 md:grid-cols-3">
               <Select value={item.quota_mode} onValueChange={(value) => onUpdateDraft(index, { quota_mode: value as ChannelModelDraft["quota_mode"] })}>
                 <SelectTrigger>

@@ -8,6 +8,7 @@ import { SectionTitle } from "@/components/dashboard/section-title";
 import { useAuthProfile } from "@/components/providers/auth-provider";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -30,6 +31,7 @@ type ChannelMultiplier = {
 type ModelItem = {
   id: string;
   object: "model";
+  supports_vision: boolean;
   token_multiplier: number;
   request_multiplier: number;
   token_multiplier_min: number;
@@ -291,7 +293,10 @@ export default function AvailableModelsPage() {
                       <TableBody>
                         {sorted.map((row) => (
                           <TableRow key={row.id}>
-                            <TableCell className="font-mono text-sm">{row.id}</TableCell>
+                            <TableCell>
+                              <div className="font-mono text-sm">{row.id}</div>
+                              {row.supports_vision ? <Badge variant="default" className="mt-1">识图</Badge> : null}
+                            </TableCell>
                             <TableCell className="text-center">
                               {renderMultiplier(row, "token")}
                             </TableCell>
@@ -352,6 +357,11 @@ export default function AvailableModelsPage() {
                               )}>
                                 请求 {hasRequestRange ? row.request_multiplier_min + "x~" + row.request_multiplier_max + "x" : row.request_multiplier + "x"}
                               </span>
+                              {row.supports_vision ? (
+                                <span className="inline-flex items-center rounded-md border border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] px-2 py-0.5 text-xs font-medium text-[var(--color-accent)]">
+                                  识图
+                                </span>
+                              ) : null}
                             </div>
                             {(() => {
                               const metrics = metricsMap[row.id];

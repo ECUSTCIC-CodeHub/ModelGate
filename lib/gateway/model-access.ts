@@ -55,9 +55,9 @@ const ENABLED_MODEL_ALIAS_SQL = `SELECT 1
      AND c.deleted_at IS NULL
    LIMIT 1`;
 
-const ACCESSIBLE_MODEL_ROWS_SQL = `SELECT m.alias, m.real_model, m.is_public, m.created_at, m.token_multiplier, m.request_multiplier,
-          m.weight AS model_weight,
-          c.id AS channel_id, c.name AS channel_name, c.weight AS channel_weight
+const ACCESSIBLE_MODEL_ROWS_SQL = `SELECT m.alias, m.real_model, m.is_public, m.created_at, m.token_multiplier, m.request_multiplier, m.supports_vision,
+      m.weight AS model_weight,
+      c.id AS channel_id, c.name AS channel_name, c.weight AS channel_weight
    FROM models m
    JOIN channels c ON c.id = m.channel_id
    WHERE m.enabled = 1
@@ -113,6 +113,7 @@ export type AccessibleModelChannel = {
 export type AccessibleModel = {
   alias: string;
   created_at: string | null;
+  supports_vision: number;
   token_multiplier: number;
   request_multiplier: number;
   token_multiplier_min: number;
@@ -129,22 +130,24 @@ export async function listAccessibleModelAliases(user: Pick<DbUser, "role" | "gr
 }
 
 export async function listAccessibleModels(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">): Promise<AccessibleModel[]> {
-  const rows = await gatewayDb.query<{ alias: string; real_model: string; is_public: number; created_at: string | null; token_multiplier: number; request_multiplier: number; model_weight: number; channel_id: number; channel_name: string; channel_weight: number }>(ACCESSIBLE_MODEL_ROWS_SQL);
+  const rows = await gatewayDb.query<{ alias: string; real_model: string; is_public: number; created_at: string | null; token_multiplier: number; request_multiplier: number; supports_vision: number; model_weight: number; channel_id: number; channel_name: string; channel_weight: number }>(ACCESSIBLE_MODEL_ROWS_SQL);
   const allowedChannelIds = await getUserAllowedChannelIds(user);
   const allowedChannelSet = allowedChannelIds ? new Set(allowedChannelIds) : null;
 
-  type Accumulator = { alias: string; created_at: string | null; channels: AccessibleModelChannel[] };
+  type Accumulator = { alias: string; created_at: string | null; supports_vision: number; channels: AccessibleModelChannel[] };
   const visible = new Map<string, Accumulator>();
 
   const processRow = (row: typeof rows[number]) => {
     const tm = row.token_multiplier ?? 1;
     const rm = row.request_multiplier ?? 1;
     const ew = Math.max(1, row.model_weight ?? 1) * Math.max(1, row.channel_weight ?? 1);
+    const sv = row.supports_vision ?? 0;
     const current = visible.get(row.alias);
     if (!current) {
-      visible.set(row.alias, { alias: row.alias, created_at: row.created_at, channels: [{ channel_id: row.channel_id, channel_name: row.channel_name, real_model: row.real_model, token_multiplier: tm, request_multiplier: rm, effective_weight: ew }] });
+      visible.set(row.alias, { alias: row.alias, created_at: row.created_at, supports_vision: sv, channels: [{ channel_id: row.channel_id, channel_name: row.channel_name, real_model: row.real_model, token_multiplier: tm, request_multiplier: rm, effective_weight: ew }] });
     } else {
       if ((row.created_at ?? "") > (current.created_at ?? "")) current.created_at = row.created_at;
+      if (sv > current.supports_vision) current.supports_vision = sv;
       current.channels.push({ channel_id: row.channel_id, channel_name: row.channel_name, real_model: row.real_model, token_multiplier: tm, request_multiplier: rm, effective_weight: ew });
     }
   };
@@ -168,6 +171,7 @@ export async function listAccessibleModels(user: Pick<DbUser, "role" | "group_id
       return {
         alias: item.alias,
         created_at: item.created_at,
+        supports_vision: item.supports_vision,
         token_multiplier: Math.min(...tms),
         request_multiplier: Math.min(...rms),
         token_multiplier_min: Math.min(...tms),

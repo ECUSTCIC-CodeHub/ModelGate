@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS models (
   request_multiplier DOUBLE DEFAULT 1,
   max_concurrency INT DEFAULT 0,
   copilot_compatibility TINYINT(1) DEFAULT 0,
+  supports_vision TINYINT(1) DEFAULT 0,
   quota_mode VARCHAR(32) DEFAULT 'follow_group',
   quota_tokens BIGINT,
   quota_requests BIGINT,

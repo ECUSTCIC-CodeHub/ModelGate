@@ -35,6 +35,7 @@ type CandidateRow = {
   model_period_used_tokens: number;
   model_period_used_requests: number;
   model_period_reset_at: string | null;
+  model_supports_vision: number;
   model_created_at: string;
   model_deleted_at: string | null;
   model_ua_restrictions: string;
@@ -94,6 +95,7 @@ const LIST_MODEL_ROUTES_SQL = `SELECT
       m.period_used_tokens as model_period_used_tokens,
       m.period_used_requests as model_period_used_requests,
       m.period_reset_at as model_period_reset_at,
+      m.supports_vision as model_supports_vision,
       m.created_at as model_created_at,
       m.deleted_at as model_deleted_at,
       m.ua_restrictions as model_ua_restrictions,
@@ -161,6 +163,7 @@ function mapRowToRoute(row: CandidateRow, inboundProtocol?: GatewayProtocol): Ro
       request_multiplier: row.request_multiplier ?? 1,
       max_concurrency: row.model_max_concurrency,
       copilot_compatibility: row.copilot_compatibility ?? 0,
+      supports_vision: row.model_supports_vision ?? 0,
       quota_mode: row.model_quota_mode ?? "follow_group",
       quota_tokens: row.model_quota_tokens,
       quota_requests: row.model_quota_requests,
@@ -274,6 +277,38 @@ export async function listModelRoutes(alias: string, options?: { excludeChannelI
 export async function selectModelRoute(alias: string, options?: { excludeChannelIds?: number[]; protocol?: GatewayProtocol; allowedChannelIds?: number[] | null; userAgent?: string | null }): Promise<RoutedModel | null> {
   const routes = await listModelRoutes(alias, options);
   return routes[0] ?? null;
+}
+
+export type VisionFallbackOptions = {
+  preferredAlias?: string | null;
+  protocol?: GatewayProtocol;
+  allowedChannelIds?: number[] | null;
+  userAgent?: string | null;
+};
+
+/**
+ * 当请求包含图片但目标模型不支持识图时，选择一个支持识图的模型路由。
+ * 优先使用 preferredAlias 指定的别名；否则在所有已启用且支持识图的模型中自动挑选。
+ */
+export async function findVisionFallbackRoute(options: VisionFallbackOptions): Promise<RoutedModel | null> {
+  if (options.preferredAlias && options.preferredAlias.length > 0) {
+    const route = await selectModelRoute(options.preferredAlias, options);
+    if (route && route.model.supports_vision === 1) return route;
+  }
+
+  const aliases = await gatewayDb.query<{ alias: string }>(
+    `SELECT DISTINCT m.alias
+     FROM models m
+     JOIN channels c ON c.id = m.channel_id
+     WHERE m.supports_vision = 1 AND m.enabled = 1 AND m.deleted_at IS NULL AND m.alias != '*'
+       AND c.enabled = 1 AND c.deleted_at IS NULL
+     ORDER BY m.weight DESC, m.id ASC`,
+  );
+  for (const row of aliases) {
+    const route = await selectModelRoute(row.alias, options);
+    if (route && route.model.supports_vision === 1) return route;
+  }
+  return null;
 }
 
 /**
