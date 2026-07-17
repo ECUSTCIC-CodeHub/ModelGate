@@ -23,6 +23,15 @@ import {
 import { useChannelRecords } from "./use-channel-records";
 import { useUpstreamModelPicker } from "./use-upstream-model-picker";
 
+function expiresAtToInputValue(value: unknown): string {
+  if (value instanceof Date) {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}`;
+  }
+  if (typeof value === "string") return value.replace(" ", "T").slice(0, 16);
+  return "";
+}
+
 export function useChannelAdmin() {
   const { toast } = useToast();
   const { channels, error, loadChannels } = useChannelRecords();
@@ -77,7 +86,7 @@ export function useChannelAdmin() {
       period_quota_requests: row.period_quota_requests != null ? String(row.period_quota_requests) : "",
       force_include_usage: row.force_include_usage === 1,
       ua_restrictions: row.ua_restrictions ?? "",
-      expires_at: (row.expires_at ?? "").replace(" ", "T").slice(0, 16),
+      expires_at: expiresAtToInputValue(row.expires_at),
       time_restrictions: row.time_restrictions ?? "",
     });
     setChannelModels([{ ...initialModelDraft, upstream_protocol: supportedProtocols[0], supported_protocols: [...supportedProtocols] }]);

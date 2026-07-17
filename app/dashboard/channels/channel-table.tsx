@@ -10,9 +10,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useResizableColumns, type ColumnWidthDef } from "@/lib/shared/use-resizable-columns";
 import { parseSupportedProtocols, shortProtocolLabel, type Channel } from "./channel-model";
 
-function isExpired(exp?: string | null): boolean {
+function isExpired(exp?: string | Date | null): boolean {
   if (!exp) return false;
-  const t = new Date(exp.replace(" ", "T")).getTime();
+  const t = (exp instanceof Date ? exp : new Date(exp.replace(" ", "T"))).getTime();
   return !Number.isNaN(t) && t <= Date.now();
 }
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { toShanghaiDatetime } from "@/lib/core/db/datetime";
+import { toLocalDatetime } from "@/lib/gateway/channel-time";
 
 const UTC_TIMESTAMP_KEYS = new Set([
   "created_at",
@@ -9,6 +10,8 @@ const UTC_TIMESTAMP_KEYS = new Set([
   "reset_at",
   "last_used_at",
 ]);
+
+const LOCAL_DATETIME_KEYS = new Set(["expires_at"]);
 
 function toShanghaiIsoString(value: string) {
   const hasTz = /(?:Z|[+-]\d{2}:\d{2})$/.test(value);
@@ -26,6 +29,10 @@ function toShanghaiIsoString(value: string) {
 }
 
 function normalizeTimeFields<T>(input: T): T {
+  if (input instanceof Date) {
+    return toLocalDatetime(input) as T;
+  }
+
   if (Array.isArray(input)) {
     return input.map((item) => normalizeTimeFields(item)) as T;
   }
@@ -44,6 +51,15 @@ function normalizeTimeFields<T>(input: T): T {
         }
         if (typeof value === "string") {
           return [key, toShanghaiIsoString(value)];
+        }
+      }
+      if (LOCAL_DATETIME_KEYS.has(key)) {
+        if (value instanceof Date) {
+          if (Number.isNaN(value.getTime())) return [key, null];
+          return [key, toLocalDatetime(value)];
+        }
+        if (typeof value === "string") {
+          return [key, value];
         }
       }
       return [key, normalizeTimeFields(value)];
