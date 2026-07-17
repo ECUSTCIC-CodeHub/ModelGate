@@ -67,7 +67,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   if (parsed.data.expires_at === undefined) {
     nextExpiresAt = (existing as { expires_at?: string | null }).expires_at ?? null;
   } else {
-    const expiresRaw = parsed.data.expires_at.trim();
+    const expiresRaw = parsed.data.expires_at?.trim() ?? "";
     if (expiresRaw) {
       const t = new Date(expiresRaw.replace(" ", "T")).getTime();
       if (Number.isNaN(t)) return jsonError("过期时间格式不正确", 400);

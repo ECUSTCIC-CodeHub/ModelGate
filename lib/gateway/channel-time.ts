@@ -108,8 +108,7 @@ export function validateTimeRestrictions(input: unknown): { valid: true; windows
   return { valid: true, windows };
 }
 
-// 将任意合法输入归一化为规范 JSON 字符串；空或非法返回 ""，保证落库数据可被路由层稳定解析。
-export function normalizeTimeRestrictions(input: string | null | undefined): string {
-  const windows = parseTimeRestrictions(input);
+// 将已校验的时段窗口归一化为规范 JSON 字符串；空数组返回 ""，保证落库数据可被路由层稳定解析。
+export function normalizeTimeRestrictions(windows: TimeWindow[]): string {
   return windows.length > 0 ? JSON.stringify(windows) : "";
 }
