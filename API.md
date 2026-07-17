@@ -405,7 +405,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "repo_name": "ecustcic/ModelGate",
   "model_status_light_1_hours": 1,
   "model_status_light_2_hours": 2,
-  "model_status_light_3_hours": 3
+  "model_status_light_3_hours": 3,
+  "top_users_visible": true
 }
 ```
 
@@ -441,6 +442,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | model_status_light_1_hours | int | 模型列表成功率状态灯配置项 1 的统计时长（小时，1-168，默认 1） |
 | model_status_light_2_hours | int | 模型列表成功率状态灯配置项 2 的统计时长（小时，1-168，默认 2） |
 | model_status_light_3_hours | int | 模型列表成功率状态灯配置项 3 的统计时长（小时，1-168，默认 3） |
+| top_users_visible | boolean | 是否允许普通用户在首页查看 Top 用户排行（默认 true）；管理员始终可见 |
 
 > 精简版固定保留账号密码登录；返回时会隐藏 OIDC 配置、公告内容、公告展示条数、接入指南通知和 Webhook 密钥，更新时忽略 `oidc_*`、`announcement_content`、`announcement_display_count`、`access_guide_notice` 与 `webhook_secret` 字段。
 
@@ -1826,6 +1828,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
     "success_rate": 99.5,
     "estimated_peak_concurrency": 10,
     "estimated_avg_concurrency": 3,
+    "top_users_visible": 1,
     "hourly_tokens": [
       { "hour": "2026-05-08 00:00:00", "tokens": 1234 }
     ],
@@ -1854,6 +1857,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | avg_output_tps | 平均输出速度（token/s）。窗口同上 |
 | success_rate | 成功率（百分比） |
 | log_retention_days | 当前日志保留天数（0 表示不删除）。前端据此把“活跃用户 / 平均延迟 / 平均输出速度 / 近 N 天失败请求”的文案窗口动态显示为保留天数或 30 天 |
+| top_users_visible | 是否允许普通用户查看 Top 用户排行（1 允许 / 0 不允许）；管理员始终可见。普通用户且此项为 0 时，`top_users` 返回空数组 |
 | hourly_tokens | 最近 24 小时 Token 趋势 |
 | top_models | Top 5 模型（按 Token 消耗） |
 | top_channels | Top 5 渠道（按 Token 消耗） |

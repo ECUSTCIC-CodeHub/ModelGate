@@ -220,21 +220,31 @@ export async function GET(request: Request) {
       whereArgs,
     );
 
-  const topUsers = isAdmin
+  let logRetentionDays = 0;
+  let topUsersVisible = 0;
+  try {
+    const gatewaySettings = await getGatewaySettings();
+    logRetentionDays = gatewaySettings.log_retention_days;
+    topUsersVisible = gatewaySettings.top_users_visible;
+  } catch {
+    // 读取设置失败不影响首页统计加载；故障安全默认对普通用户隐藏用户排行榜，避免泄露其他用户数据
+  }
+
+  const topUsers = (isAdmin || topUsersVisible === 1)
     ? await gatewayDb
       .query(
         `SELECT
-           user_id,
-           COALESCE(u.username, '-') AS username,
-           COUNT(*) AS request_count,
-           ${FAILED_REQUESTS_EXPR} AS failed_requests,
-           COALESCE(SUM(total_tokens), 0) AS total_tokens,
-           COALESCE(AVG(CASE WHEN status_code < 400 THEN latency_ms END), 0) AS avg_latency_ms
-         FROM logs
-         LEFT JOIN users u ON u.id = logs.user_id
-         GROUP BY user_id
-         ORDER BY total_tokens DESC, request_count DESC
-         LIMIT 5`,
+          user_id,
+          COALESCE(u.username, '-') AS username,
+          COUNT(*) AS request_count,
+          ${FAILED_REQUESTS_EXPR} AS failed_requests,
+          COALESCE(SUM(total_tokens), 0) AS total_tokens,
+          COALESCE(AVG(CASE WHEN status_code < 400 THEN latency_ms END), 0) AS avg_latency_ms
+        FROM logs
+        LEFT JOIN users u ON u.id = logs.user_id
+        GROUP BY user_id
+        ORDER BY total_tokens DESC, request_count DESC
+        LIMIT 5`,
       )
     : [];
 
@@ -269,13 +279,6 @@ export async function GET(request: Request) {
       ));
   const recentFailed = recentFailedData?.recent_failed_requests ?? 0;
 
-  let logRetentionDays = 0;
-  try {
-    logRetentionDays = (await getGatewaySettings()).log_retention_days;
-  } catch {
-    // 读取日志保留天数失败不影响首页统计加载，回退到默认不清理
-  }
-
   return jsonOk({
     data: {
       total_requests: summary.total_requests ?? 0,
@@ -294,6 +297,7 @@ export async function GET(request: Request) {
       estimated_peak_concurrency: concurrency.estimated_peak_concurrency,
       estimated_avg_concurrency: concurrency.estimated_avg_concurrency,
       log_retention_days: logRetentionDays,
+      top_users_visible: topUsersVisible,
       hourly_tokens: hourlyTokens,
       top_models: topModels,
       top_channels: topChannels,

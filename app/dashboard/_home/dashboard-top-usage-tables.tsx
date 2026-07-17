@@ -54,16 +54,21 @@ export function DashboardTopUsageTables({ isAdmin, summary }: DashboardTopUsageT
       {
         accessorKey: "username",
         header: "用户",
-        cell: ({ row }) => (
-          <button
-            type="button"
-            className="max-w-40 truncate text-left text-[var(--color-accent)] hover:underline"
-            title={row.original.username}
-            onClick={() => navigate(`/dashboard/logs?user=${encodeURIComponent(row.original.username)}`)}
-          >
-            {row.original.username}
-          </button>
-        ),
+        cell: ({ row }) =>
+          isAdmin ? (
+            <button
+              type="button"
+              className="max-w-40 truncate text-left text-[var(--color-accent)] hover:underline"
+              title={row.original.username}
+              onClick={() => navigate(`/dashboard/logs?user=${encodeURIComponent(row.original.username)}`)}
+            >
+              {row.original.username}
+            </button>
+          ) : (
+            <span className="max-w-40 truncate" title={row.original.username}>
+              {row.original.username}
+            </span>
+          ),
       },
       { accessorKey: "request_count", header: "请求数", cell: ({ row }) => formatNumber(row.original.request_count) },
       {
@@ -74,7 +79,7 @@ export function DashboardTopUsageTables({ isAdmin, summary }: DashboardTopUsageT
       { accessorKey: "failed_requests", header: "失败", cell: ({ row }) => formatNumber(row.original.failed_requests) },
       { accessorKey: "avg_latency_ms", header: "平均延迟(ms)", cell: ({ row }) => formatNumber(Math.round(row.original.avg_latency_ms)) },
     ],
-    [navigate],
+    [navigate, isAdmin],
   );
 
   return (
@@ -111,10 +116,10 @@ export function DashboardTopUsageTables({ isAdmin, summary }: DashboardTopUsageT
         </Card>
       </div>
 
-      {isAdmin ? (
+      {(isAdmin || summary?.top_users_visible === 1) && (
         <Card className="min-w-0">
           <CardHeader>
-            <SectionTitle title="Top 用户" description="按 Token 消耗排序，点击用户名进入日志筛选。" />
+            <SectionTitle title="Top 用户" description="按 Token 消耗排序。" />
           </CardHeader>
           <CardContent className="min-w-0">
             {(summary?.top_users?.length ?? 0) > 0 ? (
@@ -126,7 +131,7 @@ export function DashboardTopUsageTables({ isAdmin, summary }: DashboardTopUsageT
             )}
           </CardContent>
         </Card>
-      ) : null}
+      )}
     </div>
   );
 }

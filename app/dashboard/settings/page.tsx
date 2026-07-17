@@ -26,6 +26,7 @@ import {
   UaRestrictionsSettingsCard,
   UpstreamSettingsCard,
   WebhookSettingsCard,
+  TopUsersVisibilitySettingsCard,
 } from "./settings-cards";
 
 function responseData(payload: unknown) {
@@ -74,6 +75,7 @@ export default function AdminSettingsPage() {
   const [statusLight1Hours, setStatusLight1Hours] = useState(1);
   const [statusLight2Hours, setStatusLight2Hours] = useState(2);
   const [statusLight3Hours, setStatusLight3Hours] = useState(3);
+  const [topUsersVisible, setTopUsersVisible] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const oidcFeatureEnabled = modelGateFeatures.oidc;
@@ -122,6 +124,7 @@ export default function AdminSettingsPage() {
     setStatusLight1Hours(clampStatusLightHours(settings.model_status_light_1_hours, 1));
     setStatusLight2Hours(clampStatusLightHours(settings.model_status_light_2_hours, 2));
     setStatusLight3Hours(clampStatusLightHours(settings.model_status_light_3_hours, 3));
+    setTopUsersVisible(settings.top_users_visible !== 0);
   }, [accessGuideNoticeFeatureEnabled, announcementFeatureEnabled, oidcFeatureEnabled, webhookFeatureEnabled, uaRestrictionsFeatureEnabled]);
 
   useEffect(() => {
@@ -177,6 +180,7 @@ export default function AdminSettingsPage() {
         model_status_light_1_hours: statusLight1Hours,
         model_status_light_2_hours: statusLight2Hours,
         model_status_light_3_hours: statusLight3Hours,
+        top_users_visible: topUsersVisible,
       };
 
       const response = await authedFetch("/api/admin/settings", {
@@ -318,6 +322,10 @@ export default function AdminSettingsPage() {
           ) : null}
           {announcementFeatureEnabled ? <EmailSettingsCard /> : null}
           {announcementFeatureEnabled ? <BroadcastEmailCard /> : null}
+          <TopUsersVisibilitySettingsCard
+            topUsersVisible={topUsersVisible}
+            setTopUsersVisible={setTopUsersVisible}
+          />
         </TabsContent>
 
         <TabsContent value="site" className="space-y-4">

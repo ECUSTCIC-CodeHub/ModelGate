@@ -47,6 +47,7 @@ export type GatewaySettings = {
   model_status_light_1_hours: number;
   model_status_light_2_hours: number;
   model_status_light_3_hours: number;
+  top_users_visible: number;
 };
 
 let cachedGatewaySettings: { value: GatewaySettings; expiresAt: number } | null = null;
@@ -108,6 +109,7 @@ const GATEWAY_KEYS = [
   "model_status_light_1_hours",
   "model_status_light_2_hours",
   "model_status_light_3_hours",
+  "top_users_visible",
 ] as const;
 
 const SETTINGS_SELECT_SQL = `SELECT \`key\`, value FROM settings WHERE \`key\` IN (${GATEWAY_KEYS.map(() => "?").join(", ")})`;
@@ -154,6 +156,7 @@ async function readGatewaySettingsFromDb(): Promise<GatewaySettings> {
     model_status_light_1_hours: clampStatusLightHours(map.get("model_status_light_1_hours"), DEFAULTS.model_status_light_1_hours),
     model_status_light_2_hours: clampStatusLightHours(map.get("model_status_light_2_hours"), DEFAULTS.model_status_light_2_hours),
     model_status_light_3_hours: clampStatusLightHours(map.get("model_status_light_3_hours"), DEFAULTS.model_status_light_3_hours),
+    top_users_visible: map.get("top_users_visible") === "0" ? 0 : 1,
   };
 }
 
@@ -202,6 +205,7 @@ export async function setGatewaySettings(input: {
   model_status_light_1_hours?: number;
   model_status_light_2_hours?: number;
   model_status_light_3_hours?: number;
+  top_users_visible?: boolean;
 }) {
   const values: Record<string, string> = {
     registration_enabled: input.registration_enabled ? "1" : "0",
@@ -239,6 +243,7 @@ export async function setGatewaySettings(input: {
   if (input.model_status_light_1_hours !== undefined) values.model_status_light_1_hours = String(clampStatusLightHours(input.model_status_light_1_hours, DEFAULTS.model_status_light_1_hours));
   if (input.model_status_light_2_hours !== undefined) values.model_status_light_2_hours = String(clampStatusLightHours(input.model_status_light_2_hours, DEFAULTS.model_status_light_2_hours));
   if (input.model_status_light_3_hours !== undefined) values.model_status_light_3_hours = String(clampStatusLightHours(input.model_status_light_3_hours, DEFAULTS.model_status_light_3_hours));
+  if (input.top_users_visible !== undefined) values.top_users_visible = input.top_users_visible ? "1" : "0";
 
   const isMysql = await gatewayDb.getDriver() === "mysql";
   const upsertSql = isMysql
