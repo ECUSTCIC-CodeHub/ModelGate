@@ -63,9 +63,10 @@ export function isChannelTimeAllowed(raw: string | null | undefined, now: Date =
   return false;
 }
 
-export function isChannelExpired(expiresAt: string | null | undefined): boolean {
+export function isChannelExpired(expiresAt: string | Date | null | undefined): boolean {
   if (!expiresAt) return false;
-  const t = new Date(expiresAt.replace(" ", "T")).getTime();
+  const date = expiresAt instanceof Date ? expiresAt : new Date(expiresAt.replace(" ", "T"));
+  const t = date.getTime();
   if (Number.isNaN(t)) return false;
   return t <= Date.now();
 }
