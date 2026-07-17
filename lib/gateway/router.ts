@@ -1,4 +1,5 @@
-import { gatewayDb, type DbChannel, type DbModel } from "@/lib/core/db";
+import { gatewayDb, type DbChannel, type DbModel, type DbUser } from "@/lib/core/db";
+import { canUserAccessModelAlias } from "@/lib/gateway/model-access";
 import type { ModelQuotaMode } from "@/lib/core/db/types";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { makeModelRuntimeKey, scoreChannel } from "@/lib/gateway/channel-runtime";
@@ -284,16 +285,27 @@ export type VisionFallbackOptions = {
   protocol?: GatewayProtocol;
   allowedChannelIds?: number[] | null;
   userAgent?: string | null;
+  user?: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">;
 };
 
 /**
- * 当请求包含图片但目标模型不支持识图时，选择一个支持识图的模型路由。
- * 优先使用 preferredAlias 指定的别名；否则在所有已启用且支持识图的模型中自动挑选。
+ * 校验候选路由对当前用户可见：模型级白名单/公开；渠道级访问已由 selectModelRoute 的 allowedChannelIds 过滤。
+ * 不传 user 时退化为仅做渠道级校验（保持历史行为）。
+ */
+async function isVisionRouteAccessible(user: VisionFallbackOptions["user"], route: RoutedModel): Promise<boolean> {
+  if (!user) return true;
+  if (user.role === "admin") return true;
+  return canUserAccessModelAlias(user, route.model.alias);
+}
+
+/**
+ * 当请求包含图片但目标模型不支持识图时，选择一个支持识图且当前用户可见的模型路由。
+ * 优先使用 preferredAlias 指定的别名；否则在所有已启用且支持识图的模型中按权重自动挑选。
  */
 export async function findVisionFallbackRoute(options: VisionFallbackOptions): Promise<RoutedModel | null> {
   if (options.preferredAlias && options.preferredAlias.length > 0) {
     const route = await selectModelRoute(options.preferredAlias, options);
-    if (route && route.model.supports_vision === 1) return route;
+    if (route && route.model.supports_vision === 1 && await isVisionRouteAccessible(options.user, route)) return route;
   }
 
   const aliases = await gatewayDb.query<{ alias: string }>(
@@ -306,7 +318,7 @@ export async function findVisionFallbackRoute(options: VisionFallbackOptions): P
   );
   for (const row of aliases) {
     const route = await selectModelRoute(row.alias, options);
-    if (route && route.model.supports_vision === 1) return route;
+    if (route && route.model.supports_vision === 1 && await isVisionRouteAccessible(options.user, route)) return route;
   }
   return null;
 }

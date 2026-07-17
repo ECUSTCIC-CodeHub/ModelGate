@@ -72,9 +72,10 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     });
   };
 
+  const settings = await getGatewaySettings();
   const uaEnabled = isFeatureEnabled("uaRestrictions");
   const globalUaRules = uaEnabled
-    ? parseUaRestrictions((await getGatewaySettings()).ua_restrictions)
+    ? parseUaRestrictions(settings.ua_restrictions)
     : [];
   if (globalUaRules.length > 0) {
     const globalMatch = checkUserAgentRestrictions({
@@ -131,7 +132,6 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     return jsonError("模型别名不存在或已禁用", 404);
   }
   const resolvedAlias = resolved.alias;
-  const settings = await getGatewaySettings();
 
   let effectiveAlias = resolvedAlias;
   if (settings.vision_fallback_enabled === 1 && requestContainsImage(body, inboundProtocol)) {
@@ -146,6 +146,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
         protocol: inboundProtocol,
         allowedChannelIds,
         userAgent: uaEnabled ? clientUserAgent : undefined,
+        user: auth.user,
       });
       if (visionRoute && (auth.user.role === "admin" || await canUserAccessModelAlias(auth.user, visionRoute.model.alias))) {
         effectiveAlias = visionRoute.model.alias;
@@ -160,14 +161,14 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   });
   if (!existingRoute) {
     if (uaEnabled) {
-      const nonUaRoute = await selectModelRoute(resolvedAlias, { protocol: inboundProtocol, allowedChannelIds });
+      const nonUaRoute = await selectModelRoute(effectiveAlias, { protocol: inboundProtocol, allowedChannelIds });
       if (nonUaRoute !== null) {
-        const denyMatch = await findUaDenyMatchForAlias(resolvedAlias, clientUserAgent, allowedChannelIds, inboundProtocol);
+        const denyMatch = await findUaDenyMatchForAlias(effectiveAlias, clientUserAgent, allowedChannelIds, inboundProtocol);
         if (denyMatch) return denyByUa(denyMatch, alias);
       }
     }
     if (allowedChannelIds) {
-      const withoutRestriction = await selectModelRoute(resolvedAlias, { protocol: inboundProtocol });
+      const withoutRestriction = await selectModelRoute(effectiveAlias, { protocol: inboundProtocol });
       if (withoutRestriction !== null) {
         logRejected(403, "当前用户组无可用渠道", alias, estimatedTokens);
         return jsonError("当前用户组无可用渠道", 403);

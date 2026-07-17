@@ -61,9 +61,9 @@ export function normalizeAnthropicMessages(messages: unknown, system?: unknown):
 
       if (type === "image") {
         const source = asRecord(content.source);
-        if (typeof source?.data === "string") {
-          textParts.push({ type: "unknown", value: content });
-        } else if (typeof source?.url === "string") {
+        if (typeof source?.data === "string" && source.data.length > 0) {
+          textParts.push({ type: "image", image_url: source.data, detail: null });
+        } else if (typeof source?.url === "string" && source.url.length > 0) {
           textParts.push({ type: "image", image_url: source.url, detail: null });
         }
       }
