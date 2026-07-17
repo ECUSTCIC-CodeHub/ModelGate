@@ -47,7 +47,7 @@ export function ChannelTable({
       { key: "name", defaultWidth: 140, minWidth: 80 },
       { key: "baseUrl", defaultWidth: 140, minWidth: 80 },
       { key: "proxy", defaultWidth: 80, minWidth: 60 },
-      { key: "status", defaultWidth: 120, minWidth: 100 },
+      { key: "status", defaultWidth: 90, minWidth: 72 },
       { key: "protocol", defaultWidth: 160, minWidth: 100 },
       { key: "weight", defaultWidth: 80, minWidth: 60 },
       { key: "concurrency", defaultWidth: 80, minWidth: 60 },
@@ -109,7 +109,7 @@ export function ChannelTable({
                 </Badge>
               </TableCell>
               <TableCell>
-                <div className="flex flex-col gap-1">
+                <div className="flex flex-col items-start gap-1">
                   <Badge variant={row.enabled ? "default" : "secondary"}>{row.enabled ? "启用" : "禁用"}</Badge>
                   {isExpired(row.expires_at) && (
                     <Badge variant="destructive" title="过期渠道在路由中已不可用，将在管理员下次操作任意渠道后自动禁用">已过期</Badge>
