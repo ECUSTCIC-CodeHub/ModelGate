@@ -192,11 +192,22 @@ export function ChannelDrawer({
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label>过期时间</Label>
-              <Input
-                type="datetime-local"
-                value={form.expires_at}
-                onChange={(e) => onFormChange({ expires_at: e.target.value })}
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                  type="datetime-local"
+                  className="flex-1"
+                  value={form.expires_at}
+                  onChange={(e) => onFormChange({ expires_at: e.target.value })}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onFormChange({ expires_at: "" })}
+                  disabled={!form.expires_at}
+                >
+                  清除
+                </Button>
+              </div>
               <p className="text-xs text-[var(--color-foreground-muted)]">
                 留空表示永不过期。到达该时间后渠道将自动不可用；管理员对任一渠道操作后，过期的渠道会被彻底禁用并级联禁用其模型。
               </p>
