@@ -77,11 +77,14 @@ function darkenHex(hex: string, amount: number): string {
   return rgbToHex(result.r, result.g, result.b);
 }
 
+// 0.58 为使橙红 #f97316(亮度约 0.567) 前景转白而设，与边界仅差 0.013，修改须重新验证各预设主题
+const CONTRAST_LIGHTNESS_THRESHOLD = 0.58;
+
 function contrastText(hex: string): string {
   const rgb = hexToRgb(hex);
   if (!rgb) return "#ffffff";
   const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
-  return luminance > 0.5 ? "#111827" : "#ffffff";
+  return luminance > CONTRAST_LIGHTNESS_THRESHOLD ? "#111827" : "#ffffff";
 }
 
 export function isValidHexColor(value: string): boolean {
@@ -133,8 +136,8 @@ export function generateThemeCssVariables(hex: string): ThemeCssVariables {
   const lightHoverStr = `rgb(${lightHover.r}, ${lightHover.g}, ${lightHover.b})`;
   const darkHoverStr = `rgb(${darkHover.r}, ${darkHover.g}, ${darkHover.b})`;
 
-  const lightFg = lum > 0.5 ? "#111827" : "#ffffff";
-  const darkFg = lum > 0.5 ? "#0d1224" : "#f8fafc";
+  const lightFg = lum > CONTRAST_LIGHTNESS_THRESHOLD ? "#111827" : "#ffffff";
+  const darkFg = lum > CONTRAST_LIGHTNESS_THRESHOLD ? "#0d1224" : "#f8fafc";
 
   const muted = `rgba(${r}, ${g}, ${b}, 0.18)`;
   const sidebarHover = `rgba(${r}, ${g}, ${b}, 0.14)`;
