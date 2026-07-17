@@ -52,7 +52,6 @@ export function ChannelTable({
       { key: "weight", defaultWidth: 80, minWidth: 60 },
       { key: "concurrency", defaultWidth: 80, minWidth: 60 },
       { key: "timeout", defaultWidth: 80, minWidth: 60 },
-      { key: "includeUsage", defaultWidth: 100, minWidth: 80 },
       { key: "modelCount", defaultWidth: 80, minWidth: 60 },
       { key: "createdBy", defaultWidth: 100, minWidth: 60 },
     ],
@@ -93,7 +92,6 @@ export function ChannelTable({
             {th("weight", "权重")}
             {th("concurrency", "最大并发")}
             {th("timeout", "超时")}
-            {th("includeUsage", "include_usage")}
             {th("modelCount", "模型数")}
             {th("createdBy", "添加人")}
             <TableHead className="text-right" style={{ width: 360 }}>操作</TableHead>
@@ -131,11 +129,6 @@ export function ChannelTable({
               <TableCell>{row.weight}</TableCell>
               <TableCell>{row.max_concurrency}</TableCell>
               <TableCell>{row.timeout}s</TableCell>
-              <TableCell>
-                <Badge variant={row.force_include_usage === 1 ? "default" : "secondary"}>
-                  {row.force_include_usage === 1 ? "开启" : "关闭"}
-                </Badge>
-              </TableCell>
               <TableCell>{row.models?.length ?? 0}</TableCell>
               <TableCell>{row.created_by_username ?? "-"}</TableCell>
               <TableCell className="space-x-2 text-right">
