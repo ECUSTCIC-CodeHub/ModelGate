@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { ChevronDown, ChevronRight, LayoutGrid, List, Search } from "lucide-react";
+import { useToast } from "@/components/ui/toast";
+import { ChevronDown, ChevronRight, Copy, LayoutGrid, List, Plus, Search } from "lucide-react";
 import type { ModelRow, ModelWithChannel } from "./channel-model";
 import { ModelCard } from "./model-card";
 import { ModelListRow } from "./model-list-row";
@@ -23,6 +24,7 @@ export function ModelTable({
   channelsCount,
   testingModelId,
   onCreate,
+  onAddForChannel,
   onTest,
   onEdit,
   onToggle,
@@ -32,6 +34,7 @@ export function ModelTable({
   channelsCount: number;
   testingModelId: number | null;
   onCreate: () => void;
+  onAddForChannel: (channelId: number) => void;
   onTest: (row: ModelRow) => void;
   onEdit: (row: ModelRow) => void;
   onToggle: (row: ModelRow) => void;
@@ -81,6 +84,26 @@ export function ModelTable({
       return next;
     });
   }
+
+  const { toast } = useToast();
+
+  function copyChannelModels(group: ChannelGroup) {
+    const text = group.models.map((model) => model.alias).join(",");
+    if (!text) {
+      toast({ variant: "info", description: "该渠道下没有可复制的模型。" });
+      return;
+    }
+    const clipboard = navigator.clipboard;
+    if (!clipboard?.writeText) {
+      toast({ variant: "error", description: "当前环境不支持剪贴板复制（需 HTTPS 或 localhost）。" });
+      return;
+    }
+    void clipboard.writeText(text).then(
+      () => toast({ variant: "success", description: `已复制 ${group.models.length} 个模型到剪贴板。` }),
+      () => toast({ variant: "error", description: "复制失败，请检查浏览器剪贴板权限。" }),
+    );
+  }
+
 
   if (models.length === 0) {
     return (
@@ -147,19 +170,41 @@ export function ModelTable({
             const isCollapsed = collapsed.has(group.channelId);
             return (
               <div key={group.channelId} className="rounded-xl border border-[var(--color-border)]">
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-[var(--color-surface-hover)]"
-                  onClick={() => toggleCollapse(group.channelId)}
-                >
-                  {isCollapsed ? (
-                    <ChevronRight className="h-4 w-4 text-[var(--color-foreground-muted)]" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4 text-[var(--color-foreground-muted)]" />
-                  )}
-                  <span className="text-sm font-medium text-[var(--color-foreground)]">{group.channelName}</span>
-                  <span className="text-xs text-[var(--color-foreground-muted)]">{group.models.length} 个模型</span>
-                </button>
+                <div className="flex items-center justify-between gap-2 px-4 py-3 transition-colors hover:bg-[var(--color-surface-hover)]">
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    onClick={() => toggleCollapse(group.channelId)}
+                  >
+                    {isCollapsed ? (
+                      <ChevronRight className="h-4 w-4 shrink-0 text-[var(--color-foreground-muted)]" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 shrink-0 text-[var(--color-foreground-muted)]" />
+                    )}
+                    <span className="truncate text-sm font-medium text-[var(--color-foreground)]">{group.channelName}</span>
+                    <span className="shrink-0 text-xs text-[var(--color-foreground-muted)]">{group.models.length} 个模型</span>
+                  </button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    aria-label={`复制渠道 ${group.channelName} 下全部模型`}
+                    onClick={() => copyChannelModels(group)}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    aria-label={`为渠道 ${group.channelName} 添加模型`}
+                    onClick={() => onAddForChannel(group.channelId)}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
                 {!isCollapsed && (
                   <div className="border-t border-[var(--color-border)]">
                     <div className="overflow-x-auto">
@@ -210,19 +255,41 @@ export function ModelTable({
             const isCollapsed = collapsed.has(group.channelId);
             return (
               <div key={group.channelId} className="rounded-xl border border-[var(--color-border)]">
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-[var(--color-surface-hover)]"
-                  onClick={() => toggleCollapse(group.channelId)}
-                >
-                  {isCollapsed ? (
-                    <ChevronRight className="h-4 w-4 text-[var(--color-foreground-muted)]" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4 text-[var(--color-foreground-muted)]" />
-                  )}
-                  <span className="text-sm font-medium text-[var(--color-foreground)]">{group.channelName}</span>
-                  <span className="text-xs text-[var(--color-foreground-muted)]">{group.models.length} 个模型</span>
-                </button>
+                <div className="flex items-center justify-between gap-2 px-4 py-3 transition-colors hover:bg-[var(--color-surface-hover)]">
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    onClick={() => toggleCollapse(group.channelId)}
+                  >
+                    {isCollapsed ? (
+                      <ChevronRight className="h-4 w-4 shrink-0 text-[var(--color-foreground-muted)]" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 shrink-0 text-[var(--color-foreground-muted)]" />
+                    )}
+                    <span className="truncate text-sm font-medium text-[var(--color-foreground)]">{group.channelName}</span>
+                    <span className="shrink-0 text-xs text-[var(--color-foreground-muted)]">{group.models.length} 个模型</span>
+                  </button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    aria-label={`复制渠道 ${group.channelName} 下全部模型`}
+                    onClick={() => copyChannelModels(group)}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    aria-label={`为渠道 ${group.channelName} 添加模型`}
+                    onClick={() => onAddForChannel(group.channelId)}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
                 {!isCollapsed && (
                   <div className="grid gap-3 border-t border-[var(--color-border)] p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {group.models.map((model) => (

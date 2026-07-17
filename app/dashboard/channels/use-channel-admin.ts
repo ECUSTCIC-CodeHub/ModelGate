@@ -104,6 +104,44 @@ export function useChannelAdmin() {
     setChannelModels((prev) => [...prev, { ...initialModelDraft, upstream_protocol: protocols[0] ?? "chat_completions", supported_protocols: [...protocols] }]);
   }
 
+  function importChannelModelDrafts(names: string[], protocols: Protocol[]) {
+    const trimmed = names.map((name) => name.trim()).filter(Boolean);
+    if (trimmed.length === 0) {
+      toast({ variant: "info", description: "没有可导入的模型名。" });
+      return;
+    }
+    const existing = new Set(channelModels.map((draft) => draft.alias.trim().toLowerCase()).filter(Boolean));
+    const seen = new Set<string>();
+    const added: ChannelModelDraft[] = [];
+    let skipped = 0;
+    for (const name of trimmed) {
+      const key = name.toLowerCase();
+      if (seen.has(key) || existing.has(key)) {
+        skipped += 1;
+        continue;
+      }
+      seen.add(key);
+      added.push({
+        ...initialModelDraft,
+        alias: name,
+        real_model: name,
+        upstream_protocol: protocols[0] ?? "chat_completions",
+        supported_protocols: [...protocols],
+      });
+    }
+    if (added.length === 0) {
+      toast({ variant: "info", description: `全部为重复别名，已跳过 ${skipped} 个，无新增。` });
+      return;
+    }
+    setChannelModels((prev) => {
+      const withoutBlanks = prev.filter((draft) => draft.alias.trim() !== "" || draft.real_model.trim() !== "");
+      return [...withoutBlanks, ...added];
+    });
+    const parts = [`已添加 ${added.length} 个模型`];
+    if (skipped > 0) parts.push(`${skipped} 个重复已跳过`);
+    toast({ variant: "success", description: `${parts.join("，")}。` });
+  }
+
   function removeChannelModelDraft(index: number) {
     setChannelModels((prev) => prev.filter((_, i) => i !== index));
   }
@@ -525,6 +563,7 @@ export function useChannelAdmin() {
     activeDraftProtocols,
     addChannelModelDraft,
     allModels,
+    importChannelModelDrafts,
     channelDrawerOpen,
     channelEditingId,
     channelEditingCanViewApiKey,

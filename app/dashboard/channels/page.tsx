@@ -57,6 +57,7 @@ export default function AdminChannelsPage() {
                   channelsCount={admin.channels.length}
                   testingModelId={admin.testingModelId}
                   onCreate={() => admin.openCreateModel(admin.channels[0]?.id ?? 0)}
+                  onAddForChannel={(id) => admin.openCreateModel(id)}
                   onTest={admin.testModel}
                   onEdit={admin.openEditModel}
                   onToggle={admin.toggleModel}
@@ -86,6 +87,7 @@ export default function AdminChannelsPage() {
         onAddModelDraft={admin.addChannelModelDraft}
         onRemoveModelDraft={admin.removeChannelModelDraft}
         onUpdateModelDraft={admin.updateChannelModelDraft}
+        onImportModelDrafts={admin.importChannelModelDrafts}
       />
 
       <ModelDrawer
@@ -107,6 +109,7 @@ export default function AdminChannelsPage() {
         onAddModelDraft={admin.addChannelModelDraft}
         onRemoveModelDraft={admin.removeChannelModelDraft}
         onUpdateModelDraft={admin.updateChannelModelDraft}
+        onImportModelDrafts={admin.importChannelModelDrafts}
       />
 
       <UpstreamModelPicker

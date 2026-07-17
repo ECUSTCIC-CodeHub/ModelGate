@@ -41,6 +41,7 @@ export function ChannelDrawer({
   onAddModelDraft,
   onRemoveModelDraft,
   onUpdateModelDraft,
+  onImportModelDrafts,
 }: {
   open: boolean;
   editingId: number | null;
@@ -59,6 +60,7 @@ export function ChannelDrawer({
   onAddModelDraft: (protocols: Protocol[]) => void;
   onRemoveModelDraft: (index: number) => void;
   onUpdateModelDraft: (index: number, patch: Partial<ChannelModelDraft>) => void;
+  onImportModelDrafts: (names: string[], protocols: Protocol[]) => void;
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -206,6 +208,7 @@ export function ChannelDrawer({
               onAddDraft={onAddModelDraft}
               onRemoveDraft={onRemoveModelDraft}
               onUpdateDraft={onUpdateModelDraft}
+              onImportDrafts={onImportModelDrafts}
               showAdvancedFields={false}
             />
           ) : null}

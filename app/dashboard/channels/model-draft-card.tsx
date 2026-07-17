@@ -1,6 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/components/ui/toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
@@ -23,6 +26,7 @@ export function ModelDraftCard({
   onAddDraft,
   onRemoveDraft,
   onUpdateDraft,
+  onImportDrafts,
   showAdvancedFields = true,
 }: {
   title: string;
@@ -35,8 +39,22 @@ export function ModelDraftCard({
   onAddDraft: (protocols: Protocol[]) => void;
   onRemoveDraft: (index: number) => void;
   onUpdateDraft: (index: number, patch: Partial<ChannelModelDraft>) => void;
+  onImportDrafts: (names: string[], protocols: Protocol[]) => void;
   showAdvancedFields?: boolean;
 }) {
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const { toast } = useToast();
+
+  function handleImport() {
+    const names = importText.split(/[\s,;，；]+/).map((name) => name.trim()).filter(Boolean);
+    if (names.length === 0) {
+      toast({ variant: "info", description: "没有可导入的模型名。" });
+      return;
+    }
+    onImportDrafts(names, protocols);
+    setImportText("");
+  }
   return (
     <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
       <div className="flex items-center justify-between gap-2">
@@ -54,6 +72,7 @@ export function ModelDraftCard({
           >
             {probing ? "拉取中…" : "从上游拉取"}
           </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => setImportOpen((prev) => !prev)}>批量导入</Button>
           <Button type="button" variant="outline" size="sm" onClick={() => onAddDraft(protocols)}>添加模型</Button>
         </div>
       </div>
@@ -166,6 +185,22 @@ export function ModelDraftCard({
           </div>
         ))}
       </div>
+      {importOpen ? (
+        <div className="space-y-2 rounded-lg border border-[var(--color-border)] p-3">
+          <Label className="text-xs text-[var(--color-foreground-muted)]">批量导入（每行、逗号或分号分隔一个模型名，自动作为别名与真实模型）</Label>
+          <textarea
+            className="min-h-24 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-foreground)] outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-ring)]"
+            value={importText}
+            onChange={(event) => setImportText(event.target.value)}
+            placeholder={"qwen3.6-35b-a3b,gemma-4-e2b-it,hy-mt2"}
+          />
+          <div className="flex gap-2">
+            <Button type="button" size="sm" onClick={handleImport}>解析并添加</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => { setImportOpen(false); setImportText(""); }}>取消</Button>
+          </div>
+          <p className="text-xs text-[var(--color-foreground-muted)]">按逗号、换行、分号或空白自动分割并去重，已存在的别名不会重复添加。</p>
+        </div>
+      ) : null}
     </div>
   );
 }
