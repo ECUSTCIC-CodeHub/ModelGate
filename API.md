@@ -1238,6 +1238,8 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 **认证:** 管理员
 
+> 渠道 `api_key` 默认对所有管理员可见。当渠道开启 `api_key_private`（仅添加人可见）后，`api_key` 仅对添加人（`created_by` 对应的管理员）可见：非添加人调用时 `api_key` 返回 `null` 且 `can_view_api_key: false`，添加人调用时返回真实值且 `can_view_api_key: true`。响应还包含 `can_manage_api_key_privacy`，表示当前管理员是否有权切换该渠道的「仅添加人可见」开关（无添加人渠道任意管理员可切换，有添加人渠道仅添加人可切换）。
+
 **响应 (200):**
 ```json
 {
@@ -1253,6 +1255,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
       "weight": 1,
       "max_concurrency": 64,
       "timeout": 60,
+      "created_by_username": "admin",
       "models": [
         {
           "id": 1,
@@ -1280,6 +1283,8 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 创建渠道，可附带初始模型列表。
 
 **认证:** 管理员
+
+> 渠道创建后自动记录当前管理员为添加人（`created_by`），列表接口返回 `created_by_username`。
 
 **请求体:**
 ```json
@@ -1321,7 +1326,8 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 |:---|:---|:---|:---|:---|
 | name | string | 是 | | 渠道名称 |
 | base_url | string | 是 | | 上游 API 地址 |
-| api_key | string | 是 | | 上游 API Key |
+| api_key | string | 否 | | 上游 API Key |
+| api_key_private | boolean | 否 | false | 是否「仅添加人可见」，开启后 `api_key` 仅添加人可见与修改 |
 | supported_protocols | string[] | 否 | ["chat_completions"] | 支持的协议：`chat_completions` / `anthropic_messages` / `responses` / `embeddings` / `images`。各协议对应的网关端点：`chat_completions` → `/api/v1/chat/completions`，`anthropic_messages` → `/api/v1/messages`，`responses` → `/api/v1/responses`，`embeddings` → `/api/v1/embeddings`，`images` → `/api/v1/images/generations` + `/api/v1/images/edits` |
 | user_agent | string | 否 | "" | 渠道级上游 User-Agent，留空时透传客户端 UA 或使用协议默认值 |
 | proxy_url | string | 否 | "" | 渠道级上游 HTTP(S) 代理地址，留空表示直连；支持 `http://` / `https://`，可在 URL 中携带代理认证信息 |
@@ -1359,6 +1365,9 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 更新渠道，所有字段可选。
 
 **认证:** 管理员
+
+> `api_key_private` 控制渠道「仅添加人可见」：由添加人或无添加人渠道的任意管理员切换；无添加人渠道被首次开启时，操作者自动成为添加人（`created_by`）。开启后仅添加人可查看与修改 `api_key`，非添加人提交的 `api_key` 会被忽略并保留原值；非添加人提交的 `api_key_private` 变更也会被忽略。响应中 `api_key` 遵循「仅添加人可见」规则，并附带 `can_view_api_key`、`can_manage_api_key_privacy`。
+
 
 **请求体:** 与 POST 相同，所有字段均为可选。`force_include_usage` 变更对后续新请求立即生效，不影响已建立的连接。`proxy_url` 传空字符串可清空代理配置。
 

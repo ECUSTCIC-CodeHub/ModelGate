@@ -30,6 +30,8 @@ export function useChannelAdmin() {
 
   const [channelDrawerOpen, setChannelDrawerOpen] = useState(false);
   const [channelEditingId, setChannelEditingId] = useState<number | null>(null);
+  const [channelEditingCanViewApiKey, setChannelEditingCanViewApiKey] = useState(false);
+  const [channelEditingCanManagePrivacy, setChannelEditingCanManagePrivacy] = useState(true);
   const [channelForm, setChannelForm] = useState<ChannelForm>(initialChannelForm);
   const [channelModels, setChannelModels] = useState<ChannelModelDraft[]>([{ ...initialModelDraft }]);
 
@@ -44,6 +46,8 @@ export function useChannelAdmin() {
 
   function openCreateChannel() {
     setChannelEditingId(null);
+    setChannelEditingCanViewApiKey(true);
+    setChannelEditingCanManagePrivacy(true);
     setChannelForm({ ...initialChannelForm });
     setChannelModels([{ ...initialModelDraft, upstream_protocol: initialChannelForm.supported_protocols[0], supported_protocols: [...initialChannelForm.supported_protocols] }]);
     setChannelDrawerOpen(true);
@@ -52,10 +56,13 @@ export function useChannelAdmin() {
   function openEditChannel(row: Channel) {
     const supportedProtocols = parseSupportedProtocols(row.supported_protocols);
     setChannelEditingId(row.id);
+    setChannelEditingCanViewApiKey(row.can_view_api_key === true);
+    setChannelEditingCanManagePrivacy(row.can_manage_api_key_privacy === true);
     setChannelForm({
       name: row.name,
       base_url: row.base_url,
-      api_key: row.api_key ?? "",
+      api_key: row.can_view_api_key ? (row.api_key ?? "") : "",
+      api_key_private: row.api_key_private === 1,
       user_agent: row.user_agent ?? "",
       proxy_url: row.proxy_url ?? "",
       supported_protocols: supportedProtocols,
@@ -147,6 +154,7 @@ export function useChannelAdmin() {
           name: channelForm.name,
           base_url: channelForm.base_url,
           api_key: channelForm.api_key,
+          api_key_private: channelForm.api_key_private,
           user_agent: channelForm.user_agent,
           proxy_url: channelForm.proxy_url,
           supported_protocols: channelForm.supported_protocols,
@@ -171,22 +179,25 @@ export function useChannelAdmin() {
       return;
     }
 
+    const updateBody: Record<string, unknown> = {
+      name: channelForm.name,
+      base_url: channelForm.base_url,
+      user_agent: channelForm.user_agent,
+      proxy_url: channelForm.proxy_url,
+      supported_protocols: channelForm.supported_protocols,
+      weight: channelForm.weight,
+      max_concurrency: channelForm.max_concurrency,
+      timeout: channelForm.timeout,
+      force_include_usage: channelForm.force_include_usage,
+      ua_restrictions: channelForm.ua_restrictions,
+      ...buildQuotaPayload(channelForm),
+    };
+    if (channelEditingCanViewApiKey) updateBody.api_key = channelForm.api_key;
+    if (channelEditingCanManagePrivacy) updateBody.api_key_private = channelForm.api_key_private;
+
     const response = await authedFetch(`/api/admin/channels/${channelEditingId}`, {
       method: "PUT",
-      body: JSON.stringify({
-        name: channelForm.name,
-        base_url: channelForm.base_url,
-        api_key: channelForm.api_key,
-        user_agent: channelForm.user_agent,
-        proxy_url: channelForm.proxy_url,
-        supported_protocols: channelForm.supported_protocols,
-        weight: channelForm.weight,
-        max_concurrency: channelForm.max_concurrency,
-        timeout: channelForm.timeout,
-        force_include_usage: channelForm.force_include_usage,
-        ua_restrictions: channelForm.ua_restrictions,
-        ...buildQuotaPayload(channelForm),
-      }),
+      body: JSON.stringify(updateBody),
     });
     const data = await response.json().catch(() => null);
 
@@ -516,6 +527,8 @@ export function useChannelAdmin() {
     allModels,
     channelDrawerOpen,
     channelEditingId,
+    channelEditingCanViewApiKey,
+    channelEditingCanManagePrivacy,
     channelForm,
     channelModels,
     channels,

@@ -38,12 +38,13 @@ export function ChannelTable({
       { key: "timeout", defaultWidth: 80, minWidth: 60 },
       { key: "includeUsage", defaultWidth: 100, minWidth: 80 },
       { key: "modelCount", defaultWidth: 80, minWidth: 60 },
+      { key: "createdBy", defaultWidth: 100, minWidth: 60 },
     ],
     [],
   );
 
   const { widths, getResizeHandler } = useResizableColumns(colDefs, "channels");
-  const totalMinWidth = colDefs.reduce((sum, c) => sum + c.minWidth, 0) + 360;
+  const totalMinWidth = colDefs.reduce((sum, c) => sum + c.minWidth, 0) + 460;
 
   if (channels.length === 0) {
     return (
@@ -78,6 +79,7 @@ export function ChannelTable({
             {th("timeout", "超时")}
             {th("includeUsage", "include_usage")}
             {th("modelCount", "模型数")}
+            {th("createdBy", "添加人")}
             <TableHead className="text-right" style={{ width: 360 }}>操作</TableHead>
           </TableRow>
         </TableHeader>
@@ -111,6 +113,7 @@ export function ChannelTable({
                 </Badge>
               </TableCell>
               <TableCell>{row.models?.length ?? 0}</TableCell>
+              <TableCell>{row.created_by_username ?? "-"}</TableCell>
               <TableCell className="space-x-2 text-right">
                 <Button size="sm" variant="outline" onClick={() => onEdit(row)}>编辑</Button>
                 <Button size="sm" variant="outline" onClick={() => onToggle(row)}>

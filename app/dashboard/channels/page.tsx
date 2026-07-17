@@ -75,6 +75,8 @@ export default function AdminChannelsPage() {
         modelDrafts={admin.channelModels}
         probingModels={admin.probingModels}
         periodQuotaEnabled={admin.periodQuotaEnabled}
+        canViewApiKey={admin.channelEditingCanViewApiKey}
+        canManagePrivacy={admin.channelEditingCanManagePrivacy}
         dismissBlocked={admin.upstreamPickerOpen}
         onOpenChange={admin.setChannelDrawerOpen}
         onSubmit={admin.submitChannel}

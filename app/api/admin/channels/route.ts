@@ -14,6 +14,7 @@ const createSchema = z.object({
   name: z.string().min(1),
   base_url: z.string().url(),
   api_key: z.string().optional(),
+  api_key_private: z.boolean().optional(),
   supported_protocols: z.array(z.enum(GATEWAY_PROTOCOLS)).min(1).optional(),
   user_agent: z.string().max(500).optional(),
   proxy_url: proxyUrlSchema,
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
   const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
-  const channels = await gatewayDb.query<Record<string, unknown> & { id: number }>("SELECT * FROM channels WHERE deleted_at IS NULL ORDER BY id DESC");
+  const channels = await gatewayDb.query<Record<string, unknown> & { id: number }>("SELECT c.*, u.username AS created_by_username FROM channels c LEFT JOIN users u ON u.id = c.created_by WHERE c.deleted_at IS NULL ORDER BY c.id DESC");
   const models = await gatewayDb
     .query<{
     id: number;
@@ -85,10 +86,21 @@ export async function GET(request: Request) {
     grouped.set(model.channel_id, list);
   }
 
-  const rows = channels.map((channel) => ({
-    ...channel,
-    models: grouped.get(channel.id) ?? [],
-  }));
+  const currentUserId = guard.auth.user.id;
+  const rows = channels.map((channel) => {
+    const createdBy = (channel as { created_by?: number | null }).created_by ?? null;
+    const isPrivate = (channel as { api_key_private?: number | null }).api_key_private === 1;
+    const isOwner = createdBy != null && createdBy === currentUserId;
+    const canView = !isPrivate || isOwner;
+    const canManagePrivacy = createdBy == null || isOwner;
+    return {
+      ...channel,
+      api_key: canView ? channel.api_key : null,
+      can_view_api_key: canView,
+      can_manage_api_key_privacy: canManagePrivacy,
+      models: grouped.get(channel.id) ?? [],
+    };
+  });
   return jsonOk({ data: rows });
 }
 
@@ -117,8 +129,8 @@ export async function POST(request: Request) {
     const channelEnabled = parsed.data.enabled === false ? 0 : 1;
     const result = await tx
       .execute(
-        `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, force_include_usage, ua_restrictions)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, force_include_usage, ua_restrictions, created_by, api_key_private)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           parsed.data.name,
           parsed.data.base_url,
@@ -137,6 +149,8 @@ export async function POST(request: Request) {
           parsed.data.period_quota_requests ?? null,
           parsed.data.force_include_usage === false ? 0 : 1,
           parsed.data.ua_restrictions?.trim() ?? "",
+          guard.auth.user.id,
+          parsed.data.api_key_private === true ? 1 : 0,
         ],
       );
 
@@ -172,5 +186,22 @@ export async function POST(request: Request) {
   });
 
   const row = await gatewayDb.queryOne("SELECT * FROM channels WHERE id = ? AND deleted_at IS NULL", [channelId]);
-  return jsonOk({ message: "渠道创建成功。", data: row }, 201);
+  const createdRow = row as { created_by?: number | null; api_key?: string | null; api_key_private?: number | null } | undefined;
+  const createdIsOwner = createdRow?.created_by != null && createdRow.created_by === guard.auth.user.id;
+  const canViewCreated = createdRow?.api_key_private !== 1 || createdIsOwner;
+  const canManageCreated = createdRow?.created_by == null || createdIsOwner;
+  return jsonOk(
+    {
+      message: "渠道创建成功。",
+      data: createdRow
+        ? {
+            ...createdRow,
+            api_key: canViewCreated ? createdRow.api_key : null,
+            can_view_api_key: canViewCreated,
+            can_manage_api_key_privacy: canManageCreated,
+          }
+        : row,
+    },
+    201,
+  );
 }

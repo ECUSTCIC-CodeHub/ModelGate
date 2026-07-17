@@ -14,6 +14,7 @@ const updateSchema = z.object({
   name: z.string().min(1).optional(),
   base_url: z.string().url().optional(),
   api_key: z.string().optional(),
+  api_key_private: z.boolean().optional(),
   supported_protocols: z.array(z.enum(GATEWAY_PROTOCOLS)).min(1).optional(),
   user_agent: z.string().max(500).optional(),
   proxy_url: proxyUrlSchema,
@@ -58,6 +59,23 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         ? 1
         : 0;
 
+  const userId = guard.auth.user.id;
+  const existingCreatedBy = (existing as { created_by?: number | null }).created_by ?? null;
+  const existingPrivate = (existing as { api_key_private?: number | null }).api_key_private === 1 ? 1 : 0;
+  const canManagePrivacy = existingCreatedBy == null || existingCreatedBy === userId;
+
+  let nextPrivate = existingPrivate;
+  let nextCreatedBy = existingCreatedBy;
+  if (parsed.data.api_key_private !== undefined) {
+    const desired = parsed.data.api_key_private ? 1 : 0;
+    if (desired !== existingPrivate && canManagePrivacy) {
+      nextPrivate = desired;
+      if (desired === 1 && nextCreatedBy == null) nextCreatedBy = userId;
+    }
+  }
+
+  const canManageKey = nextPrivate === 0 || nextCreatedBy === userId;
+
   if (nextEnabled === 1) {
     const placeholders = nextProtocolList.map(() => "?").join(", ");
     const incompatibleModel = await gatewayDb
@@ -95,12 +113,16 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     enabled: nextEnabled,
   };
 
+  if (!canManageKey && parsed.data.api_key !== undefined) {
+    (merged as { api_key?: string | null }).api_key = (existing as { api_key?: string | null }).api_key ?? null;
+  }
+
   await gatewayDb.transaction(async (tx) => {
     await tx
       .execute(
         `UPDATE channels
          SET name = ?, base_url = ?, api_key = ?, supported_protocols = ?, user_agent = ?, proxy_url = ?, enabled = ?, weight = ?, max_concurrency = ?, timeout = ?,
-             quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, force_include_usage = ?, ua_restrictions = ?
+             quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, force_include_usage = ?, ua_restrictions = ?, api_key_private = ?, created_by = ?
          WHERE id = ?`,
         [
           (merged as { name: string }).name,
@@ -124,6 +146,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
               ? 1
               : 0,
           (merged as { ua_restrictions: string }).ua_restrictions,
+          nextPrivate,
+          nextCreatedBy,
           id,
         ],
       );
@@ -142,14 +166,25 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   });
 
   const row = await gatewayDb.queryOne("SELECT * FROM channels WHERE id = ? AND deleted_at IS NULL", [id]);
+  const updatedRow = row as { created_by?: number | null; api_key?: string | null; api_key_private?: number | null } | undefined;
+  const updatedIsOwner = updatedRow?.created_by != null && updatedRow.created_by === userId;
+  const canViewUpdated = updatedRow?.api_key_private !== 1 || updatedIsOwner;
+  const canManageUpdated = updatedRow?.created_by == null || updatedIsOwner;
   return jsonOk({
+    data: updatedRow
+      ? {
+          ...updatedRow,
+          api_key: canViewUpdated ? updatedRow.api_key : null,
+          can_view_api_key: canViewUpdated,
+          can_manage_api_key_privacy: canManageUpdated,
+        }
+      : row,
     message:
       nextEnabled === 0
         ? "渠道已禁用，关联模型已同步禁用。"
         : !wasEnabled
           ? "渠道已启用，关联模型已同步启用。"
           : "渠道更新成功。",
-    data: row,
   });
 }
 

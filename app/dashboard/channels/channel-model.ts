@@ -99,6 +99,11 @@ export type Channel = {
   period_quota_requests: number | null;
   force_include_usage: number;
   ua_restrictions: string;
+  created_by?: number | null;
+  created_by_username?: string | null;
+  api_key_private?: number | null;
+  can_view_api_key?: boolean;
+  can_manage_api_key_privacy?: boolean;
   models?: ModelRow[];
 };
 
@@ -121,6 +126,7 @@ export type ChannelForm = {
   name: string;
   base_url: string;
   api_key: string;
+  api_key_private: boolean;
   user_agent: string;
   proxy_url: string;
   supported_protocols: Protocol[];
@@ -175,6 +181,7 @@ export const initialChannelForm: ChannelForm = {
   name: "",
   base_url: "",
   api_key: "",
+  api_key_private: false,
   user_agent: "",
   proxy_url: "",
   supported_protocols: ["chat_completions"],

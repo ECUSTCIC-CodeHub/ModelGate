@@ -30,6 +30,8 @@ export function ChannelDrawer({
   modelDrafts,
   probingModels,
   periodQuotaEnabled,
+  canViewApiKey = true,
+  canManagePrivacy = true,
   dismissBlocked = false,
   onOpenChange,
   onSubmit,
@@ -46,6 +48,8 @@ export function ChannelDrawer({
   modelDrafts: ChannelModelDraft[];
   probingModels: boolean;
   periodQuotaEnabled: boolean;
+  canViewApiKey?: boolean;
+  canManagePrivacy?: boolean;
   dismissBlocked?: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (event: FormEvent) => void;
@@ -122,7 +126,22 @@ export function ChannelDrawer({
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label>API Key</Label>
-              <Input value={form.api_key} onChange={(e) => onFormChange({ api_key: e.target.value })} />
+              {editingId !== null && !canViewApiKey ? (
+                <Input disabled placeholder="仅添加人可见" />
+              ) : (
+                <Input value={form.api_key} onChange={(e) => onFormChange({ api_key: e.target.value })} />
+              )}
+              <Label className="flex items-center gap-2">
+                <Checkbox
+                  checked={form.api_key_private}
+                  disabled={editingId !== null && !canManagePrivacy}
+                  onCheckedChange={(next) => onFormChange({ api_key_private: next === true })}
+                />
+                仅添加人可见
+              </Label>
+              <p className="text-xs text-[var(--color-foreground-muted)]">
+                勾选后该渠道的 API Key 仅添加人可见和修改，其他管理员看不到。无添加人的渠道勾选后，当前操作者将成为添加人；仅添加人可取消勾选。
+              </p>
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label>上游 User-Agent</Label>
