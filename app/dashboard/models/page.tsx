@@ -366,6 +366,8 @@ export default function AvailableModelsPage() {
                             {(() => {
                               const metrics = metricsMap[row.id];
                               if (!metrics) return null;
+                              const hasMetrics = metrics.hourly.some((b) => b.success_rate > 0);
+                              if (!hasMetrics) return null;
                               const latencyLabel = metrics.avg_latency_ms >= 1000
                                 ? `${(metrics.avg_latency_ms / 1000).toFixed(1)}s`
                                 : `${metrics.avg_latency_ms}ms`;
