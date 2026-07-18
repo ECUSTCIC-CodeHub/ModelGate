@@ -47,7 +47,7 @@ export async function GET(request: Request) {
     .map((h, i) => {
       const w = windowExpr(h);
       return `
-        SUM(CASE WHEN ${w} THEN 1 ELSE 0 END) AS cnt_${i},
+        SUM(CASE WHEN ${w} AND status_code != 429 THEN 1 ELSE 0 END) AS cnt_${i},
         SUM(CASE WHEN ${w} AND status_code < 400 THEN 1 ELSE 0 END) AS ok_${i},
         SUM(CASE WHEN ${w} AND status_code != 429 THEN 1 ELSE 0 END) AS den_${i}`;
     })
