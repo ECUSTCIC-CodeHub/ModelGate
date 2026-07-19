@@ -366,7 +366,9 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
     "public_security_filing_number": "",
     "theme_color": "",
     "feedback_url": "",
-    "repo_name": ""
+    "repo_name": "",
+    "model_fallback_enabled": 0,
+    "model_fallback_alias": ""
   }
 }
 ```
@@ -409,7 +411,9 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "top_users_visible": true,
   "overview_global": true,
   "vision_fallback_enabled": false,
-  "vision_fallback_alias": ""
+  "vision_fallback_alias": "",
+  "model_fallback_enabled": false,
+  "model_fallback_alias": ""
 }
 ```
 
@@ -449,6 +453,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | overview_global | boolean | 是否允许普通用户在首页概览查看全局统计（默认 true）；关闭后普通用户只看自己的统计，管理员始终看全局 |
 | vision_fallback_enabled | boolean | 是否开启「图片自动路由到识图模型」；开启后，用户向未标记支持识图的模型发送图片时，自动改路由到支持识图的模型 |
 | vision_fallback_alias | string | 指定优先使用的识图模型别名（最长 255 字符）；留空时从已启用且标记「支持识图」的模型中自动选择 |
+| model_fallback_enabled | boolean | 是否开启「模型自动替补」全局开关；开启后，用户请求的模型不存在或被禁用时，自动路由到其他模型 |
+| model_fallback_alias | string | 指定优先使用的替补模型别名（最长 255 字符）；留空时从已启用且当前用户可见的模型中按权重自动挑选 |
 
 > 精简版固定保留账号密码登录；返回时会隐藏 OIDC 配置、公告内容、公告展示条数、接入指南通知和 Webhook 密钥，更新时忽略 `oidc_*`、`announcement_content`、`announcement_display_count`、`access_guide_notice` 与 `webhook_secret` 字段。
 
@@ -2215,6 +2221,8 @@ OpenAI Chat Completions 兼容端点。
 > 模型开启 GitHub Copilot 兼容模式后，网关会默认向上游发送 `chat_template_kwargs.enable_thinking = true` 和 `thinking_token_budget = 1024`，保持思考模式；当请求显式携带 OpenAI 风格 `reasoning_effort` 或 `reasoning.effort` 时，会映射为 vLLM/Qwen 使用的 thinking 参数，且用户已传入的 vLLM 原生参数优先生效。同时会规范化工具调用名称和 ID，并将上游误输出为文本的 `<tool_call>` 转换为结构化工具调用，避免 Copilot 客户端停止工具循环。
 
 > 当系统设置开启「图片自动路由到识图模型」且请求 `messages` 包含图片内容（`image_url` / `input_image`）时，若目标模型未标记「支持识图」，网关会自动改路由到支持识图的模型（优先使用设置中指定的别名，否则从已启用且标记「支持识图」的模型中自动挑选），后续沿用现有失败重试与渠道切换机制。
+
+> 当系统设置开启「模型自动替补」全局开关，若请求的目标模型不存在或被禁用（且未命中通配符 `*`），网关会自动改路由到替补模型：优先使用管理员指定的全局别名，仍为空时从已启用且当前用户可见的模型中按权重（`models.weight` 降序）自动挑选，后续沿用现有失败重试与渠道切换机制。
 
 > 流式 Chat Completions 请求转发到上游时，网关会自动附加 `stream_options.include_usage = true`，用于优先记录上游返回的 Token usage 和缓存 Token；上游不返回 usage 时才使用本地分词统计。
 
