@@ -474,6 +474,8 @@ async function seedDefaultSettings(db: DatabaseAdapter) {
     ["upstream_circuit_breaker_enabled", "1"],
     ["vision_fallback_enabled", "0"],
     ["vision_fallback_alias", ""],
+    ["model_fallback_enabled", "0"],
+    ["model_fallback_alias", ""],
     ["ua_restrictions", ""],
     ["log_retention_days", "0"],
     ["oidc_enabled", "0"],

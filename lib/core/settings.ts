@@ -7,6 +7,7 @@ const DEFAULTS = {
   upstream_retry_max_attempts: 3,
   upstream_retry_same_channel: 0,
   vision_fallback_enabled: 0,
+  model_fallback_enabled: 0,
   model_status_light_1_hours: 1,
   model_status_light_2_hours: 2,
   model_status_light_3_hours: 3,
@@ -24,6 +25,8 @@ export type GatewaySettings = {
   upstream_strict_priority: number;
   vision_fallback_enabled: number;
   vision_fallback_alias: string;
+  model_fallback_enabled: number;
+  model_fallback_alias: string;
   ua_restrictions: string;
   log_retention_days: number;
   oidc_enabled: number;
@@ -97,6 +100,8 @@ const GATEWAY_KEYS = [
   "upstream_strict_priority",
   "vision_fallback_enabled",
   "vision_fallback_alias",
+  "model_fallback_enabled",
+  "model_fallback_alias",
   "ua_restrictions",
   "log_retention_days",
   ...OIDC_KEYS,
@@ -134,6 +139,8 @@ async function readGatewaySettingsFromDb(): Promise<GatewaySettings> {
     upstream_strict_priority: map.get("upstream_strict_priority") === "1" ? 1 : 0,
     vision_fallback_enabled: map.get("vision_fallback_enabled") === "1" ? 1 : 0,
     vision_fallback_alias: map.get("vision_fallback_alias") ?? "",
+    model_fallback_enabled: map.get("model_fallback_enabled") === "1" ? 1 : 0,
+    model_fallback_alias: map.get("model_fallback_alias") ?? "",
     ua_restrictions: map.get("ua_restrictions") ?? "",
     log_retention_days: retentionDays(map.get("log_retention_days")),
     upstream_retry_max_attempts: positiveInt(
@@ -191,6 +198,8 @@ export async function setGatewaySettings(input: {
   upstream_strict_priority: boolean;
   vision_fallback_enabled?: boolean;
   vision_fallback_alias?: string;
+  model_fallback_enabled?: boolean;
+  model_fallback_alias?: string;
   ua_restrictions?: string;
   log_retention_days?: number;
   oidc_enabled?: boolean;
@@ -228,6 +237,8 @@ export async function setGatewaySettings(input: {
     upstream_strict_priority: input.upstream_strict_priority ? "1" : "0",
     vision_fallback_enabled: input.vision_fallback_enabled ? "1" : "0",
     vision_fallback_alias: input.vision_fallback_alias?.trim() ?? "",
+    model_fallback_enabled: input.model_fallback_enabled ? "1" : "0",
+    model_fallback_alias: input.model_fallback_alias?.trim() ?? "",
     ua_restrictions: input.ua_restrictions ?? "",
     upstream_retry_max_attempts: String(Math.max(1, Math.trunc(input.upstream_retry_max_attempts))),
     upstream_retry_same_channel: input.upstream_retry_same_channel ? "1" : "0",
