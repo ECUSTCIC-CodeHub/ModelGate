@@ -8,7 +8,7 @@ import { resolveAccessibleModelAlias } from "@/lib/gateway/model-access";
 import { appendQuotaHeaders, checkQuota } from "@/lib/gateway/quota";
 import { normalizeUserAgent } from "@/lib/gateway/queued-upstream-response";
 import { checkUserRateLimit } from "@/lib/gateway/ratelimit";
-import { selectModelRoute, findUaDenyMatchForAlias } from "@/lib/gateway/router";
+import { selectModelRoute, findUaDenyMatchForAlias, resolveModelFallbackAlias } from "@/lib/gateway/router";
 import { resolveClientIp } from "@/lib/core/client-ip";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { isFeatureEnabled } from "@/lib/core/features";
@@ -102,16 +102,32 @@ export async function handleMultipartGatewayRequest(request: Request) {
   const rawPrompt = formData.get("prompt");
   const estimatedTokens = estimatePromptTokens(typeof rawPrompt === "string" ? rawPrompt : null);
 
+  const settings = await getGatewaySettings();
   const resolved = await resolveAccessibleModelAlias(auth.user, alias);
+  let resolvedAlias: string;
   if (!resolved.ok) {
     if (resolved.reason === "forbidden") {
       logRejected(403, "当前用户无权访问该模型", alias, estimatedTokens);
       return jsonError("当前用户无权访问该模型", 403);
     }
-    logRejected(404, "模型别名不存在或已禁用", alias);
-    return jsonError("模型别名不存在或已禁用", 404);
+    const fallbackAlias = await resolveModelFallbackAlias({
+      user: auth.user,
+      requestedAlias: alias,
+      fallbackEnabled: settings.model_fallback_enabled === 1,
+      preferredGlobalAlias: settings.model_fallback_alias,
+      protocol: "images",
+      allowedChannelIds,
+      userAgent: uaEnabled ? clientUserAgent : undefined,
+    });
+    if (fallbackAlias) {
+      resolvedAlias = fallbackAlias;
+    } else {
+      logRejected(404, "模型别名不存在或已禁用", alias);
+      return jsonError("模型别名不存在或已禁用", 404);
+    }
+  } else {
+    resolvedAlias = resolved.alias;
   }
-  const resolvedAlias = resolved.alias;
 
   const existingRoute = await selectModelRoute(resolvedAlias, {
     protocol: "images",

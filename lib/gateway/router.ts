@@ -323,6 +323,72 @@ export async function findVisionFallbackRoute(options: VisionFallbackOptions): P
   return null;
 }
 
+export type ModelFallbackOptions = {
+  preferredAlias?: string | null;
+  requestedAlias?: string | null;
+  protocol?: GatewayProtocol;
+  allowedChannelIds?: number[] | null;
+  userAgent?: string | null;
+  user?: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">;
+};
+
+/**
+ * 当请求的模型不存在或被禁用时，选择一个已启用且当前用户可见的替补模型路由。
+ * 优先使用 preferredAlias 指定的别名；否则在所有已启用模型中按权重自动挑选。
+ * 排除 requestedAlias 自身与通配符 `*`，避免原样回退。
+ */
+export async function findModelFallbackRoute(options: ModelFallbackOptions): Promise<RoutedModel | null> {
+  const excludeAlias = options.requestedAlias;
+  if (options.preferredAlias && options.preferredAlias.length > 0 && options.preferredAlias !== "*" && options.preferredAlias !== excludeAlias) {
+    const route = await selectModelRoute(options.preferredAlias, options);
+    if (route && await isVisionRouteAccessible(options.user, route)) return route;
+  }
+
+  const aliases = await gatewayDb.query<{ alias: string }>(
+    `SELECT DISTINCT m.alias
+     FROM models m
+     JOIN channels c ON c.id = m.channel_id
+     WHERE m.enabled = 1 AND m.deleted_at IS NULL AND m.alias != '*'
+       AND c.enabled = 1 AND c.deleted_at IS NULL
+     ORDER BY m.weight DESC, m.id ASC`,
+  );
+  for (const row of aliases) {
+    if (row.alias === excludeAlias) continue;
+    const route = await selectModelRoute(row.alias, options);
+    if (route && await isVisionRouteAccessible(options.user, route)) return route;
+  }
+  return null;
+}
+
+/**
+ * 依据管理员全局开关解析模型替补别名（与「图片自动路由到识图模型」一致，仅管理员可控）。
+ * 全局开关关闭时返回 null；否则优先使用管理员指定的全局别名，留空时由权重自动分配。
+ */
+export async function resolveModelFallbackAlias(params: {
+  user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">;
+  requestedAlias: string;
+  fallbackEnabled: boolean;
+  preferredGlobalAlias: string;
+  protocol?: GatewayProtocol;
+  allowedChannelIds?: number[] | null;
+  userAgent?: string | null;
+}): Promise<string | null> {
+  if (!params.fallbackEnabled) return null;
+  if (params.requestedAlias === "*") return null;
+
+  const preferred = (params.preferredGlobalAlias ?? "").trim() || null;
+
+  const route = await findModelFallbackRoute({
+    preferredAlias: preferred,
+    requestedAlias: params.requestedAlias,
+    protocol: params.protocol,
+    allowedChannelIds: params.allowedChannelIds,
+    userAgent: params.userAgent,
+    user: params.user,
+  });
+  return route ? route.model.alias : null;
+}
+
 /**
  * 在允许访问的渠道中逐个校验渠道/模型级 UA 限制，返回第一个命中 deny 的限制。
  * 仅在 selectModelRoute（带 userAgent）返回 null、但存在未过滤候选时调用，

@@ -11,7 +11,7 @@ import { createTransformedStream } from "@/lib/gateway/protocol-adapters/streami
 import { appendQuotaHeaders, checkQuota } from "@/lib/gateway/quota";
 import { createQueuedUpstreamResponse, normalizeUserAgent } from "@/lib/gateway/queued-upstream-response";
 import { checkUserRateLimit } from "@/lib/gateway/ratelimit";
-import { selectModelRoute, findUaDenyMatchForAlias, findVisionFallbackRoute, type RoutedModel } from "@/lib/gateway/router";
+import { selectModelRoute, findUaDenyMatchForAlias, findVisionFallbackRoute, resolveModelFallbackAlias, type RoutedModel } from "@/lib/gateway/router";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { checkUserAgentRestrictions, parseUaRestrictions, type UaRestrictionMatch } from "@/lib/gateway/ua-restrictions";
 import { isFeatureEnabled } from "@/lib/core/features";
@@ -123,15 +123,30 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
 
   const estimatedTokens = inboundAdapter.estimateRequestTokens(body);
   const resolved = await resolveAccessibleModelAlias(auth.user, alias);
+  let resolvedAlias: string;
   if (!resolved.ok) {
     if (resolved.reason === "forbidden") {
       logRejected(403, "当前用户无权访问该模型", alias, estimatedTokens);
       return jsonError("当前用户无权访问该模型", 403);
     }
-    logRejected(404, "模型别名不存在或已禁用", alias);
-    return jsonError("模型别名不存在或已禁用", 404);
+    const fallbackAlias = await resolveModelFallbackAlias({
+      user: auth.user,
+      requestedAlias: alias,
+      fallbackEnabled: settings.model_fallback_enabled === 1,
+      preferredGlobalAlias: settings.model_fallback_alias,
+      protocol: inboundProtocol,
+      allowedChannelIds,
+      userAgent: uaEnabled ? clientUserAgent : undefined,
+    });
+    if (fallbackAlias) {
+      resolvedAlias = fallbackAlias;
+    } else {
+      logRejected(404, "模型别名不存在或已禁用", alias);
+      return jsonError("模型别名不存在或已禁用", 404);
+    }
+  } else {
+    resolvedAlias = resolved.alias;
   }
-  const resolvedAlias = resolved.alias;
 
   let effectiveAlias = resolvedAlias;
   if (settings.vision_fallback_enabled === 1 && requestContainsImage(body, inboundProtocol)) {
