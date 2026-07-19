@@ -17,6 +17,8 @@ const schema = z.object({
   upstream_strict_priority: z.boolean(),
   vision_fallback_enabled: z.boolean().optional(),
   vision_fallback_alias: z.string().max(255).optional(),
+  model_fallback_enabled: z.boolean().optional(),
+  model_fallback_alias: z.string().max(255).optional(),
   oidc_enabled: z.boolean().optional(),
   oidc_issuer_url: z.string().optional(),
   oidc_client_id: z.string().optional(),
