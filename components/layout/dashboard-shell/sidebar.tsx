@@ -58,7 +58,7 @@ export function DashboardSidebar({
           </div>
           <Separator />
         </div>
-        <ScrollArea className="mt-4 flex-1">
+        <ScrollArea className="mt-4 min-h-0 flex-1">
           <nav className="space-y-1 pr-3">
             {menus.map((item) => {
               const active = pathname === item.href;

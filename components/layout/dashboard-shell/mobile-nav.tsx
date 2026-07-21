@@ -65,8 +65,8 @@ export function MobileNavSheet({
             </div>
           </div>
         </SheetHeader>
-        <div className="flex h-full flex-col">
-          <ScrollArea className="flex-1 px-4 py-4">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <ScrollArea className="min-h-0 flex-1 px-4 py-4">
             <div className="space-y-1">
               {menus.map((item) => {
                 const active = pathname === item.href;
