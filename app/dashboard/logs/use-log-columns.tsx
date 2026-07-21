@@ -272,6 +272,13 @@ export function useLogColumnDefs(role: LogRole) {
         label: "失败原因",
         render: (row) => {
           if (row.status_code < 400) {
+            if (row.metadata?.substitution_reason) {
+              return (
+                <span className="text-[var(--color-foreground-secondary)]" title={row.metadata.substitution_reason}>
+                  {row.metadata.substitution_reason}
+                </span>
+              );
+            }
             return <span className="text-[var(--color-foreground-muted)]">-</span>;
           }
           return (

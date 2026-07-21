@@ -1,7 +1,7 @@
 import { checkApiKeyAuth } from "@/lib/auth/api-key-auth";
 import { getUserAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { checkChannelQuota, appendChannelQuotaHeaders } from "@/lib/gateway/channel-quota";
-import { insertChatLog } from "@/lib/gateway/chat-log";
+import { insertChatLog, withSubstitutionNote } from "@/lib/gateway/chat-log";
 import { jsonError } from "@/lib/core/http";
 import { checkModelQuota, appendModelQuotaHeaders } from "@/lib/gateway/model-quota";
 import { resolveAccessibleModelAlias } from "@/lib/gateway/model-access";
@@ -105,6 +105,7 @@ export async function handleMultipartGatewayRequest(request: Request) {
   const settings = await getGatewaySettings();
   const resolved = await resolveAccessibleModelAlias(auth.user, alias);
   let resolvedAlias: string;
+  let modelFallbackNote: string | null = null;
   if (!resolved.ok) {
     if (resolved.reason === "forbidden") {
       logRejected(403, "当前用户无权访问该模型", alias, estimatedTokens);
@@ -121,6 +122,7 @@ export async function handleMultipartGatewayRequest(request: Request) {
     });
     if (fallbackAlias) {
       resolvedAlias = fallbackAlias;
+      modelFallbackNote = "请求模型不存在或已禁用，已自动替换";
     } else {
       logRejected(404, "模型别名不存在或已禁用", alias);
       return jsonError("模型别名不存在或已禁用", 404);
@@ -325,6 +327,7 @@ export async function handleMultipartGatewayRequest(request: Request) {
       total_tokens: estimatedTokens,
       latency_ms: Date.now() - startedAt,
       error_message: null,
+      metadata: withSubstitutionNote(null, modelFallbackNote),
       client_ip: clientIp,
       user_agent: clientUserAgent,
     });

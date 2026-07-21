@@ -56,6 +56,18 @@ async function getWriter() {
   }
 }
 
+export function withSubstitutionNote(metadata: unknown, note: string | null | undefined): Record<string, unknown> | null {
+  if (!note) {
+    return metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? (metadata as Record<string, unknown>)
+      : null;
+  }
+  const base = metadata && typeof metadata === "object" && !Array.isArray(metadata)
+    ? { ...(metadata as Record<string, unknown>) }
+    : {};
+  return { ...base, substitution_reason: note };
+}
+
 export async function insertChatLog(input: ChatLogInput) {
   const cache = input.metadata ? extractCacheTokens(input.metadata) : { read: 0, creation: 0 };
   const cacheTokens = cache.read + cache.creation;

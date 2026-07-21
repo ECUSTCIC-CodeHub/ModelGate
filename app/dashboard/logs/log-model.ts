@@ -18,6 +18,7 @@ export type LogMetadata = {
     remote?: LogTokenUsageTotals | null;
     local?: LogTokenUsageTotals | null;
   };
+  substitution_reason?: string;
 } | null;
 
 export type LogRow = {

@@ -1,6 +1,6 @@
 import type { ApiKeyContext } from "@/lib/auth/api-key-auth";
 import { checkChannelQuota } from "@/lib/gateway/channel-quota";
-import { insertChatLog } from "@/lib/gateway/chat-log";
+import { insertChatLog, withSubstitutionNote } from "@/lib/gateway/chat-log";
 import { fetchUpstreamRequest } from "@/lib/gateway/proxy";
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 import type { StreamTransformResult } from "@/lib/gateway/protocol-adapters/streaming";
@@ -28,6 +28,7 @@ type QueuedResponseOptions = {
   upstreamBody: Record<string, unknown>;
   clientIp: string | null;
   clientUserAgent: string | null;
+  substitutionNote: string | null;
   withQuotaHeaders: (response: Response) => Response;
   adaptResponseBodyForRoute: (rawText: string, route: RoutedModel) => string;
   getUsageForRoute: (rawText: string, route: RoutedModel) => {
@@ -79,6 +80,7 @@ export function createQueuedUpstreamResponse({
   extractCompletionTextForRoute,
   extractReasoningTextForRoute,
   createTransformedStreamForRoute,
+  substitutionNote,
 }: QueuedResponseOptions) {
   const { route, acquirePromise, attemptedChannels, attemptedChannelNames } = picked;
 
@@ -180,7 +182,7 @@ export function createQueuedUpstreamResponse({
                 completion_tokens: tokenUsage.completionTokens,
                 total_tokens: tokenUsage.totalTokens,
                 token_source: tokenUsage.source,
-                metadata: tokenUsageMetadata(tokenUsage),
+                metadata: withSubstitutionNote(tokenUsageMetadata(tokenUsage), substitutionNote),
                 latency_ms: Date.now() - startedAt,
                 first_token_latency_ms: null,
                 output_tps: outputTps,
@@ -236,7 +238,7 @@ export function createQueuedUpstreamResponse({
                 completion_tokens: tokenUsage.completionTokens,
                 total_tokens: tokenUsage.totalTokens,
                 token_source: tokenUsage.source,
-                metadata: tokenUsageMetadata(tokenUsage),
+                metadata: withSubstitutionNote(tokenUsageMetadata(tokenUsage), substitutionNote),
                 latency_ms: totalLatencyMs,
                 first_token_latency_ms: firstTokenLatencyMs,
                 output_tps: outputTps,
@@ -397,7 +399,7 @@ export function createQueuedUpstreamResponse({
             completion_tokens: tokenUsage.completionTokens,
             total_tokens: tokenUsage.totalTokens,
             token_source: tokenUsage.source,
-            metadata: tokenUsageMetadata(tokenUsage),
+            metadata: withSubstitutionNote(tokenUsageMetadata(tokenUsage), substitutionNote),
             latency_ms: Date.now() - startedAt,
             output_tps: outputTps,
             route_attempts: Math.max(1, attemptedChannels.length),

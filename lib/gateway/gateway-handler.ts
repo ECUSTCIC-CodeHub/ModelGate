@@ -1,7 +1,7 @@
 import { checkApiKeyAuth } from "@/lib/auth/api-key-auth";
 import { getUserAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { checkChannelQuota, appendChannelQuotaHeaders } from "@/lib/gateway/channel-quota";
-import { insertChatLog } from "@/lib/gateway/chat-log";
+import { insertChatLog, withSubstitutionNote } from "@/lib/gateway/chat-log";
 import { jsonError } from "@/lib/core/http";
 import { checkModelQuota, appendModelQuotaHeaders } from "@/lib/gateway/model-quota";
 import { resolveAccessibleModelAlias, canUserAccessModelAlias } from "@/lib/gateway/model-access";
@@ -124,6 +124,8 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   const estimatedTokens = inboundAdapter.estimateRequestTokens(body);
   const resolved = await resolveAccessibleModelAlias(auth.user, alias);
   let resolvedAlias: string;
+  let modelFallbackNote: string | null = null;
+  let visionFallbackNote: string | null = null;
   if (!resolved.ok) {
     if (resolved.reason === "forbidden") {
       logRejected(403, "当前用户无权访问该模型", alias, estimatedTokens);
@@ -140,6 +142,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     });
     if (fallbackAlias) {
       resolvedAlias = fallbackAlias;
+      modelFallbackNote = "请求模型不存在或已禁用，已自动替换";
     } else {
       logRejected(404, "模型别名不存在或已禁用", alias);
       return jsonError("模型别名不存在或已禁用", 404);
@@ -165,9 +168,11 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       });
       if (visionRoute && (auth.user.role === "admin" || await canUserAccessModelAlias(auth.user, visionRoute.model.alias))) {
         effectiveAlias = visionRoute.model.alias;
+        visionFallbackNote = "目标模型不支持识图，已自动路由到识图模型";
       }
     }
   }
+  const substitutionNote = [modelFallbackNote, visionFallbackNote].filter(Boolean).join("；") || null;
 
   const existingRoute = await selectModelRoute(effectiveAlias, {
     protocol: inboundProtocol,
@@ -367,6 +372,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       upstreamBody,
       clientIp,
       clientUserAgent,
+      substitutionNote,
       withQuotaHeaders,
       adaptResponseBodyForRoute,
       getUsageForRoute,
@@ -500,7 +506,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
         completion_tokens: tokenUsage.completionTokens,
         total_tokens: tokenUsage.totalTokens,
         token_source: tokenUsage.source,
-        metadata: tokenUsageMetadata(tokenUsage),
+        metadata: withSubstitutionNote(tokenUsageMetadata(tokenUsage), substitutionNote),
         latency_ms: Date.now() - startedAt,
         first_token_latency_ms: null,
         output_tps: outputTps,
@@ -558,7 +564,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
         completion_tokens: tokenUsage.completionTokens,
         total_tokens: tokenUsage.totalTokens,
         token_source: tokenUsage.source,
-        metadata: tokenUsageMetadata(tokenUsage),
+        metadata: withSubstitutionNote(tokenUsageMetadata(tokenUsage), substitutionNote),
         latency_ms: totalLatencyMs,
         first_token_latency_ms: firstTokenLatencyMs,
         output_tps: outputTps,
@@ -670,7 +676,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     completion_tokens: tokenUsage.completionTokens,
     total_tokens: tokenUsage.totalTokens,
     token_source: tokenUsage.source,
-    metadata: tokenUsageMetadata(tokenUsage),
+    metadata: withSubstitutionNote(tokenUsageMetadata(tokenUsage), substitutionNote),
     latency_ms: Date.now() - startedAt,
     first_token_latency_ms: null,
     output_tps: outputTps,
