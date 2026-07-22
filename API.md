@@ -2558,16 +2558,18 @@ OpenAI Images Edits 兼容端点，直通上游 `/images/edits`，支持 multipa
 
 **转发行为:**
 
-- 请求体以原始字节原样透传（仅读取 `model` 字段用于路由，不修改其余内容）；请求头原样转发（去除 `connection`、`content-length`、`host`、`cookie` 等逐跳头与网关自身的鉴权头）。
+- 请求体以原始字节原样透传（仅读取 `model` 字段用于路由，不修改其余内容）；请求头原样转发（去除 `connection`、`content-length`、`host`、`cookie`、`proxy-authorization` 等逐跳头与网关自身的鉴权头）。
 - query 字符串原样透传，但转发前会剔除网关自身的鉴权参数（`api_key`、`token`），避免将它们泄漏给上游。
 - 网关鉴权（API Key）被剥离，改为注入目标渠道的 `api_key`：`Authorization: Bearer <api_key>` 与 `x-api-key: <api_key>` 同时注入，兼容 OpenAI 与 Anthropic 风格上游。
 - 客户端 `anthropic-version`、`anthropic-beta`、自定义请求头等按原样转发。
-- 响应原样透传（去除 `content-encoding`、`content-length` 等由网关重算的头），包含上游返回的状态码与响应体。
+- 响应原样透传（去除 `content-encoding`、`content-length`、`set-cookie` 等由网关重算或不应落到网关域的头），包含上游返回的状态码与响应体。
 
 **权限与配额:**
 
 - 复用 API Key 鉴权、模型别名可见性（公开/白名单）、用户组渠道白名单、全站/渠道/模型级 User-Agent 限制。
 - 仅计入请求次数配额；Token 用量在通用转发中无法可靠统计，故不计入 Token 配额（日志中 `total_tokens` 记为 `null`）。
+
+> **运维约束（安全）:** 通用转发会命中目标渠道 `base_url` 下的**任意路径**。请勿将 `other` 协议的渠道 `base_url` 指向内网地址、云元数据端点（如 `169.254.169.254`）或需管控的内部服务，否则持有该渠道下任一模型别名访问权限的用户可被用于内网探测。该端点的访问范围等同于该渠道下模型别名的可见性范围，与普通端点一致。
 
 **示例:**
 

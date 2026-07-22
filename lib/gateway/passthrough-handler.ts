@@ -23,6 +23,7 @@ const HOP_BY_HOP = new Set([
   "upgrade",
   "proxy-connection",
   "proxy-authenticate",
+  "proxy-authorization",
   "trailer",
   "te",
 ]);
@@ -33,6 +34,7 @@ const RESPONSE_STRIP_HEADERS = new Set([
   "transfer-encoding",
   "content-encoding",
   "content-length",
+  "set-cookie",
 ]);
 
 const MAX_BODY_BYTES = 10 * 1024 * 1024;
