@@ -17,12 +17,14 @@ type UseUpstreamModelPickerArgs = {
   channelModels: ChannelModelDraft[];
   setChannelModels: Dispatch<SetStateAction<ChannelModelDraft[]>>;
   getDefaultProtocols: () => Protocol[];
+  defaultModelIsPublic: boolean;
 };
 
 export function useUpstreamModelPicker({
   channelModels,
   setChannelModels,
   getDefaultProtocols,
+  defaultModelIsPublic,
 }: UseUpstreamModelPickerArgs) {
   const { toast } = useToast();
   const [probingModels, setProbingModels] = useState(false);
@@ -118,10 +120,11 @@ export function useUpstreamModelPicker({
           ...initialModelDraft,
           alias: id,
           real_model: id,
+          is_public: defaultModelIsPublic,
           upstream_protocol: protocol,
         }));
       const merged = [...filledFromPrev, ...additions];
-      return merged.length > 0 ? merged : [{ ...initialModelDraft, upstream_protocol: protocol }];
+      return merged.length > 0 ? merged : [{ ...initialModelDraft, is_public: defaultModelIsPublic, upstream_protocol: protocol }];
     });
     setUpstreamPickerOpen(false);
     toast({ variant: "success", description: `已加入 ${selectedNewIds.length} 个模型草稿。` });

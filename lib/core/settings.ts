@@ -11,6 +11,7 @@ const DEFAULTS = {
   model_status_light_1_hours: 1,
   model_status_light_2_hours: 2,
   model_status_light_3_hours: 3,
+  default_model_is_public: 1,
 } as const;
 
 const GATEWAY_SETTINGS_CACHE_TTL_MS = 30_000;
@@ -55,6 +56,7 @@ export type GatewaySettings = {
   model_status_light_3_hours: number;
   top_users_visible: number;
   overview_global: number;
+  default_model_is_public: number;
 };
 
 let cachedGatewaySettings: { value: GatewaySettings; expiresAt: number } | null = null;
@@ -122,6 +124,7 @@ const GATEWAY_KEYS = [
   "model_status_light_3_hours",
   "top_users_visible",
   "overview_global",
+  "default_model_is_public",
 ] as const;
 
 const SETTINGS_SELECT_SQL = `SELECT \`key\`, value FROM settings WHERE \`key\` IN (${GATEWAY_KEYS.map(() => "?").join(", ")})`;
@@ -174,6 +177,7 @@ async function readGatewaySettingsFromDb(): Promise<GatewaySettings> {
     model_status_light_3_hours: clampStatusLightHours(map.get("model_status_light_3_hours"), DEFAULTS.model_status_light_3_hours),
     top_users_visible: map.get("top_users_visible") === "0" ? 0 : 1,
     overview_global: map.get("overview_global") === "0" ? 0 : 1,
+    default_model_is_public: map.get("default_model_is_public") === "0" ? 0 : 1,
   };
 }
 
@@ -228,6 +232,7 @@ export async function setGatewaySettings(input: {
   model_status_light_3_hours?: number;
   top_users_visible?: boolean;
   overview_global?: boolean;
+  default_model_is_public?: boolean;
 }) {
   const values: Record<string, string> = {
     registration_enabled: input.registration_enabled ? "1" : "0",
@@ -271,6 +276,7 @@ export async function setGatewaySettings(input: {
   if (input.model_status_light_3_hours !== undefined) values.model_status_light_3_hours = String(clampStatusLightHours(input.model_status_light_3_hours, DEFAULTS.model_status_light_3_hours));
   if (input.top_users_visible !== undefined) values.top_users_visible = input.top_users_visible ? "1" : "0";
   if (input.overview_global !== undefined) values.overview_global = input.overview_global ? "1" : "0";
+  if (input.default_model_is_public !== undefined) values.default_model_is_public = input.default_model_is_public ? "1" : "0";
 
   const isMysql = await gatewayDb.getDriver() === "mysql";
   const upsertSql = isMysql

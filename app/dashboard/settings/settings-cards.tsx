@@ -14,6 +14,7 @@ export { SaveSettingsCard } from "./save-settings-card";
 export { UpstreamSettingsCard } from "./upstream-settings-card";
 export { VisionFallbackSettingsCard } from "./vision-fallback-settings-card";
 export { ModelFallbackSettingsCard } from "./model-fallback-settings-card";
+export { ModelDefaultVisibilitySettingsCard } from "./model-default-visibility-settings-card";
 export { UaRestrictionsSettingsCard } from "./ua-restrictions-settings-card";
 export { WebhookSettingsCard } from "./webhook-settings-card";
 export { TopUsersVisibilitySettingsCard } from "./top-users-visibility-settings-card";

@@ -51,6 +51,7 @@ const schema = z.object({
   model_status_light_3_hours: z.number().int().min(1).max(168).optional(),
   top_users_visible: z.boolean().optional(),
   overview_global: z.boolean().optional(),
+  default_model_is_public: z.boolean().optional(),
 });
 
 export async function GET(request: Request) {

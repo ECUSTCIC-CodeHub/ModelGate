@@ -27,6 +27,7 @@ import {
   UpstreamSettingsCard,
   VisionFallbackSettingsCard,
   ModelFallbackSettingsCard,
+  ModelDefaultVisibilitySettingsCard,
   WebhookSettingsCard,
   TopUsersVisibilitySettingsCard,
   OverviewScopeSettingsCard,
@@ -84,6 +85,7 @@ export default function AdminSettingsPage() {
   const [visionFallbackAlias, setVisionFallbackAlias] = useState("");
   const [modelFallbackEnabled, setModelFallbackEnabled] = useState(false);
   const [modelFallbackAlias, setModelFallbackAlias] = useState("");
+  const [defaultModelIsPublic, setDefaultModelIsPublic] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const oidcFeatureEnabled = modelGateFeatures.oidc;
@@ -138,6 +140,7 @@ export default function AdminSettingsPage() {
     setVisionFallbackAlias(stringValue(settings.vision_fallback_alias));
     setModelFallbackEnabled(settings.model_fallback_enabled === 1);
     setModelFallbackAlias(stringValue(settings.model_fallback_alias));
+    setDefaultModelIsPublic(settings.default_model_is_public !== 0);
   }, [accessGuideNoticeFeatureEnabled, announcementFeatureEnabled, oidcFeatureEnabled, webhookFeatureEnabled, uaRestrictionsFeatureEnabled]);
 
   useEffect(() => {
@@ -199,6 +202,7 @@ export default function AdminSettingsPage() {
         vision_fallback_alias: visionFallbackAlias,
         model_fallback_enabled: modelFallbackEnabled,
         model_fallback_alias: modelFallbackAlias,
+        default_model_is_public: defaultModelIsPublic,
       };
 
       const response = await authedFetch("/api/admin/settings", {
@@ -312,6 +316,10 @@ export default function AdminSettingsPage() {
             modelFallbackAlias={modelFallbackAlias}
             setModelFallbackEnabled={setModelFallbackEnabled}
             setModelFallbackAlias={setModelFallbackAlias}
+          />
+          <ModelDefaultVisibilitySettingsCard
+            defaultModelIsPublic={defaultModelIsPublic}
+            setDefaultModelIsPublic={setDefaultModelIsPublic}
           />
           <ModelStatusLightSettingsCard
             hours1={statusLight1Hours}

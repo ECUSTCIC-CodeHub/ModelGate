@@ -368,7 +368,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
     "feedback_url": "",
     "repo_name": "",
     "model_fallback_enabled": 0,
-    "model_fallback_alias": ""
+    "model_fallback_alias": "",
+    "default_model_is_public": 1
   }
 }
 ```
@@ -413,7 +414,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "vision_fallback_enabled": false,
   "vision_fallback_alias": "",
   "model_fallback_enabled": false,
-  "model_fallback_alias": ""
+  "model_fallback_alias": "",
+  "default_model_is_public": true
 }
 ```
 
@@ -455,6 +457,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | vision_fallback_alias | string | 指定优先使用的识图模型别名（最长 255 字符）；留空时从已启用且标记「支持识图」的模型中自动选择 |
 | model_fallback_enabled | boolean | 是否开启「模型自动替补」全局开关；开启后，用户请求的模型不存在或被禁用时，自动路由到其他模型 |
 | model_fallback_alias | string | 指定优先使用的替补模型别名（最长 255 字符）；留空时从已启用且当前用户可见的模型中按权重自动挑选 |
+| default_model_is_public | boolean | 新增模型的默认可见性（默认 true）；开启后新创建的模型对所有非管理员用户可见，关闭后新增模型默认仅对授权用户可见（白名单）。仅影响新增模型预设值，编辑已有模型以其自身 `is_public` 为准 |
 
 > 精简版固定保留账号密码登录；返回时会隐藏 OIDC 配置、公告内容、公告展示条数、接入指南通知和 Webhook 密钥，更新时忽略 `oidc_*`、`announcement_content`、`announcement_display_count`、`access_guide_notice` 与 `webhook_secret` 字段。
 

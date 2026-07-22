@@ -1,7 +1,7 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useToast } from "@/components/ui/toast";
 import { authedFetch } from "@/lib/auth/client-auth";
 import { modelGateFeatures } from "@/lib/core/features";
@@ -42,23 +42,48 @@ export function useChannelAdmin() {
   const [channelEditingCanViewApiKey, setChannelEditingCanViewApiKey] = useState(false);
   const [channelEditingCanManagePrivacy, setChannelEditingCanManagePrivacy] = useState(true);
   const [channelForm, setChannelForm] = useState<ChannelForm>(initialChannelForm);
-  const [channelModels, setChannelModels] = useState<ChannelModelDraft[]>([{ ...initialModelDraft }]);
+  const [defaultModelIsPublic, setDefaultModelIsPublic] = useState(true);
+  const [channelModels, setChannelModels] = useState<ChannelModelDraft[]>([baseDraft(channelForm.supported_protocols)]);
 
   const [modelDrawerOpen, setModelDrawerOpen] = useState(false);
   const [modelEditingId, setModelEditingId] = useState<number | null>(null);
   const [modelForm, setModelForm] = useState<ModelForm>(initialModelForm);
+
   const upstreamPicker = useUpstreamModelPicker({
     channelModels,
     setChannelModels,
     getDefaultProtocols: () => channelForm.supported_protocols,
+    defaultModelIsPublic,
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const response = await authedFetch("/api/admin/settings");
+      const payload = await response.json().catch(() => null);
+      if (cancelled || !response.ok || !payload?.data || typeof payload.data !== "object") return;
+      setDefaultModelIsPublic(payload.data.default_model_is_public !== 0);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function baseDraft(protocols: Protocol[]): ChannelModelDraft {
+    return {
+      ...initialModelDraft,
+      is_public: defaultModelIsPublic,
+      upstream_protocol: protocols[0] ?? "chat_completions",
+      supported_protocols: [...protocols],
+    };
+  }
 
   function openCreateChannel() {
     setChannelEditingId(null);
     setChannelEditingCanViewApiKey(true);
     setChannelEditingCanManagePrivacy(true);
     setChannelForm({ ...initialChannelForm });
-    setChannelModels([{ ...initialModelDraft, upstream_protocol: initialChannelForm.supported_protocols[0], supported_protocols: [...initialChannelForm.supported_protocols] }]);
+    setChannelModels([baseDraft(initialChannelForm.supported_protocols)]);
     setChannelDrawerOpen(true);
   }
 
@@ -89,7 +114,7 @@ export function useChannelAdmin() {
       expires_at: expiresAtToInputValue(row.expires_at),
       time_restrictions: row.time_restrictions ?? "",
     });
-    setChannelModels([{ ...initialModelDraft, upstream_protocol: supportedProtocols[0], supported_protocols: [...supportedProtocols] }]);
+    setChannelModels([baseDraft(supportedProtocols)]);
     setChannelDrawerOpen(true);
   }
 
@@ -112,7 +137,7 @@ export function useChannelAdmin() {
   }
 
   function addChannelModelDraft(protocols = channelForm.supported_protocols) {
-    setChannelModels((prev) => [...prev, { ...initialModelDraft, upstream_protocol: protocols[0] ?? "chat_completions", supported_protocols: [...protocols] }]);
+    setChannelModels((prev) => [...prev, baseDraft(protocols)]);
   }
 
   function importChannelModelDrafts(names: string[], protocols: Protocol[]) {
@@ -133,11 +158,9 @@ export function useChannelAdmin() {
       }
       seen.add(key);
       added.push({
-        ...initialModelDraft,
+        ...baseDraft(protocols),
         alias: name,
         real_model: name,
-        upstream_protocol: protocols[0] ?? "chat_completions",
-        supported_protocols: [...protocols],
       });
     }
     if (added.length === 0) {
@@ -341,7 +364,7 @@ export function useChannelAdmin() {
       upstream_protocol: supportedProtocols[0] ?? "chat_completions",
       supported_protocols: [...supportedProtocols],
     });
-    setChannelModels([{ ...initialModelDraft, upstream_protocol: supportedProtocols[0] ?? "chat_completions", supported_protocols: [...supportedProtocols] }]);
+    setChannelModels([baseDraft(supportedProtocols)]);
     setModelDrawerOpen(true);
   }
 
@@ -392,7 +415,7 @@ export function useChannelAdmin() {
       };
     });
     if (modelEditingId === null) {
-      setChannelModels([{ ...initialModelDraft, upstream_protocol: protocols[0] ?? "chat_completions", supported_protocols: [...protocols] }]);
+      setChannelModels([baseDraft(protocols)]);
     }
   }
 
@@ -517,7 +540,7 @@ export function useChannelAdmin() {
         description: `已创建 ${successCount} 个模型，${failures.length} 个失败：${failures.slice(0, 3).join("；")}${failures.length > 3 ? " 等" : ""}。`,
         durationMs: 6000,
       });
-      setChannelModels(failedDrafts.length > 0 ? failedDrafts : [{ ...initialModelDraft, upstream_protocol: selectedChannelProtocols[0] ?? "chat_completions", supported_protocols: [...selectedChannelProtocols] }]);
+      setChannelModels(failedDrafts.length > 0 ? failedDrafts : [baseDraft(selectedChannelProtocols)]);
       if (successCount > 0) await loadChannels();
       return;
     }
