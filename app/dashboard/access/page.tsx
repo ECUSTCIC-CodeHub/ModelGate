@@ -22,6 +22,7 @@ const ENDPOINTS = [
   { label: "Embeddings (OpenAI)", path: "/api/v1/embeddings", method: "POST" },
   { label: "Images Generations (OpenAI)", path: "/api/v1/images/generations", method: "POST" },
   { label: "Images Edits (OpenAI)", path: "/api/v1/images/edits", method: "POST" },
+  { label: "Other 通用转发（兜底）", path: "/api/v1/<path>", method: "POST" },
 ] as const;
 
 export default function AccessGuidePage() {
