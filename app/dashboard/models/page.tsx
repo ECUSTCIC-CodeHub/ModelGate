@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Copy, LayoutGrid, List, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/empty-state";
@@ -18,7 +18,7 @@ import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/shared/utils";
 import { getApiMessage } from "@/lib/shared/api-message";
 import { authedFetch, ensureLoggedIn, getCachedProfile } from "@/lib/auth/client-auth";
-import { protocolOptions, shortProtocolLabel, type Protocol } from "@/app/dashboard/channels/channel-model";
+import { shortProtocolLabel, type Protocol } from "@/app/dashboard/channels/channel-model";
 
 type ChannelMultiplier = {
   channel_id: number;
@@ -35,6 +35,25 @@ type BrandGroup = {
 };
 
 const OTHER_BRAND = "其他";
+
+type ProtocolCategory = "text" | "embeddings" | "images" | "other";
+
+const PROTOCOL_CATEGORY_OPTIONS: Array<{ value: ProtocolCategory; label: string }> = [
+  { value: "text", label: "对话" },
+  { value: "embeddings", label: "Embeddings" },
+  { value: "images", label: "Images" },
+  { value: "other", label: "Other" },
+];
+
+const SPECIAL_PROTOCOLS: Protocol[] = ["embeddings", "images", "other"];
+
+function isSpecialProtocol(protocol: Protocol): protocol is "embeddings" | "images" | "other" {
+  return SPECIAL_PROTOCOLS.includes(protocol);
+}
+
+function protocolCategoryOf(protocol: Protocol): ProtocolCategory {
+  return isSpecialProtocol(protocol) ? protocol : "text";
+}
 
 function compileBrandMatcher(pattern: string): RegExp | null {
   const trimmed = pattern.trim();
@@ -86,12 +105,12 @@ export default function AvailableModelsPage() {
   const [view, setView] = useState<"card" | "list">("card");
   const [sortField, setSortField] = useState<SortField>("id");
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
-  const [protocolFilter, setProtocolFilter] = useState<Set<Protocol>>(() => new Set());
+  const [protocolFilter, setProtocolFilter] = useState<Set<ProtocolCategory>>(() => new Set());
   const [brandGroups, setBrandGroups] = useState<BrandGroup[]>([]);
   const [brandFilter, setBrandFilter] = useState<Set<string>>(() => new Set());
   const { toast } = useToast();
 
-  function toggleProtocol(value: Protocol) {
+  function toggleProtocol(value: ProtocolCategory) {
     setProtocolFilter((prev) => {
       const next = new Set(prev);
       if (next.has(value)) next.delete(value);
@@ -194,10 +213,10 @@ export default function AvailableModelsPage() {
     return rows.filter((r) => {
       if (q && !r.id.toLowerCase().includes(q)) return false;
       if (protocolFilter.size > 0) {
-        const modelProtocols = r.supported_protocols ?? [];
+        const modelCategories = new Set((r.supported_protocols ?? []).map(protocolCategoryOf));
         let protocolHit = false;
-        for (const p of protocolFilter) {
-          if (modelProtocols.includes(p)) { protocolHit = true; break; }
+        for (const cat of protocolFilter) {
+          if (modelCategories.has(cat)) { protocolHit = true; break; }
         }
         if (!protocolHit) return false;
       }
@@ -338,63 +357,31 @@ export default function AvailableModelsPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className={cn("h-8 rounded-full px-3 text-xs", protocolFilter.size === 0 && "bg-[var(--color-surface-hover)] text-[var(--color-foreground)]")}
-                    onClick={clearProtocolFilter}
-                    aria-pressed={protocolFilter.size === 0}
-                  >
+                  <FilterPill active={protocolFilter.size === 0} onClick={clearProtocolFilter}>
                     全部协议
-                  </Button>
-                  {protocolOptions.map((opt) => {
-                    const active = protocolFilter.has(opt.value);
-                    return (
-                      <Button
-                        key={opt.value}
-                        variant="ghost"
-                        size="sm"
-                        className={cn("h-8 rounded-full px-3 text-xs", active && "bg-[var(--color-surface-hover)] text-[var(--color-foreground)]")}
-                        onClick={() => toggleProtocol(opt.value)}
-                        aria-pressed={active}
-                      >
-                        {opt.shortLabel}
-                      </Button>
-                    );
-                  })}
+                  </FilterPill>
+                  {PROTOCOL_CATEGORY_OPTIONS.map((opt) => (
+                    <FilterPill key={opt.value} active={protocolFilter.has(opt.value)} onClick={() => toggleProtocol(opt.value)}>
+                      {opt.label}
+                    </FilterPill>
+                  ))}
                 </div>
 
                 {brandGroups.length > 0 ? (
                   <div className="flex flex-wrap items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className={cn("h-8 rounded-full px-3 text-xs", brandFilter.size === 0 && "bg-[var(--color-surface-hover)] text-[var(--color-foreground)]")}
-                      onClick={clearBrandFilter}
-                      aria-pressed={brandFilter.size === 0}
-                    >
+                    <FilterPill active={brandFilter.size === 0} onClick={clearBrandFilter}>
                       全部品牌
-                    </Button>
+                    </FilterPill>
                     {(() => {
                       const labels = [...new Set(brandGroups.map((g) => g.label))];
                       const brands = rows.some((r) => matchBrandGroups(r.id, brandMatchers) === OTHER_BRAND)
                         ? [...labels, OTHER_BRAND]
                         : labels;
-                      return brands.map((label) => {
-                        const active = brandFilter.has(label);
-                        return (
-                          <Button
-                            key={label}
-                            variant="ghost"
-                            size="sm"
-                            className={cn("h-8 rounded-full px-3 text-xs", active && "bg-[var(--color-surface-hover)] text-[var(--color-foreground)]")}
-                            onClick={() => toggleBrand(label)}
-                            aria-pressed={active}
-                          >
-                            {label}
-                          </Button>
-                        );
-                      });
+                      return brands.map((label) => (
+                        <FilterPill key={label} active={brandFilter.has(label)} onClick={() => toggleBrand(label)}>
+                          {label}
+                        </FilterPill>
+                      ));
                     })()}
                   </div>
                 ) : null}
@@ -440,7 +427,7 @@ export default function AvailableModelsPage() {
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-wrap gap-1">
-                                {(row.supported_protocols ?? []).map((p) => (
+                                {(row.supported_protocols ?? []).filter((p) => SPECIAL_PROTOCOLS.includes(p)).map((p) => (
                                   <Badge key={p} variant="outline" className="text-[10px]">{shortProtocolLabel(p)}</Badge>
                                 ))}
                               </div>
@@ -510,7 +497,7 @@ export default function AvailableModelsPage() {
                                   识图
                                 </span>
                               ) : null}
-                              {(row.supported_protocols ?? []).map((p) => (
+                              {(row.supported_protocols ?? []).filter((p) => SPECIAL_PROTOCOLS.includes(p)).map((p) => (
                                 <span key={p} className="inline-flex items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-2 py-0.5 text-[10px] text-[var(--color-foreground-secondary)]">
                                   {shortProtocolLabel(p)}
                                 </span>
@@ -643,5 +630,31 @@ function SortButton({
         )}
       </span>
     </TableHead>
+  );
+}
+
+function FilterPill({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "inline-flex h-8 items-center rounded-full border px-3 text-xs font-medium transition-colors",
+        active
+          ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-white"
+          : "border-[var(--color-border)] bg-transparent text-[var(--color-foreground-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-foreground)]",
+      )}
+    >
+      {children}
+    </button>
   );
 }
