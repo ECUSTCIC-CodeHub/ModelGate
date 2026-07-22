@@ -14,7 +14,7 @@ const streamAdapters = {
 } satisfies Record<StreamingProtocol, ProtocolStreamAdapter>;
 
 function isStreamingProtocol(protocol: GatewayProtocol): protocol is StreamingProtocol {
-  return protocol !== "embeddings" && protocol !== "images";
+  return protocol !== "embeddings" && protocol !== "images" && protocol !== "other";
 }
 
 export function getStreamAdapter(protocol: GatewayProtocol): ProtocolStreamAdapter | null {

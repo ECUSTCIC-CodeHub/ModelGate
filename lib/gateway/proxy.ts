@@ -31,6 +31,7 @@ const PROTOCOL_PATH: Record<GatewayProtocol, string> = {
   anthropic_messages: "messages",
   embeddings: "embeddings",
   images: "images/generations",
+  other: "",
 };
 
 const OPENAI_NODE_SDK_USER_AGENT = "OpenAI/JS 6.39.0";
@@ -121,6 +122,16 @@ export async function testUpstreamModel(target: {
   channel: Pick<DbChannel, "base_url" | "api_key" | "timeout" | "user_agent" | "proxy_url">;
   model: Pick<DbModel, "real_model" | "upstream_protocol">;
 }) {
+  if (target.model.upstream_protocol === "other") {
+    return {
+      ok: false,
+      status: null,
+      latency_ms: 0,
+      body_preview: "该模型使用 Other 通用转发，无标准探测接口；请直接通过 /api/v1/<path> 调用上游对应路径。",
+      summary: null,
+    };
+  }
+
   const { controller, timeout } = createTimeoutController(target.channel.timeout);
   const startedAt = Date.now();
 

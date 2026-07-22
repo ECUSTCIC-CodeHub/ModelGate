@@ -6,7 +6,7 @@ import type {
   PassthroughEventTracker,
 } from "@/lib/gateway/protocol-adapters/streaming/common";
 
-export type StreamingProtocol = Exclude<GatewayProtocol, "embeddings" | "images">;
+export type StreamingProtocol = Exclude<GatewayProtocol, "embeddings" | "images" | "other">;
 
 export type StreamDecoder = (upstream: ReadableStream<Uint8Array>) => IntermediateStreamResult;
 

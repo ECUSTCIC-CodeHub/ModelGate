@@ -212,6 +212,7 @@ function mapRowToRoute(row: CandidateRow, inboundProtocol?: GatewayProtocol): Ro
 const PASSTHROUGH_PROTOCOLS: GatewayProtocol[] = ["embeddings", "images"];
 
 function isProtocolCompatible(inboundProtocol: GatewayProtocol, upstreamProtocol: GatewayProtocol, modelProtocols: GatewayProtocol[], channelProtocols: GatewayProtocol[]) {
+  if (upstreamProtocol === "other") return false;
   if (!channelProtocols.includes(upstreamProtocol)) return false;
   if (!modelProtocols.includes(upstreamProtocol)) return false;
   if (PASSTHROUGH_PROTOCOLS.includes(inboundProtocol)) return inboundProtocol === upstreamProtocol;

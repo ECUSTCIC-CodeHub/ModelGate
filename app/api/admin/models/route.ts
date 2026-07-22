@@ -64,7 +64,7 @@ export async function POST(request: Request) {
   const channel = await gatewayDb
     .queryOne<{ id: number; supported_protocols: string; enabled: number }>("SELECT id, supported_protocols, enabled FROM channels WHERE id = ? AND deleted_at IS NULL", [parsed.data.channel_id]);
   if (!channel) return jsonError("渠道不存在", 404);
-  const upstreamProtocol = parsed.data.upstream_protocol ?? "chat_completions";
+  const upstreamProtocol = parsed.data.upstream_protocol ?? parseSupportedProtocols(channel.supported_protocols)[0] ?? "chat_completions";
   if (!supportsProtocol(channel.supported_protocols, upstreamProtocol)) {
     return jsonError("所选渠道不支持该上游协议", 400);
   }

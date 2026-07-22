@@ -13,7 +13,7 @@ const adapters: Partial<Record<GatewayProtocol, ProtocolBodyAdapter>> = {
   anthropic_messages: anthropicAdapter,
 };
 
-const gatewayAdapters: Record<GatewayProtocol, GatewayProtocolAdapter> = {
+const gatewayAdapters: Partial<Record<GatewayProtocol, GatewayProtocolAdapter>> = {
   chat_completions: chatCompletionsGatewayAdapter,
   responses: responsesGatewayAdapter,
   anthropic_messages: anthropicGatewayAdapter,
@@ -30,7 +30,11 @@ export function getProtocolBodyAdapter(protocol: GatewayProtocol) {
 }
 
 export function getGatewayProtocolAdapter(protocol: GatewayProtocol) {
-  return gatewayAdapters[protocol];
+  const adapter = gatewayAdapters[protocol];
+  if (!adapter) {
+    throw new Error(`协议 ${protocol} 没有对应的网关适配器`);
+  }
+  return adapter;
 }
 
 export {

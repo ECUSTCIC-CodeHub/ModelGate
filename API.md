@@ -1340,7 +1340,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | base_url | string | 是 | | 上游 API 地址 |
 | api_key | string | 否 | | 上游 API Key |
 | api_key_private | boolean | 否 | false | 是否「仅添加人可见」，开启后 `api_key` 仅添加人可见与修改 |
-| supported_protocols | string[] | 否 | ["chat_completions"] | 支持的协议：`chat_completions` / `anthropic_messages` / `responses` / `embeddings` / `images`。各协议对应的网关端点：`chat_completions` → `/api/v1/chat/completions`，`anthropic_messages` → `/api/v1/messages`，`responses` → `/api/v1/responses`，`embeddings` → `/api/v1/embeddings`，`images` → `/api/v1/images/generations` + `/api/v1/images/edits` |
+| supported_protocols | string[] | 否 | ["chat_completions"] | 支持的协议：`chat_completions` / `anthropic_messages` / `responses` / `embeddings` / `images` / `other`。各协议对应的网关端点：`chat_completions` → `/api/v1/chat/completions`，`anthropic_messages` → `/api/v1/messages`，`responses` → `/api/v1/responses`，`embeddings` → `/api/v1/embeddings`，`images` → `/api/v1/images/generations` + `/api/v1/images/edits`；`other` 为通用转发（兜底）标识，详见「通用转发 /api/v1/*（兜底）」 |
 | user_agent | string | 否 | "" | 渠道级上游 User-Agent，留空时透传客户端 UA 或使用协议默认值 |
 | proxy_url | string | 否 | "" | 渠道级上游 HTTP(S) 代理地址，留空表示直连；支持 `http://` / `https://`，可在 URL 中携带代理认证信息 |
 | ua_restrictions | string | 否 | "" | 渠道级 User-Agent 限制规则 JSON 数组，留空表示不限制（完整版功能，最长 20000 字符） |
@@ -2580,6 +2580,8 @@ curl https://your-domain:3000/api/v1/rerank \
 ```
 
 > 若请求体缺失 `model` 字段、当前用户无权访问该模型、或用户组无可用渠道，返回与常规网关端点一致的 400 / 403 / 404 错误。
+
+**渠道与模型管理中的协议:** 在渠道与模型的「支持协议」中可选择 `other`（Other 通用转发）来标记该渠道/模型仅用于兜底透传。该选项仅作管理标识，不参与具体协议端点的路由匹配（具体协议端点仍按各自协议过滤）；通用转发请求通过 `/api/v1/<path>` 按 `model` 别名解析渠道，与渠道是否勾选其它协议无关。模型探测对 `other` 协议无标准探测接口，测试时返回提示。
 
 ---
 
