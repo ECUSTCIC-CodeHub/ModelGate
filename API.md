@@ -2538,6 +2538,51 @@ OpenAI Images Edits 兼容端点，直通上游 `/images/edits`，支持 multipa
 
 ---
 
+### 通用转发 /api/v1/*（兜底）
+
+通用（Other）转发端点，兜底所有未被上述具体端点匹配的 `/api/v1/*` 路径（如 `/api/v1/rerank`、`/api/v1/moderations`、`/api/v1/audio/*`、`/api/v1/files` 等上游自定义端点）。网关不对其做协议转换，而是**原样透传**请求到目标渠道的上游地址。
+
+> 因此无需为 rerank、audio、files 等上游端点逐个新增专用端点，通用兜底即可覆盖：客户端把上游路径写在 URL 中（如 `/api/v1/rerank`），由 `model` 字段指定目标渠道。
+
+**认证:** API Key
+
+**请求方法:** POST（OPTIONS 用于 CORS 预检）
+
+**目标渠道的确定:** 通过请求体中的模型别名复用现有路由与权限体系，而非在路径中指定渠道。请求体 JSON 必须包含 `model` 字段（即模型别名）：
+
+```json
+{ "model": "gpt-4", "input": "..." }
+```
+
+网关按 `model` 别名解析可访问的模型，再按现有权重/渠道白名单/UA 限制选出目标渠道，将请求体**原样转发**到 `<channel.base_url>/<捕获路径>`（保留原始 query 字符串）。`base_url` 末尾的固定协议路径（如 `/chat/completions`）会被规范化去除，仅拼接捕获到的路径。
+
+**转发行为:**
+
+- 请求体以原始字节原样透传（仅读取 `model` 字段用于路由，不修改其余内容）；请求头原样转发（去除 `connection`、`content-length`、`host`、`cookie` 等逐跳头与网关自身的鉴权头）。
+- query 字符串原样透传，但转发前会剔除网关自身的鉴权参数（`api_key`、`token`），避免将它们泄漏给上游。
+- 网关鉴权（API Key）被剥离，改为注入目标渠道的 `api_key`：`Authorization: Bearer <api_key>` 与 `x-api-key: <api_key>` 同时注入，兼容 OpenAI 与 Anthropic 风格上游。
+- 客户端 `anthropic-version`、`anthropic-beta`、自定义请求头等按原样转发。
+- 响应原样透传（去除 `content-encoding`、`content-length` 等由网关重算的头），包含上游返回的状态码与响应体。
+
+**权限与配额:**
+
+- 复用 API Key 鉴权、模型别名可见性（公开/白名单）、用户组渠道白名单、全站/渠道/模型级 User-Agent 限制。
+- 仅计入请求次数配额；Token 用量在通用转发中无法可靠统计，故不计入 Token 配额（日志中 `total_tokens` 记为 `null`）。
+
+**示例:**
+
+```bash
+# 转发到 gpt-4 所属渠道的 /rerank 端点（无需为 rerank 单独建专用接口）
+curl https://your-domain:3000/api/v1/rerank \
+  -H "Authorization: Bearer sk-gw-xxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "model": "gpt-4", "query": "...", "documents": ["...", "..."] }'
+```
+
+> 若请求体缺失 `model` 字段、当前用户无权访问该模型、或用户组无可用渠道，返回与常规网关端点一致的 400 / 403 / 404 错误。
+
+---
+
 ## 错误格式
 
 所有错误遵循统一格式：

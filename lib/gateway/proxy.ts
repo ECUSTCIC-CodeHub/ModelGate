@@ -6,7 +6,7 @@ import { withUpstreamProxy } from "@/lib/gateway/upstream-proxy";
 import { isTimeoutError, upstreamFailureStatus } from "@/lib/gateway/upstream-error";
 import { Agent, type Dispatcher } from "undici";
 
-function normalizeProviderBaseUrl(baseUrl: string) {
+export function normalizeProviderBaseUrl(baseUrl: string) {
   const normalized = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
   return normalized
     .replace(/\/chat\/completions$/, "")
@@ -16,6 +16,13 @@ function normalizeProviderBaseUrl(baseUrl: string) {
     .replace(/\/images\/generations$/, "")
     .replace(/\/images\/edits$/, "")
     .replace(/\/models$/, "");
+}
+
+// 通用转发使用：在规范化后的 base_url 后拼接任意上游路径与原始 query。
+export function buildArbitraryUpstreamUrl(baseUrl: string, pathSuffix: string, search: string) {
+  const base = normalizeProviderBaseUrl(baseUrl);
+  const trimmed = pathSuffix.replace(/^\/+/, "");
+  return `${base}/${trimmed}${search ?? ""}`;
 }
 
 const PROTOCOL_PATH: Record<GatewayProtocol, string> = {
