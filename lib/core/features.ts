@@ -73,6 +73,7 @@ export type EditionSettingsInput = {
   theme_color?: string;
   logo_url?: string;
   logo_square_url?: string;
+  model_brand_groups?: string;
 };
 
 export function filterSettingsInputForEdition<T extends EditionSettingsInput>(input: T): T {

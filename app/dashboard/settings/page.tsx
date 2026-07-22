@@ -28,6 +28,7 @@ import {
   VisionFallbackSettingsCard,
   ModelFallbackSettingsCard,
   ModelDefaultVisibilitySettingsCard,
+  ModelBrandGroupsSettingsCard,
   WebhookSettingsCard,
   TopUsersVisibilitySettingsCard,
   OverviewScopeSettingsCard,
@@ -86,6 +87,7 @@ export default function AdminSettingsPage() {
   const [modelFallbackEnabled, setModelFallbackEnabled] = useState(false);
   const [modelFallbackAlias, setModelFallbackAlias] = useState("");
   const [defaultModelIsPublic, setDefaultModelIsPublic] = useState(true);
+  const [modelBrandGroups, setModelBrandGroups] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const oidcFeatureEnabled = modelGateFeatures.oidc;
@@ -141,6 +143,7 @@ export default function AdminSettingsPage() {
     setModelFallbackEnabled(settings.model_fallback_enabled === 1);
     setModelFallbackAlias(stringValue(settings.model_fallback_alias));
     setDefaultModelIsPublic(settings.default_model_is_public !== 0);
+    setModelBrandGroups(stringValue(settings.model_brand_groups));
   }, [accessGuideNoticeFeatureEnabled, announcementFeatureEnabled, oidcFeatureEnabled, webhookFeatureEnabled, uaRestrictionsFeatureEnabled]);
 
   useEffect(() => {
@@ -203,6 +206,7 @@ export default function AdminSettingsPage() {
         model_fallback_enabled: modelFallbackEnabled,
         model_fallback_alias: modelFallbackAlias,
         default_model_is_public: defaultModelIsPublic,
+        model_brand_groups: modelBrandGroups,
       };
 
       const response = await authedFetch("/api/admin/settings", {
@@ -320,6 +324,10 @@ export default function AdminSettingsPage() {
           <ModelDefaultVisibilitySettingsCard
             defaultModelIsPublic={defaultModelIsPublic}
             setDefaultModelIsPublic={setDefaultModelIsPublic}
+          />
+          <ModelBrandGroupsSettingsCard
+            value={modelBrandGroups}
+            onChange={setModelBrandGroups}
           />
           <ModelStatusLightSettingsCard
             hours1={statusLight1Hours}

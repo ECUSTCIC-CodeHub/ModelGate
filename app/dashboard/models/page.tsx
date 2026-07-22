@@ -29,6 +29,27 @@ type ChannelMultiplier = {
   effective_weight: number;
 };
 
+type BrandGroup = {
+  label: string;
+  pattern: string;
+};
+
+const OTHER_BRAND = "其他";
+
+function compileBrandMatcher(pattern: string): RegExp | null {
+  const trimmed = pattern.trim();
+  if (!trimmed) return null;
+  const escaped = trimmed.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*+/g, ".*");
+  return new RegExp("^" + escaped, "i");
+}
+
+function matchBrandGroups(id: string, matchers: Array<{ label: string; matcher: RegExp }>): string {
+  for (const group of matchers) {
+    if (group.matcher.test(id)) return group.label;
+  }
+  return OTHER_BRAND;
+}
+
 type ModelItem = {
   id: string;
   object: "model";
@@ -66,6 +87,8 @@ export default function AvailableModelsPage() {
   const [sortField, setSortField] = useState<SortField>("id");
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
   const [protocolFilter, setProtocolFilter] = useState<Set<Protocol>>(() => new Set());
+  const [brandGroups, setBrandGroups] = useState<BrandGroup[]>([]);
+  const [brandFilter, setBrandFilter] = useState<Set<string>>(() => new Set());
   const { toast } = useToast();
 
   function toggleProtocol(value: Protocol) {
@@ -79,6 +102,19 @@ export default function AvailableModelsPage() {
 
   function clearProtocolFilter() {
     setProtocolFilter(new Set());
+  }
+
+  function toggleBrand(value: string) {
+    setBrandFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(value)) next.delete(value);
+      else next.add(value);
+      return next;
+    });
+  }
+
+  function clearBrandFilter() {
+    setBrandFilter(new Set());
   }
 
   useEffect(() => {
@@ -110,6 +146,11 @@ export default function AvailableModelsPage() {
         }
 
         setRows(data?.data ?? []);
+        if (Array.isArray(data?.brand_groups)) {
+          setBrandGroups(data.brand_groups.filter(
+            (g: unknown): g is BrandGroup => !!g && typeof g === "object" && typeof (g as BrandGroup).label === "string" && typeof (g as BrandGroup).pattern === "string",
+          ));
+        }
 
         // Non-blocking metrics fetch
         authedFetch("/api/dashboard/model-metrics")
@@ -141,20 +182,32 @@ export default function AvailableModelsPage() {
     else { setSortField(field); setSortOrder("asc"); }
   }
 
+  const brandMatchers = useMemo(() => {
+    return brandGroups
+      .map((g) => ({ label: g.label, matcher: compileBrandMatcher(g.pattern) }))
+      .filter((g): g is { label: string; matcher: RegExp } => g.matcher !== null);
+  }, [brandGroups]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const hasBrandGroups = brandMatchers.length > 0;
     return rows.filter((r) => {
       if (q && !r.id.toLowerCase().includes(q)) return false;
       if (protocolFilter.size > 0) {
         const modelProtocols = r.supported_protocols ?? [];
+        let protocolHit = false;
         for (const p of protocolFilter) {
-          if (modelProtocols.includes(p)) return true;
+          if (modelProtocols.includes(p)) { protocolHit = true; break; }
         }
-        return false;
+        if (!protocolHit) return false;
+      }
+      if (hasBrandGroups && brandFilter.size > 0) {
+        const brand = matchBrandGroups(r.id, brandMatchers);
+        if (!brandFilter.has(brand)) return false;
       }
       return true;
     });
-  }, [rows, search, protocolFilter]);
+  }, [rows, search, protocolFilter, brandMatchers, brandFilter]);
 
   const sorted = useMemo(() => {
     const sorted = [...filtered].sort((a, b) => {
@@ -310,6 +363,41 @@ export default function AvailableModelsPage() {
                     );
                   })}
                 </div>
+
+                {brandGroups.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={cn("h-8 rounded-full px-3 text-xs", brandFilter.size === 0 && "bg-[var(--color-surface-hover)] text-[var(--color-foreground)]")}
+                      onClick={clearBrandFilter}
+                      aria-pressed={brandFilter.size === 0}
+                    >
+                      全部品牌
+                    </Button>
+                    {(() => {
+                      const labels = [...new Set(brandGroups.map((g) => g.label))];
+                      const brands = rows.some((r) => matchBrandGroups(r.id, brandMatchers) === OTHER_BRAND)
+                        ? [...labels, OTHER_BRAND]
+                        : labels;
+                      return brands.map((label) => {
+                        const active = brandFilter.has(label);
+                        return (
+                          <Button
+                            key={label}
+                            variant="ghost"
+                            size="sm"
+                            className={cn("h-8 rounded-full px-3 text-xs", active && "bg-[var(--color-surface-hover)] text-[var(--color-foreground)]")}
+                            onClick={() => toggleBrand(label)}
+                            aria-pressed={active}
+                          >
+                            {label}
+                          </Button>
+                        );
+                      });
+                    })()}
+                  </div>
+                ) : null}
 
                 {sorted.length === 0 ? (
                   <p className="py-8 text-center text-sm text-[var(--color-foreground-muted)]">未找到匹配的模型。</p>

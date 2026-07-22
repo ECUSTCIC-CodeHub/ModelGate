@@ -6,6 +6,7 @@ import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { getGatewaySettings, setGatewaySettings } from "@/lib/core/settings";
 import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
+import { parseModelBrandGroups } from "@/lib/core/settings";
 
 const schema = z.object({
   registration_enabled: z.boolean(),
@@ -52,6 +53,7 @@ const schema = z.object({
   top_users_visible: z.boolean().optional(),
   overview_global: z.boolean().optional(),
   default_model_is_public: z.boolean().optional(),
+  model_brand_groups: z.string().max(20000).optional(),
 });
 
 export async function GET(request: Request) {
@@ -73,6 +75,28 @@ export async function PUT(request: Request) {
   if (parsed.data.ua_restrictions !== undefined) {
     const validation = validateUaRestrictionRules(parsed.data.ua_restrictions);
     if (!validation.valid) return jsonError(validation.error, 400);
+  }
+
+  if (parsed.data.model_brand_groups !== undefined) {
+    let rawGroups: unknown;
+    try {
+      rawGroups = JSON.parse(parsed.data.model_brand_groups);
+    } catch {
+      return jsonError("模型品牌分组格式不正确", 400);
+    }
+    if (!Array.isArray(rawGroups)) return jsonError("模型品牌分组必须为数组", 400);
+    for (const item of rawGroups) {
+      if (!item || typeof item !== "object" || typeof (item as Record<string, unknown>).label !== "string" || typeof (item as Record<string, unknown>).pattern !== "string") {
+        return jsonError("每条品牌组需包含 label 与 pattern", 400);
+      }
+      if ((item as { label: string }).label.length > 50 || (item as { pattern: string }).pattern.length > 100) {
+        return jsonError("品牌名最长 50 字符，前缀规则最长 100 字符", 400);
+      }
+    }
+    const normalized = parseModelBrandGroups(parsed.data.model_brand_groups);
+    if (normalized.length !== rawGroups.length) {
+      return jsonError("品牌组的品牌名与前缀规则不能为空", 400);
+    }
   }
 
   const input = filterSettingsInputForEdition({ ...parsed.data });

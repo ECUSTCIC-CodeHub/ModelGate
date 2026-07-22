@@ -57,7 +57,30 @@ export type GatewaySettings = {
   top_users_visible: number;
   overview_global: number;
   default_model_is_public: number;
+  model_brand_groups: string;
 };
+
+export type ModelBrandGroup = {
+  label: string;
+  pattern: string;
+};
+
+export function parseModelBrandGroups(raw: string | null | undefined): ModelBrandGroup[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+      .map((item) => ({
+        label: typeof item.label === "string" ? item.label : "",
+        pattern: typeof item.pattern === "string" ? item.pattern : "",
+      }))
+      .filter((item) => item.label.trim() && item.pattern.trim());
+  } catch {
+    return [];
+  }
+}
 
 let cachedGatewaySettings: { value: GatewaySettings; expiresAt: number } | null = null;
 
@@ -125,6 +148,7 @@ const GATEWAY_KEYS = [
   "top_users_visible",
   "overview_global",
   "default_model_is_public",
+  "model_brand_groups",
 ] as const;
 
 const SETTINGS_SELECT_SQL = `SELECT \`key\`, value FROM settings WHERE \`key\` IN (${GATEWAY_KEYS.map(() => "?").join(", ")})`;
@@ -178,6 +202,7 @@ async function readGatewaySettingsFromDb(): Promise<GatewaySettings> {
     top_users_visible: map.get("top_users_visible") === "0" ? 0 : 1,
     overview_global: map.get("overview_global") === "0" ? 0 : 1,
     default_model_is_public: map.get("default_model_is_public") === "0" ? 0 : 1,
+    model_brand_groups: map.get("model_brand_groups") ?? "",
   };
 }
 
@@ -233,6 +258,7 @@ export async function setGatewaySettings(input: {
   top_users_visible?: boolean;
   overview_global?: boolean;
   default_model_is_public?: boolean;
+  model_brand_groups?: string;
 }) {
   const values: Record<string, string> = {
     registration_enabled: input.registration_enabled ? "1" : "0",
@@ -277,6 +303,7 @@ export async function setGatewaySettings(input: {
   if (input.top_users_visible !== undefined) values.top_users_visible = input.top_users_visible ? "1" : "0";
   if (input.overview_global !== undefined) values.overview_global = input.overview_global ? "1" : "0";
   if (input.default_model_is_public !== undefined) values.default_model_is_public = input.default_model_is_public ? "1" : "0";
+  if (input.model_brand_groups !== undefined) values.model_brand_groups = input.model_brand_groups;
 
   const isMysql = await gatewayDb.getDriver() === "mysql";
   const upsertSql = isMysql

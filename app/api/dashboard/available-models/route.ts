@@ -3,14 +3,19 @@ export const dynamic = "force-dynamic";
 import { ensureWebUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
 import { listAccessibleModels } from "@/lib/gateway/model-access";
+import { getGatewaySettings, parseModelBrandGroups } from "@/lib/core/settings";
 
 export async function GET(request: Request) {
   const guard = await ensureWebUser(request);
   if ("error" in guard) return guard.error;
 
-  const models = await listAccessibleModels(guard.auth.user);
+  const [models, settings] = await Promise.all([
+    listAccessibleModels(guard.auth.user),
+    getGatewaySettings(),
+  ]);
   return jsonOk({
     object: "list",
+    brand_groups: parseModelBrandGroups(settings.model_brand_groups),
     data: models.map((m) => ({
       id: m.alias,
       object: "model",

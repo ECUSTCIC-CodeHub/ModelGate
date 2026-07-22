@@ -369,7 +369,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
     "repo_name": "",
     "model_fallback_enabled": 0,
     "model_fallback_alias": "",
-    "default_model_is_public": 1
+    "default_model_is_public": 1,
+    "model_brand_groups": ""
   }
 }
 ```
@@ -415,7 +416,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "vision_fallback_alias": "",
   "model_fallback_enabled": false,
   "model_fallback_alias": "",
-  "default_model_is_public": true
+  "default_model_is_public": true,
+  "model_brand_groups": "[{\"label\":\"深度求索\",\"pattern\":\"deepseek*\"}]"
 }
 ```
 
@@ -458,6 +460,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | model_fallback_enabled | boolean | 是否开启「模型自动替补」全局开关；开启后，用户请求的模型不存在或被禁用时，自动路由到其他模型 |
 | model_fallback_alias | string | 指定优先使用的替补模型别名（最长 255 字符）；留空时从已启用且当前用户可见的模型中按权重自动挑选 |
 | default_model_is_public | boolean | 新增模型的默认可见性（默认 true）；开启后新创建的模型对所有非管理员用户可见，关闭后新增模型默认仅对授权用户可见（白名单）。仅影响新增模型预设值，编辑已有模型以其自身 `is_public` 为准 |
+| model_brand_groups | string | 模型品牌分组规则（JSON 字符串），形如 `[{"label":"深度求索","pattern":"deepseek*"}]`；`pattern` 支持通配符 `*`（匹配任意字符、不区分大小写），按模型 ID 前缀归组，用于模型列表页按品牌筛选展示。未命中任何品牌组的模型归入「其他」 |
 
 > 精简版固定保留账号密码登录；返回时会隐藏 OIDC 配置、公告内容、公告展示条数、接入指南通知和 Webhook 密钥，更新时忽略 `oidc_*`、`announcement_content`、`announcement_display_count`、`access_guide_notice` 与 `webhook_secret` 字段。
 
@@ -1924,6 +1927,10 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 ```json
 {
   "object": "list",
+  "brand_groups": [
+    { "label": "深度求索", "pattern": "deepseek*" },
+    { "label": "月之暗面", "pattern": "kimi*" }
+  ],
   "data": [
     {
       "id": "gpt-4",
@@ -1947,7 +1954,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 }
 ```
 
-> `token_multiplier` 和 `request_multiplier` 为计费倍率（取所有渠道中的最低值），实际扣量 = 使用量 × 倍率。`token_multiplier_min/max` 和 `request_multiplier_min/max` 为各渠道倍率范围。`max_effective_weight` 为该模型所有渠道中的最大有效权重（渠道权重 × 模型权重），列表按此降序排列。`channels` 包含各渠道的倍率和有效权重明细，按权重降序排列。`supported_protocols` 为该模型各渠道所支持协议的并集，取值：`chat_completions` / `responses` / `anthropic_messages` / `embeddings` / `images` / `other`。
+> `token_multiplier` 和 `request_multiplier` 为计费倍率（取所有渠道中的最低值），实际扣量 = 使用量 × 倍率。`token_multiplier_min/max` 和 `request_multiplier_min/max` 为各渠道倍率范围。`max_effective_weight` 为该模型所有渠道中的最大有效权重（渠道权重 × 模型权重），列表按此降序排列。`channels` 包含各渠道的倍率和有效权重明细，按权重降序排列。`supported_protocols` 为该模型各渠道所支持协议的并集，取值：`chat_completions` / `responses` / `anthropic_messages` / `embeddings` / `images` / `other`。`brand_groups` 为管理员在系统设置中配置的模型品牌分组规则，前端据此按模型 ID 前缀归组筛选。
 
 ### GET /api/dashboard/model-metrics
 
