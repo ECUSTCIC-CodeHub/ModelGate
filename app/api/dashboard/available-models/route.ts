@@ -15,6 +15,7 @@ export async function GET(request: Request) {
       id: m.alias,
       object: "model",
       supports_vision: m.supports_vision === 1,
+      supported_protocols: m.supported_protocols,
       token_multiplier: m.token_multiplier,
       request_multiplier: m.request_multiplier,
       token_multiplier_min: m.token_multiplier_min,

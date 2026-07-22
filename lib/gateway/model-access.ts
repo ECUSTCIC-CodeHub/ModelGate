@@ -1,6 +1,7 @@
 import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { getUserAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { getUserGroup } from "@/lib/gateway/effective-limits";
+import { parseSupportedProtocols, type GatewayProtocol } from "@/lib/gateway/protocols";
 
 export function parseAllowedModelAliases(raw: string | null | undefined) {
   if (!raw) return [];
@@ -55,7 +56,7 @@ const ENABLED_MODEL_ALIAS_SQL = `SELECT 1
      AND c.deleted_at IS NULL
    LIMIT 1`;
 
-const ACCESSIBLE_MODEL_ROWS_SQL = `SELECT m.alias, m.real_model, m.is_public, m.created_at, m.token_multiplier, m.request_multiplier, m.supports_vision,
+const ACCESSIBLE_MODEL_ROWS_SQL = `SELECT m.alias, m.real_model, m.is_public, m.created_at, m.token_multiplier, m.request_multiplier, m.supports_vision, m.supported_protocols,
       m.weight AS model_weight,
       c.id AS channel_id, c.name AS channel_name, c.weight AS channel_weight
    FROM models m
@@ -114,6 +115,7 @@ export type AccessibleModel = {
   alias: string;
   created_at: string | null;
   supports_vision: number;
+  supported_protocols: GatewayProtocol[];
   token_multiplier: number;
   request_multiplier: number;
   token_multiplier_min: number;
@@ -130,11 +132,11 @@ export async function listAccessibleModelAliases(user: Pick<DbUser, "role" | "gr
 }
 
 export async function listAccessibleModels(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">): Promise<AccessibleModel[]> {
-  const rows = await gatewayDb.query<{ alias: string; real_model: string; is_public: number; created_at: string | null; token_multiplier: number; request_multiplier: number; supports_vision: number; model_weight: number; channel_id: number; channel_name: string; channel_weight: number }>(ACCESSIBLE_MODEL_ROWS_SQL);
+  const rows = await gatewayDb.query<{ alias: string; real_model: string; is_public: number; created_at: string | null; token_multiplier: number; request_multiplier: number; supports_vision: number; supported_protocols: string; model_weight: number; channel_id: number; channel_name: string; channel_weight: number }>(ACCESSIBLE_MODEL_ROWS_SQL);
   const allowedChannelIds = await getUserAllowedChannelIds(user);
   const allowedChannelSet = allowedChannelIds ? new Set(allowedChannelIds) : null;
 
-  type Accumulator = { alias: string; created_at: string | null; supports_vision: number; channels: AccessibleModelChannel[] };
+  type Accumulator = { alias: string; created_at: string | null; supports_vision: number; supported_protocols: Set<GatewayProtocol>; channels: AccessibleModelChannel[] };
   const visible = new Map<string, Accumulator>();
 
   const processRow = (row: typeof rows[number]) => {
@@ -144,10 +146,11 @@ export async function listAccessibleModels(user: Pick<DbUser, "role" | "group_id
     const sv = row.supports_vision ?? 0;
     const current = visible.get(row.alias);
     if (!current) {
-      visible.set(row.alias, { alias: row.alias, created_at: row.created_at, supports_vision: sv, channels: [{ channel_id: row.channel_id, channel_name: row.channel_name, real_model: row.real_model, token_multiplier: tm, request_multiplier: rm, effective_weight: ew }] });
+      visible.set(row.alias, { alias: row.alias, created_at: row.created_at, supports_vision: sv, supported_protocols: new Set(parseSupportedProtocols(row.supported_protocols)), channels: [{ channel_id: row.channel_id, channel_name: row.channel_name, real_model: row.real_model, token_multiplier: tm, request_multiplier: rm, effective_weight: ew }] });
     } else {
       if ((row.created_at ?? "") > (current.created_at ?? "")) current.created_at = row.created_at;
       if (sv > current.supports_vision) current.supports_vision = sv;
+      for (const p of parseSupportedProtocols(row.supported_protocols)) current.supported_protocols.add(p);
       current.channels.push({ channel_id: row.channel_id, channel_name: row.channel_name, real_model: row.real_model, token_multiplier: tm, request_multiplier: rm, effective_weight: ew });
     }
   };
@@ -172,6 +175,7 @@ export async function listAccessibleModels(user: Pick<DbUser, "role" | "group_id
         alias: item.alias,
         created_at: item.created_at,
         supports_vision: item.supports_vision,
+        supported_protocols: [...item.supported_protocols],
         token_multiplier: Math.min(...tms),
         request_multiplier: Math.min(...rms),
         token_multiplier_min: Math.min(...tms),

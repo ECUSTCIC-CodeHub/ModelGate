@@ -18,6 +18,7 @@ import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/shared/utils";
 import { getApiMessage } from "@/lib/shared/api-message";
 import { authedFetch, ensureLoggedIn, getCachedProfile } from "@/lib/auth/client-auth";
+import { protocolOptions, shortProtocolLabel, type Protocol } from "@/app/dashboard/channels/channel-model";
 
 type ChannelMultiplier = {
   channel_id: number;
@@ -32,6 +33,7 @@ type ModelItem = {
   id: string;
   object: "model";
   supports_vision: boolean;
+  supported_protocols: Protocol[];
   token_multiplier: number;
   request_multiplier: number;
   token_multiplier_min: number;
@@ -63,7 +65,21 @@ export default function AvailableModelsPage() {
   const [view, setView] = useState<"card" | "list">("card");
   const [sortField, setSortField] = useState<SortField>("id");
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+  const [protocolFilter, setProtocolFilter] = useState<Set<Protocol>>(() => new Set());
   const { toast } = useToast();
+
+  function toggleProtocol(value: Protocol) {
+    setProtocolFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(value)) next.delete(value);
+      else next.add(value);
+      return next;
+    });
+  }
+
+  function clearProtocolFilter() {
+    setProtocolFilter(new Set());
+  }
 
   useEffect(() => {
     const saved = localStorage.getItem("modelGuideView");
@@ -127,9 +143,18 @@ export default function AvailableModelsPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) => r.id.toLowerCase().includes(q));
-  }, [rows, search]);
+    return rows.filter((r) => {
+      if (q && !r.id.toLowerCase().includes(q)) return false;
+      if (protocolFilter.size > 0) {
+        const modelProtocols = r.supported_protocols ?? [];
+        for (const p of protocolFilter) {
+          if (modelProtocols.includes(p)) return true;
+        }
+        return false;
+      }
+      return true;
+    });
+  }, [rows, search, protocolFilter]);
 
   const sorted = useMemo(() => {
     const sorted = [...filtered].sort((a, b) => {
@@ -259,6 +284,33 @@ export default function AvailableModelsPage() {
                   </div>
                 </div>
 
+                <div className="flex flex-wrap items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={cn("h-8 rounded-full px-3 text-xs", protocolFilter.size === 0 && "bg-[var(--color-surface-hover)] text-[var(--color-foreground)]")}
+                    onClick={clearProtocolFilter}
+                    aria-pressed={protocolFilter.size === 0}
+                  >
+                    全部协议
+                  </Button>
+                  {protocolOptions.map((opt) => {
+                    const active = protocolFilter.has(opt.value);
+                    return (
+                      <Button
+                        key={opt.value}
+                        variant="ghost"
+                        size="sm"
+                        className={cn("h-8 rounded-full px-3 text-xs", active && "bg-[var(--color-surface-hover)] text-[var(--color-foreground)]")}
+                        onClick={() => toggleProtocol(opt.value)}
+                        aria-pressed={active}
+                      >
+                        {opt.shortLabel}
+                      </Button>
+                    );
+                  })}
+                </div>
+
                 {sorted.length === 0 ? (
                   <p className="py-8 text-center text-sm text-[var(--color-foreground-muted)]">未找到匹配的模型。</p>
                 ) : view === "list" ? (
@@ -273,6 +325,7 @@ export default function AvailableModelsPage() {
                             order={sortOrder}
                             onClick={() => handleSort("id")}
                           />
+                          <TableHead>协议</TableHead>
                           <SortButton
                             label="Token 倍率"
                             field="token_multiplier"
@@ -296,6 +349,13 @@ export default function AvailableModelsPage() {
                             <TableCell>
                               <div className="font-mono text-sm">{row.id}</div>
                               {row.supports_vision ? <Badge variant="default" className="mt-1">识图</Badge> : null}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap gap-1">
+                                {(row.supported_protocols ?? []).map((p) => (
+                                  <Badge key={p} variant="outline" className="text-[10px]">{shortProtocolLabel(p)}</Badge>
+                                ))}
+                              </div>
                             </TableCell>
                             <TableCell className="text-center">
                               {renderMultiplier(row, "token")}
@@ -362,6 +422,11 @@ export default function AvailableModelsPage() {
                                   识图
                                 </span>
                               ) : null}
+                              {(row.supported_protocols ?? []).map((p) => (
+                                <span key={p} className="inline-flex items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-2 py-0.5 text-[10px] text-[var(--color-foreground-secondary)]">
+                                  {shortProtocolLabel(p)}
+                                </span>
+                              ))}
                             </div>
                             {(() => {
                               const metrics = metricsMap[row.id];
