@@ -269,7 +269,7 @@ export function ModelTable({
                             <TableHead>倍率</TableHead>
                             <TableHead>最大并发</TableHead>
                             <TableHead>开关</TableHead>
-                            <TableHead>操作</TableHead>
+                            <TableHead className="sticky right-0 z-20 w-36 bg-[var(--color-surface-solid)] shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.18)]">操作</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>

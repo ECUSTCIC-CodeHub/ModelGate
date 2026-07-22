@@ -33,10 +33,10 @@ export function ModelActions({
 
   return (
     <>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1 whitespace-nowrap">
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onTest} disabled={testing}>
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onTest} disabled={testing}>
               <FlaskConical className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -44,7 +44,7 @@ export function ModelActions({
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onEdit}>
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onEdit}>
               <Pencil className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
@@ -55,7 +55,7 @@ export function ModelActions({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-[var(--color-destructive)] hover:text-[var(--color-destructive)]"
+              className="h-8 w-8 shrink-0 text-[var(--color-destructive)] hover:text-[var(--color-destructive)]"
               onClick={() => setConfirmDelete(true)}
             >
               <Trash2 className="h-4 w-4" />

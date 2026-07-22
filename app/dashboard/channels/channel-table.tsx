@@ -7,7 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ResizeHandle } from "@/components/ui/resize-handle";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useResizableColumns, type ColumnWidthDef } from "@/lib/shared/use-resizable-columns";
+import { Pencil, Plus, Power, Trash2 } from "lucide-react";
 import { parseSupportedProtocols, shortProtocolLabel, type Channel } from "./channel-model";
 
 function isExpired(exp?: string | Date | null): boolean {
@@ -94,12 +96,12 @@ export function ChannelTable({
             {th("timeout", "超时")}
             {th("modelCount", "模型数")}
             {th("createdBy", "添加人")}
-            <TableHead className="text-right" style={{ width: 360 }}>操作</TableHead>
+            <TableHead className="sticky right-0 z-20 w-48 bg-[var(--color-surface-solid)] text-right shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.18)]">操作</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {channels.map((row, channelIndex) => (
-            <TableRow key={row.id}>
+            <TableRow key={row.id} className="group">
               <TableCell>{channelIndex + 1}</TableCell>
               <TableCell>{row.name}</TableCell>
               <TableCell className="max-w-72 truncate">{row.base_url}</TableCell>
@@ -131,17 +133,47 @@ export function ChannelTable({
               <TableCell>{row.timeout}s</TableCell>
               <TableCell>{row.models?.length ?? 0}</TableCell>
               <TableCell>{row.created_by_username ?? "-"}</TableCell>
-              <TableCell className="space-x-2 text-right">
-                <Button size="sm" variant="outline" onClick={() => onEdit(row)}>编辑</Button>
-                <Button size="sm" variant="outline" onClick={() => onToggle(row)}>
-                  {row.enabled ? "禁用" : "启用"}
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => onCreateModel(row.id)}>新增模型</Button>
-                <ConfirmDialog
-                  title={`删除渠道 ${row.name}？`}
-                  description="删除渠道后，其下模型映射也将失效，此操作不可撤销。"
-                  onConfirm={() => onRemove(row.id)}
-                />
+              <TableCell className="sticky right-0 z-10 bg-[var(--color-surface-solid)] p-0 shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.18)] group-hover:bg-[var(--color-surface-solid-hover)]">
+                <div className="flex items-center justify-end gap-1 whitespace-nowrap px-4 py-4">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => onEdit(row)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>编辑</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => onToggle(row)}>
+                        <Power className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{row.enabled ? "禁用" : "启用"}</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => onCreateModel(row.id)}>
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>新增模型</TooltipContent>
+                  </Tooltip>
+                  <ConfirmDialog
+                    trigger={
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 text-[var(--color-destructive)] hover:text-[var(--color-destructive)]"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    }
+                    title={`删除渠道 ${row.name}？`}
+                    description="删除渠道后，其下模型映射也将失效，此操作不可撤销。"
+                    onConfirm={() => onRemove(row.id)}
+                  />
+                </div>
               </TableCell>
             </TableRow>
           ))}

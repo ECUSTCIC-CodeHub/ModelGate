@@ -38,7 +38,7 @@ export function ModelListRow({
   const [confirmToggle, setConfirmToggle] = useState(false);
 
   return (
-    <TableRow>
+    <TableRow className="group">
       <TableCell className="text-[var(--color-foreground-muted)]">{index + 1}</TableCell>
       <TableCell className="max-w-48 truncate font-mono text-sm">{model.alias}</TableCell>
       <TableCell className="max-w-48 truncate text-sm text-[var(--color-foreground-muted)]">{model.real_model}</TableCell>
@@ -79,7 +79,7 @@ export function ModelListRow({
       <TableCell>
         <Switch checked={!!model.enabled} onCheckedChange={() => setConfirmToggle(true)} />
       </TableCell>
-      <TableCell>
+      <TableCell className="sticky right-0 z-10 w-36 bg-[var(--color-surface-solid)] shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.18)] group-hover:bg-[var(--color-surface-solid-hover)]">
         <ModelActions
           model={model}
           testing={testing}

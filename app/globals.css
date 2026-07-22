@@ -10,6 +10,8 @@
   --color-surface: rgba(255, 255, 255, 0.68);
   --color-surface-hover: rgba(255, 255, 255, 0.84);
   --color-surface-elevated: rgba(255, 255, 255, 0.92);
+  --color-surface-solid: #f5f7ff;
+  --color-surface-solid-hover: #fcfcff;
   --color-popover: #ffffff;
   --color-popover-hover: #eef2ff;
 
@@ -89,6 +91,8 @@
   --color-surface: rgba(20, 26, 48, 0.55);
   --color-surface-hover: rgba(30, 38, 66, 0.7);
   --color-surface-elevated: rgba(20, 26, 48, 0.72);
+  --color-surface-solid: #11162b;
+  --color-surface-solid-hover: #192039;
   --color-popover: #11172c;
   --color-popover-hover: #1e2642;
 
