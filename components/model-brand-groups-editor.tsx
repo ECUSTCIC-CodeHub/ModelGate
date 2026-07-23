@@ -15,7 +15,7 @@ const EMPTY_GROUP: BrandGroupDraft = { label: "", pattern: "" };
 
 export function brandGroupsToJson(groups: BrandGroupDraft[]): string {
   const cleaned = groups
-    .filter((group) => group.label.trim() || group.pattern.trim())
+    .filter((group) => group.label.trim() && group.pattern.trim())
     .map((group) => ({ label: group.label.trim(), pattern: group.pattern.trim() }));
   return JSON.stringify(cleaned);
 }
