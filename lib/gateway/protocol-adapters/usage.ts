@@ -49,11 +49,17 @@ function normalizeRemoteUsage(usage: Record<string, unknown>, fields: UsageField
   const totalTokens = tokenCount(fields.totalTokens, promptTokens + completionTokens);
   const promptDetails = asRecord(usage.prompt_tokens_details) ?? asRecord(usage.input_tokens_details);
   const completionDetails = asRecord(usage.completion_tokens_details) ?? asRecord(usage.output_tokens_details);
-  const textTokens = sumTokenFields(usage, ["text_tokens", "output_text_tokens"]) +
-    sumTokenFields(completionDetails, ["text_tokens", "output_text_tokens"]);
-  const reasoningTokens =
-    sumTokenFields(usage, ["reasoning_tokens", "thinking_tokens", "reasoning_content_tokens", "thoughts_tokens", "thoughts_token_count"]) +
-    sumTokenFields(completionDetails, ["reasoning_tokens", "thinking_tokens", "reasoning_content_tokens", "thoughts_tokens", "thoughts_token_count"]);
+  const textKeys = ["text_tokens", "output_text_tokens"];
+  const reasoningKeys = ["reasoning_tokens", "thinking_tokens", "reasoning_content_tokens", "thoughts_tokens", "thoughts_token_count"];
+
+  // Use completionDetails first (OpenAI puts breakdowns in completion_tokens_details);
+  // fall back to top-level usage. Never sum both – that would double-count the same value.
+  const textTokens = hasTokenField(completionDetails, textKeys)
+    ? sumTokenFields(completionDetails, textKeys)
+    : sumTokenFields(usage, textKeys);
+  const reasoningTokens = hasTokenField(completionDetails, reasoningKeys)
+    ? sumTokenFields(completionDetails, reasoningKeys)
+    : sumTokenFields(usage, reasoningKeys);
 
   const cacheReadKeys = [
     "cached_tokens",
