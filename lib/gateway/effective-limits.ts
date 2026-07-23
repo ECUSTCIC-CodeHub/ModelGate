@@ -19,7 +19,10 @@ function pickRate(userVal: number, groupVal: number): number {
 }
 
 function pickQuota(userVal: number | null, groupVal: number | null): number | null {
+  if (userVal === -1) return null;
   if (userVal !== null) return userVal;
+  // 组表当前不会存 -1，此分支为前瞻性防御
+  if (groupVal === -1) return null;
   if (groupVal !== null) return groupVal;
   return null;
 }

@@ -32,7 +32,8 @@ const createSchema = z.object({
 });
 
 function normalizeQuota(value: number | null | undefined) {
-  if (value === null || value === undefined || value < 0) return null;
+  if (value === null || value === undefined) return null;
+  if (value < 0) return -1;
   return value;
 }
 

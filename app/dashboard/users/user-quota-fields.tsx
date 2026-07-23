@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatLimit } from "@/lib/shared/formatters";
+import { QuotaAmountField } from "./quota-amount-field";
 import {
   PERIOD_PRESETS,
   formatPeriodLabel,
@@ -28,6 +29,10 @@ function inheritedQuotaLabel(value: number | null) {
   return value === null ? "∞" : formatLimit(value);
 }
 
+function groupQuotaString(value: number | null): string {
+  return value === null ? "" : String(value);
+}
+
 export function UserQuotaFields({
   form,
   editingGroupLimits,
@@ -37,7 +42,7 @@ export function UserQuotaFields({
   return (
     <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
       <p className="text-sm font-medium text-[var(--color-foreground)]">配额配置</p>
-      <p className="text-xs text-[var(--color-foreground-muted)]">`-1` 表示继承组设置（无组则不限制），`0` 表示禁止；总量配额留空表示继承组设置。</p>
+      <p className="text-xs text-[var(--color-foreground-muted)]">速率 `-1` 表示继承组设置（无组则不限制）；配额量可选「继承组」「不限制（覆盖组）」或「自定义数值」（0 表示禁止）。</p>
       <div className="grid gap-3 md:grid-cols-3">
         <div className="space-y-2">
           <Label>RPM</Label>
@@ -62,25 +67,33 @@ export function UserQuotaFields({
         </div>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
-        <div className="space-y-2">
-          <Label>总请求配额</Label>
-          <Input type="number" min={-1} value={form.quota_requests} onChange={(e) => onChange({ quota_requests: e.target.value })} />
-          {form.quota_requests.trim() === "" && editingGroupLimits ? (
-            <p className="text-xs text-[var(--color-foreground-muted)]">← 继承组: {inheritedQuotaLabel(editingGroupLimits.quota_requests)}</p>
-          ) : null}
-        </div>
-        <div className="space-y-2">
-          <Label>总 Token 配额</Label>
-          <Input type="number" min={-1} value={form.quota_tokens} onChange={(e) => onChange({ quota_tokens: e.target.value })} />
-          {form.quota_tokens.trim() === "" && editingGroupLimits ? (
-            <p className="text-xs text-[var(--color-foreground-muted)]">← 继承组: {inheritedQuotaLabel(editingGroupLimits.quota_tokens)}</p>
-          ) : null}
-        </div>
+        <QuotaAmountField
+          label="总请求配额"
+          value={form.quota_requests}
+          onChange={(v) => onChange({ quota_requests: v })}
+          fallbackCustom={editingGroupLimits ? groupQuotaString(editingGroupLimits.quota_requests) : undefined}
+          hint={
+            form.quota_requests.trim() === "" && editingGroupLimits ? (
+              <p className="text-xs text-[var(--color-foreground-muted)]">← 继承组: {inheritedQuotaLabel(editingGroupLimits.quota_requests)}</p>
+            ) : null
+          }
+        />
+        <QuotaAmountField
+          label="总 Token 配额"
+          value={form.quota_tokens}
+          onChange={(v) => onChange({ quota_tokens: v })}
+          fallbackCustom={editingGroupLimits ? groupQuotaString(editingGroupLimits.quota_tokens) : undefined}
+          hint={
+            form.quota_tokens.trim() === "" && editingGroupLimits ? (
+              <p className="text-xs text-[var(--color-foreground-muted)]">← 继承组: {inheritedQuotaLabel(editingGroupLimits.quota_tokens)}</p>
+            ) : null
+          }
+        />
       </div>
       {periodQuotaEnabled ? (
         <div className="mt-3 border-t border-[var(--color-border)] pt-3">
           <p className="text-sm font-medium text-[var(--color-foreground)]">周期配额</p>
-          <p className="mb-3 text-xs text-[var(--color-foreground-muted)]">按固定时间间隔重置用量，留空表示继承组设置。</p>
+          <p className="mb-3 text-xs text-[var(--color-foreground-muted)]">按固定时间间隔重置用量。周期量可选「继承组」「不限制（覆盖组）」或「自定义数值」。</p>
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-2">
               <Label>重置周期</Label>
@@ -92,7 +105,7 @@ export function UserQuotaFields({
                 })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="继承组设置" />
+                  <SelectValue placeholder="继承组 / 不启用" />
                 </SelectTrigger>
                 <SelectContent>
                   {PERIOD_PRESETS.map((preset) => (
@@ -118,32 +131,28 @@ export function UserQuotaFields({
                 />
               </div>
             ) : <div />}
-            <div className="space-y-2">
-              <Label>周期请求配额</Label>
-              <Input
-                type="number"
-                min={-1}
-                value={form.period_quota_requests}
-                onChange={(e) => onChange({ period_quota_requests: e.target.value })}
-                placeholder="留空继承组设置"
-              />
-              {form.period_quota_requests.trim() === "" && editingGroupLimits ? (
-                <p className="text-xs text-[var(--color-foreground-muted)]">← 继承组: {inheritedQuotaLabel(editingGroupLimits.period_quota_requests)}</p>
-              ) : null}
-            </div>
-            <div className="space-y-2">
-              <Label>周期 Token 配额</Label>
-              <Input
-                type="number"
-                min={-1}
-                value={form.period_quota_tokens}
-                onChange={(e) => onChange({ period_quota_tokens: e.target.value })}
-                placeholder="留空继承组设置"
-              />
-              {form.period_quota_tokens.trim() === "" && editingGroupLimits ? (
-                <p className="text-xs text-[var(--color-foreground-muted)]">← 继承组: {inheritedQuotaLabel(editingGroupLimits.period_quota_tokens)}</p>
-              ) : null}
-            </div>
+            <QuotaAmountField
+              label="周期请求配额"
+              value={form.period_quota_requests}
+              onChange={(v) => onChange({ period_quota_requests: v })}
+              fallbackCustom={editingGroupLimits ? groupQuotaString(editingGroupLimits.period_quota_requests) : undefined}
+              hint={
+                form.period_quota_requests.trim() === "" && editingGroupLimits ? (
+                  <p className="text-xs text-[var(--color-foreground-muted)]">← 继承组: {inheritedQuotaLabel(editingGroupLimits.period_quota_requests)}</p>
+                ) : null
+              }
+            />
+            <QuotaAmountField
+              label="周期 Token 配额"
+              value={form.period_quota_tokens}
+              onChange={(v) => onChange({ period_quota_tokens: v })}
+              fallbackCustom={editingGroupLimits ? groupQuotaString(editingGroupLimits.period_quota_tokens) : undefined}
+              hint={
+                form.period_quota_tokens.trim() === "" && editingGroupLimits ? (
+                  <p className="text-xs text-[var(--color-foreground-muted)]">← 继承组: {inheritedQuotaLabel(editingGroupLimits.period_quota_tokens)}</p>
+                ) : null
+              }
+            />
           </div>
         </div>
       ) : null}

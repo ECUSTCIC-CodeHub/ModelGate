@@ -74,7 +74,7 @@ export type UserGroupLimits = {
 export type UserSortKey = "created_at" | "used_requests" | "used_tokens" | "username";
 
 export const PERIOD_PRESETS = [
-  { label: "不限制（继承组）", value: "" },
+  { label: "继承组 / 不启用", value: "" },
   { label: "每小时", value: "3600" },
   { label: "每日", value: "86400" },
   { label: "每周", value: "604800" },
