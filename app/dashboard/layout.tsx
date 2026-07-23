@@ -11,6 +11,18 @@ import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
+const PREFS_COOKIE = "modelgate-prefs";
+
+function parsePrefs(cookieValue: string | undefined): { appearance: "default" | "retro"; mode: "light" | "dark" | "system" } | null {
+  if (!cookieValue) return null;
+  const parts = cookieValue.split(",");
+  if (parts.length !== 2) return null;
+  const [appearance, mode] = parts;
+  if (appearance !== "default" && appearance !== "retro") return null;
+  if (mode !== "light" && mode !== "dark" && mode !== "system") return null;
+  return { appearance, mode };
+}
+
 export default async function DashboardLayout({
   children,
 }: Readonly<{
@@ -24,6 +36,9 @@ export default async function DashboardLayout({
     // 避免该 route 在反代/standalone 场景下基于 request.url 生成内部地址的绝对跳转。
     redirect("/login");
   }
+
+  const prefsCookie = cookieStore.get(PREFS_COOKIE)?.value;
+  const prefs = parsePrefs(prefsCookie);
 
   const effective = await getEffectiveLimits(profile as DbUser);
   const enrichedProfile = {
@@ -41,7 +56,10 @@ export default async function DashboardLayout({
   const authStatus = await getAuthStatus();
 
   return (
-    <ThemeProvider>
+    <ThemeProvider
+      initialAppearance={prefs?.appearance}
+      initialMode={prefs?.mode}
+    >
       <AuthProvider
         initialProfile={enrichedProfile}
         oidcEnabled={authStatus.oidc_enabled}

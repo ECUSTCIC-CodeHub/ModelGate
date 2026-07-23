@@ -88,6 +88,8 @@ export default function AdminSettingsPage() {
   const [modelFallbackAlias, setModelFallbackAlias] = useState("");
   const [defaultModelIsPublic, setDefaultModelIsPublic] = useState(true);
   const [modelBrandGroups, setModelBrandGroups] = useState("");
+  const [defaultAppearance, setDefaultAppearance] = useState<"default" | "retro">("default");
+  const [defaultMode, setDefaultMode] = useState<"light" | "dark" | "system">("system");
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const oidcFeatureEnabled = modelGateFeatures.oidc;
@@ -144,6 +146,14 @@ export default function AdminSettingsPage() {
     setModelFallbackAlias(stringValue(settings.model_fallback_alias));
     setDefaultModelIsPublic(settings.default_model_is_public !== 0);
     setModelBrandGroups(stringValue(settings.model_brand_groups));
+    const da = stringValue(settings.default_appearance);
+    setDefaultAppearance(da === "retro" ? "retro" : "default");
+    const dm = stringValue(settings.default_mode);
+    if (dm === "dark" || dm === "system") {
+      setDefaultMode(dm);
+    } else {
+      setDefaultMode("light");
+    }
   }, [accessGuideNoticeFeatureEnabled, announcementFeatureEnabled, oidcFeatureEnabled, webhookFeatureEnabled, uaRestrictionsFeatureEnabled]);
 
   useEffect(() => {
@@ -207,6 +217,8 @@ export default function AdminSettingsPage() {
         model_fallback_alias: modelFallbackAlias,
         default_model_is_public: defaultModelIsPublic,
         model_brand_groups: modelBrandGroups,
+        default_appearance: defaultAppearance,
+        default_mode: defaultMode,
       };
 
       const response = await authedFetch("/api/admin/settings", {
@@ -259,6 +271,10 @@ export default function AdminSettingsPage() {
             setLogoUrl={setLogoUrl}
             logoSquareUrl={logoSquareUrl}
             setLogoSquareUrl={setLogoSquareUrl}
+            defaultAppearance={defaultAppearance}
+            setDefaultAppearance={setDefaultAppearance}
+            defaultMode={defaultMode}
+            setDefaultMode={setDefaultMode}
           />
         </TabsContent>
 

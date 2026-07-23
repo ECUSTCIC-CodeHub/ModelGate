@@ -5,6 +5,7 @@ import { SectionTitle } from "@/components/dashboard/section-title";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { Monitor, Moon, Sun, Type } from "lucide-react";
 import {
   isValidHexColor,
   THEME_PRESETS,
@@ -22,6 +23,47 @@ function PreviewDot({ color }: { color: string }) {
   );
 }
 
+function OptionGrid<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: T; label: string; desc: string; icon: React.ReactNode }[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {options.map((option) => {
+        const active = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            aria-pressed={active}
+            className={`flex items-start gap-2.5 rounded-md border px-3 py-2.5 text-left transition-colors ${
+              active
+                ? "border-[var(--color-accent)] bg-[var(--color-accent-muted)]"
+                : "border-[var(--color-border)] hover:border-[var(--color-border-hover)] hover:bg-[var(--color-surface-hover)]"
+            }`}
+          >
+            <span className="mt-0.5 text-[var(--color-foreground-secondary)]">{option.icon}</span>
+            <span>
+              <span className="block text-sm font-medium text-[var(--color-foreground)]">
+                {option.label}
+              </span>
+              <span className="mt-0.5 block text-xs text-[var(--color-foreground-muted)]">
+                {option.desc}
+              </span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function AppearanceSettingsCard({
   themeColor,
   setThemeColor,
@@ -29,6 +71,10 @@ export function AppearanceSettingsCard({
   setLogoUrl,
   logoSquareUrl,
   setLogoSquareUrl,
+  defaultAppearance,
+  setDefaultAppearance,
+  defaultMode,
+  setDefaultMode,
 }: {
   themeColor: string;
   setThemeColor: (value: string) => void;
@@ -36,6 +82,10 @@ export function AppearanceSettingsCard({
   setLogoUrl: (value: string) => void;
   logoSquareUrl: string;
   setLogoSquareUrl: (value: string) => void;
+  defaultAppearance: "default" | "retro";
+  setDefaultAppearance: (value: "default" | "retro") => void;
+  defaultMode: "light" | "dark" | "system";
+  setDefaultMode: (value: "light" | "dark" | "system") => void;
 }) {
   const [inputValue, setInputValue] = useState(themeColor);
 
@@ -71,10 +121,12 @@ export function AppearanceSettingsCard({
       <CardHeader>
         <SectionTitle
           title="外观设置"
-          description="自定义主题色与品牌 Logo，留空则使用默认值。"
+          description="自定义站点主题色与品牌 Logo，留空则使用默认值。"
         />
       </CardHeader>
       <CardContent className="space-y-4">
+        <Separator />
+
         <div className="space-y-2">
           <label className="text-sm font-medium text-[var(--color-foreground)]">
             预设色板
@@ -161,6 +213,47 @@ export function AppearanceSettingsCard({
             </div>
           </div>
         ) : null}
+
+        <Separator />
+
+        <div className="space-y-2">
+          <div>
+            <label className="text-sm font-medium text-[var(--color-foreground)]">
+              默认显示风格
+            </label>
+            <p className="mt-0.5 text-xs text-[var(--color-foreground-muted)]">
+              新用户或未设置个人偏好时的默认界面风格。
+            </p>
+          </div>
+          <OptionGrid
+            options={[
+              { value: "default" as const, label: "现代", desc: "当前默认界面风格", icon: <Monitor className="h-4 w-4" /> },
+              { value: "retro" as const, label: "复古", desc: "90 年代纯文本风格", icon: <Type className="h-4 w-4" /> },
+            ]}
+            value={defaultAppearance}
+            onChange={setDefaultAppearance}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <div>
+            <label className="text-sm font-medium text-[var(--color-foreground)]">
+              默认明暗模式
+            </label>
+            <p className="mt-0.5 text-xs text-[var(--color-foreground-muted)]">
+              新用户或未设置个人偏好时的默认明暗模式。
+            </p>
+          </div>
+          <OptionGrid
+            options={[
+              { value: "light" as const, label: "浅色", desc: "明亮界面", icon: <Sun className="h-4 w-4" /> },
+              { value: "dark" as const, label: "深色", desc: "护眼暗色", icon: <Moon className="h-4 w-4" /> },
+              { value: "system" as const, label: "跟随系统", desc: "自动适配系统主题", icon: <Monitor className="h-4 w-4" /> },
+            ]}
+            value={defaultMode}
+            onChange={setDefaultMode}
+          />
+        </div>
 
         <Separator />
 

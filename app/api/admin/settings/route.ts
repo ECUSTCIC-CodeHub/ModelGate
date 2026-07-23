@@ -54,6 +54,8 @@ const schema = z.object({
   overview_global: z.boolean().optional(),
   default_model_is_public: z.boolean().optional(),
   model_brand_groups: z.string().max(20000).optional(),
+  default_appearance: z.enum(["default", "retro"]).optional(),
+  default_mode: z.enum(["light", "dark", "system"]).optional(),
 });
 
 export async function GET(request: Request) {
