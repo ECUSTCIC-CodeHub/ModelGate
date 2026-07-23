@@ -75,6 +75,7 @@ export function MobileNavSheet({
                     key={item.href}
                     href={item.href}
                     onClick={close}
+                    aria-current={active ? "page" : undefined}
                     className={cn(
                       "flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors duration-150",
                       active

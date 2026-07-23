@@ -161,6 +161,236 @@
   color-scheme: dark;
 }
 
+/* ========== Retro Theme ========== */
+/* 与明暗无关的复古重置：直角、无阴影、无玻璃质感 */
+.retro {
+  --glass-highlight: transparent;
+  --glass-shadow: none;
+  --glass-blur: 0;
+  --glass-saturate: 100%;
+
+  --glow-a: none;
+  --glow-b: none;
+  --glow-c: none;
+
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+  --shadow-inner-highlight: none;
+
+  --radius-sm: 0;
+  --radius: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+}
+
+/* Retro 浅色调色板 */
+.retro:not(.dark) {
+  --color-bg: #ffffff;
+  --color-bg-alt: #f0f0f0;
+  --color-surface: #ffffff;
+  --color-surface-hover: #f0f0f0;
+  --color-surface-elevated: #ffffff;
+  --color-surface-solid: #ffffff;
+  --color-surface-solid-hover: #f0f0f0;
+  --color-popover: #ffffff;
+  --color-popover-hover: #f0f0f0;
+
+  --color-foreground: #000000;
+  --color-foreground-secondary: #000000;
+  --color-foreground-muted: #333333;
+  --color-foreground-subtle: #666666;
+
+  --color-border: #000000;
+  --color-border-hover: #000000;
+  --color-border-strong: #000000;
+
+  --color-primary: #000000;
+  --color-primary-hover: #333333;
+  --color-primary-foreground: #ffffff;
+  --color-primary-ring: #000000;
+
+  --color-accent: #0000ee;
+  --color-accent-hover: #551a8b;
+  --color-accent-foreground: #ffffff;
+  --color-accent-muted: #eeeeff;
+
+  --color-destructive: #aa0000;
+  --color-destructive-hover: #880000;
+  --color-destructive-foreground: #ffffff;
+  --color-destructive-muted: #ffeeff;
+  --color-destructive-border: #aa0000;
+
+  --color-success: #006600;
+  --color-success-muted: #eeffee;
+
+  --color-sidebar-bg: #ffffff;
+  --color-sidebar-border: #000000;
+  --color-sidebar-text: #000000;
+  --color-sidebar-active-bg: #0000ee;
+  --color-sidebar-active-text: #ffffff;
+  --color-sidebar-hover: #eeeeee;
+
+  --color-header-bg: #ffffff;
+  --color-header-border: #000000;
+  --color-switch-thumb: #ffffff;
+
+  --color-chart-grid: #cccccc;
+  --color-chart-tick: #000000;
+  --color-chart-cursor-fill: rgba(0, 0, 238, 0.1);
+  --color-chart-cursor-stroke: #0000ee;
+  --color-chart-tooltip-bg: #ffffff;
+  --color-chart-tooltip-border: #000000;
+  --color-chart-bar: #0000ee;
+
+  color-scheme: light;
+}
+
+/* Retro 深色调色板 */
+.retro.dark {
+  --color-bg: #0b0b0b;
+  --color-bg-alt: #1a1a1a;
+  --color-surface: #0b0b0b;
+  --color-surface-hover: #1a1a1a;
+  --color-surface-elevated: #0b0b0b;
+  --color-surface-solid: #0b0b0b;
+  --color-surface-solid-hover: #1a1a1a;
+  --color-popover: #0b0b0b;
+  --color-popover-hover: #1a1a1a;
+
+  --color-foreground: #e0e0e0;
+  --color-foreground-secondary: #e0e0e0;
+  --color-foreground-muted: #aaaaaa;
+  --color-foreground-subtle: #888888;
+
+  --color-border: #aaaaaa;
+  --color-border-hover: #cccccc;
+  --color-border-strong: #cccccc;
+
+  --color-primary: #e0e0e0;
+  --color-primary-hover: #ffffff;
+  --color-primary-foreground: #0b0b0b;
+  --color-primary-ring: #e0e0e0;
+
+  --color-accent: #4da6ff;
+  --color-accent-hover: #77b6ff;
+  --color-accent-foreground: #0b0b0b;
+  --color-accent-muted: #0b2030;
+
+  --color-destructive: #ff6b6b;
+  --color-destructive-hover: #ff8585;
+  --color-destructive-foreground: #0b0b0b;
+  --color-destructive-muted: #2a0b0b;
+  --color-destructive-border: #ff6b6b;
+
+  --color-success: #4caf50;
+  --color-success-muted: #0b2010;
+
+  --color-sidebar-bg: #0b0b0b;
+  --color-sidebar-border: #aaaaaa;
+  --color-sidebar-text: #e0e0e0;
+  --color-sidebar-active-bg: #4da6ff;
+  --color-sidebar-active-text: #0b0b0b;
+  --color-sidebar-hover: #1a1a1a;
+
+  --color-header-bg: #0b0b0b;
+  --color-header-border: #aaaaaa;
+  --color-switch-thumb: #0b0b0b;
+
+  --color-chart-grid: #444444;
+  --color-chart-tick: #e0e0e0;
+  --color-chart-cursor-fill: rgba(77, 166, 255, 0.15);
+  --color-chart-cursor-stroke: #4da6ff;
+  --color-chart-tooltip-bg: #0b0b0b;
+  --color-chart-tooltip-border: #aaaaaa;
+  --color-chart-bar: #4da6ff;
+
+  color-scheme: dark;
+}
+
+/* Retro theme resets */
+.retro body {
+  font-family: "Times New Roman", Times, Georgia, serif;
+  background-image: none;
+}
+
+.retro:not(.dark) body {
+  background-color: #ffffff;
+}
+
+.retro.dark body {
+  background-color: #0b0b0b;
+}
+
+.retro body::before {
+  display: none;
+}
+
+.retro .glass,
+.retro .glass-subtle,
+.retro .glass-strong {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.retro .glass::before,
+.retro .glass-subtle::before,
+.retro .glass-strong::before {
+  display: none;
+}
+
+.retro aside > div,
+.retro main header,
+.retro [role="dialog"] {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.retro a:not([role="button"]) {
+  color: #0000ee;
+  text-decoration: underline;
+}
+
+.retro a:not([role="button"]):visited {
+  color: #551a8b;
+}
+
+.retro.dark a:not([role="button"]) {
+  color: #4da6ff;
+}
+
+.retro.dark a:not([role="button"]):visited {
+  color: #b380ff;
+}
+
+.retro a[aria-current="page"] {
+  color: var(--color-sidebar-active-text) !important;
+  text-decoration: none !important;
+}
+
+.retro ::-webkit-scrollbar-thumb {
+  background: #999999;
+  border-radius: 0;
+  border: none;
+  background-clip: border-box;
+}
+
+.retro ::-webkit-scrollbar-thumb:hover {
+  background: #666666;
+}
+
+.retro.dark ::-webkit-scrollbar-thumb {
+  background: #555555;
+}
+
+.retro.dark ::-webkit-scrollbar-thumb:hover {
+  background: #777777;
+}
+
 @theme inline {
   --color-background: var(--color-bg);
   --color-foreground: var(--color-foreground);

@@ -15,7 +15,7 @@ export function useDashboardShell(role: Role) {
   const router = useRouter();
   const initialProfile = useAuthProfile();
   const { toast } = useToast();
-  const { theme, toggle: toggleTheme } = useTheme();
+  const { mode, toggleMode } = useTheme();
   const menus = useMemo(() => getDashboardMenus(role), [role]);
   const [profileBrief, setProfileBrief] = useState<ProfileBrief | null>(() => initialProfile ?? getCachedProfile());
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -113,8 +113,8 @@ export function useDashboardShell(role: Role) {
     setMobileNavOpen,
     setNewPassword,
     setPasswordDialogOpen,
-    theme,
-    toggleTheme,
+    theme: mode,
+    toggleTheme: toggleMode,
     onChangePassword,
     onLogout,
     onOidcBind,
