@@ -58,6 +58,8 @@ export type GatewaySettings = {
   overview_global: number;
   default_model_is_public: number;
   model_brand_groups: string;
+  default_appearance: "default" | "retro";
+  default_mode: "light" | "dark" | "system";
 };
 
 export type ModelBrandGroup = {
@@ -149,6 +151,8 @@ const GATEWAY_KEYS = [
   "overview_global",
   "default_model_is_public",
   "model_brand_groups",
+  "default_appearance",
+  "default_mode",
 ] as const;
 
 const SETTINGS_SELECT_SQL = `SELECT \`key\`, value FROM settings WHERE \`key\` IN (${GATEWAY_KEYS.map(() => "?").join(", ")})`;
@@ -203,6 +207,8 @@ async function readGatewaySettingsFromDb(): Promise<GatewaySettings> {
     overview_global: map.get("overview_global") === "0" ? 0 : 1,
     default_model_is_public: map.get("default_model_is_public") === "0" ? 0 : 1,
     model_brand_groups: map.get("model_brand_groups") ?? "",
+    default_appearance: (map.get("default_appearance") as "default" | "retro") ?? "default",
+    default_mode: (map.get("default_mode") as "light" | "dark" | "system") ?? "system",
   };
 }
 
@@ -259,6 +265,8 @@ export async function setGatewaySettings(input: {
   overview_global?: boolean;
   default_model_is_public?: boolean;
   model_brand_groups?: string;
+  default_appearance?: "default" | "retro";
+  default_mode?: "light" | "dark" | "system";
 }) {
   const values: Record<string, string> = {
     registration_enabled: input.registration_enabled ? "1" : "0",
@@ -304,6 +312,8 @@ export async function setGatewaySettings(input: {
   if (input.overview_global !== undefined) values.overview_global = input.overview_global ? "1" : "0";
   if (input.default_model_is_public !== undefined) values.default_model_is_public = input.default_model_is_public ? "1" : "0";
   if (input.model_brand_groups !== undefined) values.model_brand_groups = input.model_brand_groups;
+  if (input.default_appearance !== undefined) values.default_appearance = input.default_appearance;
+  if (input.default_mode !== undefined) values.default_mode = input.default_mode;
 
   const isMysql = await gatewayDb.getDriver() === "mysql";
   const upsertSql = isMysql
