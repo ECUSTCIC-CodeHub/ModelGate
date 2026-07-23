@@ -16,7 +16,7 @@ import {
 import { ModelDraftCard } from "./model-draft-card";
 import { ChannelQuotaFields } from "./channel-quota-fields";
 import { UaRestrictionsEditor, type UaRestrictionRuleDraft, rulesToJson, jsonToRules } from "@/components/ua-restrictions-editor";
-import { TimeWindowEditor, type TimeWindowDraft, windowsToJson, jsonToWindows } from "@/components/time-window-editor";
+import { TimeWindowEditor, jsonToWindows } from "@/components/time-window-editor";
 import {
   protocolOptions,
   type ChannelForm,
@@ -216,10 +216,10 @@ export function ChannelDrawer({
               <Label>限制时段</Label>
               <TimeWindowEditor
                 windows={jsonToWindows(form.time_restrictions)}
-                onChange={(windows: TimeWindowDraft[]) => onFormChange({ time_restrictions: windowsToJson(windows) })}
+                onChange={(json) => onFormChange({ time_restrictions: json })}
               />
               <p className="text-xs text-[var(--color-foreground-muted)]">
-                配置后渠道仅在这些时段内可用（服务器本地时区）。留空则不限制。
+                配置后渠道仅在这些时段内可用。留空则不限制。
               </p>
             </div>
           </div>

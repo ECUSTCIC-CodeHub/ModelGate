@@ -1,4 +1,4 @@
-import { toUtcDatetime, parseStoredUtc } from "@/lib/core/db/datetime";
+import { toUtcDatetime, parseStoredUtc, utcWallTime } from "@/lib/core/db/datetime";
 
 const MAX_WINDOWS = 20;
 const TIME_RE = /^\d{1,2}:\d{2}$/;
@@ -39,17 +39,12 @@ export function parseTimeRestrictions(raw: string | null | undefined): TimeWindo
   return windows;
 }
 
-function localIsoDay(now: Date): number {
-  const jsDay = now.getDay(); // 0=周日..6=周六
-  return jsDay === 0 ? 7 : jsDay;
-}
-
-// 未配置时段则不限制（始终允许）；配置后仅窗口内允许。基于服务器本地时区判断。
+// 未配置时段则不限制（始终允许）；配置后仅窗口内允许。
+// start/end 存储为 UTC 时分，判断也按 UTC 墙上时间，不依赖服务器时区。
 export function isChannelTimeAllowed(raw: string | null | undefined, now: Date = new Date()): boolean {
   const windows = parseTimeRestrictions(raw);
   if (windows.length === 0) return true;
-  const day = localIsoDay(now);
-  const cur = now.getHours() * 60 + now.getMinutes();
+  const { day, minutes } = utcWallTime(now);
   for (const win of windows) {
     if (!win.days.includes(day)) continue;
     const [sh, sm] = win.start.split(":").map(Number);
@@ -57,9 +52,9 @@ export function isChannelTimeAllowed(raw: string | null | undefined, now: Date =
     const startM = sh * 60 + sm;
     const endM = eh * 60 + em;
     if (endM > startM) {
-      if (cur >= startM && cur <= endM) return true;
+      if (minutes >= startM && minutes <= endM) return true;
     } else {
-      if (cur >= startM || cur <= endM) return true;
+      if (minutes >= startM || minutes <= endM) return true;
     }
   }
   return false;
