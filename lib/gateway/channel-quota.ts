@@ -1,6 +1,6 @@
 import { gatewayDb } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
-import { toMysqlDatetime } from "@/lib/core/db/datetime";
+import { toMysqlDatetime, parseStoredUtc } from "@/lib/core/db/datetime";
 
 export type ChannelQuotaInfo = {
   remaining_requests: number | null;
@@ -12,7 +12,8 @@ export type ChannelQuotaInfo = {
 
 async function ensureChannelPeriodReset(channelId: number, period: number, resetAt: string | null): Promise<{ period_used_tokens: number; period_used_requests: number; period_reset_at: string }> {
   const now = new Date();
-  if (resetAt && new Date(resetAt) > now) {
+  const resetDate = parseStoredUtc(resetAt);
+  if (resetDate && resetDate > now) {
     return gatewayDb.queryOne(
       "SELECT period_used_tokens, period_used_requests, period_reset_at FROM channels WHERE id = ?",
       [channelId],

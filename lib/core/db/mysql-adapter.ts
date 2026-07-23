@@ -72,6 +72,12 @@ export class MysqlAdapter implements DatabaseAdapter {
       enableKeepAlive: true,
       multipleStatements: true,
       decimalNumbers: true,
+      dateStrings: true,
+    });
+    // mysql2 的 timezone 选项只影响客户端 Date 的转义/解析，不会改服务端会话时区；
+    // 这里在每条连接建立时显式 SET，让 CURRENT_TIMESTAMP/NOW()/DEFAULT CURRENT_TIMESTAMP 返回 UTC。
+    this.pool.on("connection", (conn) => {
+      conn.query("SET time_zone = '+00:00'");
     });
   }
 

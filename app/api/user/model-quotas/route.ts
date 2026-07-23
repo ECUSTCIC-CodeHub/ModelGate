@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { gatewayDb } from "@/lib/core/db";
 import { ensureUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
-import { toShanghaiDatetimeNoMs } from "@/lib/core/db/datetime";
+import { parseStoredUtc } from "@/lib/core/db/datetime";
 import { parseAllowedModelAliases } from "@/lib/gateway/model-access";
 import { parseAllowedChannelIds } from "@/lib/gateway/channel-access";
 
@@ -72,7 +72,8 @@ export async function GET(request: Request) {
   const data = accessible.map((m) => {
     let periodUsedTokens = m.period_used_tokens;
     let periodUsedRequests = m.period_used_requests;
-    if (m.quota_period && m.period_reset_at && String(m.period_reset_at).slice(0, 19) <= toShanghaiDatetimeNoMs(now)) {
+    const mReset = parseStoredUtc(m.period_reset_at);
+    if (m.quota_period && mReset && mReset <= now) {
       periodUsedTokens = 0;
       periodUsedRequests = 0;
     }

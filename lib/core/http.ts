@@ -1,36 +1,36 @@
 import { NextResponse } from "next/server";
-import { toShanghaiDatetime } from "@/lib/core/db/datetime";
-import { toLocalDatetime } from "@/lib/gateway/channel-time";
 
-const UTC_TIMESTAMP_KEYS = new Set([
+const TIMESTAMP_KEYS = new Set([
   "created_at",
   "updated_at",
   "deleted_at",
   "period_reset_at",
   "reset_at",
   "last_used_at",
+  "expires_at",
 ]);
 
-const LOCAL_DATETIME_KEYS = new Set(["expires_at"]);
-
-function toShanghaiIsoString(value: string) {
-  const hasTz = /(?:Z|[+-]\d{2}:\d{2})$/.test(value);
-  if (!hasTz) {
-    // DATETIME 无时区标记 → 已是本地时间，输出空格分隔 .SSS 格式
-    // 空格分隔确保所有浏览器一致解析为本地时间
-    const space = value.includes("T") ? value.replace("T", " ") : value;
-    const withMs = space.includes(".") ? space : `${space}.000`;
-    return withMs.slice(0, 23);
+// 存储为 UTC 裸字符串（'YYYY-MM-DD HH:MM:SS'），补成 ISO UTC 带 Z 输出；
+// 容忍 mysql2 dateStrings 返回的已是字符串、或上游已是 ISO 的输入。
+function toUtcIsoString(value: string): string {
+  const hasTz = /Z$|[+-]\d{2}:?\d{2}$/.test(value);
+  if (hasTz) {
+    const normalized = value.includes("T") ? value : value.replace(" ", "T");
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toISOString();
   }
-  const normalized = value.includes("T") ? value : value.replace(" ", "T");
-  const date = new Date(normalized);
-  if (Number.isNaN(date.getTime())) return value;
-  return toShanghaiDatetime(date);
+  const space = value.includes("T") ? value.replace("T", " ") : value;
+  const withMs = space.includes(".") ? space : `${space}.000`;
+  const [datePart, timePart] = withMs.split(" ");
+  if (!timePart) return value;
+  const iso = `${datePart}T${timePart}Z`;
+  return Number.isNaN(new Date(iso).getTime()) ? value : iso;
 }
 
 function normalizeTimeFields<T>(input: T): T {
   if (input instanceof Date) {
-    return toLocalDatetime(input) as T;
+    return input.toISOString() as unknown as T;
   }
 
   if (Array.isArray(input)) {
@@ -44,23 +44,15 @@ function normalizeTimeFields<T>(input: T): T {
   const record = input as Record<string, unknown>;
   return Object.fromEntries(
     Object.entries(record).map(([key, value]) => {
-      if (UTC_TIMESTAMP_KEYS.has(key)) {
+      if (TIMESTAMP_KEYS.has(key)) {
         if (value instanceof Date) {
           if (Number.isNaN(value.getTime())) return [key, null];
-          return [key, toShanghaiIsoString(value.toISOString())];
+          return [key, value.toISOString()];
         }
         if (typeof value === "string") {
-          return [key, toShanghaiIsoString(value)];
+          return [key, toUtcIsoString(value)];
         }
-      }
-      if (LOCAL_DATETIME_KEYS.has(key)) {
-        if (value instanceof Date) {
-          if (Number.isNaN(value.getTime())) return [key, null];
-          return [key, toLocalDatetime(value)];
-        }
-        if (typeof value === "string") {
-          return [key, value];
-        }
+        if (value === null || value === undefined) return [key, value];
       }
       return [key, normalizeTimeFields(value)];
     }),

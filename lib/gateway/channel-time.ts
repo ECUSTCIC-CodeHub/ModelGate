@@ -1,3 +1,5 @@
+import { toUtcDatetime, parseStoredUtc } from "@/lib/core/db/datetime";
+
 const MAX_WINDOWS = 20;
 const TIME_RE = /^\d{1,2}:\d{2}$/;
 
@@ -64,16 +66,13 @@ export function isChannelTimeAllowed(raw: string | null | undefined, now: Date =
 }
 
 export function isChannelExpired(expiresAt: string | Date | null | undefined): boolean {
-  if (!expiresAt) return false;
-  const date = expiresAt instanceof Date ? expiresAt : new Date(expiresAt.replace(" ", "T"));
-  const t = date.getTime();
-  if (Number.isNaN(t)) return false;
-  return t <= Date.now();
+  const date = parseStoredUtc(expiresAt);
+  if (!date) return false;
+  return date.getTime() <= Date.now();
 }
 
 export function toLocalDatetime(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  return toUtcDatetime(date);
 }
 
 export function validateTimeRestrictions(input: unknown): { valid: true; windows: TimeWindow[] } | { valid: false; error: string } {

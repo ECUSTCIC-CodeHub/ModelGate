@@ -4,6 +4,7 @@ import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
 import { ensureUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
+import { parseStoredUtc } from "@/lib/core/db/datetime";
 
 function formatPeriodLabel(seconds: number): string {
   if (seconds === 3600) return "每小时";
@@ -34,7 +35,8 @@ export async function GET(request: Request) {
   let periodUsedRequests = user.period_used_requests;
   let periodResetAt: string | null = user.period_reset_at;
 
-  if (limits.quota_period && periodResetAt && new Date(periodResetAt) <= now) {
+  const resetDate = parseStoredUtc(periodResetAt);
+  if (limits.quota_period && resetDate && resetDate <= now) {
     periodUsedTokens = 0;
     periodUsedRequests = 0;
     const nextReset = new Date(now.getTime() + limits.quota_period * 1000);

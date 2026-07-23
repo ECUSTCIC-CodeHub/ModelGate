@@ -1,6 +1,6 @@
 import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
-import { toMysqlDatetime } from "@/lib/core/db/datetime";
+import { toMysqlDatetime, parseStoredUtc } from "@/lib/core/db/datetime";
 
 export type QuotaInfo = {
   remaining_requests: number | null;
@@ -30,7 +30,8 @@ export function appendQuotaHeaders(headers: Record<string, string>, quota: Quota
 
 async function ensurePeriodReset(userId: number, period: number, resetAt: string | null): Promise<{ period_used_tokens: number; period_used_requests: number; period_reset_at: string }> {
   const now = new Date();
-  if (resetAt && new Date(resetAt) > now) {
+  const resetDate = parseStoredUtc(resetAt);
+  if (resetDate && resetDate > now) {
     return gatewayDb.queryOne(
       "SELECT period_used_tokens, period_used_requests, period_reset_at FROM users WHERE id = ?",
       [userId],

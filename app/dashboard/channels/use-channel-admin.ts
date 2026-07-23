@@ -24,12 +24,18 @@ import { useChannelRecords } from "./use-channel-records";
 import { useUpstreamModelPicker } from "./use-upstream-model-picker";
 
 function expiresAtToInputValue(value: unknown): string {
-  if (value instanceof Date) {
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}`;
-  }
-  if (typeof value === "string") return value.replace(" ", "T").slice(0, 16);
-  return "";
+  // 后端返回 UTC（带 Z 的 ISO 或裸 UTC 串），datetime-local 控件需要浏览器本地墙上时间。
+  const date = value instanceof Date ? value : typeof value === "string" && value ? new Date(value.includes("T") ? value : value.replace(" ", "T")) : null;
+  if (!date || Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+// datetime-local 输出的是浏览器本地墙上时间（无时区），转成带 Z 的 ISO 提交，由后端按绝对时刻存储为 UTC。
+function expiresAtFromInputValue(value: string): string {
+  if (!value.trim()) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
 
 export function useChannelAdmin() {
@@ -235,7 +241,7 @@ export function useChannelAdmin() {
           timeout: channelForm.timeout,
           force_include_usage: channelForm.force_include_usage,
           ua_restrictions: channelForm.ua_restrictions,
-          expires_at: channelForm.expires_at,
+          expires_at: expiresAtFromInputValue(channelForm.expires_at),
           time_restrictions: channelForm.time_restrictions,
           ...buildQuotaPayload(channelForm),
           models: draftModels,
@@ -264,7 +270,7 @@ export function useChannelAdmin() {
       timeout: channelForm.timeout,
       force_include_usage: channelForm.force_include_usage,
       ua_restrictions: channelForm.ua_restrictions,
-      expires_at: channelForm.expires_at,
+      expires_at: expiresAtFromInputValue(channelForm.expires_at),
       time_restrictions: channelForm.time_restrictions,
       ...buildQuotaPayload(channelForm),
     };
