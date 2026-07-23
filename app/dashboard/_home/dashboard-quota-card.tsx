@@ -26,8 +26,18 @@ function QuotaProgress({ remaining, quota }: { remaining: number | null; quota: 
 }
 
 export function DashboardQuotaCard({ quota }: DashboardQuotaCardProps) {
-  const period = quota?.period;
   if (!quota) return null;
+  const period = quota.period;
+
+  const showRate = quota.rate.rpm >= 0 || quota.rate.qps >= 0 || quota.rate.tpm >= 0;
+  const showTotalRequests = quota.total.quota_requests !== null;
+  const showTotalTokens = quota.total.quota_tokens !== null;
+  const showPeriodRequests = !!period && period.quota_requests !== null;
+  const showPeriodTokens = !!period && period.quota_tokens !== null;
+
+  if (!showRate && !showTotalRequests && !showTotalTokens && !showPeriodRequests && !showPeriodTokens) {
+    return null;
+  }
 
   return (
     <Card>
@@ -36,7 +46,7 @@ export function DashboardQuotaCard({ quota }: DashboardQuotaCardProps) {
       </CardHeader>
       <CardContent>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {(quota.rate.rpm >= 0 || quota.rate.qps >= 0 || quota.rate.tpm >= 0) ? (
+          {showRate ? (
             <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
               <p className="text-xs text-[var(--color-foreground-muted)]">速率限制</p>
               <div className="space-y-1">
@@ -56,7 +66,7 @@ export function DashboardQuotaCard({ quota }: DashboardQuotaCardProps) {
             </div>
           ) : null}
 
-          {quota.total.quota_requests !== null ? (
+          {showTotalRequests ? (
             <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
               <p className="text-xs text-[var(--color-foreground-muted)]">总请求配额</p>
               <p className="text-lg font-semibold text-[var(--color-foreground)]">
@@ -67,7 +77,7 @@ export function DashboardQuotaCard({ quota }: DashboardQuotaCardProps) {
             </div>
           ) : null}
 
-          {quota.total.quota_tokens !== null ? (
+          {showTotalTokens ? (
             <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
               <p className="text-xs text-[var(--color-foreground-muted)]">总 Token 配额</p>
               <p className="text-lg font-semibold text-[var(--color-foreground)]">
@@ -78,30 +88,30 @@ export function DashboardQuotaCard({ quota }: DashboardQuotaCardProps) {
             </div>
           ) : null}
 
-          {period && period.quota_requests !== null ? (
+          {showPeriodRequests ? (
             <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
-              <p className="text-xs text-[var(--color-foreground-muted)]">{period.period_label}请求配额</p>
+              <p className="text-xs text-[var(--color-foreground-muted)]">{period!.period_label}请求配额</p>
               <p className="text-lg font-semibold text-[var(--color-foreground)]">
-                {formatNumber(period.remaining_requests)} <span className="text-sm font-normal text-[var(--color-foreground-muted)]">剩余</span>
+                {formatNumber(period!.remaining_requests)} <span className="text-sm font-normal text-[var(--color-foreground-muted)]">剩余</span>
               </p>
-              <QuotaProgress remaining={period.remaining_requests} quota={period.quota_requests} />
+              <QuotaProgress remaining={period!.remaining_requests} quota={period!.quota_requests} />
               <p className="text-xs text-[var(--color-foreground-muted)]">
-                {formatNumber(period.used_requests)} / {formatNumber(period.quota_requests)} 已使用
-                {period.reset_at ? ` · 重置于 ${new Date(period.reset_at).toLocaleString()}` : ""}
+                {formatNumber(period!.used_requests)} / {formatNumber(period!.quota_requests)} 已使用
+                {period!.reset_at ? ` · 重置于 ${new Date(period!.reset_at).toLocaleString()}` : ""}
               </p>
             </div>
           ) : null}
 
-          {period && period.quota_tokens !== null ? (
+          {showPeriodTokens ? (
             <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
-              <p className="text-xs text-[var(--color-foreground-muted)]">{period.period_label} Token 配额</p>
+              <p className="text-xs text-[var(--color-foreground-muted)]">{period!.period_label} Token 配额</p>
               <p className="text-lg font-semibold text-[var(--color-foreground)]">
-                {formatTokenCount(period.remaining_tokens)} <span className="text-sm font-normal text-[var(--color-foreground-muted)]">剩余</span>
+                {formatTokenCount(period!.remaining_tokens)} <span className="text-sm font-normal text-[var(--color-foreground-muted)]">剩余</span>
               </p>
-              <QuotaProgress remaining={period.remaining_tokens} quota={period.quota_tokens} />
+              <QuotaProgress remaining={period!.remaining_tokens} quota={period!.quota_tokens} />
               <p className="text-xs text-[var(--color-foreground-muted)]">
-                {formatTokenCount(period.used_tokens)} / {formatTokenCount(period.quota_tokens)} 已使用
-                {period.reset_at ? ` · 重置于 ${new Date(period.reset_at).toLocaleString()}` : ""}
+                {formatTokenCount(period!.used_tokens)} / {formatTokenCount(period!.quota_tokens)} 已使用
+                {period!.reset_at ? ` · 重置于 ${new Date(period!.reset_at).toLocaleString()}` : ""}
               </p>
             </div>
           ) : null}

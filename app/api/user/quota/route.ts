@@ -4,7 +4,6 @@ import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
 import { ensureUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
-import { toShanghaiDatetimeNoMs } from "@/lib/core/db/datetime";
 
 function formatPeriodLabel(seconds: number): string {
   if (seconds === 3600) return "每小时";
@@ -33,11 +32,13 @@ export async function GET(request: Request) {
   const now = new Date();
   let periodUsedTokens = user.period_used_tokens;
   let periodUsedRequests = user.period_used_requests;
-  const periodResetAt = user.period_reset_at;
+  let periodResetAt: string | null = user.period_reset_at;
 
-  if (limits.quota_period && periodResetAt && String(periodResetAt).slice(0, 19) <= toShanghaiDatetimeNoMs(now)) {
+  if (limits.quota_period && periodResetAt && new Date(periodResetAt) <= now) {
     periodUsedTokens = 0;
     periodUsedRequests = 0;
+    const nextReset = new Date(now.getTime() + limits.quota_period * 1000);
+    periodResetAt = nextReset.toISOString();
   }
 
   return jsonOk({
