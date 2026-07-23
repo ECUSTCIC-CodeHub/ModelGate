@@ -21,13 +21,20 @@ export function ThemeScript({ themeColor }: { themeColor: string | null }) {
     <Script id="theme-bootstrap" strategy="beforeInteractive">{`
       (function() {
         try {
-          var stored = localStorage.getItem('theme');
-          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-          var theme = stored || (prefersDark ? 'dark' : 'light');
-          if (theme === 'light') {
-            document.documentElement.classList.remove('dark');
-          } else {
-            document.documentElement.classList.add('dark');
+          var root = document.documentElement;
+          var appearance = root.dataset.appearance || 'default';
+          var mode = root.dataset.mode || 'light';
+          var actualMode = mode;
+          if (mode === 'system') {
+            actualMode = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          root.classList.toggle('dark', actualMode === 'dark');
+          root.classList.toggle('retro', appearance === 'retro');
+          try {
+            localStorage.setItem('modelgate-appearance', appearance);
+            localStorage.setItem('modelgate-mode', mode);
+          } catch (e) {
+            console.warn('Failed to sync theme to localStorage:', e);
           }
         } catch(e) {}
       })();
