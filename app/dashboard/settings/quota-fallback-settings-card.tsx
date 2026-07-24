@@ -42,6 +42,9 @@ export function QuotaFallbackSettingsCard({
           <p className="text-xs text-[var(--color-foreground-muted)]">
             填写后将优先路由到该别名对应的模型；留空时从已启用模型中按权重自动分配。用户配额或速率超限时，建议指定计费模式为「独立配额」或可不计费的模型，否则仍会被用户限额拦截。
           </p>
+          <p className="text-xs text-[var(--color-foreground-muted)]">
+            请求包含图片时，为保证路由后请求仍能成功，候选模型必须支持识图；这与「图片自动路由到识图模型」是不同动机，单独关闭该开关不会影响此处。
+          </p>
         </div>
       </CardContent>
     </Card>

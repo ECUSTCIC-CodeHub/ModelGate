@@ -224,7 +224,7 @@ export default function PersonalSettingsPage() {
               onChange={(v) => void updatePref("quota_fallback", v)}
             />
             <p className="text-xs text-[var(--color-foreground-muted)]">
-              模型独立配额超限时切换到其他模型；用户配额或速率超限时仅切换到不计入用户配额的模型。仅对话类协议生效。
+              模型独立配额超限时切换到其他模型；用户配额或速率超限时仅切换到不计入用户配额的模型。仅对话类协议生效。请求含图片时，候选模型必须支持识图以保证路由后仍可用，与「图片自动路由」开关互不影响。
             </p>
           </div>
         </CardContent>
