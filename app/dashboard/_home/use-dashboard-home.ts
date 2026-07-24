@@ -25,7 +25,7 @@ export function useDashboardHome() {
   useEffect(() => {
     let cancelled = false;
 
-    void Promise.all([getOrFetchProfile(), authedFetch("/api/dashboard/summary"), authedFetch("/api/user/quota"), authedFetch("/api/user/model-quotas")])
+    void Promise.all([getOrFetchProfile(), authedFetch(`/api/dashboard/summary?tz=${-new Date().getTimezoneOffset()}`), authedFetch("/api/user/quota"), authedFetch("/api/user/model-quotas")])
       .then(async ([profile, summaryResp, quotaResp, modelQuotaResp]) => {
         if (cancelled) return;
         if (!profile) {

@@ -6,6 +6,12 @@ import { getGatewaySettings } from "@/lib/core/settings";
 import { ensureWebUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
 
+// 浏览器相对 UTC 的偏移（分钟），钳到合法范围；非法输入回退 UTC。
+function clampTz(raw: number): number {
+  if (!Number.isFinite(raw)) return 0;
+  return Math.max(-720, Math.min(840, Math.trunc(raw)));
+}
+
 function estimateConcurrency(rows: Array<{ end_ms: number; latency_ms: number }>) {
   const now = Date.now();
   const windowStart = now - 24 * 60 * 60 * 1000;
@@ -53,6 +59,8 @@ function estimateConcurrency(rows: Array<{ end_ms: number; latency_ms: number }>
 export async function GET(request: Request) {
   const guard = await ensureWebUser(request);
   if ("error" in guard) return guard.error;
+
+  const tzMin = clampTz(parseInt(new URL(request.url).searchParams.get("tz") ?? "0", 10));
 
   const isAdmin = guard.auth.user.role === "admin";
   // 概览统计默认对普通用户展示站点级全貌；仅“密钥数量”按当前用户隔离（可管理的密钥）
@@ -149,8 +157,9 @@ export async function GET(request: Request) {
 
   const isMysql = await gatewayDb.getDriver() === "mysql";
   const hourBucketExpr = isMysql
-    ? "DATE_FORMAT(created_at, '%Y-%m-%dT%H:00:00')"
-    : "strftime('%Y-%m-%dT%H:00:00', created_at)";
+    ? "DATE_FORMAT(DATE_ADD(created_at, INTERVAL ? MINUTE), '%Y-%m-%dT%H:00:00')"
+    : "strftime('%Y-%m-%dT%H:00:00', created_at, ?)";
+  const hourBucketArg = isMysql ? tzMin : `${tzMin >= 0 ? "+" : ""}${tzMin} minutes`;
   const hoursAgo = (n: number) => isMysql
     ? `DATE_SUB(NOW(), INTERVAL ${n} HOUR)`
     : `datetime('now', '-${n} hours')`;
@@ -170,35 +179,20 @@ export async function GET(request: Request) {
        ${overviewWhereSql ? `${overviewWhereSql} AND` : "WHERE"} created_at >= ${hoursAgo(23)}
        GROUP BY hour_bucket
        ORDER BY hour_bucket ASC`,
-      overviewWhereArgs,
+      [hourBucketArg, ...overviewWhereArgs],
     );
 
-  const shanghaiBucketFmt = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-    hour12: false,
-  });
-  const formatShanghaiBucket = (date: Date): string => {
-    const parts = shanghaiBucketFmt.formatToParts(date);
-    const g = (t: Intl.DateTimeFormatPartTypes) =>
-      parts.find((p) => p.type === t)?.value ?? "00";
-    const hour = g("hour") === "24" ? "00" : g("hour");
-    return `${g("year")}-${g("month")}-${g("day")}T${hour}:00:00`;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  // t 为 UTC 绝对时刻；加 tzMin 后取 UTC 分量，即「浏览器本地墙上时间」的小时桶名，与 SQL 分桶对齐。
+  const formatBucket = (t: Date): string => {
+    const shifted = new Date(t.getTime() + tzMin * 60000);
+    return `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())}T${pad(shifted.getUTCHours())}:00:00`;
   };
 
   const hourlyMap = new Map(hourlyRows.map((row) => [row.hour_bucket, row.tokens]));
   const hourlyTokens = Array.from({ length: 24 }, (_, index) => {
     const t = new Date(Date.now() - (23 - index) * 3600 * 1000);
-    const bucket = isMysql
-      ? formatShanghaiBucket(t)
-      : (() => {
-          const y = t.getUTCFullYear();
-          const m = String(t.getUTCMonth() + 1).padStart(2, "0");
-          const d = String(t.getUTCDate()).padStart(2, "0");
-          const h = String(t.getUTCHours()).padStart(2, "0");
-          return `${y}-${m}-${d}T${h}:00:00`;
-        })();
+    const bucket = formatBucket(t);
     return {
       hour: bucket,
       tokens: hourlyMap.get(bucket) ?? 0,
