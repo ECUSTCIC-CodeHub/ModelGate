@@ -1862,6 +1862,12 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 **认证:** 用户
 
+**查询参数:**
+
+| 参数 | 类型 | 说明 |
+|:---|:---|:---|
+| tz | int | 浏览器相对 UTC 的偏移（分钟），用于 `hourly_tokens` 按访问者时区分桶。取 `-new Date().getTimezoneOffset()`（上海为 480，UTC-5 纽约为 -300）；未传或非法按 UTC（0）处理 |
+
 **响应 (200):**
 ```json
 {
@@ -1881,7 +1887,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
     "top_users_visible": 1,
     "overview_global": 1,
     "hourly_tokens": [
-      { "hour": "2026-05-08 00:00:00", "tokens": 1234 }
+      { "hour": "2026-05-08T00:00:00", "tokens": 1234 }
     ],
     "top_models": [
       { "model_name": "gpt-4", "request_count": 500, "total_tokens": 100000 }
@@ -1910,7 +1916,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | log_retention_days | 当前日志保留天数（0 表示不删除）。前端据此把“活跃用户 / 平均延迟 / 平均输出速度 / 近 N 天失败请求”的文案窗口动态显示为保留天数或 30 天 |
 | top_users_visible | 是否允许普通用户查看 Top 用户排行（1 允许 / 0 不允许）；管理员始终可见。普通用户且此项为 0 时，`top_users` 返回空数组 |
 | overview_global | 控制普通用户概览范围（1 全局 / 0 仅自己）；管理员始终为全局。普通用户且此项为 0 时，概览统计按当前用户隔离 |
-| hourly_tokens | 最近 24 小时 Token 趋势 |
+| hourly_tokens | 最近 24 小时 Token 趋势（按 `tz` 参数指定的访问者时区分桶，`hour` 为该时区的整点桶名 `YYYY-MM-DDTHH:00:00`） |
 | top_models | Top 5 模型（按 Token 消耗） |
 | top_channels | Top 5 渠道（按 Token 消耗） |
 | top_users | Top 5 用户（按 Token 消耗，含 user_id / username / request_count / failed_requests / total_tokens / avg_latency_ms） |
