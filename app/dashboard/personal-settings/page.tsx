@@ -96,7 +96,7 @@ export default function PersonalSettingsPage() {
       const response = await authedFetch("/api/dashboard/personal-settings");
       const payload = await response.json().catch(() => null);
       if (cancelled || !response.ok) return;
-      const data = (payload as { data?: { preferences?: Partial<GatewayPrefs>; defaults?: Partial<Record<keyof GatewayPrefs, boolean>> } })?.data ?? {};
+      const data = (payload as { preferences?: Partial<GatewayPrefs>; defaults?: Partial<Record<keyof GatewayPrefs, boolean>> }) ?? {};
       const next: GatewayPrefs = {
         model_fallback: (data.preferences?.model_fallback ?? -1) as TriState,
         vision_fallback: (data.preferences?.vision_fallback ?? -1) as TriState,
