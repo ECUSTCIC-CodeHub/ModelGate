@@ -23,26 +23,29 @@ function OptionGrid<T extends string | number>({
   options,
   value,
   onChange,
+  disabled,
 }: {
   options: Option<T>[];
-  value: T;
+  value: T | undefined;
   onChange: (value: T) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="grid grid-cols-3 gap-2">
       {options.map((option) => {
-        const active = option.value === value;
+        const active = !disabled && value !== undefined && option.value === value;
         return (
           <button
             key={String(option.value)}
             type="button"
             onClick={() => onChange(option.value)}
             aria-pressed={active}
+            disabled={disabled}
             className={`flex items-start gap-2.5 rounded-md border px-3 py-2.5 text-left transition-colors ${
               active
                 ? "border-[var(--color-accent)] bg-[var(--color-accent-muted)]"
                 : "border-[var(--color-border)] hover:border-[var(--color-border-hover)] hover:bg-[var(--color-surface-hover)]"
-            }`}
+            } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
           >
             <span className="mt-0.5 text-[var(--color-foreground-secondary)]">{option.icon}</span>
             <span>
@@ -86,28 +89,39 @@ export default function PersonalSettingsPage() {
     vision_fallback: -1,
     quota_fallback: -1,
   });
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+  const [prefsLoadFailed, setPrefsLoadFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const profile = await ensureLoggedIn(router);
-      if (!profile) return;
-      setRole(profile.role as "admin" | "user");
-      const response = await authedFetch("/api/dashboard/personal-settings");
-      const payload = await response.json().catch(() => null);
-      if (cancelled || !response.ok) return;
-      const data = (payload as { preferences?: Partial<GatewayPrefs>; defaults?: Partial<Record<keyof GatewayPrefs, boolean>> }) ?? {};
-      const next: GatewayPrefs = {
-        model_fallback: (data.preferences?.model_fallback ?? -1) as TriState,
-        vision_fallback: (data.preferences?.vision_fallback ?? -1) as TriState,
-        quota_fallback: (data.preferences?.quota_fallback ?? -1) as TriState,
-      };
-      setPrefs(next);
-      setDefaults({
-        model_fallback: (data.defaults?.model_fallback ? 1 : 0) as TriState,
-        vision_fallback: (data.defaults?.vision_fallback ? 1 : 0) as TriState,
-        quota_fallback: (data.defaults?.quota_fallback ? 1 : 0) as TriState,
-      });
+      try {
+        const profile = await ensureLoggedIn(router);
+        if (!profile) return;
+        setRole(profile.role as "admin" | "user");
+        const response = await authedFetch("/api/dashboard/personal-settings");
+        const payload = await response.json().catch(() => null);
+        if (cancelled) return;
+        if (!response.ok) {
+          setPrefsLoadFailed(true);
+          return;
+        }
+        const data = (payload as { preferences?: Partial<GatewayPrefs>; defaults?: Partial<Record<keyof GatewayPrefs, boolean>> }) ?? {};
+        setPrefs({
+          model_fallback: (data.preferences?.model_fallback ?? -1) as TriState,
+          vision_fallback: (data.preferences?.vision_fallback ?? -1) as TriState,
+          quota_fallback: (data.preferences?.quota_fallback ?? -1) as TriState,
+        });
+        setDefaults({
+          model_fallback: (data.defaults?.model_fallback ? 1 : 0) as TriState,
+          vision_fallback: (data.defaults?.vision_fallback ? 1 : 0) as TriState,
+          quota_fallback: (data.defaults?.quota_fallback ? 1 : 0) as TriState,
+        });
+      } catch {
+        if (!cancelled) setPrefsLoadFailed(true);
+      } finally {
+        if (!cancelled) setPrefsLoaded(true);
+      }
     })();
     return () => { cancelled = true; };
   }, [router]);
@@ -125,6 +139,8 @@ export default function PersonalSettingsPage() {
       description: getApiMessage(data, response.ok ? "个人设置已保存。" : "保存失败。"),
     });
   }
+
+  const gatewayReady = prefsLoaded && !prefsLoadFailed;
 
   const appearanceOptions: Option<"default" | "retro">[] = [
     { value: "default", label: "现代", desc: "当前默认界面风格", icon: <Monitor className="h-4 w-4" /> },
@@ -198,8 +214,9 @@ export default function PersonalSettingsPage() {
             </label>
             <OptionGrid
               options={triStateOptions(defaults.model_fallback === 1)}
-              value={prefs.model_fallback}
+              value={gatewayReady ? prefs.model_fallback : undefined}
               onChange={(v) => void updatePref("model_fallback", v)}
+              disabled={!gatewayReady}
             />
           </div>
 
@@ -209,8 +226,9 @@ export default function PersonalSettingsPage() {
             </label>
             <OptionGrid
               options={triStateOptions(defaults.vision_fallback === 1)}
-              value={prefs.vision_fallback}
+              value={gatewayReady ? prefs.vision_fallback : undefined}
               onChange={(v) => void updatePref("vision_fallback", v)}
+              disabled={!gatewayReady}
             />
           </div>
 
@@ -220,12 +238,18 @@ export default function PersonalSettingsPage() {
             </label>
             <OptionGrid
               options={triStateOptions(defaults.quota_fallback === 1)}
-              value={prefs.quota_fallback}
+              value={gatewayReady ? prefs.quota_fallback : undefined}
               onChange={(v) => void updatePref("quota_fallback", v)}
+              disabled={!gatewayReady}
             />
             <p className="text-xs text-[var(--color-foreground-muted)]">
               模型独立配额超限时切换到其他模型；用户配额或速率超限时仅切换到不计入用户配额的模型。仅对话类协议生效。请求含图片时，候选模型必须支持识图以保证路由后仍可用，与「图片自动路由」开关互不影响。
             </p>
+            {prefsLoadFailed ? (
+              <p className="text-xs text-[var(--color-error)]">
+                网关行为偏好加载失败，请刷新页面重试。
+              </p>
+            ) : null}
           </div>
         </CardContent>
       </Card>
