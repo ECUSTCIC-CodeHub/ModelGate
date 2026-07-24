@@ -27,6 +27,7 @@ import {
   UpstreamSettingsCard,
   VisionFallbackSettingsCard,
   ModelFallbackSettingsCard,
+  QuotaFallbackSettingsCard,
   ModelDefaultVisibilitySettingsCard,
   ModelBrandGroupsSettingsCard,
   WebhookSettingsCard,
@@ -86,6 +87,8 @@ export default function AdminSettingsPage() {
   const [visionFallbackAlias, setVisionFallbackAlias] = useState("");
   const [modelFallbackEnabled, setModelFallbackEnabled] = useState(false);
   const [modelFallbackAlias, setModelFallbackAlias] = useState("");
+  const [quotaFallbackEnabled, setQuotaFallbackEnabled] = useState(false);
+  const [quotaFallbackAlias, setQuotaFallbackAlias] = useState("");
   const [defaultModelIsPublic, setDefaultModelIsPublic] = useState(true);
   const [modelBrandGroups, setModelBrandGroups] = useState("");
   const [defaultAppearance, setDefaultAppearance] = useState<"default" | "retro">("default");
@@ -144,6 +147,8 @@ export default function AdminSettingsPage() {
     setVisionFallbackAlias(stringValue(settings.vision_fallback_alias));
     setModelFallbackEnabled(settings.model_fallback_enabled === 1);
     setModelFallbackAlias(stringValue(settings.model_fallback_alias));
+    setQuotaFallbackEnabled(settings.quota_fallback_enabled === 1);
+    setQuotaFallbackAlias(stringValue(settings.quota_fallback_alias));
     setDefaultModelIsPublic(settings.default_model_is_public !== 0);
     setModelBrandGroups(stringValue(settings.model_brand_groups));
     const da = stringValue(settings.default_appearance);
@@ -215,6 +220,8 @@ export default function AdminSettingsPage() {
         vision_fallback_alias: visionFallbackAlias,
         model_fallback_enabled: modelFallbackEnabled,
         model_fallback_alias: modelFallbackAlias,
+        quota_fallback_enabled: quotaFallbackEnabled,
+        quota_fallback_alias: quotaFallbackAlias,
         default_model_is_public: defaultModelIsPublic,
         model_brand_groups: modelBrandGroups,
         default_appearance: defaultAppearance,
@@ -336,6 +343,12 @@ export default function AdminSettingsPage() {
             modelFallbackAlias={modelFallbackAlias}
             setModelFallbackEnabled={setModelFallbackEnabled}
             setModelFallbackAlias={setModelFallbackAlias}
+          />
+          <QuotaFallbackSettingsCard
+            quotaFallbackEnabled={quotaFallbackEnabled}
+            quotaFallbackAlias={quotaFallbackAlias}
+            setQuotaFallbackEnabled={setQuotaFallbackEnabled}
+            setQuotaFallbackAlias={setQuotaFallbackAlias}
           />
           <ModelDefaultVisibilitySettingsCard
             defaultModelIsPublic={defaultModelIsPublic}

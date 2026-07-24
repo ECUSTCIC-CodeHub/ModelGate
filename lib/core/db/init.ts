@@ -345,6 +345,9 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("users", "webhook_role", "webhook_role TEXT DEFAULT ''");
   await db.ensureColumn("users", "webhook_tags", "webhook_tags TEXT DEFAULT '[]'");
   await db.ensureColumn("users", "email", "email TEXT");
+  await db.ensureColumn("users", "pref_model_fallback", "pref_model_fallback INTEGER DEFAULT -1");
+  await db.ensureColumn("users", "pref_vision_fallback", "pref_vision_fallback INTEGER DEFAULT -1");
+  await db.ensureColumn("users", "pref_quota_fallback", "pref_quota_fallback INTEGER DEFAULT -1");
   await db.ensureColumn("email_send_log", "kind", "kind VARCHAR(16) NOT NULL DEFAULT 'announcement'");
   await db.ensureColumn("email_send_log", "title", "title TEXT");
   await db.ensureColumn("email_send_log", "content", "content TEXT");
@@ -476,6 +479,8 @@ async function seedDefaultSettings(db: DatabaseAdapter) {
     ["vision_fallback_alias", ""],
     ["model_fallback_enabled", "0"],
     ["model_fallback_alias", ""],
+    ["quota_fallback_enabled", "0"],
+    ["quota_fallback_alias", ""],
     ["ua_restrictions", ""],
     ["log_retention_days", "0"],
     ["oidc_enabled", "0"],

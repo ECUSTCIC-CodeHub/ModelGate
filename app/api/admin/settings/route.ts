@@ -20,6 +20,8 @@ const schema = z.object({
   vision_fallback_alias: z.string().max(255).optional(),
   model_fallback_enabled: z.boolean().optional(),
   model_fallback_alias: z.string().max(255).optional(),
+  quota_fallback_enabled: z.boolean().optional(),
+  quota_fallback_alias: z.string().max(255).optional(),
   oidc_enabled: z.boolean().optional(),
   oidc_issuer_url: z.string().optional(),
   oidc_client_id: z.string().optional(),

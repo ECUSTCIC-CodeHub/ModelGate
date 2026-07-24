@@ -361,6 +361,61 @@ export async function findModelFallbackRoute(options: ModelFallbackOptions): Pro
   return null;
 }
 
+export type QuotaFallbackOptions = {
+  preferredAlias?: string | null;
+  excludeAliases?: string[];
+  requireVision?: boolean;
+  requireBypassUserLimits?: boolean;
+  protocol?: GatewayProtocol;
+  allowedChannelIds?: number[] | null;
+  userAgent?: string | null;
+  user?: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">;
+};
+
+/**
+ * 达到限额后选择一个已启用且当前用户可见的替补模型路由。
+ * 优先使用 preferredAlias 指定的别名；否则在所有已启用模型中按权重自动挑选。
+ * 通过 excludeAliases 排除已尝试过的别名与通配符 `*`，避免回环。
+ * requireVision 为 true 时（请求含图片），仅考虑 supports_vision=1 的模型。
+ * requireBypassUserLimits 为 true 时（用户配额/速率超限），仅考虑计费模式为
+ * bypass_group 或 independent 的模型，这类模型不占用户配额，放行后不会被用户限额再次拦截。
+ */
+export async function findQuotaFallbackRoute(options: QuotaFallbackOptions): Promise<RoutedModel | null> {
+  const excludeSet = new Set(options.excludeAliases ?? []);
+  const isBypassMode = (route: RoutedModel) =>
+    route.model.quota_mode === "bypass_group" || route.model.quota_mode === "independent";
+  const checkRoute = async (alias: string): Promise<RoutedModel | null> => {
+    if (excludeSet.has(alias) || alias === "*") return null;
+    const route = await selectModelRoute(alias, options);
+    if (!route) return null;
+    if (options.requireVision && route.model.supports_vision !== 1) return null;
+    if (options.requireBypassUserLimits && !isBypassMode(route)) return null;
+    if (!(await isVisionRouteAccessible(options.user, route))) return null;
+    return route;
+  };
+
+  if (options.preferredAlias && options.preferredAlias.length > 0) {
+    const route = await checkRoute(options.preferredAlias);
+    if (route) return route;
+  }
+
+  const aliases = await gatewayDb.query<{ alias: string }>(
+    `SELECT DISTINCT m.alias
+     FROM models m
+     JOIN channels c ON c.id = m.channel_id
+     WHERE m.enabled = 1 AND m.deleted_at IS NULL AND m.alias != '*'
+       AND c.enabled = 1 AND c.deleted_at IS NULL
+       ${options.requireVision ? "AND m.supports_vision = 1" : ""}
+       ${options.requireBypassUserLimits ? "AND m.quota_mode IN ('bypass_group', 'independent')" : ""}
+     ORDER BY m.weight DESC, m.id ASC`,
+  );
+  for (const row of aliases) {
+    const route = await checkRoute(row.alias);
+    if (route) return route;
+  }
+  return null;
+}
+
 /**
  * 依据管理员全局开关解析模型替补别名（与「图片自动路由到识图模型」一致，仅管理员可控）。
  * 全局开关关闭时返回 null；否则优先使用管理员指定的全局别名，留空时由权重自动分配。

@@ -387,6 +387,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
     "repo_name": "",
     "model_fallback_enabled": 0,
     "model_fallback_alias": "",
+    "quota_fallback_enabled": 0,
+    "quota_fallback_alias": "",
     "default_model_is_public": 1,
     "model_brand_groups": ""
   }
@@ -434,6 +436,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "vision_fallback_alias": "",
   "model_fallback_enabled": false,
   "model_fallback_alias": "",
+  "quota_fallback_enabled": false,
+  "quota_fallback_alias": "",
   "default_model_is_public": true,
   "model_brand_groups": "[{\"label\":\"深度求索\",\"pattern\":\"deepseek*\"}]"
 }
@@ -477,6 +481,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | vision_fallback_alias | string | 指定优先使用的识图模型别名（最长 255 字符）；留空时从已启用且标记「支持识图」的模型中自动选择 |
 | model_fallback_enabled | boolean | 是否开启「模型自动替补」全局开关；开启后，用户请求的模型不存在或被禁用时，自动路由到其他模型 |
 | model_fallback_alias | string | 指定优先使用的替补模型别名（最长 255 字符）；留空时从已启用且当前用户可见的模型中按权重自动挑选 |
+| quota_fallback_enabled | boolean | 是否开启「达到限额后自动路由」全局开关；开启后，模型独立配额超限时按权重逐个尝试其他可用模型，用户配额或速率限制超限时只尝试不占用户配额的模型。仅对话类协议生效 |
+| quota_fallback_alias | string | 指定优先路由的模型别名（最长 255 字符）；留空时从已启用且当前用户可见的模型中按权重自动挑选。用户配额超限时建议指定独立配额或不计费模型 |
 | default_model_is_public | boolean | 新增模型的默认可见性（默认 true）；开启后新创建的模型对所有非管理员用户可见，关闭后新增模型默认仅对授权用户可见（白名单）。仅影响新增模型预设值，编辑已有模型以其自身 `is_public` 为准 |
 | model_brand_groups | string | 模型品牌分组规则（JSON 字符串），形如 `[{"label":"深度求索","pattern":"deepseek*"}]`；`pattern` 支持通配符 `*`（匹配任意字符、不区分大小写），按模型 ID 前缀归组，用于模型列表页按品牌筛选展示。未命中任何品牌组的模型归入「其他」 |
 
@@ -1937,6 +1943,47 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 **认证:** 用户
 
+### GET /api/dashboard/personal-settings
+
+获取当前用户的网关行为个人偏好（模型替补、图片自动路由、限额自动路由），同时返回各功能的全局默认开关，供前端展示「继承全局」态来源。
+
+**认证:** 用户
+
+**响应示例:**
+```json
+{
+  "preferences": {
+    "model_fallback": -1,
+    "vision_fallback": -1,
+    "quota_fallback": -1
+  },
+  "defaults": {
+    "model_fallback": false,
+    "vision_fallback": false,
+    "quota_fallback": false
+  }
+}
+```
+
+> `preferences` 各字段为三态：`-1` 继承全局（默认）、`0` 强制关闭、`1` 强制开启；`defaults` 各字段为布尔值，表示当前全局开关状态。
+
+### PUT /api/dashboard/personal-settings
+
+更新当前用户的网关行为个人偏好，可只传需要变更的字段。
+
+**认证:** 用户
+
+**请求体:**
+```json
+{
+  "model_fallback": -1,
+  "vision_fallback": 1,
+  "quota_fallback": 0
+}
+```
+
+> 每个字段取值 `-1`（继承全局）/ `0`（强制关闭）/ `1`（强制开启），均为可选。成功时响应 `{ "message": "个人设置已保存。" }`；未传任何字段时响应 `{ "message": "个人设置未变更。" }`。
+
 ---
 
 ## 仪表盘接口 - 可用模型
@@ -2259,6 +2306,12 @@ OpenAI Chat Completions 兼容端点。
 > 当系统设置开启「图片自动路由到识图模型」且请求 `messages` 包含图片内容（`image_url` / `input_image`）时，若目标模型未标记「支持识图」，网关会自动改路由到支持识图的模型（优先使用设置中指定的别名，否则从已启用且标记「支持识图」的模型中自动挑选），后续沿用现有失败重试与渠道切换机制。
 
 > 当系统设置开启「模型自动替补」全局开关，若请求的目标模型不存在或被禁用（且未命中通配符 `*`），网关会自动改路由到替补模型：优先使用管理员指定的全局别名，仍为空时从已启用且当前用户可见的模型中按权重（`models.weight` 降序）自动挑选，后续沿用现有失败重试与渠道切换机制。
+
+> 当系统设置开启「达到限额后自动路由」全局开关，若用户配额、速率限制（RPM/QPS/TPM）或模型独立配额（`quota_mode=independent`）达到上限，网关会自动改路由到其他可用模型：优先使用管理员指定的全局别名，仍为空时从已启用且当前用户可见的模型中按权重自动挑选。请求包含图片时只会路由到标记「支持识图」的模型。
+>
+> 限额类型不同，候选模型范围不同：**模型独立配额超限**时，候选为任意其他可用模型；**用户配额或速率限制超限**时，候选只包含计费模式为 `bypass_group` 或 `independent`（即不占用户配额）的模型。网关会按权重逐个尝试候选模型并重新检查限额，命中可通过的即采用；全部候选都不可用或仍超限则返回 429。为防止回环，已尝试过的别名会逐步排除，累计尝试上限 10 次。用户级限额检查在整个路由过程中只执行一次并缓存复用，模型独立配额针对每个候选模型重新检查。该功能仅在对话类协议（Chat Completions / Responses / Anthropic Messages / Embeddings）生效，图片生成协议不接入。
+
+> 上述三个功能（模型替补、图片自动路由、限额自动路由）均支持个人设置覆盖：用户可在「个人设置 - 网关行为」中按功能选择「继承全局」（默认，跟随管理员系统设置）、「启用」（强制开启）或「禁用」（强制关闭）。个人设置优先于全局配置，跟随账号生效。
 
 > 流式 Chat Completions 请求转发到上游时，网关会自动附加 `stream_options.include_usage = true`，用于优先记录上游返回的 Token usage 和缓存 Token；上游不返回 usage 时才使用本地分词统计。
 

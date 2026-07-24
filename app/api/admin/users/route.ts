@@ -92,7 +92,9 @@ export async function GET(request: Request) {
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
               u.quota_period, u.period_quota_tokens, u.period_quota_requests,
               u.period_used_tokens, u.period_used_requests, u.period_reset_at,
-              u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.group_locked, u.enabled, u.created_at
+              u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.group_locked,
+              u.pref_model_fallback, u.pref_vision_fallback, u.pref_quota_fallback,
+              u.enabled, u.created_at
        FROM users u
        LEFT JOIN \`groups\` g ON g.id = u.group_id AND g.deleted_at IS NULL
        ${whereSql}
@@ -222,7 +224,9 @@ export async function POST(request: Request) {
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
               u.quota_period, u.period_quota_tokens, u.period_quota_requests,
               u.period_used_tokens, u.period_used_requests, u.period_reset_at,
-              u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.group_locked, u.enabled, u.created_at
+              u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.group_locked,
+              u.pref_model_fallback, u.pref_vision_fallback, u.pref_quota_fallback,
+              u.enabled, u.created_at
        FROM users u
        LEFT JOIN \`groups\` g ON g.id = u.group_id AND g.deleted_at IS NULL
        WHERE u.id = ? AND u.deleted_at IS NULL`,

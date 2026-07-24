@@ -11,6 +11,7 @@ import { checkUserRateLimit } from "@/lib/gateway/ratelimit";
 import { selectModelRoute, findUaDenyMatchForAlias, resolveModelFallbackAlias } from "@/lib/gateway/router";
 import { resolveClientIp } from "@/lib/core/client-ip";
 import { getGatewaySettings } from "@/lib/core/settings";
+import { resolveTriState } from "@/lib/gateway/user-preferences";
 import { isFeatureEnabled } from "@/lib/core/features";
 import { checkUserAgentRestrictions, parseUaRestrictions } from "@/lib/gateway/ua-restrictions";
 import { buildErrorResponseBody, parseUpstreamError } from "@/lib/gateway/upstream-error";
@@ -114,7 +115,7 @@ export async function handleMultipartGatewayRequest(request: Request) {
     const fallbackAlias = await resolveModelFallbackAlias({
       user: auth.user,
       requestedAlias: alias,
-      fallbackEnabled: settings.model_fallback_enabled === 1,
+      fallbackEnabled: resolveTriState(auth.user.pref_model_fallback, settings.model_fallback_enabled === 1),
       preferredGlobalAlias: settings.model_fallback_alias,
       protocol: "images",
       allowedChannelIds,

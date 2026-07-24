@@ -6,18 +6,20 @@ import { jsonError } from "@/lib/core/http";
 import { checkModelQuota, appendModelQuotaHeaders } from "@/lib/gateway/model-quota";
 import { resolveAccessibleModelAlias, canUserAccessModelAlias } from "@/lib/gateway/model-access";
 import { getGatewayProtocolAdapter, type GatewayProtocolAdapter } from "@/lib/gateway/protocol-adapters";
+import type { GatewayProtocol } from "@/lib/gateway/protocols";
 import type { ResponseAdapterOptions } from "@/lib/gateway/protocol-adapters/intermediate";
 import { createTransformedStream } from "@/lib/gateway/protocol-adapters/streaming";
 import { appendQuotaHeaders, checkQuota } from "@/lib/gateway/quota";
 import { createQueuedUpstreamResponse, normalizeUserAgent } from "@/lib/gateway/queued-upstream-response";
 import { checkUserRateLimit } from "@/lib/gateway/ratelimit";
-import { selectModelRoute, findUaDenyMatchForAlias, findVisionFallbackRoute, resolveModelFallbackAlias, type RoutedModel } from "@/lib/gateway/router";
+import { selectModelRoute, findUaDenyMatchForAlias, findVisionFallbackRoute, findQuotaFallbackRoute, resolveModelFallbackAlias, type RoutedModel } from "@/lib/gateway/router";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { checkUserAgentRestrictions, parseUaRestrictions, type UaRestrictionMatch } from "@/lib/gateway/ua-restrictions";
 import { isFeatureEnabled } from "@/lib/core/features";
 import { resolveClientIp } from "@/lib/core/client-ip";
 import { requestContainsImage } from "@/lib/gateway/normalized-message/detect-image";
 import { resolveTokenUsage, tokenUsageMetadata } from "@/lib/gateway/token-usage";
+import { resolveTriState } from "@/lib/gateway/user-preferences";
 import { buildErrorResponseBody, parseUpstreamError } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
 import { requestUpstreamWithFallback } from "@/lib/gateway/upstream-routing";
@@ -122,6 +124,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   }
 
   const estimatedTokens = inboundAdapter.estimateRequestTokens(body);
+  const modelFallbackEnabled = resolveTriState(auth.user.pref_model_fallback, settings.model_fallback_enabled === 1);
   const resolved = await resolveAccessibleModelAlias(auth.user, alias);
   let resolvedAlias: string;
   let modelFallbackNote: string | null = null;
@@ -134,7 +137,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     const fallbackAlias = await resolveModelFallbackAlias({
       user: auth.user,
       requestedAlias: alias,
-      fallbackEnabled: settings.model_fallback_enabled === 1,
+      fallbackEnabled: modelFallbackEnabled,
       preferredGlobalAlias: settings.model_fallback_alias,
       protocol: inboundProtocol,
       allowedChannelIds,
@@ -152,7 +155,9 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   }
 
   let effectiveAlias = resolvedAlias;
-  if (settings.vision_fallback_enabled === 1 && requestContainsImage(body, inboundProtocol)) {
+  const requestHasImage = requestContainsImage(body, inboundProtocol);
+  const visionFallbackEnabled = resolveTriState(auth.user.pref_vision_fallback, settings.vision_fallback_enabled === 1);
+  if (visionFallbackEnabled && requestHasImage) {
     const sourceRoute = await selectModelRoute(resolvedAlias, {
       protocol: inboundProtocol,
       allowedChannelIds,
@@ -172,14 +177,13 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       }
     }
   }
-  const substitutionNote = [modelFallbackNote, visionFallbackNote].filter(Boolean).join("；") || null;
 
-  const existingRoute = await selectModelRoute(effectiveAlias, {
+  const initialRoute = await selectModelRoute(effectiveAlias, {
     protocol: inboundProtocol,
     allowedChannelIds,
     userAgent: uaEnabled ? clientUserAgent : undefined,
   });
-  if (!existingRoute) {
+  if (!initialRoute) {
     if (uaEnabled) {
       const nonUaRoute = await selectModelRoute(effectiveAlias, { protocol: inboundProtocol, allowedChannelIds });
       if (nonUaRoute !== null) {
@@ -198,41 +202,92 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     return jsonError("模型别名不存在或已禁用", 404);
   }
 
-  const quotaMode = existingRoute.model.quota_mode;
-  const bypassUserLimits = quotaMode === "bypass_group" || quotaMode === "independent";
-
   const quotaHeaders: Record<string, string> = {};
   let channelQuotaHeaders: Record<string, string> | null = null;
   let modelQuotaHeaders: Record<string, string> | null = null;
 
-  if (!bypassUserLimits) {
-    const quotaResult = await checkQuota(auth.user.id, estimatedTokens);
-    if (!quotaResult.ok) {
-      logRejected(429, quotaResult.reason, alias, estimatedTokens);
-      const headers: Record<string, string> = {};
-      if (quotaResult.quota) {
-        appendQuotaHeaders(headers, quotaResult.quota);
+  const CONVERSATION_PROTOCOLS: GatewayProtocol[] = ["chat_completions", "responses", "anthropic_messages", "embeddings"];
+  const quotaFallbackEnabled = CONVERSATION_PROTOCOLS.includes(inboundProtocol)
+    && resolveTriState(auth.user.pref_quota_fallback, settings.quota_fallback_enabled === 1);
+
+  let existingRoute = initialRoute;
+  let quotaFallbackNote: string | null = null;
+  let userQuotaChecked = false;
+  let cachedUserQuota: Awaited<ReturnType<typeof checkQuota>> | null = null;
+  let cachedUserRate: Awaited<ReturnType<typeof checkUserRateLimit>> | null = null;
+  const triedAliases = new Set<string>();
+  let quotaFallbackAttempts = 0;
+  const MAX_QUOTA_FALLBACK_ATTEMPTS = 10;
+  let userLimitKnownExceeded = false;
+
+  for (;;) {
+    const quotaMode = existingRoute.model.quota_mode;
+    const bypassUserLimits = quotaMode === "bypass_group" || quotaMode === "independent";
+
+    let exceededReason: string | null = null;
+
+    if (!bypassUserLimits) {
+      if (!userQuotaChecked) {
+        cachedUserQuota = await checkQuota(auth.user.id, estimatedTokens);
+        if (cachedUserQuota.ok) {
+          cachedUserRate = await checkUserRateLimit(auth.user, estimatedTokens);
+        }
+        userQuotaChecked = true;
       }
-      return jsonError(quotaResult.reason, 429, undefined, headers);
+      if (cachedUserQuota && !cachedUserQuota.ok) {
+        exceededReason = cachedUserQuota.reason;
+        userLimitKnownExceeded = true;
+        if (cachedUserQuota.quota) appendQuotaHeaders(quotaHeaders, cachedUserQuota.quota);
+      } else if (cachedUserQuota?.ok) {
+        appendQuotaHeaders(quotaHeaders, cachedUserQuota.quota);
+        if (cachedUserRate && !cachedUserRate.ok) {
+          exceededReason = cachedUserRate.reason;
+          userLimitKnownExceeded = true;
+        }
+      }
     }
-    appendQuotaHeaders(quotaHeaders, quotaResult.quota);
 
-    const rate = await checkUserRateLimit(auth.user, estimatedTokens);
-    if (!rate.ok) {
-      logRejected(429, rate.reason, alias, estimatedTokens);
-      return jsonError(rate.reason, 429);
+    if (!exceededReason && quotaMode === "independent") {
+      const modelQuotaResult = await checkModelQuota(existingRoute.model.id, estimatedTokens);
+      if (!modelQuotaResult.ok) {
+        exceededReason = modelQuotaResult.reason;
+      } else {
+        modelQuotaHeaders = {};
+        appendModelQuotaHeaders(modelQuotaHeaders, modelQuotaResult.quota);
+      }
     }
+
+    if (!exceededReason) break;
+
+    if (!quotaFallbackEnabled || quotaFallbackAttempts >= MAX_QUOTA_FALLBACK_ATTEMPTS) {
+      logRejected(429, exceededReason, alias, estimatedTokens);
+      return jsonError(exceededReason, 429, undefined, { ...quotaHeaders });
+    }
+    triedAliases.add(effectiveAlias);
+    quotaFallbackAttempts += 1;
+
+    const fallbackRoute = await findQuotaFallbackRoute({
+      preferredAlias: settings.quota_fallback_alias,
+      excludeAliases: [...triedAliases],
+      requireVision: requestHasImage,
+      requireBypassUserLimits: userLimitKnownExceeded,
+      protocol: inboundProtocol,
+      allowedChannelIds,
+      userAgent: uaEnabled ? clientUserAgent : undefined,
+      user: auth.user,
+    });
+    if (!fallbackRoute) {
+      logRejected(429, exceededReason, alias, estimatedTokens);
+      return jsonError(exceededReason, 429, undefined, { ...quotaHeaders });
+    }
+
+    effectiveAlias = fallbackRoute.model.alias;
+    existingRoute = fallbackRoute;
+    quotaFallbackNote = "达到限额已自动路由到其他模型";
+    modelQuotaHeaders = null;
   }
 
-  if (quotaMode === "independent") {
-    const modelQuotaResult = await checkModelQuota(existingRoute.model.id, estimatedTokens);
-    if (!modelQuotaResult.ok) {
-      logRejected(429, modelQuotaResult.reason, alias, estimatedTokens);
-      return jsonError(modelQuotaResult.reason, 429);
-    }
-    modelQuotaHeaders = {};
-    appendModelQuotaHeaders(modelQuotaHeaders, modelQuotaResult.quota);
-  }
+  const substitutionNote = [modelFallbackNote, visionFallbackNote, quotaFallbackNote].filter(Boolean).join("；") || null;
 
   const withQuotaHeaders = (resp: Response): Response => {
     for (const [k, v] of Object.entries(quotaHeaders)) {
