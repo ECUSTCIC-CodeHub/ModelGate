@@ -73,7 +73,7 @@ export function AnnouncementDialog() {
           <DialogTitle>{title || "系统公告"}</DialogTitle>
           <DialogDescription>来自管理员的通知</DialogDescription>
         </DialogHeader>
-        <ScrollArea className="max-h-[60vh]">
+        <ScrollArea className="min-h-0 flex-1 max-h-[60vh]">
           <div
             className="markdown-body pr-3"
             dangerouslySetInnerHTML={{ __html: html }}
