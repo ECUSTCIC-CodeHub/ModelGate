@@ -70,7 +70,7 @@ export function DashboardAnnouncementsCard() {
         {announcements.map((item) => {
           const expanded = expandedIds.has(item.id);
           return (
-            <div key={item.id} className="border-b border-[var(--color-border)] py-1 last:border-b-0 md:[&:nth-child(odd)]:border-r">
+            <div key={item.id} className="min-w-0 border-b border-[var(--color-border)] py-1 last:border-b-0 md:[&:nth-child(odd)]:border-r">
               <button
                 type="button"
                 aria-expanded={expanded}
@@ -84,7 +84,7 @@ export function DashboardAnnouncementsCard() {
                 <ChevronDown
                   className={`h-3.5 w-3.5 shrink-0 text-[var(--color-foreground-muted)] transition-transform ${expanded ? "rotate-180" : ""}`}
                 />
-                <h3 className="truncate text-sm font-medium text-[var(--color-foreground)]">{item.title}</h3>
+                <h3 className="min-w-0 truncate text-sm font-medium text-[var(--color-foreground)]">{item.title}</h3>
                 <span className="ml-auto shrink-0 text-xs text-[var(--color-foreground-muted)]">
                   {formatAnnouncementDate(item.created_at)}
                 </span>
