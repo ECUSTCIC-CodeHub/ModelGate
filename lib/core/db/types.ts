@@ -57,6 +57,7 @@ export type DbModel = {
   created_at: string;
   deleted_at: string | null;
   ua_restrictions: string;
+  expires_at: string | null;
 };
 
 export type DbGroup = {

@@ -80,6 +80,7 @@ export type ModelRow = {
   period_quota_tokens: number | null;
   period_quota_requests: number | null;
   ua_restrictions: string;
+  expires_at: string | null;
 };
 
 export type Channel = {
@@ -172,6 +173,7 @@ export type ModelForm = {
   period_quota_requests: string;
   enabled: boolean;
   ua_restrictions: string;
+  expires_at: string;
 };
 
 export type UpstreamModelOption = {
@@ -247,4 +249,5 @@ export const initialModelForm: ModelForm = {
   period_quota_requests: "",
   enabled: true,
   ua_restrictions: "",
+  expires_at: "",
 };

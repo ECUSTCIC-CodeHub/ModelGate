@@ -6,6 +6,7 @@ import { makeModelRuntimeKey, scoreChannel } from "@/lib/gateway/channel-runtime
 import { parseSupportedProtocols, type GatewayProtocol } from "@/lib/gateway/protocols";
 import { checkScopedUaRestrictions, type UaRestrictionMatch } from "@/lib/gateway/ua-restrictions";
 import { isChannelExpired, isChannelTimeAllowed } from "@/lib/gateway/channel-time";
+import { isModelExpired } from "@/lib/gateway/model-expiry";
 
 export type RoutedModel = {
   model: DbModel;
@@ -40,6 +41,7 @@ type CandidateRow = {
   model_created_at: string;
   model_deleted_at: string | null;
   model_ua_restrictions: string;
+  model_expires_at: string | null;
   channel_id_2: number;
   name: string;
   base_url: string;
@@ -67,7 +69,7 @@ type CandidateRow = {
   channel_time_restrictions: string;
 };
 
-const LIST_ENABLED_ALIASES_SQL = `SELECT DISTINCT m.alias, c.expires_at, c.time_restrictions
+const LIST_ENABLED_ALIASES_SQL = `SELECT DISTINCT m.alias, c.expires_at, c.time_restrictions, m.expires_at AS model_expires_at
    FROM models m
    JOIN channels c ON c.id = m.channel_id
    WHERE m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL AND c.deleted_at IS NULL AND m.alias != '*'
@@ -100,6 +102,7 @@ const LIST_MODEL_ROUTES_SQL = `SELECT
       m.created_at as model_created_at,
       m.deleted_at as model_deleted_at,
       m.ua_restrictions as model_ua_restrictions,
+      m.expires_at as model_expires_at,
       c.id as channel_id_2,
       c.name,
       c.base_url,
@@ -130,9 +133,9 @@ const LIST_MODEL_ROUTES_SQL = `SELECT
    WHERE m.alias = ? AND m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL AND c.deleted_at IS NULL`;
 
 export async function listEnabledAliases() {
-  const rows = await gatewayDb.query<{ alias: string; expires_at: string | null; time_restrictions: string }>(LIST_ENABLED_ALIASES_SQL);
+  const rows = await gatewayDb.query<{ alias: string; expires_at: string | null; time_restrictions: string; model_expires_at: string | null }>(LIST_ENABLED_ALIASES_SQL);
   return rows
-    .filter((row) => !isChannelExpired(row.expires_at) && isChannelTimeAllowed(row.time_restrictions))
+    .filter((row) => !isChannelExpired(row.expires_at) && isChannelTimeAllowed(row.time_restrictions) && !isModelExpired(row.model_expires_at))
     .map((row) => ({ alias: row.alias }));
 }
 
@@ -177,6 +180,7 @@ function mapRowToRoute(row: CandidateRow, inboundProtocol?: GatewayProtocol): Ro
       created_at: row.model_created_at,
       deleted_at: row.model_deleted_at,
       ua_restrictions: row.model_ua_restrictions ?? "",
+      expires_at: row.model_expires_at ?? null,
     },
     channel: {
       id: row.channel_id_2,
@@ -244,6 +248,7 @@ export async function listModelRoutes(alias: string, options?: { excludeChannelI
     }
     if (isChannelExpired(row.channel_expires_at)) return false;
     if (!isChannelTimeAllowed(row.channel_time_restrictions)) return false;
+    if (isModelExpired(row.model_expires_at)) return false;
     return true;
   });
 

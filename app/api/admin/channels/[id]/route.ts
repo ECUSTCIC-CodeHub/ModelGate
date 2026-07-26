@@ -9,6 +9,7 @@ import { isValidProxyUrl, normalizeProxyUrl } from "@/lib/gateway/upstream-proxy
 import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
 import { toLocalDatetime, validateTimeRestrictions, normalizeTimeRestrictions } from "@/lib/gateway/channel-time";
 import { disableExpiredChannels } from "@/lib/gateway/channel-expiry";
+import { disableExpiredModels } from "@/lib/gateway/model-expiry";
 
 const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
 
@@ -201,6 +202,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     }
 
     await disableExpiredChannels(tx);
+    await disableExpiredModels(tx);
   });
 
   const row = await gatewayDb.queryOne("SELECT * FROM channels WHERE id = ? AND deleted_at IS NULL", [id]);
@@ -235,6 +237,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     await tx.execute("UPDATE models SET enabled = 0, deleted_at = CURRENT_TIMESTAMP WHERE channel_id = ? AND deleted_at IS NULL", [id]);
     await tx.execute("UPDATE channels SET enabled = 0, deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL", [id]);
     await disableExpiredChannels(tx);
+    await disableExpiredModels(tx);
   });
   return jsonOk({ ok: true, message: "渠道删除成功。" });
 }

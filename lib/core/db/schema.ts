@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS models (
   supports_vision INTEGER DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   deleted_at DATETIME,
+  expires_at DATETIME DEFAULT NULL,
   FOREIGN KEY (channel_id) REFERENCES channels(id)
 );
 

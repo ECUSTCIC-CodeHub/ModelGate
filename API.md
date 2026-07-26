@@ -1421,7 +1421,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 - 启用渠道（`enabled` 由 `false` 变为 `true`）时，该渠道下协议在 `supported_protocols` 范围内的未删除模型同步置为启用；协议不被支持的模型保持禁用。
 - 渠道已处于启用状态时再次更新其他字段，不会改动模型的启用状态。
 - 启用渠道时若已存在使用未被支持协议的启用模型，返回 400「该渠道下存在使用未被保留协议的启用模型」。
-- 管理员对任意渠道执行创建、更新或删除操作后，系统会扫描并彻底禁用所有已到过期时间（`expires_at`）的启用渠道，并级联禁用其模型。
+- 管理员对任意渠道执行创建、更新或删除操作后，系统会扫描并彻底禁用所有已到过期时间（`expires_at`）的启用渠道，并级联禁用其模型；同时也会扫描并禁用所有已到过期时间（模型自身 `expires_at`）的启用模型。
 
 ### DELETE /api/admin/channels/:id
 
@@ -1532,6 +1532,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | request_multiplier | float | 否 | 1 | 请求计费倍率：实际扣量 = 请求次数 x 倍率 |
 | quota_mode | enum | 否 | follow_group | `follow_group`：跟随用户组限制；`bypass_group`：跳过用户组配额和速率限制；`independent`：跳过用户组限制，使用模型自身配额 |
 | ua_restrictions | string | 否 | "" | 模型级 User-Agent 限制规则 JSON 数组，留空表示不限制（完整版功能，最长 20000 字符） |
+| expires_at | string\|null | 否 | null | 过期时间（本地 datetime，如 `2026-08-01T00:00`），null 或留空表示永不过期；到达该时间后该模型在路由中自动不可用，管理员对任意渠道或模型执行操作后，已过期模型会被自动禁用 |
 | quota_tokens | int\|null | 否 | null | 模型总 Token 配额（仅 `independent` 模式生效），null 表示不限制 |
 | quota_requests | int\|null | 否 | null | 模型总请求配额（仅 `independent` 模式生效），null 表示不限制 |
 | quota_period | int\|null | 否 | null | 周期配额重置间隔（秒），null 表示不启用（仅完整版） |

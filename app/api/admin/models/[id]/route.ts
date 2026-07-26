@@ -8,6 +8,8 @@ import { GATEWAY_PROTOCOLS, type GatewayProtocol, normalizeSupportedProtocols, p
 import type { ModelQuotaMode } from "@/lib/core/db/types";
 import { softDeleteModel } from "@/lib/services/soft-delete-service";
 import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
+import { toLocalDatetime } from "@/lib/gateway/channel-time";
+import { disableExpiredModels } from "@/lib/gateway/model-expiry";
 
 const QUOTA_MODES = ["follow_group", "bypass_group", "independent"] as const;
 
@@ -32,6 +34,7 @@ const updateSchema = z.object({
   period_quota_tokens: z.number().int().min(0).nullable().optional(),
   period_quota_requests: z.number().int().min(0).nullable().optional(),
   ua_restrictions: z.string().max(20000).optional(),
+  expires_at: z.string().max(32).nullable().optional(),
 });
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -87,6 +90,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         period_quota_tokens: number | null;
         period_quota_requests: number | null;
         ua_restrictions: string;
+        expires_at: string | null;
       }>("SELECT * FROM models WHERE id = ? AND deleted_at IS NULL", [id]);
   if (!existing) return jsonError("模型不存在", 404);
 
@@ -118,6 +122,20 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     return jsonError("禁用渠道下不能启用模型", 400);
   }
 
+  let nextExpiresAt: string | null;
+  if (parsed.data.expires_at === undefined) {
+    nextExpiresAt = existing.expires_at ?? null;
+  } else {
+    const expiresRaw = parsed.data.expires_at?.trim() ?? "";
+    if (expiresRaw) {
+      const t = new Date(expiresRaw.replace(" ", "T")).getTime();
+      if (Number.isNaN(t)) return jsonError("过期时间格式不正确", 400);
+      nextExpiresAt = toLocalDatetime(new Date(expiresRaw));
+    } else {
+      nextExpiresAt = null;
+    }
+  }
+
   const merged = {
     ...existing,
     ...parsed.data,
@@ -136,24 +154,29 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           : 0,
     ua_restrictions: parsed.data.ua_restrictions === undefined ? existing.ua_restrictions ?? "" : parsed.data.ua_restrictions.trim(),
     enabled: targetEnabled,
+    expires_at: nextExpiresAt,
   };
 
-  await gatewayDb
-    .execute(
-      `UPDATE models
-       SET alias = ?, real_model = ?, channel_id = ?, upstream_protocol = ?, supported_protocols = ?, copilot_compatibility = ?, supports_vision = ?, is_public = ?, enabled = ?, weight = ?, token_multiplier = ?, request_multiplier = ?, max_concurrency = ?,
-           quota_mode = ?, quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, ua_restrictions = ?
-       WHERE id = ?`,
-      [merged.alias, merged.real_model, merged.channel_id, merged.upstream_protocol, targetSupportedProtocols, parsed.data.copilot_compatibility === true ? 1 : parsed.data.copilot_compatibility === false ? 0 : existing.copilot_compatibility ?? 0, merged.supports_vision ?? 0, merged.is_public, merged.enabled, merged.weight, merged.token_multiplier, merged.request_multiplier, merged.max_concurrency,
-        merged.quota_mode ?? existing.quota_mode ?? "follow_group",
-        merged.quota_tokens ?? existing.quota_tokens ?? null,
-        merged.quota_requests ?? existing.quota_requests ?? null,
-        merged.quota_period ?? existing.quota_period ?? null,
-        merged.period_quota_tokens ?? existing.period_quota_tokens ?? null,
-        merged.period_quota_requests ?? existing.period_quota_requests ?? null,
-        merged.ua_restrictions ?? existing.ua_restrictions ?? "",
-        id],
-    );
+  await gatewayDb.transaction(async (tx) => {
+    await tx
+      .execute(
+        `UPDATE models
+         SET alias = ?, real_model = ?, channel_id = ?, upstream_protocol = ?, supported_protocols = ?, copilot_compatibility = ?, supports_vision = ?, is_public = ?, enabled = ?, weight = ?, token_multiplier = ?, request_multiplier = ?, max_concurrency = ?,
+             quota_mode = ?, quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, ua_restrictions = ?, expires_at = ?
+         WHERE id = ?`,
+        [merged.alias, merged.real_model, merged.channel_id, merged.upstream_protocol, targetSupportedProtocols, parsed.data.copilot_compatibility === true ? 1 : parsed.data.copilot_compatibility === false ? 0 : existing.copilot_compatibility ?? 0, merged.supports_vision ?? 0, merged.is_public, merged.enabled, merged.weight, merged.token_multiplier, merged.request_multiplier, merged.max_concurrency,
+          merged.quota_mode ?? existing.quota_mode ?? "follow_group",
+          merged.quota_tokens ?? existing.quota_tokens ?? null,
+          merged.quota_requests ?? existing.quota_requests ?? null,
+          merged.quota_period ?? existing.quota_period ?? null,
+          merged.period_quota_tokens ?? existing.period_quota_tokens ?? null,
+          merged.period_quota_requests ?? existing.period_quota_requests ?? null,
+          merged.ua_restrictions ?? existing.ua_restrictions ?? "",
+          merged.expires_at ?? null,
+          id],
+      );
+    await disableExpiredModels(tx);
+  });
 
   const row = await gatewayDb.queryOne("SELECT * FROM models WHERE id = ? AND deleted_at IS NULL", [id]);
   return jsonOk({ data: row });

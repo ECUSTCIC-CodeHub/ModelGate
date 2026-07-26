@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS models (
   period_reset_at DATETIME,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   deleted_at DATETIME,
+  expires_at DATETIME DEFAULT NULL,
   FOREIGN KEY (channel_id) REFERENCES channels(id)
 );
 

@@ -341,6 +341,28 @@ export function ModelDrawer({
                   配置后仅匹配规则的客户端可访问该模型；留空则不限制。优先级低于渠道与全站限制。
                 </p>
               </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>过期时间</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="datetime-local"
+                    className="flex-1"
+                    value={form.expires_at}
+                    onChange={(e) => onFormChange({ expires_at: e.target.value })}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => onFormChange({ expires_at: "" })}
+                    disabled={!form.expires_at}
+                  >
+                    清除
+                  </Button>
+                </div>
+                <p className="text-xs text-[var(--color-foreground-muted)]">
+                  留空表示永不过期。到达该时间后该模型将自动不可用；管理员对任意渠道或模型操作后，过期的模型会被自动禁用。
+                </p>
+              </div>
             </>
           )}
           <SheetFooter>

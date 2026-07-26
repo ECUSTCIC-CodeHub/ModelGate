@@ -399,6 +399,7 @@ export function useChannelAdmin() {
       period_quota_requests: row.period_quota_requests != null ? String(row.period_quota_requests) : "",
       enabled: row.enabled === 1,
       ua_restrictions: row.ua_restrictions ?? "",
+      expires_at: expiresAtToInputValue(row.expires_at),
     });
     setModelDrawerOpen(true);
   }
@@ -555,6 +556,7 @@ export function useChannelAdmin() {
       method: "PUT",
       body: JSON.stringify({
         ...modelForm,
+        expires_at: expiresAtFromInputValue(modelForm.expires_at),
         ua_restrictions: modelForm.ua_restrictions,
         ...buildModelQuotaPayload(modelForm),
       }),

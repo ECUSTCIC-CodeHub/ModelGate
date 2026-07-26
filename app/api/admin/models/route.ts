@@ -6,6 +6,8 @@ import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { GATEWAY_PROTOCOLS, normalizeSupportedProtocols, parseSupportedProtocols, stringifySupportedProtocols, supportsProtocol } from "@/lib/gateway/protocols";
 import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
+import { toLocalDatetime } from "@/lib/gateway/channel-time";
+import { disableExpiredModels } from "@/lib/gateway/model-expiry";
 
 const QUOTA_MODES = ["follow_group", "bypass_group", "independent"] as const;
 
@@ -30,6 +32,7 @@ const createSchema = z.object({
   period_quota_tokens: z.number().int().min(0).nullable().optional(),
   period_quota_requests: z.number().int().min(0).nullable().optional(),
   ua_restrictions: z.string().max(20000).optional(),
+  expires_at: z.string().max(32).nullable().optional(),
 });
 
 export async function GET(request: Request) {
@@ -83,33 +86,46 @@ export async function POST(request: Request) {
     return jsonError("禁用渠道下不能启用模型", 400);
   }
 
-  const result = await gatewayDb
-    .execute(
-      `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, supports_vision, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, ua_restrictions)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        parsed.data.alias,
-        parsed.data.real_model,
-        parsed.data.channel_id,
-        upstreamProtocol,
-        supportedProtocolsJson,
-        parsed.data.copilot_compatibility === true ? 1 : 0,
-        parsed.data.supports_vision === true ? 1 : 0,
-        parsed.data.is_public === false ? 0 : 1,
-        modelEnabled,
-        parsed.data.weight ?? 1,
-        parsed.data.token_multiplier ?? 1,
-        parsed.data.request_multiplier ?? 1,
-        parsed.data.max_concurrency ?? 0,
-        parsed.data.quota_mode ?? "follow_group",
-        parsed.data.quota_tokens ?? null,
-        parsed.data.quota_requests ?? null,
-        parsed.data.quota_period ?? null,
-        parsed.data.period_quota_tokens ?? null,
-        parsed.data.period_quota_requests ?? null,
-        parsed.data.ua_restrictions?.trim() ?? "",
-      ],
-    );
+  let expiresAt: string | null = null;
+  const expiresRaw = parsed.data.expires_at?.trim() ?? "";
+  if (expiresRaw) {
+    const t = new Date(expiresRaw.replace(" ", "T")).getTime();
+    if (Number.isNaN(t)) return jsonError("过期时间格式不正确", 400);
+    expiresAt = toLocalDatetime(new Date(expiresRaw));
+  }
+
+  const result = await gatewayDb.transaction(async (tx) => {
+    const res = await tx
+      .execute(
+        `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, supports_vision, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, ua_restrictions, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          parsed.data.alias,
+          parsed.data.real_model,
+          parsed.data.channel_id,
+          upstreamProtocol,
+          supportedProtocolsJson,
+          parsed.data.copilot_compatibility === true ? 1 : 0,
+          parsed.data.supports_vision === true ? 1 : 0,
+          parsed.data.is_public === false ? 0 : 1,
+          modelEnabled,
+          parsed.data.weight ?? 1,
+          parsed.data.token_multiplier ?? 1,
+          parsed.data.request_multiplier ?? 1,
+          parsed.data.max_concurrency ?? 0,
+          parsed.data.quota_mode ?? "follow_group",
+          parsed.data.quota_tokens ?? null,
+          parsed.data.quota_requests ?? null,
+          parsed.data.quota_period ?? null,
+          parsed.data.period_quota_tokens ?? null,
+          parsed.data.period_quota_requests ?? null,
+          parsed.data.ua_restrictions?.trim() ?? "",
+          expiresAt,
+        ],
+      );
+    await disableExpiredModels(tx);
+    return res;
+  });
 
   const row = await gatewayDb.queryOne("SELECT * FROM models WHERE id = ? AND deleted_at IS NULL", [result.lastInsertRowid]);
   return jsonOk({ message: "模型创建成功。", data: row }, 201);

@@ -18,6 +18,12 @@ import type { ModelWithChannel } from "./channel-model";
 import { parseSupportedProtocols, shortProtocolLabel } from "./channel-model";
 import { ModelActions } from "./model-actions";
 
+function isExpired(exp?: string | Date | null): boolean {
+  if (!exp) return false;
+  const t = (exp instanceof Date ? exp : new Date(exp.replace(" ", "T"))).getTime();
+  return !Number.isNaN(t) && t <= Date.now();
+}
+
 export function ModelListRow({
   model,
   index,
@@ -53,7 +59,12 @@ export function ModelListRow({
         </div>
       </TableCell>
       <TableCell>
-        <Badge variant={model.enabled ? "default" : "secondary"}>{model.enabled ? "启用" : "禁用"}</Badge>
+        <div className="flex flex-col items-start gap-1">
+          <Badge variant={model.enabled ? "default" : "secondary"}>{model.enabled ? "启用" : "禁用"}</Badge>
+          {isExpired(model.expires_at) && (
+            <Badge variant="destructive" title="过期模型在路由中已不可用，将在管理员下次操作任意渠道或模型后自动禁用">已过期</Badge>
+          )}
+        </div>
       </TableCell>
       <TableCell>
         <Badge variant={model.is_public ? "default" : "secondary"}>{model.is_public ? "公开" : "白名单"}</Badge>

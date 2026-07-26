@@ -9,6 +9,7 @@ import { isValidProxyUrl, normalizeProxyUrl } from "@/lib/gateway/upstream-proxy
 import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
 import { toLocalDatetime, validateTimeRestrictions, normalizeTimeRestrictions } from "@/lib/gateway/channel-time";
 import { disableExpiredChannels } from "@/lib/gateway/channel-expiry";
+import { disableExpiredModels } from "@/lib/gateway/model-expiry";
 
 const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
 
@@ -82,8 +83,9 @@ export async function GET(request: Request) {
     period_quota_tokens: number | null;
     period_quota_requests: number | null;
     ua_restrictions: string;
+    expires_at: string | null;
     created_at: string;
-  }>("SELECT id, alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, supports_vision, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, ua_restrictions, created_at FROM models WHERE deleted_at IS NULL ORDER BY id DESC");
+  }>("SELECT id, alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, supports_vision, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, ua_restrictions, expires_at, created_at FROM models WHERE deleted_at IS NULL ORDER BY id DESC");
 
   const grouped = new Map<number, typeof models>();
   for (const model of models) {
@@ -207,6 +209,7 @@ export async function POST(request: Request) {
     }
 
     await disableExpiredChannels(tx);
+    await disableExpiredModels(tx);
 
     return channelId;
   });
