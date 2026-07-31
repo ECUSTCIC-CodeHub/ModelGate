@@ -61,7 +61,7 @@ export default async function RootLayout({
     .join(" ");
 
   return (
-    <html lang="zh" suppressHydrationWarning className={htmlClasses} data-appearance={appearance} data-mode={mode}>
+    <html lang="zh" suppressHydrationWarning className={htmlClasses} data-appearance={appearance} data-mode={mode} data-scroll-behavior="smooth">
       <head>
         <ThemeScript themeColor={themeColor} />
       </head>
