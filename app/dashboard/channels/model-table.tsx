@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
-import { ChevronDown, ChevronRight, Copy, LayoutGrid, List, Plus, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronRight, Copy, LayoutGrid, List, Plus, Search, Table2 } from "lucide-react";
+import { parseSupportedProtocols, shortProtocolLabel } from "./channel-model";
 import type { ModelRow, ModelWithChannel } from "./channel-model";
 import { ModelCard } from "./model-card";
 import { ModelListRow } from "./model-list-row";
@@ -18,6 +19,55 @@ type ChannelGroup = {
   channelName: string;
   models: ModelWithChannel[];
 };
+
+type FlatSortField =
+  | "alias"
+  | "real_model"
+  | "channel_name"
+  | "protocols"
+  | "status"
+  | "visibility"
+  | "copilot"
+  | "weight"
+  | "effective_weight"
+  | "multiplier"
+  | "max_concurrency";
+type FlatSortOrder = "asc" | "desc";
+
+function protocolLabels(model: ModelWithChannel): string {
+  return parseSupportedProtocols(model.supported_protocols).map(shortProtocolLabel).join(",");
+}
+
+function effectiveWeight(model: ModelWithChannel): number {
+  return Math.max(1, model.weight) * Math.max(1, model.channel_weight);
+}
+
+function compareModels(a: ModelWithChannel, b: ModelWithChannel, field: FlatSortField): number {
+  switch (field) {
+    case "alias":
+      return a.alias.localeCompare(b.alias);
+    case "real_model":
+      return a.real_model.localeCompare(b.real_model);
+    case "channel_name":
+      return a.channel_name.localeCompare(b.channel_name);
+    case "protocols":
+      return protocolLabels(a).localeCompare(protocolLabels(b));
+    case "status":
+      return (a.enabled !== 0 ? 1 : 0) - (b.enabled !== 0 ? 1 : 0);
+    case "visibility":
+      return (a.is_public !== 0 ? 1 : 0) - (b.is_public !== 0 ? 1 : 0);
+    case "copilot":
+      return (a.copilot_compatibility !== 0 ? 1 : 0) - (b.copilot_compatibility !== 0 ? 1 : 0);
+    case "weight":
+      return a.weight - b.weight;
+    case "effective_weight":
+      return effectiveWeight(a) - effectiveWeight(b);
+    case "multiplier":
+      return ((a.token_multiplier ?? 1) - (b.token_multiplier ?? 1)) || ((a.request_multiplier ?? 1) - (b.request_multiplier ?? 1));
+    case "max_concurrency":
+      return a.max_concurrency - b.max_concurrency;
+  }
+}
 
 export function ModelTable({
   models,
@@ -82,13 +132,13 @@ export function ModelTable({
       return next;
     });
   }, [modelSignature]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [view, setView] = useState<"card" | "list">(() => {
+  const [view, setView] = useState<"card" | "list" | "flat">(() => {
     if (typeof window === "undefined") return "card";
     const saved = localStorage.getItem("modelView");
-    return saved === "card" || saved === "list" ? saved : "card";
+    return saved === "card" || saved === "list" || saved === "flat" ? saved : "card";
   });
 
-  function changeView(v: "card" | "list") {
+  function changeView(v: "card" | "list" | "flat") {
     setView(v);
     localStorage.setItem("modelView", v);
   }
@@ -115,6 +165,26 @@ export function ModelTable({
     }
     return Array.from(map.values());
   }, [filtered]);
+
+  const [sortField, setSortField] = useState<FlatSortField>("alias");
+  const [sortOrder, setSortOrder] = useState<FlatSortOrder>("asc");
+
+  function handleSort(field: FlatSortField) {
+    if (sortField === field) setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  }
+
+  const sorted = useMemo(() => {
+    const list = [...filtered];
+    list.sort((a, b) => {
+      const cmp = compareModels(a, b, sortField);
+      return sortOrder === "asc" ? cmp : -cmp;
+    });
+    return list;
+  }, [filtered, sortField, sortOrder]);
 
   function toggleCollapse(channelId: number) {
     setCollapsed((prev) => {
@@ -195,13 +265,28 @@ export function ModelTable({
                 size="icon"
                 className={cn("h-8 w-8 rounded-sm", view === "list" && "bg-[var(--color-surface-hover)] text-[var(--color-foreground)]")}
                 onClick={() => changeView("list")}
-                aria-label="列表视图"
+                aria-label="分组列表视图"
                 aria-pressed={view === "list"}
               >
                 <List className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>列表视图</TooltipContent>
+            <TooltipContent>分组列表视图</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn("h-8 w-8 rounded-sm", view === "flat" && "bg-[var(--color-surface-hover)] text-[var(--color-foreground)]")}
+                onClick={() => changeView("flat")}
+                aria-label="平铺表格视图"
+                aria-pressed={view === "flat"}
+              >
+                <Table2 className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>平铺表格（不分组，点击表头排序）</TooltipContent>
           </Tooltip>
         </div>
         <Button disabled={channelsCount === 0} onClick={onCreate}>新增模型映射</Button>
@@ -294,6 +379,43 @@ export function ModelTable({
             );
           })}
         </div>
+      ) : view === "flat" ? (
+        <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-12">序号</TableHead>
+                <SortableHead label="别名" field="alias" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <SortableHead label="真实模型" field="real_model" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <SortableHead label="所属渠道" field="channel_name" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <SortableHead label="协议" field="protocols" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <SortableHead label="状态" field="status" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <SortableHead label="可见性" field="visibility" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <SortableHead label="Copilot" field="copilot" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <SortableHead label="权重" field="weight" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <SortableHead label="实际权重" field="effective_weight" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <SortableHead label="倍率" field="multiplier" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <SortableHead label="最大并发" field="max_concurrency" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <TableHead>开关</TableHead>
+                <TableHead className="sticky right-0 z-20 w-36 bg-[var(--color-surface-solid)] shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.18)]">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sorted.map((model, idx) => (
+                <ModelListRow
+                  key={model.id}
+                  model={model}
+                  index={idx}
+                  testing={testingModelId === model.id}
+                  onTest={() => onTest(model)}
+                  onEdit={() => onEdit(model)}
+                  onToggle={() => onToggle(model)}
+                  onRemove={() => onRemove(model.id)}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       ) : (
         <div className="space-y-3">
           {groups.map((group) => {
@@ -356,5 +478,44 @@ export function ModelTable({
         </div>
       )}
     </div>
+  );
+}
+
+function SortableHead({
+  label,
+  field,
+  currentField,
+  order,
+  onSort,
+}: {
+  label: string;
+  field: FlatSortField;
+  currentField: FlatSortField;
+  order: FlatSortOrder;
+  onSort: (field: FlatSortField) => void;
+}) {
+  const active = field === currentField;
+  return (
+    <TableHead
+      aria-sort={active ? (order === "asc" ? "ascending" : "descending") : "none"}
+      tabIndex={0}
+      className="cursor-pointer select-none whitespace-nowrap"
+      onClick={() => onSort(field)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSort(field);
+        }
+      }}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {active ? (
+          order === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />
+        ) : (
+          <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
+        )}
+      </span>
+    </TableHead>
   );
 }
