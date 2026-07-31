@@ -1,9 +1,6 @@
 .build-full: &build-full
   services:
-    - name: docker
-      options:
-        rootlessBuildkitd:
-          enabled: true
+    - docker
   env:
     IMAGE: ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}
   stages:
@@ -20,10 +17,7 @@
 
 # .build-lite: &build-lite
 #   services:
-#     - name: docker
-#       options:
-#         rootlessBuildkitd:
-#           enabled: true
+#     - docker
 #   env:
 #     IMAGE: ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}
 #   stages:
