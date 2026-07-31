@@ -143,15 +143,16 @@ export function ModelTable({
     localStorage.setItem("modelView", v);
   }
 
+  const [hideDisabled, setHideDisabled] = useState(false);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return models;
-    return models.filter(
-      (m) =>
-        m.alias.toLowerCase().includes(q) ||
-        m.real_model.toLowerCase().includes(q),
-    );
-  }, [models, search]);
+    return models.filter((m) => {
+      if (hideDisabled && m.enabled === 0) return false;
+      if (!q) return true;
+      return m.alias.toLowerCase().includes(q) || m.real_model.toLowerCase().includes(q);
+    });
+  }, [models, search, hideDisabled]);
 
   const groups = useMemo<ChannelGroup[]>(() => {
     const map = new Map<number, ChannelGroup>();
@@ -168,7 +169,6 @@ export function ModelTable({
 
   const [sortField, setSortField] = useState<FlatSortField>("alias");
   const [sortOrder, setSortOrder] = useState<FlatSortOrder>("asc");
-  const [hideDisabled, setHideDisabled] = useState(false);
 
   function handleSort(field: FlatSortField) {
     if (sortField === field) setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
@@ -179,13 +179,13 @@ export function ModelTable({
   }
 
   const sorted = useMemo(() => {
-    const list = filtered.filter((m) => !hideDisabled || m.enabled !== 0);
+    const list = [...filtered];
     list.sort((a, b) => {
       const cmp = compareModels(a, b, sortField);
       return sortOrder === "asc" ? cmp : -cmp;
     });
     return list;
-  }, [filtered, sortField, sortOrder, hideDisabled]);
+  }, [filtered, sortField, sortOrder]);
 
   function toggleCollapse(channelId: number) {
     setCollapsed((prev) => {
@@ -290,23 +290,23 @@ export function ModelTable({
             <TooltipContent>平铺表格（不分组，点击表头排序）</TooltipContent>
           </Tooltip>
         </div>
-        {view === "flat" ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn("h-8 gap-1.5 rounded-sm px-2.5 text-xs", hideDisabled && "bg-[var(--color-surface-hover)] text-[var(--color-foreground)]")}
-            onClick={() => setHideDisabled((v) => !v)}
-            aria-pressed={hideDisabled}
-          >
-            <EyeOff className="h-4 w-4" />
-            隐藏禁用模型
-          </Button>
-        ) : null}
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn("h-8 gap-1.5 rounded-sm px-2.5 text-xs", hideDisabled && "bg-[var(--color-surface-hover)] text-[var(--color-foreground)]")}
+          onClick={() => setHideDisabled((v) => !v)}
+          aria-pressed={hideDisabled}
+        >
+          <EyeOff className="h-4 w-4" />
+          隐藏禁用模型
+        </Button>
         <Button disabled={channelsCount === 0} onClick={onCreate}>新增模型映射</Button>
       </div>
 
       {filtered.length === 0 ? (
-        <p className="py-8 text-center text-sm text-[var(--color-foreground-muted)]">未找到匹配的模型。</p>
+        <p className="py-8 text-center text-sm text-[var(--color-foreground-muted)]">
+          {hideDisabled && models.every((m) => m.enabled === 0) ? "没有启用的模型（可关闭「隐藏禁用模型」查看）。" : "未找到匹配的模型。"}
+        </p>
       ) : view === "list" ? (
         <div className="space-y-3">
           {groups.map((group) => {
@@ -393,46 +393,42 @@ export function ModelTable({
           })}
         </div>
       ) : view === "flat" ? (
-        sorted.length === 0 ? (
-          <p className="py-8 text-center text-sm text-[var(--color-foreground-muted)]">没有启用的模型（可关闭「隐藏禁用模型」查看）。</p>
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12">序号</TableHead>
-                  <SortableHead label="别名" field="alias" currentField={sortField} order={sortOrder} onSort={handleSort} />
-                  <SortableHead label="真实模型" field="real_model" currentField={sortField} order={sortOrder} onSort={handleSort} />
-                  <SortableHead label="所属渠道" field="channel_name" currentField={sortField} order={sortOrder} onSort={handleSort} />
-                  <SortableHead label="协议" field="protocols" currentField={sortField} order={sortOrder} onSort={handleSort} />
-                  <SortableHead label="状态" field="status" currentField={sortField} order={sortOrder} onSort={handleSort} />
-                  <SortableHead label="可见性" field="visibility" currentField={sortField} order={sortOrder} onSort={handleSort} />
-                  <SortableHead label="Copilot" field="copilot" currentField={sortField} order={sortOrder} onSort={handleSort} />
-                  <SortableHead label="权重" field="weight" currentField={sortField} order={sortOrder} onSort={handleSort} />
-                  <SortableHead label="实际权重" field="effective_weight" currentField={sortField} order={sortOrder} onSort={handleSort} />
-                  <SortableHead label="倍率" field="multiplier" currentField={sortField} order={sortOrder} onSort={handleSort} />
-                  <SortableHead label="最大并发" field="max_concurrency" currentField={sortField} order={sortOrder} onSort={handleSort} />
-                  <TableHead>开关</TableHead>
-                  <TableHead className="sticky right-0 z-20 w-36 bg-[var(--color-surface-solid)] shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.18)]">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sorted.map((model, idx) => (
-                  <ModelListRow
-                    key={model.id}
-                    model={model}
-                    index={idx}
-                    testing={testingModelId === model.id}
-                    onTest={() => onTest(model)}
-                    onEdit={() => onEdit(model)}
-                    onToggle={() => onToggle(model)}
-                    onRemove={() => onRemove(model.id)}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )
+        <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-12">序号</TableHead>
+                <SortableHead label="别名" field="alias" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <SortableHead label="真实模型" field="real_model" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <SortableHead label="所属渠道" field="channel_name" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <SortableHead label="协议" field="protocols" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <SortableHead label="状态" field="status" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <SortableHead label="可见性" field="visibility" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <SortableHead label="Copilot" field="copilot" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <SortableHead label="权重" field="weight" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <SortableHead label="实际权重" field="effective_weight" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <SortableHead label="倍率" field="multiplier" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <SortableHead label="最大并发" field="max_concurrency" currentField={sortField} order={sortOrder} onSort={handleSort} />
+                <TableHead>开关</TableHead>
+                <TableHead className="sticky right-0 z-20 w-36 bg-[var(--color-surface-solid)] shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.18)]">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sorted.map((model, idx) => (
+                <ModelListRow
+                  key={model.id}
+                  model={model}
+                  index={idx}
+                  testing={testingModelId === model.id}
+                  onTest={() => onTest(model)}
+                  onEdit={() => onEdit(model)}
+                  onToggle={() => onToggle(model)}
+                  onRemove={() => onRemove(model.id)}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       ) : (
         <div className="space-y-3">
           {groups.map((group) => {
