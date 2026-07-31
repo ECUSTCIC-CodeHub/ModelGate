@@ -11,6 +11,7 @@ import {
   buildAuthorizationUrl,
   resolveRedirectUri,
 } from "@/lib/auth/oidc";
+import { resolveSafeNext } from "@/lib/shared/safe-next";
 
 export async function GET(request: Request) {
   const unavailable = requireFeature("oidc");
@@ -35,7 +36,9 @@ export async function GET(request: Request) {
   const state = generateState();
   const nonce = generateNonce();
 
-  const statePayload = JSON.stringify({ state, nonce, bind });
+  const next = resolveSafeNext(url.searchParams.get("next"), "") || undefined;
+
+  const statePayload = JSON.stringify({ state, nonce, bind, next });
 
   const authUrl = buildAuthorizationUrl(
     discovery,

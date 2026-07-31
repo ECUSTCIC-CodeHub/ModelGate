@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { clearAuthCookies } from "@/lib/auth/auth";
 import { jsonOk } from "@/lib/core/http";
+import { resolveSafeNext as resolveSafeNextPath } from "@/lib/shared/safe-next";
 import { NextResponse } from "next/server";
 
 export async function POST() {
@@ -11,8 +12,7 @@ export async function POST() {
 function resolveSafeNext(request: Request) {
   const url = new URL(request.url);
   const next = url.searchParams.get("next") ?? "/login";
-  if (!next.startsWith("/") || next.startsWith("//")) return "/login";
-  return next;
+  return resolveSafeNextPath(next, "/login");
 }
 
 export async function GET(request: Request) {

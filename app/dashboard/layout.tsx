@@ -6,8 +6,9 @@ import { getAuthStatus } from "@/lib/auth/auth-status";
 import { type DbUser } from "@/lib/core/db";
 import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
 import { modelGateFeatures } from "@/lib/core/features";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { resolveSafeNext } from "@/lib/shared/safe-next";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,9 @@ export default async function DashboardLayout({
   if (!profile) {
     // 未登录直接跳登录页；不要走 /api/auth/logout，
     // 避免该 route 在反代/standalone 场景下基于 request.url 生成内部地址的绝对跳转。
-    redirect("/login");
+    // x-request-path 由 proxy 注入，用于登录成功后跳回原页面。
+    const requestPath = (await headers()).get("x-request-path");
+    redirect(`/login?next=${encodeURIComponent(resolveSafeNext(requestPath))}`);
   }
 
   const prefsCookie = cookieStore.get(PREFS_COOKIE)?.value;

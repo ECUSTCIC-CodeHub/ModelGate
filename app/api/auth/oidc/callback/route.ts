@@ -20,6 +20,7 @@ import {
 } from "@/lib/auth/oidc";
 import { randomBytes } from "node:crypto";
 import { getGatewaySettings } from "@/lib/core/settings";
+import { resolveSafeNext } from "@/lib/shared/safe-next";
 
 function parseCookie(cookieHeader: string | null, name: string) {
   if (!cookieHeader) return null;
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
   }
 
   const stateCookie = parseCookie(request.headers.get("cookie"), "oidc-state");
-  let statePayload: { state: string; nonce: string; bind: boolean } | null = null;
+  let statePayload: { state: string; nonce: string; bind: boolean; next?: string } | null = null;
   try {
     if (stateCookie) statePayload = JSON.parse(stateCookie);
   } catch {}
@@ -263,8 +264,9 @@ export async function GET(request: Request) {
   }
 
   const tokens = issueAuthTokens(user);
-  const dashboardUrl = "/dashboard";
-  const res = NextResponse.redirect(`${origin}${dashboardUrl}?oidc_login=1`, 302);
+  const target = new URL(resolveSafeNext(statePayload?.next), origin);
+  target.searchParams.set("oidc_login", "1");
+  const res = NextResponse.redirect(target.toString(), 302);
   applyAuthCookies(res, tokens);
   return clearStateCookie(res);
 }

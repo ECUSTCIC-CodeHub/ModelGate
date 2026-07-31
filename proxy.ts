@@ -3,9 +3,22 @@ import type { NextRequest } from 'next/server'
 
 const NO_STORE_PATHS = ['/login', '/register', '/']
 
+const AUTH_DISABLED = process.env.AUTH_DISABLED === '1' || process.env.AUTH_DISABLED === 'true'
+const ACCESS_COOKIE = 'vlm-access-token'
+const REQUEST_PATH_HEADER = 'x-request-path'
+
 export function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl
-  const response = NextResponse.next()
+  const { pathname, search } = request.nextUrl
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.set(REQUEST_PATH_HEADER, pathname + search)
+
+  if (pathname.startsWith('/dashboard') && !AUTH_DISABLED && !request.cookies.has(ACCESS_COOKIE)) {
+    const loginUrl = new URL('/login', request.url)
+    loginUrl.searchParams.set('next', pathname + search)
+    return NextResponse.redirect(loginUrl, 302)
+  }
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } })
 
   if (NO_STORE_PATHS.includes(pathname)) {
     response.headers.set('Cache-Control', 'no-store')
@@ -15,5 +28,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/login', '/register', '/'],
+  matcher: ['/login', '/register', '/', '/dashboard/:path*'],
 }

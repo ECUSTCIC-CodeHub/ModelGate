@@ -68,6 +68,12 @@ export function clearSession() {
   localStorage.removeItem(PROFILE_KEY);
 }
 
+export function loginUrlWithNext(): string {
+  if (typeof window === "undefined") return "/login";
+  const next = window.location.pathname + window.location.search;
+  return `/login?next=${encodeURIComponent(next)}`;
+}
+
 async function clearExpiredSession() {
   clearSession();
   await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" }).catch(() => undefined);
@@ -90,7 +96,7 @@ export async function ensureAdmin(router: { push: (url: string) => void }): Prom
   const profile = await getOrFetchProfile();
   if (!profile) {
     clearSession();
-    router.push("/login");
+    router.push(loginUrlWithNext());
     return null;
   }
   if (profile.role !== "admin") {
@@ -104,7 +110,7 @@ export async function ensureLoggedIn(router: { push?: (url: string) => void; rep
   const profile = await getOrFetchProfile();
   if (!profile) {
     clearSession();
-    (router.replace ?? router.push)?.(("/login"));
+    (router.replace ?? router.push)?.(loginUrlWithNext());
     return null;
   }
   return profile;

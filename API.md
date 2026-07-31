@@ -306,6 +306,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 
 **认证:** 无
 
+**查询参数:** `bind`（可选，`1` 表示绑定模式）、`next`（可选，站内相对路径，登录成功后跳转的目标，须以 `/` 开头且不以 `//` 开头）
+
 **响应:** 302 重定向到 OIDC 提供商授权地址。
 
 > 精简版返回 404。
@@ -318,7 +320,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 
 **查询参数:** `code`、`state`
 
-**响应:** 登录成功后 302 重定向到 `/dashboard`，需要绑定或注册时按配置重定向到对应页面。
+**响应:** 登录成功后 302 重定向到 `/dashboard`（或 authorize 传入的 `next`），需要绑定或注册时按配置重定向到对应页面。
 
 > 回调会通过 OIDC Discovery 的 `jwks_uri` 验证 ID Token 签名，并校验 issuer、audience、nonce 与过期时间。
 

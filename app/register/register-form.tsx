@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,12 +12,15 @@ import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/shared/api-message";
 import type { AuthStatus } from "@/lib/auth/auth-status";
 import { setCachedProfile, setSession } from "@/lib/auth/client-auth";
+import { resolveSafeNext } from "@/lib/shared/safe-next";
 
 export function RegisterForm({ status }: { status: AuthStatus }) {
+  const searchParams = useSearchParams();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const safeNext = resolveSafeNext(searchParams.get("next"));
 
   const registrationEnabled = status.registration_enabled;
   const oidcEnabled = status.oidc_enabled;
@@ -41,14 +45,14 @@ export function RegisterForm({ status }: { status: AuthStatus }) {
       setSession({ accessToken: data.access_token, refreshToken: data.refresh_token });
       if (data.user) setCachedProfile(data.user);
       toast({ variant: "success", description: getApiMessage(data, "注册成功。") });
-      window.location.href = "/dashboard";
+      window.location.href = safeNext;
     } finally {
       setLoading(false);
     }
   }
 
   function onOidcLogin() {
-    window.location.href = "/api/auth/oidc/authorize";
+    window.location.href = `/api/auth/oidc/authorize?next=${encodeURIComponent(safeNext)}`;
   }
 
   return (

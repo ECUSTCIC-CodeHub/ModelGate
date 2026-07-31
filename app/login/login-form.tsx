@@ -12,6 +12,7 @@ import { useToast } from "@/components/ui/toast";
 import { getApiMessage } from "@/lib/shared/api-message";
 import type { AuthStatus } from "@/lib/auth/auth-status";
 import { setCachedProfile, setSession } from "@/lib/auth/client-auth";
+import { resolveSafeNext } from "@/lib/shared/safe-next";
 
 export function LoginForm({ status }: { status: AuthStatus }) {
   const searchParams = useSearchParams();
@@ -21,6 +22,7 @@ export function LoginForm({ status }: { status: AuthStatus }) {
 
   const oidcError = searchParams.get("oidc_error");
   const [loading, setLoading] = useState(false);
+  const safeNext = resolveSafeNext(searchParams.get("next"));
 
   const passwordEnabled = status.password_login_enabled;
   const oidcEnabled = status.oidc_enabled;
@@ -29,7 +31,7 @@ export function LoginForm({ status }: { status: AuthStatus }) {
   function handleLoginSuccess(data: { access_token: string; refresh_token: string; user: { role: string } }) {
     setSession({ accessToken: data.access_token, refreshToken: data.refresh_token });
     if ("user" in data && data.user) setCachedProfile(data.user as Parameters<typeof setCachedProfile>[0]);
-    window.location.href = "/dashboard";
+    window.location.href = safeNext;
   }
 
   async function onSubmit(event: FormEvent) {
@@ -56,7 +58,7 @@ export function LoginForm({ status }: { status: AuthStatus }) {
   }
 
   function onOidcLogin() {
-    window.location.href = "/api/auth/oidc/authorize";
+    window.location.href = `/api/auth/oidc/authorize?next=${encodeURIComponent(safeNext)}`;
   }
 
   return (

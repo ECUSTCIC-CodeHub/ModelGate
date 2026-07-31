@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthProfile } from "@/components/providers/auth-provider";
-import { authedFetch, clearSession, getCachedProfile, getOrFetchProfile } from "@/lib/auth/client-auth";
+import { authedFetch, clearSession, getCachedProfile, getOrFetchProfile, loginUrlWithNext } from "@/lib/auth/client-auth";
 import type { QuotaData, Role, Summary } from "./dashboard-model";
 import type { ModelQuotaItem } from "./dashboard-model-quota-card";
 
@@ -30,7 +30,7 @@ export function useDashboardHome() {
         if (cancelled) return;
         if (!profile) {
           clearSession();
-          router.replace("/login");
+          router.replace(loginUrlWithNext());
           return;
         }
         setRole(profile.role as Role);
