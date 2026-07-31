@@ -27,6 +27,11 @@ export async function GET(request: Request) {
       token_multiplier_max: m.token_multiplier_max,
       request_multiplier_min: m.request_multiplier_min,
       request_multiplier_max: m.request_multiplier_max,
+      weight_min: m.weight_min,
+      weight_max: m.weight_max,
+      effective_weight_min: m.effective_weight_min,
+      effective_weight_max: m.effective_weight_max,
+      max_effective_weight: m.max_effective_weight,
       channels: m.channels,
     })),
   });

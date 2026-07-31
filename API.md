@@ -2016,17 +2016,21 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
       "request_multiplier_min": 1,
       "request_multiplier_max": 1,
       "max_effective_weight": 4,
+      "weight_min": 1,
+      "weight_max": 2,
+      "effective_weight_min": 2,
+      "effective_weight_max": 4,
       "channels": [
-        { "channel_id": 1, "channel_name": "openai-official", "token_multiplier": 2, "request_multiplier": 1, "effective_weight": 4 },
-        { "channel_id": 2, "channel_name": "openai-mirror", "token_multiplier": 1, "request_multiplier": 1, "effective_weight": 2 }
+        { "channel_id": 1, "channel_name": "openai-official", "token_multiplier": 2, "request_multiplier": 1, "weight": 2, "effective_weight": 4 },
+        { "channel_id": 2, "channel_name": "openai-mirror", "token_multiplier": 1, "request_multiplier": 1, "weight": 1, "effective_weight": 2 }
       ]
     },
-    { "id": "claude-3", "object": "model", "supports_vision": false, "supported_protocols": ["anthropic_messages", "chat_completions"], "token_multiplier": 1.5, "request_multiplier": 1, "token_multiplier_min": 1.5, "token_multiplier_max": 1.5, "request_multiplier_min": 1, "request_multiplier_max": 1, "max_effective_weight": 1, "channels": [{ "channel_id": 3, "channel_name": "anthropic-main", "token_multiplier": 1.5, "request_multiplier": 1, "effective_weight": 1 }] }
+    { "id": "claude-3", "object": "model", "supports_vision": false, "supported_protocols": ["anthropic_messages", "chat_completions"], "token_multiplier": 1.5, "request_multiplier": 1, "token_multiplier_min": 1.5, "token_multiplier_max": 1.5, "request_multiplier_min": 1, "request_multiplier_max": 1, "max_effective_weight": 1, "weight_min": 1, "weight_max": 1, "effective_weight_min": 1, "effective_weight_max": 1, "channels": [{ "channel_id": 3, "channel_name": "anthropic-main", "token_multiplier": 1.5, "request_multiplier": 1, "weight": 1, "effective_weight": 1 }] }
   ]
 }
 ```
 
-> `token_multiplier` 和 `request_multiplier` 为计费倍率（取所有渠道中的最低值），实际扣量 = 使用量 × 倍率。`token_multiplier_min/max` 和 `request_multiplier_min/max` 为各渠道倍率范围。`max_effective_weight` 为该模型所有渠道中的最大有效权重（渠道权重 × 模型权重），列表按此降序排列。`channels` 包含各渠道的倍率和有效权重明细，按权重降序排列。`supported_protocols` 为该模型各渠道所支持协议的并集，取值：`chat_completions` / `responses` / `anthropic_messages` / `embeddings` / `images` / `other`。`brand_groups` 为管理员在系统设置中配置的模型品牌分组规则，前端据此按模型 ID 前缀归组筛选。
+> `token_multiplier` 和 `request_multiplier` 为计费倍率（取所有渠道中的最低值），实际扣量 = 使用量 × 倍率。`token_multiplier_min/max` 和 `request_multiplier_min/max` 为各渠道倍率范围。`weight_min/max` 为各渠道模型权重范围（模型权重为配置原始值，不做下限钳制；字段为 NULL 时按 1 处理），`effective_weight_min/max` 为各渠道有效权重范围（有效权重 = max(1, 模型权重) × max(1, 渠道权重)，计算时对权重取下限 1），`max_effective_weight` 为该模型所有渠道中的最大有效权重，列表按此降序排列。`channels` 包含各渠道的倍率、模型权重（`weight`）与有效权重（`effective_weight`）明细，按有效权重降序排列。`supported_protocols` 为该模型各渠道所支持协议的并集，取值：`chat_completions` / `responses` / `anthropic_messages` / `embeddings` / `images` / `other`。`brand_groups` 为管理员在系统设置中配置的模型品牌分组规则，前端据此按模型 ID 前缀归组筛选。
 
 ### GET /api/dashboard/model-metrics
 

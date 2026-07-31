@@ -108,6 +108,7 @@ export type AccessibleModelChannel = {
   real_model: string;
   token_multiplier: number;
   request_multiplier: number;
+  weight: number;
   effective_weight: number;
 };
 
@@ -122,6 +123,10 @@ export type AccessibleModel = {
   token_multiplier_max: number;
   request_multiplier_min: number;
   request_multiplier_max: number;
+  weight_min: number;
+  weight_max: number;
+  effective_weight_min: number;
+  effective_weight_max: number;
   max_effective_weight: number;
   channels: AccessibleModelChannel[];
 };
@@ -146,12 +151,12 @@ export async function listAccessibleModels(user: Pick<DbUser, "role" | "group_id
     const sv = row.supports_vision ?? 0;
     const current = visible.get(row.alias);
     if (!current) {
-      visible.set(row.alias, { alias: row.alias, created_at: row.created_at, supports_vision: sv, supported_protocols: new Set(parseSupportedProtocols(row.supported_protocols)), channels: [{ channel_id: row.channel_id, channel_name: row.channel_name, real_model: row.real_model, token_multiplier: tm, request_multiplier: rm, effective_weight: ew }] });
+      visible.set(row.alias, { alias: row.alias, created_at: row.created_at, supports_vision: sv, supported_protocols: new Set(parseSupportedProtocols(row.supported_protocols)), channels: [{ channel_id: row.channel_id, channel_name: row.channel_name, real_model: row.real_model, token_multiplier: tm, request_multiplier: rm, weight: row.model_weight ?? 1, effective_weight: ew }] });
     } else {
       if ((row.created_at ?? "") > (current.created_at ?? "")) current.created_at = row.created_at;
       if (sv > current.supports_vision) current.supports_vision = sv;
       for (const p of parseSupportedProtocols(row.supported_protocols)) current.supported_protocols.add(p);
-      current.channels.push({ channel_id: row.channel_id, channel_name: row.channel_name, real_model: row.real_model, token_multiplier: tm, request_multiplier: rm, effective_weight: ew });
+      current.channels.push({ channel_id: row.channel_id, channel_name: row.channel_name, real_model: row.real_model, token_multiplier: tm, request_multiplier: rm, weight: row.model_weight ?? 1, effective_weight: ew });
     }
   };
 
@@ -170,6 +175,7 @@ export async function listAccessibleModels(user: Pick<DbUser, "role" | "group_id
     .map((item) => {
       const tms = item.channels.map((c) => c.token_multiplier);
       const rms = item.channels.map((c) => c.request_multiplier);
+      const ws = item.channels.map((c) => c.weight);
       const ews = item.channels.map((c) => c.effective_weight);
       return {
         alias: item.alias,
@@ -182,6 +188,10 @@ export async function listAccessibleModels(user: Pick<DbUser, "role" | "group_id
         token_multiplier_max: Math.max(...tms),
         request_multiplier_min: Math.min(...rms),
         request_multiplier_max: Math.max(...rms),
+        weight_min: Math.min(...ws),
+        weight_max: Math.max(...ws),
+        effective_weight_min: Math.min(...ews),
+        effective_weight_max: Math.max(...ews),
         max_effective_weight: Math.max(...ews),
         channels: item.channels.sort((a, b) => b.effective_weight - a.effective_weight),
       };

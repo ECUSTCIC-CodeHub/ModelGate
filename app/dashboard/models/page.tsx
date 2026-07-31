@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Copy, LayoutGrid, List, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, Copy, LayoutGrid, List, Search } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { useAuthProfile } from "@/components/providers/auth-provider";
@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
@@ -26,6 +25,7 @@ type ChannelMultiplier = {
   real_model: string;
   token_multiplier: number;
   request_multiplier: number;
+  weight: number;
   effective_weight: number;
 };
 
@@ -80,11 +80,15 @@ type ModelItem = {
   token_multiplier_max: number;
   request_multiplier_min: number;
   request_multiplier_max: number;
+  weight_min: number;
+  weight_max: number;
+  effective_weight_min: number;
+  effective_weight_max: number;
   max_effective_weight: number;
   channels: ChannelMultiplier[];
 };
 
-type SortField = "id" | "token_multiplier" | "request_multiplier";
+type SortField = "id" | "token_multiplier" | "request_multiplier" | "weight" | "effective_weight";
 type SortOrder = "asc" | "desc";
 
 type ModelMetrics = {
@@ -105,6 +109,16 @@ export default function AvailableModelsPage() {
   const [view, setView] = useState<"card" | "list">("card");
   const [sortField, setSortField] = useState<SortField>("id");
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+
+  function toggleExpand(id: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
   const [protocolFilter, setProtocolFilter] = useState<Set<ProtocolCategory>>(() => new Set());
   const [brandGroups, setBrandGroups] = useState<BrandGroup[]>([]);
   const [brandFilter, setBrandFilter] = useState<Set<string>>(() => new Set());
@@ -231,12 +245,22 @@ export default function AvailableModelsPage() {
   const sorted = useMemo(() => {
     const sorted = [...filtered].sort((a, b) => {
       let cmp: number;
-      if (sortField === "id") {
-        cmp = a.id.localeCompare(b.id);
-      } else if (sortField === "token_multiplier") {
-        cmp = a.token_multiplier - b.token_multiplier;
-      } else {
-        cmp = a.request_multiplier - b.request_multiplier;
+      switch (sortField) {
+        case "id":
+          cmp = a.id.localeCompare(b.id);
+          break;
+        case "token_multiplier":
+          cmp = a.token_multiplier - b.token_multiplier;
+          break;
+        case "request_multiplier":
+          cmp = a.request_multiplier - b.request_multiplier;
+          break;
+        case "weight":
+          cmp = a.weight_max - b.weight_max;
+          break;
+        case "effective_weight":
+          cmp = a.effective_weight_max - b.effective_weight_max;
+          break;
       }
       return sortOrder === "asc" ? cmp : -cmp;
     });
@@ -249,48 +273,61 @@ export default function AvailableModelsPage() {
     const max = type === "token" ? row.token_multiplier_max : row.request_multiplier_max;
     const hasRange = min !== max;
     const hasMultipleChannels = row.channels.length > 1;
-    const popoverTitle = type === "token" ? "各渠道 Token 倍率" : "各渠道请求倍率";
+    const emphasized = multiplier !== 1 || (hasMultipleChannels && hasRange);
+    const expanded = expandedIds.has(row.id);
 
     if (hasMultipleChannels) {
       return (
-        <Popover>
-          <PopoverTrigger asChild>
-            <button className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-mono hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer">
-              <span className={hasRange ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}>
-                {hasRange ? min + "x ~ " + max + "x" : multiplier + "x"}
-              </span>
-              <ChevronDown className="h-3.5 w-3.5 text-[var(--color-foreground-muted)]" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent className="w-72 p-3" align="center">
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-[var(--color-foreground-muted)]">{popoverTitle}</p>
-              <div className="space-y-1">
-                {row.channels.map((ch) => {
-                  const chMultiplier = type === "token" ? ch.token_multiplier : ch.request_multiplier;
-                  return (
-                    <div key={ch.channel_id} className="flex items-center justify-between text-xs">
-                      <span className="text-[var(--color-foreground-secondary)] truncate max-w-[120px]">{ch.channel_name}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-[var(--color-foreground-muted)]">W{ch.effective_weight}</span>
-                        <span className={cn("font-mono", chMultiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]")}>
-                          {chMultiplier}x
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </PopoverContent>
-        </Popover>
+        <button
+          type="button"
+          onClick={() => toggleExpand(row.id)}
+          aria-expanded={expanded}
+          aria-controls={`expand-${row.id}`}
+          aria-label={expanded ? "收起渠道信息" : "展开渠道信息"}
+          className="inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 font-mono text-sm transition-colors hover:bg-[var(--color-surface-hover)]"
+        >
+          <span className={emphasized ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}>
+            {hasRange ? `${min}x ~ ${max}x` : `${multiplier}x`}
+          </span>
+          <ChevronDown className={cn("h-3.5 w-3.5 text-[var(--color-foreground-muted)] transition-transform", expanded && "rotate-180")} />
+        </button>
       );
     }
 
     return (
-      <span className={cn("font-mono text-sm", multiplier !== 1 ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]")}>
+      <span className={cn("font-mono text-sm", emphasized ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]")}>
         {multiplier}x
       </span>
+    );
+  }
+
+  function renderWeight(row: ModelItem, type: "weight" | "effective_weight") {
+    const min = type === "weight" ? row.weight_min : row.effective_weight_min;
+    const max = type === "weight" ? row.weight_max : row.effective_weight_max;
+    const hasRange = min !== max;
+    const hasMultipleChannels = row.channels.length > 1;
+    const expanded = expandedIds.has(row.id);
+
+    if (hasMultipleChannels) {
+      return (
+        <button
+          type="button"
+          onClick={() => toggleExpand(row.id)}
+          aria-expanded={expanded}
+          aria-controls={`expand-${row.id}`}
+          aria-label={expanded ? "收起渠道信息" : "展开渠道信息"}
+          className="inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 font-mono text-sm transition-colors hover:bg-[var(--color-surface-hover)]"
+        >
+          <span className="text-[var(--color-foreground-muted)]">
+            {hasRange ? `${min}x ~ ${max}x` : `${min}x`}
+          </span>
+          <ChevronDown className={cn("h-3.5 w-3.5 text-[var(--color-foreground-muted)] transition-transform", expanded && "rotate-180")} />
+        </button>
+      );
+    }
+
+    return (
+      <span className="font-mono text-sm text-[var(--color-foreground-muted)]">{min}x</span>
     );
   }
 
@@ -415,36 +452,83 @@ export default function AvailableModelsPage() {
                             order={sortOrder}
                             onClick={() => handleSort("request_multiplier")}
                           />
+                          <SortButton
+                            label="权重"
+                            field="weight"
+                            currentField={sortField}
+                            order={sortOrder}
+                            onClick={() => handleSort("weight")}
+                          />
+                          <SortButton
+                            label="实际权重"
+                            field="effective_weight"
+                            currentField={sortField}
+                            order={sortOrder}
+                            onClick={() => handleSort("effective_weight")}
+                          />
                           <TableHead className="w-16" />
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {sorted.map((row) => (
-                          <TableRow key={row.id}>
-                            <TableCell>
-                              <div className="font-mono text-sm">{row.id}</div>
-                              {row.supports_vision ? <Badge variant="default" className="mt-1">识图</Badge> : null}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-wrap gap-1">
-                                {(row.supported_protocols ?? []).filter((p) => SPECIAL_PROTOCOLS.includes(p)).map((p) => (
-                                  <Badge key={p} variant="outline" className="text-[10px]">{shortProtocolLabel(p)}</Badge>
-                                ))}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {renderMultiplier(row, "token")}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {renderMultiplier(row, "request")}
-                            </TableCell>
-                            <TableCell>
-                              <Button size="sm" variant="ghost" onClick={() => copyText(row.id)}>
-                                <Copy className="h-3.5 w-3.5" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {sorted.map((row) => {
+                          const hasMultipleChannels = row.channels.length > 1;
+                          const expanded = expandedIds.has(row.id);
+                          return (
+                            <Fragment key={row.id}>
+                              <TableRow>
+                                <TableCell>
+                                  <div className="font-mono text-sm">{row.id}</div>
+                                  {row.supports_vision ? <Badge variant="default" className="mt-1">识图</Badge> : null}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex flex-wrap gap-1">
+                                    {(row.supported_protocols ?? []).filter((p) => SPECIAL_PROTOCOLS.includes(p)).map((p) => (
+                                      <Badge key={p} variant="outline" className="text-[10px]">{shortProtocolLabel(p)}</Badge>
+                                    ))}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  {renderMultiplier(row, "token")}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  {renderMultiplier(row, "request")}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  {renderWeight(row, "weight")}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  {renderWeight(row, "effective_weight")}
+                                </TableCell>
+                                <TableCell>
+                                  <Button size="sm" variant="ghost" onClick={() => copyText(row.id)}>
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                              {expanded && hasMultipleChannels ? (
+                                row.channels.map((ch, chIdx) => (
+                                  <TableRow
+                                    key={`${ch.channel_id}-${ch.real_model}`}
+                                    id={chIdx === 0 ? `expand-${row.id}` : undefined}
+                                    className="bg-[var(--color-surface-hover)]/40 hover:bg-[var(--color-surface-hover)]/40"
+                                  >
+                                    <TableCell className="pl-10 text-sm text-[var(--color-foreground-secondary)]">{ch.channel_name}</TableCell>
+                                    <TableCell>
+                                      {ch.real_model !== row.id ? (
+                                        <span className="text-xs text-[var(--color-foreground-muted)]">{ch.real_model}</span>
+                                      ) : null}
+                                    </TableCell>
+                                    <TableCell className="text-center font-mono text-sm">{ch.token_multiplier}x</TableCell>
+                                    <TableCell className="text-center font-mono text-sm">{ch.request_multiplier}x</TableCell>
+                                    <TableCell className="text-center font-mono text-sm">{ch.weight}x</TableCell>
+                                    <TableCell className="text-center font-mono text-sm">{ch.effective_weight}x</TableCell>
+                                    <TableCell />
+                                  </TableRow>
+                                ))
+                              ) : null}
+                            </Fragment>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </div>
@@ -453,6 +537,8 @@ export default function AvailableModelsPage() {
                     {sorted.map((row) => {
                       const hasTokenRange = row.token_multiplier_min !== row.token_multiplier_max;
                       const hasRequestRange = row.request_multiplier_min !== row.request_multiplier_max;
+                      const hasWeightRange = row.weight_min !== row.weight_max;
+                      const hasEffectiveRange = row.effective_weight_min !== row.effective_weight_max;
                       const hasMultipleChannels = row.channels.length > 1;
 
                       return (
@@ -491,6 +577,12 @@ export default function AvailableModelsPage() {
                                   : "border-[var(--color-border)] bg-[var(--color-surface-hover)] text-[var(--color-foreground-secondary)]"
                               )}>
                                 请求 {hasRequestRange ? row.request_multiplier_min + "x~" + row.request_multiplier_max + "x" : row.request_multiplier + "x"}
+                              </span>
+                              <span className="inline-flex items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-2 py-0.5 text-xs font-mono text-[var(--color-foreground-secondary)]">
+                                权重 {hasWeightRange ? row.weight_min + "x~" + row.weight_max + "x" : row.weight_min + "x"}
+                              </span>
+                              <span className="inline-flex items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-2 py-0.5 text-xs font-mono text-[var(--color-foreground-secondary)]">
+                                实际权重 {hasEffectiveRange ? row.effective_weight_min + "x~" + row.effective_weight_max + "x" : row.effective_weight_min + "x"}
                               </span>
                               {row.supports_vision ? (
                                 <span className="inline-flex items-center rounded-md border border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] px-2 py-0.5 text-xs font-medium text-[var(--color-accent)]">
