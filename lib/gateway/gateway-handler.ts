@@ -362,6 +362,14 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     return parts.join(" | ");
   };
   if (!picked.ok) {
+    if (picked.modelQuota) {
+      modelQuotaHeaders = {};
+      appendModelQuotaHeaders(modelQuotaHeaders, picked.modelQuota);
+    }
+    if (picked.quotaReason && !picked.failure) {
+      logRejected(429, picked.quotaReason, alias, estimatedTokens);
+      return withQuotaHeaders(jsonError(picked.quotaReason, 429, undefined, { ...quotaHeaders }));
+    }
     if (picked.route) {
       const cq = await checkChannelQuota(picked.route.channel.id, estimatedTokens);
       if (cq.ok) {
@@ -405,7 +413,11 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   }
 
   if ("queued" in picked && picked.queued) {
-    const { route } = picked;
+    const { route, modelQuota } = picked;
+    if (modelQuota) {
+      modelQuotaHeaders = {};
+      appendModelQuotaHeaders(modelQuotaHeaders, modelQuota);
+    }
     const cq = await checkChannelQuota(route.channel.id, estimatedTokens);
     if (cq.ok) {
       channelQuotaHeaders = {};
@@ -449,7 +461,11 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     }));
   }
 
-  const { route, upstream, lease, attemptedChannels, attemptedChannelNames } = picked;
+  const { route, upstream, lease, attemptedChannels, attemptedChannelNames, modelQuota } = picked;
+  if (modelQuota) {
+    modelQuotaHeaders = {};
+    appendModelQuotaHeaders(modelQuotaHeaders, modelQuota);
+  }
   const cq = await checkChannelQuota(route.channel.id, estimatedTokens);
   if (cq.ok) {
     channelQuotaHeaders = {};

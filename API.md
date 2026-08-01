@@ -2742,6 +2742,7 @@ curl https://your-domain:3000/api/v1/rerank \
   - `follow_group`（默认）：受用户组配额和速率限制约束，用量计入用户配额
   - `bypass_group`：跳过用户组配额检查和速率限制检查，用量不计入用户配额
   - `independent`：跳过用户组限制，改为检查模型自身的配额配置，用量不计入用户配额
+- **模型独立配额在候选实例上检查:** `independent` 模型的配额检查覆盖实际请求的每个候选实例。请求先按权重选定首选模型检查配额，上游失败切换渠道（多渠道重试）后，若新的候选模型为 `independent`，网关同样在请求前检查其配额；配额不足的候选被跳过继续选路，全部候选均不可用（含配额不足）时返回 429，不会出现配额检查与实际扣量模型不一致的情况
 - **模型倍率:** `token_multiplier` 和 `request_multiplier` 控制计费扣量
   - 实际扣除 Token = 使用量 x token_multiplier
   - 实际扣除请求次数 = 请求次数 x request_multiplier
