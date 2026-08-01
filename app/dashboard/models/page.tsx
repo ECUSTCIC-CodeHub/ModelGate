@@ -537,8 +537,6 @@ export default function AvailableModelsPage() {
                     {sorted.map((row) => {
                       const hasTokenRange = row.token_multiplier_min !== row.token_multiplier_max;
                       const hasRequestRange = row.request_multiplier_min !== row.request_multiplier_max;
-                      const hasWeightRange = row.weight_min !== row.weight_max;
-                      const hasEffectiveRange = row.effective_weight_min !== row.effective_weight_max;
                       const hasMultipleChannels = row.channels.length > 1;
 
                       return (
@@ -577,12 +575,6 @@ export default function AvailableModelsPage() {
                                   : "border-[var(--color-border)] bg-[var(--color-surface-hover)] text-[var(--color-foreground-secondary)]"
                               )}>
                                 请求 {hasRequestRange ? row.request_multiplier_min + "x~" + row.request_multiplier_max + "x" : row.request_multiplier + "x"}
-                              </span>
-                              <span className="inline-flex items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-2 py-0.5 text-xs font-mono text-[var(--color-foreground-secondary)]">
-                                权重 {hasWeightRange ? row.weight_min + "x~" + row.weight_max + "x" : row.weight_min + "x"}
-                              </span>
-                              <span className="inline-flex items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-2 py-0.5 text-xs font-mono text-[var(--color-foreground-secondary)]">
-                                实际权重 {hasEffectiveRange ? row.effective_weight_min + "x~" + row.effective_weight_max + "x" : row.effective_weight_min + "x"}
                               </span>
                               {row.supports_vision ? (
                                 <span className="inline-flex items-center rounded-md border border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] px-2 py-0.5 text-xs font-medium text-[var(--color-accent)]">
