@@ -223,8 +223,9 @@ function isProtocolCompatible(inboundProtocol: GatewayProtocol, upstreamProtocol
   return !PASSTHROUGH_PROTOCOLS.includes(upstreamProtocol);
 }
 
-export async function listModelRoutes(alias: string, options?: { excludeChannelIds?: number[]; protocol?: GatewayProtocol; allowedChannelIds?: number[] | null; userAgent?: string | null }): Promise<RoutedModel[]> {
+export async function listModelRoutes(alias: string, options?: { excludeChannelIds?: number[]; excludeModelIds?: number[]; protocol?: GatewayProtocol; allowedChannelIds?: number[] | null; userAgent?: string | null }): Promise<RoutedModel[]> {
   const exclude = new Set(options?.excludeChannelIds ?? []);
+  const excludeModels = new Set(options?.excludeModelIds ?? []);
   const protocol = options?.protocol;
   const userAgent = options?.userAgent;
   const allowSet = options?.allowedChannelIds && options.allowedChannelIds.length > 0
@@ -234,6 +235,7 @@ export async function listModelRoutes(alias: string, options?: { excludeChannelI
 
   const filterRows = (rows: CandidateRow[]) => rows.filter((row) => {
     if (exclude.has(row.channel_id_2)) return false;
+    if (excludeModels.has(row.model_id)) return false;
     if (allowSet && !allowSet.has(row.channel_id_2)) return false;
     if (protocol) {
       const channelProtocols = parseSupportedProtocols(row.supported_protocols);
@@ -281,7 +283,7 @@ export async function listModelRoutes(alias: string, options?: { excludeChannelI
     .map((item) => item.route);
 }
 
-export async function selectModelRoute(alias: string, options?: { excludeChannelIds?: number[]; protocol?: GatewayProtocol; allowedChannelIds?: number[] | null; userAgent?: string | null }): Promise<RoutedModel | null> {
+export async function selectModelRoute(alias: string, options?: { excludeChannelIds?: number[]; excludeModelIds?: number[]; protocol?: GatewayProtocol; allowedChannelIds?: number[] | null; userAgent?: string | null }): Promise<RoutedModel | null> {
   const routes = await listModelRoutes(alias, options);
   return routes[0] ?? null;
 }

@@ -95,6 +95,7 @@ export async function requestUpstreamWithFallback({
 }): Promise<UpstreamPickResult> {
   const attemptedChannels = new Set<number>();
   const attemptedChannelNames: string[] = [];
+  const excludedModelIds = new Set<number>();
   let attempt = 0;
   let lastNetworkRoute: RoutedModel | null = null;
   let lastUpstreamStatus = 0;
@@ -120,6 +121,7 @@ export async function requestUpstreamWithFallback({
   while (attempt < maxRouteAttempts) {
     const route = await selectModelRoute(resolvedAlias, {
       excludeChannelIds: [...attemptedChannels],
+      excludeModelIds: [...excludedModelIds],
       protocol: inboundProtocol,
       allowedChannelIds,
       userAgent,
@@ -199,15 +201,16 @@ export async function requestUpstreamWithFallback({
 
     lastNetworkRoute = route;
     lastRoute = route;
-    attemptedChannels.add(route.channel.id);
-    attemptedChannelNames.push(route.channel.name);
 
-    // 模型独立配额检查：配额不足则排除该候选渠道，继续尝试下一个候选。
-    // 配额不足不消耗重试预算（attempt 在配额通过后才递增）
+    // 模型独立配额检查：配额不足则排除该候选模型实例（不排除整个渠道，避免同渠道其他实例被连坐跳过），
+    // 继续尝试下一个候选。配额不足不消耗重试预算（attempt 与渠道排除在配额通过后才执行）
     const modelQuotaCheck = await checkCandidateModelQuota(route);
     if (!modelQuotaCheck.ok) {
+      excludedModelIds.add(route.model.id);
       continue;
     }
+    attemptedChannels.add(route.channel.id);
+    attemptedChannelNames.push(route.channel.name);
     attempt += 1;
 
     const runtimeKey = makeModelRuntimeKey(route.channel.id, route.model.real_model);
