@@ -43,8 +43,7 @@ export async function getEffectiveAllowedAliases(user: Pick<DbUser, "group_id" |
 
 const MODEL_PUBLIC_BY_ALIAS_SQL = `SELECT is_public
    FROM models
-   WHERE alias = ? AND enabled = 1 AND deleted_at IS NULL
-   LIMIT 1`;
+   WHERE alias = ? AND enabled = 1 AND deleted_at IS NULL`;
 
 const ENABLED_MODEL_ALIAS_SQL = `SELECT 1
    FROM models m
@@ -71,10 +70,10 @@ const ACCESSIBLE_MODEL_ROWS_SQL = `SELECT m.alias, m.real_model, m.is_public, m.
 export async function canUserAccessModelAlias(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">, alias: string) {
   if (user.role === "admin") return true;
 
-  const model = await gatewayDb.queryOne<{ is_public: number }>(MODEL_PUBLIC_BY_ALIAS_SQL, [alias]);
+  const models = await gatewayDb.query<{ is_public: number }>(MODEL_PUBLIC_BY_ALIAS_SQL, [alias]);
 
-  if (!model) return false;
-  if (model.is_public === 1) return true;
+  if (models.length === 0) return false;
+  if (models.some((m) => m.is_public === 1)) return true;
 
   const effective = await getEffectiveAllowedAliases(user);
   return effective.includes(alias);
