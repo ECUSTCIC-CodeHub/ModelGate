@@ -1706,6 +1706,8 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
     {
       "alias": "gpt-4",
       "real_model": "gpt-4-turbo",
+      "channel_id": 1,
+      "channel_name": "OpenAI 主渠道",
       "quota_mode": "independent",
       "token_multiplier": 1.5,
       "request_multiplier": 1,
@@ -1728,6 +1730,8 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
     {
       "alias": "claude-3",
       "real_model": "claude-3-opus",
+      "channel_id": 2,
+      "channel_name": "Anthropic 官方",
       "quota_mode": "bypass_group",
       "token_multiplier": 1,
       "request_multiplier": 1,
@@ -1750,6 +1754,8 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
     {
       "alias": "gpt-3",
       "real_model": "gpt-3.5-turbo",
+      "channel_id": 1,
+      "channel_name": "OpenAI 主渠道",
       "quota_mode": "follow_group",
       "token_multiplier": 1,
       "request_multiplier": 1,
@@ -1773,7 +1779,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 }
 ```
 
-> 返回当前用户有权访问的所有模型。`follow_group` 模型的配额字段均为 `null`（受用户组配额约束）；`bypass_group` 模型的配额字段均为 `null`（不受配额限制）；`independent` 模型使用自身的配额额度。`token_multiplier` 和 `request_multiplier` 表示实际扣量倍率。
+> 返回当前用户有权访问的所有模型。`channel_id` 为模型所属渠道 ID，`channel_name` 为渠道名称。`follow_group` 模型的配额字段均为 `null`（受用户组配额约束）；`bypass_group` 模型的配额字段均为 `null`（不受配额限制）；`independent` 模型使用自身的配额额度。`token_multiplier` 和 `request_multiplier` 表示实际扣量倍率。
 >
 > 精简版 `quota_period`、`period_label`、`period_quota_*`、`period_used_*`、`period_remaining_*`、`period_reset_at` 字段均为 `null`。
 

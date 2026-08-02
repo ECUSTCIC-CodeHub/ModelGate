@@ -35,6 +35,7 @@ export async function GET(request: Request) {
     alias: string;
     real_model: string;
     channel_id: number;
+    channel_name: string;
     is_public: number;
     quota_mode: string;
     quota_tokens: number | null;
@@ -48,7 +49,7 @@ export async function GET(request: Request) {
     token_multiplier: number;
     request_multiplier: number;
   }>(
-    `SELECT m.id, m.alias, m.real_model, m.channel_id, m.is_public, m.quota_mode,
+    `SELECT m.id, m.alias, m.real_model, m.channel_id, c.name AS channel_name, m.is_public, m.quota_mode,
             m.quota_tokens, m.quota_requests, m.quota_period,
             m.period_quota_tokens, m.period_quota_requests,
             m.period_used_tokens, m.period_used_requests, m.period_reset_at,
@@ -83,6 +84,8 @@ export async function GET(request: Request) {
     return {
       alias: m.alias,
       real_model: m.real_model,
+      channel_id: m.channel_id,
+      channel_name: m.channel_name,
       quota_mode: m.quota_mode,
       token_multiplier: m.token_multiplier ?? 1,
       request_multiplier: m.request_multiplier ?? 1,

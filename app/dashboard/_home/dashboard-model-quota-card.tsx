@@ -7,6 +7,8 @@ import { formatNumber, formatTokenCount } from "@/lib/shared/utils";
 export type ModelQuotaItem = {
   alias: string;
   real_model: string;
+  channel_id: number;
+  channel_name: string;
   quota_mode: "bypass_group" | "independent";
   quota_requests: number | null;
   quota_tokens: number | null;
@@ -62,12 +64,20 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
       <CardContent>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {modelQuotas.map((m) => (
-            <div key={`${m.alias}:${m.real_model}`} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-3">
+            <div key={`${m.alias}:${m.channel_id}`} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-3">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-mono text-sm font-medium text-[var(--color-foreground)]">{m.alias}</p>
-                  {m.alias !== m.real_model ? (
-                    <p className="truncate text-xs text-[var(--color-foreground-muted)]">({m.real_model})</p>
+                  <p
+                    className="truncate font-mono text-sm font-medium text-[var(--color-foreground)]"
+                    title={m.alias !== m.real_model ? `${m.alias} (${m.real_model})` : m.alias}
+                  >
+                    {m.alias}
+                    {m.alias !== m.real_model ? (
+                      <span className="text-xs text-[var(--color-foreground-muted)]"> ({m.real_model})</span>
+                    ) : null}
+                  </p>
+                  {m.channel_name ? (
+                    <p className="truncate text-xs text-[var(--color-foreground-muted)]">{m.channel_name}</p>
                   ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
