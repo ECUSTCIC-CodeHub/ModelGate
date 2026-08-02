@@ -80,11 +80,16 @@ export async function GET(request: Request) {
   const channels = channelRows.map((c) => {
     let periodUsedTokens = c.period_used_tokens;
     let periodUsedRequests = c.period_used_requests;
+    let periodResetAt: string | null = c.period_reset_at;
     const cReset = parseStoredUtc(c.period_reset_at);
     if (c.quota_period && cReset && cReset <= now) {
       periodUsedTokens = 0;
       periodUsedRequests = 0;
+      const nextReset = new Date(now.getTime() + c.quota_period * 1000);
+      periodResetAt = nextReset.toISOString();
     }
+
+    const periodEnabled = modelGateFeatures.periodQuota && c.quota_period;
 
     return {
       id: c.id,
@@ -97,31 +102,34 @@ export async function GET(request: Request) {
       remaining_tokens: c.quota_tokens !== null ? Math.max(0, c.quota_tokens - periodUsedTokens) : null,
       remaining_requests: c.quota_requests !== null ? Math.max(0, c.quota_requests - periodUsedRequests) : null,
       quota_period: modelGateFeatures.periodQuota ? c.quota_period : null,
-      period_label: modelGateFeatures.periodQuota && c.quota_period ? formatPeriodLabel(c.quota_period) : null,
-      period_quota_tokens: modelGateFeatures.periodQuota ? c.period_quota_tokens : null,
-      period_quota_requests: modelGateFeatures.periodQuota ? c.period_quota_requests : null,
-      period_used_tokens: modelGateFeatures.periodQuota && c.period_quota_tokens != null ? periodUsedTokens : null,
-      period_used_requests: modelGateFeatures.periodQuota && c.period_quota_requests != null ? periodUsedRequests : null,
-      period_remaining_tokens: modelGateFeatures.periodQuota && c.period_quota_tokens != null ? Math.max(0, c.period_quota_tokens - periodUsedTokens) : null,
-      period_remaining_requests: modelGateFeatures.periodQuota && c.period_quota_requests != null ? Math.max(0, c.period_quota_requests - periodUsedRequests) : null,
-      period_reset_at: modelGateFeatures.periodQuota && c.quota_period ? c.period_reset_at : null,
+      period_label: periodEnabled ? formatPeriodLabel(c.quota_period as number) : null,
+      period_quota_tokens: periodEnabled ? c.period_quota_tokens : null,
+      period_quota_requests: periodEnabled ? c.period_quota_requests : null,
+      period_used_tokens: periodEnabled && c.period_quota_tokens != null ? periodUsedTokens : null,
+      period_used_requests: periodEnabled && c.period_quota_requests != null ? periodUsedRequests : null,
+      period_remaining_tokens: periodEnabled && c.period_quota_tokens != null ? Math.max(0, c.period_quota_tokens - periodUsedTokens) : null,
+      period_remaining_requests: periodEnabled && c.period_quota_requests != null ? Math.max(0, c.period_quota_requests - periodUsedRequests) : null,
+      period_reset_at: periodEnabled ? periodResetAt : null,
     };
   });
 
-  const groups = groupRows.map((g) => ({
-    id: g.id,
-    name: g.name,
-    user_count: g.user_count,
-    rpm: g.rpm,
-    qps: g.qps,
-    tpm: g.tpm,
-    quota_tokens: g.quota_tokens,
-    quota_requests: g.quota_requests,
-    quota_period: modelGateFeatures.periodQuota ? g.quota_period : null,
-    period_label: modelGateFeatures.periodQuota && g.quota_period ? formatPeriodLabel(g.quota_period) : null,
-    period_quota_tokens: modelGateFeatures.periodQuota ? g.period_quota_tokens : null,
-    period_quota_requests: modelGateFeatures.periodQuota ? g.period_quota_requests : null,
-  }));
+  const groups = groupRows.map((g) => {
+    const periodEnabled = modelGateFeatures.periodQuota && g.quota_period;
+    return {
+      id: g.id,
+      name: g.name,
+      user_count: g.user_count,
+      rpm: g.rpm,
+      qps: g.qps,
+      tpm: g.tpm,
+      quota_tokens: g.quota_tokens,
+      quota_requests: g.quota_requests,
+      quota_period: modelGateFeatures.periodQuota ? g.quota_period : null,
+      period_label: periodEnabled ? formatPeriodLabel(g.quota_period as number) : null,
+      period_quota_tokens: periodEnabled ? g.period_quota_tokens : null,
+      period_quota_requests: periodEnabled ? g.period_quota_requests : null,
+    };
+  });
 
   const modelRows = await gatewayDb.query<{
     id: number;
@@ -153,11 +161,16 @@ export async function GET(request: Request) {
   const models = modelRows.map((m) => {
     let periodUsedTokens = m.period_used_tokens;
     let periodUsedRequests = m.period_used_requests;
+    let periodResetAt: string | null = m.period_reset_at;
     const mReset = parseStoredUtc(m.period_reset_at);
     if (m.quota_period && mReset && mReset <= now) {
       periodUsedTokens = 0;
       periodUsedRequests = 0;
+      const nextReset = new Date(now.getTime() + m.quota_period * 1000);
+      periodResetAt = nextReset.toISOString();
     }
+
+    const periodEnabled = modelGateFeatures.periodQuota && m.quota_period;
 
     return {
       id: m.id,
@@ -172,14 +185,14 @@ export async function GET(request: Request) {
       remaining_requests: m.quota_mode === "independent" && m.quota_requests !== null ? Math.max(0, m.quota_requests - periodUsedRequests) : null,
       remaining_tokens: m.quota_mode === "independent" && m.quota_tokens !== null ? Math.max(0, m.quota_tokens - periodUsedTokens) : null,
       quota_period: modelGateFeatures.periodQuota ? m.quota_period : null,
-      period_label: modelGateFeatures.periodQuota && m.quota_period ? formatPeriodLabel(m.quota_period) : null,
-      period_quota_requests: modelGateFeatures.periodQuota ? m.period_quota_requests : null,
-      period_quota_tokens: modelGateFeatures.periodQuota ? m.period_quota_tokens : null,
-      period_used_requests: modelGateFeatures.periodQuota && m.quota_mode === "independent" && m.period_quota_requests != null ? periodUsedRequests : null,
-      period_used_tokens: modelGateFeatures.periodQuota && m.quota_mode === "independent" && m.period_quota_tokens != null ? periodUsedTokens : null,
-      period_remaining_requests: modelGateFeatures.periodQuota && m.quota_mode === "independent" && m.period_quota_requests != null ? Math.max(0, m.period_quota_requests - periodUsedRequests) : null,
-      period_remaining_tokens: modelGateFeatures.periodQuota && m.quota_mode === "independent" && m.period_quota_tokens != null ? Math.max(0, m.period_quota_tokens - periodUsedTokens) : null,
-      period_reset_at: modelGateFeatures.periodQuota && m.quota_period ? m.period_reset_at : null,
+      period_label: periodEnabled ? formatPeriodLabel(m.quota_period as number) : null,
+      period_quota_requests: periodEnabled ? m.period_quota_requests : null,
+      period_quota_tokens: periodEnabled ? m.period_quota_tokens : null,
+      period_used_requests: periodEnabled && m.quota_mode === "independent" && m.period_quota_requests != null ? periodUsedRequests : null,
+      period_used_tokens: periodEnabled && m.quota_mode === "independent" && m.period_quota_tokens != null ? periodUsedTokens : null,
+      period_remaining_requests: periodEnabled && m.quota_mode === "independent" && m.period_quota_requests != null ? Math.max(0, m.period_quota_requests - periodUsedRequests) : null,
+      period_remaining_tokens: periodEnabled && m.quota_mode === "independent" && m.period_quota_tokens != null ? Math.max(0, m.period_quota_tokens - periodUsedTokens) : null,
+      period_reset_at: periodEnabled ? periodResetAt : null,
     };
   });
 

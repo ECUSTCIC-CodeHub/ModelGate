@@ -73,13 +73,17 @@ export async function GET(request: Request) {
   const data = accessible.map((m) => {
     let periodUsedTokens = m.period_used_tokens;
     let periodUsedRequests = m.period_used_requests;
+    let periodResetAt: string | null = m.period_reset_at;
     const mReset = parseStoredUtc(m.period_reset_at);
     if (m.quota_period && mReset && mReset <= now) {
       periodUsedTokens = 0;
       periodUsedRequests = 0;
+      const nextReset = new Date(now.getTime() + m.quota_period * 1000);
+      periodResetAt = nextReset.toISOString();
     }
 
     const selfQuota = m.quota_mode === "independent";
+    const periodEnabled = selfQuota && m.quota_period;
 
     return {
       alias: m.alias,
@@ -96,14 +100,14 @@ export async function GET(request: Request) {
       remaining_requests: selfQuota && m.quota_requests !== null ? Math.max(0, m.quota_requests - periodUsedRequests) : null,
       remaining_tokens: selfQuota && m.quota_tokens !== null ? Math.max(0, m.quota_tokens - periodUsedTokens) : null,
       quota_period: selfQuota ? m.quota_period : null,
-      period_label: selfQuota && m.quota_period ? formatPeriodLabel(m.quota_period) : null,
-      period_quota_requests: selfQuota ? m.period_quota_requests : null,
-      period_quota_tokens: selfQuota ? m.period_quota_tokens : null,
-      period_used_requests: selfQuota && m.period_quota_requests != null ? periodUsedRequests : null,
-      period_used_tokens: selfQuota && m.period_quota_tokens != null ? periodUsedTokens : null,
-      period_remaining_requests: selfQuota && m.period_quota_requests != null ? Math.max(0, m.period_quota_requests - periodUsedRequests) : null,
-      period_remaining_tokens: selfQuota && m.period_quota_tokens != null ? Math.max(0, m.period_quota_tokens - periodUsedTokens) : null,
-      period_reset_at: selfQuota && m.quota_period ? m.period_reset_at : null,
+      period_label: periodEnabled ? formatPeriodLabel(m.quota_period as number) : null,
+      period_quota_requests: periodEnabled ? m.period_quota_requests : null,
+      period_quota_tokens: periodEnabled ? m.period_quota_tokens : null,
+      period_used_requests: periodEnabled && m.period_quota_requests != null ? periodUsedRequests : null,
+      period_used_tokens: periodEnabled && m.period_quota_tokens != null ? periodUsedTokens : null,
+      period_remaining_requests: periodEnabled && m.period_quota_requests != null ? Math.max(0, m.period_quota_requests - periodUsedRequests) : null,
+      period_remaining_tokens: periodEnabled && m.period_quota_tokens != null ? Math.max(0, m.period_quota_tokens - periodUsedTokens) : null,
+      period_reset_at: periodEnabled ? periodResetAt : null,
     };
   });
 
