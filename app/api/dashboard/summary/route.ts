@@ -204,18 +204,23 @@ export async function GET(request: Request) {
   const topModels = await gatewayDb
     .query(
       `SELECT
-         COALESCE(em.alias, erm.alias, l.real_model, '-') AS model_name,
+         COALESCE(
+           CASE WHEN his.alias IS NOT NULL THEN l.model_alias END,
+           erm.alias,
+           l.real_model,
+           '-'
+         ) AS model_name,
          COUNT(*) AS request_count,
          COALESCE(SUM(l.total_tokens), 0) AS total_tokens
        FROM logs l
        LEFT JOIN (
-         SELECT DISTINCT alias FROM models WHERE deleted_at IS NULL AND alias != '*'
-       ) em ON em.alias = l.model_alias
+         SELECT DISTINCT alias, real_model FROM models WHERE alias != '*'
+       ) his ON his.alias = l.model_alias AND his.real_model = l.real_model
        LEFT JOIN (
          SELECT real_model, MIN(alias) AS alias FROM models
          WHERE deleted_at IS NULL AND alias != '*'
          GROUP BY real_model
-       ) erm ON em.alias IS NULL AND erm.real_model = l.real_model
+       ) erm ON his.alias IS NULL AND erm.real_model = l.real_model
        ${topModelWhereSql}
        GROUP BY model_name
        ORDER BY total_tokens DESC, request_count DESC
