@@ -1932,7 +1932,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | top_users_visible | 是否允许普通用户查看 Top 用户排行（1 允许 / 0 不允许）；管理员始终可见。普通用户且此项为 0 时，`top_users` 返回空数组 |
 | overview_global | 控制普通用户概览范围（1 全局 / 0 仅自己）；管理员始终为全局。普通用户且此项为 0 时，概览统计按当前用户隔离 |
 | hourly_tokens | 最近 24 小时 Token 趋势（按 `tz` 参数指定的访问者时区分桶，`hour` 为该时区的整点桶名 `YYYY-MM-DDTHH:00:00`） |
-| top_models | Top 5 模型（按 Token 消耗） |
+| top_models | Top 5 模型（按 Token 消耗，仅统计成功请求 `status_code < 400`）。`model_name` 为实际生效的模型名：请求的模型别名存在时显示请求别名；请求的模型不存在、被自动替补或通配符转发时，归并到实际使用的模型（按其上游真实名在 `models` 表中的别名显示，找不到时显示上游真实名），不单独显示不存在的请求模型名 |
 | top_channels | Top 5 渠道（按 Token 消耗） |
 | top_users | Top 5 用户（按 Token 消耗，含 user_id / username / request_count / failed_requests / total_tokens / avg_latency_ms） |
 
@@ -2738,6 +2738,8 @@ curl https://your-domain:3000/api/v1/rerank \
 ```
 
 > 异步批量写入：队列容量 1024，每批 64 条或 100ms 间隔刷新落盘。队列满时请求会等待入队（不丢日志）。
+
+> `model_alias` 记录客户端请求时传入的模型名（不存在的模型被自动替补或通配符转发时，仍记录原始请求名，便于排障）；`real_model` 为实际路由到的上游真实模型名。未成功路由的拒绝请求（如模型不存在、无权限、限流）日志中 `model_alias` 仍为请求名、`real_model` 为 `null`。
 
 ## 速率限制与配额
 

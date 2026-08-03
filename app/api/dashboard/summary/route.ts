@@ -199,14 +199,24 @@ export async function GET(request: Request) {
     };
   });
 
+  const topModelWhereSql = `${overviewWhereSql ? `${overviewWhereSql} AND` : "WHERE"} l.status_code < 400`;
+
   const topModels = await gatewayDb
     .query(
       `SELECT
-         COALESCE(model_alias, real_model, '-') AS model_name,
+         COALESCE(em.alias, erm.alias, l.real_model, '-') AS model_name,
          COUNT(*) AS request_count,
-         COALESCE(SUM(total_tokens), 0) AS total_tokens
-       FROM logs
-       ${overviewWhereSql}
+         COALESCE(SUM(l.total_tokens), 0) AS total_tokens
+       FROM logs l
+       LEFT JOIN (
+         SELECT DISTINCT alias FROM models WHERE deleted_at IS NULL AND alias != '*'
+       ) em ON em.alias = l.model_alias
+       LEFT JOIN (
+         SELECT real_model, MIN(alias) AS alias FROM models
+         WHERE deleted_at IS NULL AND alias != '*'
+         GROUP BY real_model
+       ) erm ON em.alias IS NULL AND erm.real_model = l.real_model
+       ${topModelWhereSql}
        GROUP BY model_name
        ORDER BY total_tokens DESC, request_count DESC
        LIMIT 5`,
