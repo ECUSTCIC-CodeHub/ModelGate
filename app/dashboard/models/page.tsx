@@ -404,21 +404,22 @@ export default function AvailableModelsPage() {
                   ))}
                 </div>
 
-                {brandGroups.length > 0 ? (
+                {brandMatchers.length > 0 ? (
                   <div className="flex flex-wrap items-center gap-1">
                     <FilterPill active={brandFilter.size === 0} onClick={clearBrandFilter}>
                       全部品牌
                     </FilterPill>
                     {(() => {
-                      const labels = [...new Set(brandGroups.map((g) => g.label))];
-                      const brands = rows.some((r) => matchBrandGroups(r.id, brandMatchers) === OTHER_BRAND)
-                        ? [...labels, OTHER_BRAND]
-                        : labels;
-                      return brands.map((label) => (
-                        <FilterPill key={label} active={brandFilter.has(label)} onClick={() => toggleBrand(label)}>
-                          {label}
-                        </FilterPill>
-                      ));
+                      const labels = [...new Set(brandGroups.map((g) => g.label))].filter((l) => l !== OTHER_BRAND);
+                      const present = new Set(rows.map((r) => matchBrandGroups(r.id, brandMatchers)));
+                      return labels
+                        .filter((label) => present.has(label))
+                        .concat(present.has(OTHER_BRAND) ? [OTHER_BRAND] : [])
+                        .map((label) => (
+                          <FilterPill key={label} active={brandFilter.has(label)} onClick={() => toggleBrand(label)}>
+                            {label}
+                          </FilterPill>
+                        ));
                     })()}
                   </div>
                 ) : null}
