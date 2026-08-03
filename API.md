@@ -1932,7 +1932,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | top_users_visible | 是否允许普通用户查看 Top 用户排行（1 允许 / 0 不允许）；管理员始终可见。普通用户且此项为 0 时，`top_users` 返回空数组 |
 | overview_global | 控制普通用户概览范围（1 全局 / 0 仅自己）；管理员始终为全局。普通用户且此项为 0 时，概览统计按当前用户隔离 |
 | hourly_tokens | 最近 24 小时 Token 趋势（按 `tz` 参数指定的访问者时区分桶，`hour` 为该时区的整点桶名 `YYYY-MM-DDTHH:00:00`） |
-| top_models | Top 5 模型（按 Token 消耗，仅统计成功请求 `status_code < 400`）。`model_name` 为请求实际生效的模型名：请求别名与实际上游名的配对在 `models` 表中存在过（含已删除模型删除前的正常请求）时按请求别名显示；配对不存在（请求的模型不存在、被自动替补或通配符转发、或模型删除后仍被请求而转发）时归并到实际使用的模型（按其上游真实名在当前 `models` 表中的别名显示，找不到时显示上游真实名），不单独显示不存在的请求模型名 |
+| top_models | Top 5 模型（按 Token 消耗，仅统计成功请求 `status_code < 400`）。`model_name` 为请求实际生效的模型名：请求别名与实际上游名的配对在 `models` 表中存在过、且日志发生在该模型有效期内（模型未删除，或日志时间早于模型删除时间）时按请求别名显示；否则（请求的模型不存在、被自动替补或通配符转发、或模型删除后仍被请求而转发）归并到实际使用的模型（按其上游真实名在当前 `models` 表中的别名显示，找不到时显示上游真实名），不单独显示不存在的请求模型名 |
 | top_channels | Top 5 渠道（按 Token 消耗） |
 | top_users | Top 5 用户（按 Token 消耗，含 user_id / username / request_count / failed_requests / total_tokens / avg_latency_ms） |
 

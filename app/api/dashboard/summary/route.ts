@@ -205,7 +205,13 @@ export async function GET(request: Request) {
     .query(
       `SELECT
          COALESCE(
-           CASE WHEN his.alias IS NOT NULL THEN l.model_alias END,
+           CASE WHEN EXISTS (
+             SELECT 1 FROM models m
+             WHERE m.alias = l.model_alias AND m.real_model = l.real_model
+               AND m.alias != '*'
+               AND l.created_at >= m.created_at
+               AND (m.deleted_at IS NULL OR l.created_at < m.deleted_at)
+           ) THEN l.model_alias END,
            erm.alias,
            l.real_model,
            '-'
@@ -214,13 +220,10 @@ export async function GET(request: Request) {
          COALESCE(SUM(l.total_tokens), 0) AS total_tokens
        FROM logs l
        LEFT JOIN (
-         SELECT DISTINCT alias, real_model FROM models WHERE alias != '*'
-       ) his ON his.alias = l.model_alias AND his.real_model = l.real_model
-       LEFT JOIN (
          SELECT real_model, MIN(alias) AS alias FROM models
          WHERE deleted_at IS NULL AND alias != '*'
          GROUP BY real_model
-       ) erm ON his.alias IS NULL AND erm.real_model = l.real_model
+       ) erm ON erm.real_model = l.real_model
        ${topModelWhereSql}
        GROUP BY model_name
        ORDER BY total_tokens DESC, request_count DESC
