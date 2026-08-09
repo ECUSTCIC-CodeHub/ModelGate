@@ -189,7 +189,7 @@ export async function handleMultipartGatewayRequest(request: Request) {
     }
   }
 
-  if (quotaMode === "independent") {
+  if (quotaMode === "independent" || quotaMode === "dual") {
     const modelQuotaResult = await checkModelQuota(existingRoute.model.id, estimatedTokens);
     if (!modelQuotaResult.ok) {
       logRejected(429, modelQuotaResult.reason, alias, estimatedTokens);

@@ -28,7 +28,7 @@ export type DbChannel = {
   time_restrictions: string;
 };
 
-export type ModelQuotaMode = "follow_group" | "bypass_group" | "independent";
+export type ModelQuotaMode = "follow_group" | "bypass_group" | "independent" | "dual";
 
 export type DbModel = {
   id: number;

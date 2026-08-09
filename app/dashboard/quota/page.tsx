@@ -16,7 +16,7 @@ import type { QuotaData } from "../_home/dashboard-model";
 type ModelQuota = {
   alias: string;
   real_model: string;
-  quota_mode: "follow_group" | "bypass_group" | "independent";
+  quota_mode: "follow_group" | "bypass_group" | "independent" | "dual";
   token_multiplier: number;
   request_multiplier: number;
   quota_requests: number | null;
@@ -75,7 +75,7 @@ function TokenQuotaBar({ used, total }: { used: number; total: number | null }) 
 }
 
 function UserQuotaContent({ quota, modelQuotas }: { quota: QuotaData | null; modelQuotas: ModelQuota[] }) {
-  const independentModels = modelQuotas.filter((m) => m.quota_mode === "independent");
+  const independentModels = modelQuotas.filter((m) => m.quota_mode === "independent" || m.quota_mode === "dual");
   const bypassModels = modelQuotas.filter((m) => m.quota_mode === "bypass_group");
 
   return (
@@ -85,7 +85,7 @@ function UserQuotaContent({ quota, modelQuotas }: { quota: QuotaData | null; mod
       {independentModels.length > 0 ? (
         <Card>
           <CardHeader>
-            <SectionTitle title="独立配额模型" description="以下模型配置了独立配额，不受用户组限制约束，使用模型自身的配额额度。" />
+            <SectionTitle title="模型自身配额" description="以下模型配置了模型自身配额；其中双重限制模式的模型同时受用户组配额与速率限制约束。" />
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">

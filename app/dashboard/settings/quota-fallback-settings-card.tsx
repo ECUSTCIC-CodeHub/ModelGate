@@ -22,7 +22,7 @@ export function QuotaFallbackSettingsCard({
       <CardHeader>
         <SectionTitle
           title="达到限额后自动路由"
-          description="模型独立配额超限时切换到其他可用模型；用户配额或速率限制超限时，仅切换到不计入用户配额的模型（独立配额或不计费计费模式）。仅对话类协议生效，图片生成协议不接入。"
+          description="模型独立配额（独立配额或双重限制模式）超限时切换到其他可用模型；用户配额或速率限制超限时，仅切换到绕过用户组或独立配额模式的模型。仅对话类协议生效，图片生成协议不接入。"
         />
       </CardHeader>
       <CardContent className="space-y-5">

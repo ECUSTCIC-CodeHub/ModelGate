@@ -153,12 +153,13 @@ export async function GET(request: Request) {
             c.name AS channel_name
      FROM models m
      JOIN channels c ON c.id = m.channel_id
-     WHERE (m.quota_mode = 'independent' OR m.quota_mode = 'bypass_group')
+     WHERE (m.quota_mode = 'independent' OR m.quota_mode = 'bypass_group' OR m.quota_mode = 'dual')
        AND m.enabled = 1 AND c.enabled = 1
        AND m.deleted_at IS NULL AND c.deleted_at IS NULL`,
   );
 
   const models = modelRows.map((m) => {
+    const selfQuota = m.quota_mode === "independent" || m.quota_mode === "dual";
     let periodUsedTokens = m.period_used_tokens;
     let periodUsedRequests = m.period_used_requests;
     let periodResetAt: string | null = m.period_reset_at;
@@ -180,18 +181,18 @@ export async function GET(request: Request) {
       quota_mode: m.quota_mode,
       quota_requests: m.quota_requests,
       quota_tokens: m.quota_tokens,
-      used_requests: m.quota_mode === "independent" ? periodUsedRequests : null,
-      used_tokens: m.quota_mode === "independent" ? periodUsedTokens : null,
-      remaining_requests: m.quota_mode === "independent" && m.quota_requests !== null ? Math.max(0, m.quota_requests - periodUsedRequests) : null,
-      remaining_tokens: m.quota_mode === "independent" && m.quota_tokens !== null ? Math.max(0, m.quota_tokens - periodUsedTokens) : null,
+      used_requests: selfQuota ? periodUsedRequests : null,
+      used_tokens: selfQuota ? periodUsedTokens : null,
+      remaining_requests: selfQuota && m.quota_requests !== null ? Math.max(0, m.quota_requests - periodUsedRequests) : null,
+      remaining_tokens: selfQuota && m.quota_tokens !== null ? Math.max(0, m.quota_tokens - periodUsedTokens) : null,
       quota_period: modelGateFeatures.periodQuota ? m.quota_period : null,
       period_label: periodEnabled ? formatPeriodLabel(m.quota_period as number) : null,
       period_quota_requests: periodEnabled ? m.period_quota_requests : null,
       period_quota_tokens: periodEnabled ? m.period_quota_tokens : null,
-      period_used_requests: periodEnabled && m.quota_mode === "independent" && m.period_quota_requests != null ? periodUsedRequests : null,
-      period_used_tokens: periodEnabled && m.quota_mode === "independent" && m.period_quota_tokens != null ? periodUsedTokens : null,
-      period_remaining_requests: periodEnabled && m.quota_mode === "independent" && m.period_quota_requests != null ? Math.max(0, m.period_quota_requests - periodUsedRequests) : null,
-      period_remaining_tokens: periodEnabled && m.quota_mode === "independent" && m.period_quota_tokens != null ? Math.max(0, m.period_quota_tokens - periodUsedTokens) : null,
+      period_used_requests: periodEnabled && selfQuota && m.period_quota_requests != null ? periodUsedRequests : null,
+      period_used_tokens: periodEnabled && selfQuota && m.period_quota_tokens != null ? periodUsedTokens : null,
+      period_remaining_requests: periodEnabled && selfQuota && m.period_quota_requests != null ? Math.max(0, m.period_quota_requests - periodUsedRequests) : null,
+      period_remaining_tokens: periodEnabled && selfQuota && m.period_quota_tokens != null ? Math.max(0, m.period_quota_tokens - periodUsedTokens) : null,
       period_reset_at: periodEnabled ? periodResetAt : null,
     };
   });

@@ -9,7 +9,7 @@ import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
 import { toLocalDatetime } from "@/lib/gateway/channel-time";
 import { disableExpiredModels } from "@/lib/gateway/model-expiry";
 
-const QUOTA_MODES = ["follow_group", "bypass_group", "independent"] as const;
+const QUOTA_MODES = ["follow_group", "bypass_group", "independent", "dual"] as const;
 
 const createSchema = z.object({
   alias: z.string().min(1),

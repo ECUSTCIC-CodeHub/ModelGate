@@ -273,7 +273,7 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
       {overview?.models && overview.models.length > 0 ? (
         <Card>
           <CardHeader>
-            <SectionTitle title="特殊配额模型" description="绕过用户组限制或使用独立配额的模型。" />
+            <SectionTitle title="特殊配额模型" description="绕过用户组限制、使用独立配额或双重限制的模型。" />
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
@@ -302,11 +302,11 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
                       <TableCell className="text-sm text-[var(--color-foreground-muted)]">{m.channel_name}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className="text-xs">
-                          {m.quota_mode === "independent" ? "独立配额" : "绕过用户组"}
+                          {m.quota_mode === "independent" ? "独立配额" : m.quota_mode === "dual" ? "双重限制" : "绕过用户组"}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {m.quota_mode === "independent" && m.quota_tokens !== null ? (
+                        {(m.quota_mode === "independent" || m.quota_mode === "dual") && m.quota_tokens !== null ? (
                           <div className="space-y-1">
                             <QuotaProgress remaining={m.remaining_tokens} quota={m.quota_tokens} />
                             <p className="text-xs text-[var(--color-foreground-muted)]">
@@ -315,12 +315,12 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
                           </div>
                         ) : (
                           <span className="text-xs text-[var(--color-foreground-muted)]">
-                            {m.quota_mode === "bypass_group" ? "不受限" : "不限制"}
+                            {m.quota_mode === "bypass_group" ? "不受限" : m.quota_mode === "dual" ? "模型不限制" : "不限制"}
                           </span>
                         )}
                       </TableCell>
                       <TableCell>
-                        {m.quota_mode === "independent" && m.quota_requests !== null ? (
+                        {(m.quota_mode === "independent" || m.quota_mode === "dual") && m.quota_requests !== null ? (
                           <div className="space-y-1">
                             <QuotaProgress remaining={m.remaining_requests} quota={m.quota_requests} />
                             <p className="text-xs text-[var(--color-foreground-muted)]">
@@ -329,13 +329,13 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
                           </div>
                         ) : (
                           <span className="text-xs text-[var(--color-foreground-muted)]">
-                            {m.quota_mode === "bypass_group" ? "不受限" : "不限制"}
+                            {m.quota_mode === "bypass_group" ? "不受限" : m.quota_mode === "dual" ? "模型不限制" : "不限制"}
                           </span>
                         )}
                       </TableCell>
                       {overview.models.some((m) => m.period_label) ? (
                         <TableCell>
-                          {m.quota_mode === "independent" && m.period_label && (m.period_quota_tokens !== null || m.period_quota_requests !== null) ? (
+                          {(m.quota_mode === "independent" || m.quota_mode === "dual") && m.period_label && (m.period_quota_tokens !== null || m.period_quota_requests !== null) ? (
                             <div className="space-y-1">
                               <Badge variant="outline" className="text-xs">{m.period_label}</Badge>
                               {m.period_quota_tokens !== null ? (

@@ -82,7 +82,7 @@ export async function GET(request: Request) {
       periodResetAt = nextReset.toISOString();
     }
 
-    const selfQuota = m.quota_mode === "independent";
+    const selfQuota = m.quota_mode === "independent" || m.quota_mode === "dual";
     const periodEnabled = selfQuota && m.quota_period;
 
     return {

@@ -49,7 +49,7 @@ const createSchema = z.object({
         token_multiplier: z.number().min(0).max(100).optional(),
         request_multiplier: z.number().min(0).max(100).optional(),
         max_concurrency: z.number().int().min(0).optional(),
-        quota_mode: z.enum(["follow_group", "bypass_group", "independent"]).optional(),
+        quota_mode: z.enum(["follow_group", "bypass_group", "independent", "dual"]).optional(),
       }),
     )
     .optional(),

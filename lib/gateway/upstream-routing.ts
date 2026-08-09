@@ -104,10 +104,10 @@ export async function requestUpstreamWithFallback({
   let lastModelQuotaReason: string | null = null;
   let lastModelQuota: ModelQuotaInfo | null = null;
 
-  // 候选路由的模型独立配额检查：quota_mode 非 independent 时直接放行（返回 null 配额信息）。
+  // 候选路由的模型独立配额检查：quota_mode 非 independent/dual 时直接放行（返回 null 配额信息）。
   // 配额不足时返回 reason，由调用方排除该候选继续选路。
   const checkCandidateModelQuota = async (route: RoutedModel): Promise<{ ok: true; quota: ModelQuotaInfo | null } | { ok: false; reason: string }> => {
-    if (route.model.quota_mode !== "independent") return { ok: true, quota: null };
+    if (route.model.quota_mode !== "independent" && route.model.quota_mode !== "dual") return { ok: true, quota: null };
     const result = await checkModelQuota(route.model.id, estimatedTokens);
     if (!result.ok) {
       lastModelQuotaReason = result.reason;

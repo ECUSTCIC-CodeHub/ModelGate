@@ -247,7 +247,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       }
     }
 
-    if (!exceededReason && quotaMode === "independent") {
+    if (!exceededReason && (quotaMode === "independent" || quotaMode === "dual")) {
       const modelQuotaResult = await checkModelQuota(existingRoute.model.id, estimatedTokens);
       if (!modelQuotaResult.ok) {
         exceededReason = modelQuotaResult.reason;

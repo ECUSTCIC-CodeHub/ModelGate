@@ -50,12 +50,13 @@ export function periodToPreset(v: number | null): string {
   return "custom";
 }
 
-export type ModelQuotaMode = "follow_group" | "bypass_group" | "independent";
+export type ModelQuotaMode = "follow_group" | "bypass_group" | "independent" | "dual";
 
 export const QUOTA_MODE_OPTIONS: Array<{ value: ModelQuotaMode; label: string; description: string }> = [
   { value: "follow_group", label: "跟随用户组", description: "受用户组配额和速率限制约束" },
   { value: "bypass_group", label: "绕过用户组", description: "不受用户组配额和速率限制约束" },
   { value: "independent", label: "独立配额", description: "不受用户组限制，使用模型自身配额" },
+  { value: "dual", label: "双重限制", description: "受用户组配额和速率限制，同时受模型自身配额限制" },
 ];
 
 export type ModelRow = {

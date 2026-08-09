@@ -225,7 +225,7 @@ export function ModelDrawer({
                   </p>
                 </div>
 
-                {form.quota_mode === "independent" ? (
+                {form.quota_mode === "independent" || form.quota_mode === "dual" ? (
                   <>
                     <div className="grid gap-3 md:grid-cols-2">
                       <div className="space-y-2">
