@@ -47,7 +47,7 @@ export function useDashboardHome() {
           const modelQuotaData = await modelQuotaResp.json();
           if (!cancelled) {
             const all = (modelQuotaData?.data ?? []) as Array<{ quota_mode: string }>;
-            setModelQuotas(all.filter((m) => m.quota_mode === "independent" || m.quota_mode === "bypass_group") as ModelQuotaItem[]);
+            setModelQuotas(all.filter((m) => m.quota_mode === "independent" || m.quota_mode === "bypass_group" || m.quota_mode === "dual") as ModelQuotaItem[]);
           }
         }
       })

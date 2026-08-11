@@ -9,11 +9,11 @@ export type ModelQuotaItem = {
   real_model: string;
   channel_id: number;
   channel_name: string;
-  quota_mode: "bypass_group" | "independent";
+  quota_mode: "bypass_group" | "independent" | "dual";
   quota_requests: number | null;
   quota_tokens: number | null;
-  used_requests: number;
-  used_tokens: number;
+  used_requests: number | null;
+  used_tokens: number | null;
   remaining_requests: number | null;
   remaining_tokens: number | null;
   quota_period: number | null;
@@ -59,7 +59,7 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
   return (
     <Card>
       <CardHeader>
-        <SectionTitle title="不受账户限制的模型" description="以下模型不受账户速率限制和配额约束。独立配额模型使用自己的额度；绕过账户限制的模型则只受渠道侧限制。双重限制模式的模型受账户限制，不在此展示，详情查看「配额与限制」页面。" />
+        <SectionTitle title="特殊配额模型" description="绕过账户限制或配置模型自身配额的模型。独立配额与双重限制模型使用模型自身额度；双重限制模式同时受用户组配额约束；绕过账户限制的模型不受账户配额和速率限制。" />
       </CardHeader>
       <CardContent>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -82,7 +82,7 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
                   <span className="rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-foreground-muted)]">
-                    {m.quota_mode === "independent" ? "独立配额" : "绕过"}
+                    {m.quota_mode === "independent" ? "独立配额" : m.quota_mode === "dual" ? "双重限制" : "绕过"}
                   </span>
                   {m.period_label ? (
                     <span className="rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-foreground-muted)]">
@@ -91,21 +91,25 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
                   ) : null}
                 </div>
               </div>
-              {m.quota_mode === "independent" ? (
-                <div className="space-y-1">
-                  {m.quota_requests !== null ? (
-                    <QuotaBar used={m.used_requests} total={m.quota_requests} />
-                  ) : null}
-                  {m.quota_tokens !== null ? (
-                    <TokenBar used={m.used_tokens} total={m.quota_tokens} />
-                  ) : null}
-                  {m.period_quota_requests !== null ? (
-                    <QuotaBar used={m.period_used_requests ?? 0} total={m.period_quota_requests} />
-                  ) : null}
-                  {m.period_quota_tokens !== null ? (
-                    <TokenBar used={m.period_used_tokens ?? 0} total={m.period_quota_tokens} />
-                  ) : null}
-                </div>
+              {m.quota_mode === "independent" || m.quota_mode === "dual" ? (
+                m.quota_requests === null && m.quota_tokens === null && m.period_quota_requests === null && m.period_quota_tokens === null ? (
+                  <p className="text-xs text-[var(--color-foreground-muted)]">未配置模型配额</p>
+                ) : (
+                  <div className="space-y-1">
+                    {m.quota_requests !== null ? (
+                      <QuotaBar used={m.used_requests ?? 0} total={m.quota_requests} />
+                    ) : null}
+                    {m.quota_tokens !== null ? (
+                      <TokenBar used={m.used_tokens ?? 0} total={m.quota_tokens} />
+                    ) : null}
+                    {m.period_quota_requests !== null ? (
+                      <QuotaBar used={m.period_used_requests ?? 0} total={m.period_quota_requests} />
+                    ) : null}
+                    {m.period_quota_tokens !== null ? (
+                      <TokenBar used={m.period_used_tokens ?? 0} total={m.period_quota_tokens} />
+                    ) : null}
+                  </div>
+                )
               ) : (
                 <p className="text-xs text-[var(--color-foreground-muted)]">不受账户配额限制</p>
               )}
