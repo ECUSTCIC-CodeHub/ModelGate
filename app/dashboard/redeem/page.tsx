@@ -80,16 +80,8 @@ export default function RedeemPage() {
     }
   };
 
-  if (role === "admin") {
-    return (
-      <DashboardShell role="admin" title="兑换码" subtitle="管理员请前往「兑换码管理」页面生成与管理兑换码。">
-        <p className="text-sm text-[var(--color-foreground-muted)]">请在左侧菜单选择「兑换码管理」进行操作。</p>
-      </DashboardShell>
-    );
-  }
-
   return (
-    <DashboardShell role="user" title="兑换码" subtitle="输入兑换码获取定向额度，可限定渠道与模型使用。">
+    <DashboardShell role={role} title="兑换码" subtitle="输入兑换码获取定向额度，可限定渠道与模型使用。">
       <div className="space-y-4 pb-6">
         <Card>
           <CardHeader>

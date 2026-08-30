@@ -23,6 +23,7 @@ const adminMenus: DashboardMenuItem[] = [
   { href: "/dashboard/access", label: "接入指南", icon: Shield },
   { href: "/dashboard/channels", label: "渠道管理", icon: Waypoints },
   { href: "/dashboard/users", label: "用户管理", icon: UserCog },
+  { href: "/dashboard/redeem", label: "兑换码", icon: Ticket },
   { href: "/dashboard/redeem-codes", label: "兑换码管理", icon: Ticket },
   { href: "/dashboard/groups", label: "用户组管理", icon: Users },
   { href: "/dashboard/personal-settings", label: "个人设置", icon: SlidersHorizontal },
