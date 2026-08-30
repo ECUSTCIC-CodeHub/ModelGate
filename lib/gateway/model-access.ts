@@ -2,6 +2,7 @@ import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { getUserAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { getUserGroup } from "@/lib/gateway/effective-limits";
 import { parseSupportedProtocols, type GatewayProtocol } from "@/lib/gateway/protocols";
+import { listRedeemCoveredAuthorization } from "@/lib/services/redeem-authorization";
 
 export function parseAllowedModelAliases(raw: string | null | undefined) {
   if (!raw) return [];
@@ -67,7 +68,7 @@ const ACCESSIBLE_MODEL_ROWS_SQL = `SELECT m.alias, m.real_model, m.is_public, m.
      AND m.alias != '*'
    ORDER BY m.alias ASC, m.id ASC`;
 
-export async function canUserAccessModelAlias(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">, alias: string) {
+export async function canUserAccessModelAlias(user: Pick<DbUser, "id" | "role" | "group_id" | "allowed_model_aliases">, alias: string) {
   if (user.role === "admin") return true;
 
   const models = await gatewayDb.query<{ is_public: number }>(MODEL_PUBLIC_BY_ALIAS_SQL, [alias]);
@@ -76,7 +77,11 @@ export async function canUserAccessModelAlias(user: Pick<DbUser, "role" | "group
   if (models.some((m) => m.is_public === 1)) return true;
 
   const effective = await getEffectiveAllowedAliases(user);
-  return effective.includes(alias);
+  if (effective.includes(alias)) return true;
+
+  // 定向额度明确限定的模型作为额外授权来源（兑换即授权）
+  const redeem = await listRedeemCoveredAuthorization(user.id);
+  return redeem.aliases.includes(alias);
 }
 
 export async function hasEnabledModelAlias(alias: string) {
@@ -85,7 +90,7 @@ export async function hasEnabledModelAlias(alias: string) {
 }
 
 export async function resolveAccessibleModelAlias(
-  user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">,
+  user: Pick<DbUser, "id" | "role" | "group_id" | "allowed_model_aliases">,
   requestedAlias: string,
 ): Promise<{ ok: true; alias: string } | { ok: false; reason: "not_found" | "forbidden" }> {
   const requestedAliasExists = await hasEnabledModelAlias(requestedAlias);
@@ -130,12 +135,12 @@ export type AccessibleModel = {
   channels: AccessibleModelChannel[];
 };
 
-export async function listAccessibleModelAliases(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">) {
+export async function listAccessibleModelAliases(user: Pick<DbUser, "id" | "role" | "group_id" | "allowed_model_aliases">) {
   const models = await listAccessibleModels(user);
   return models.map((row) => row.alias);
 }
 
-export async function listAccessibleModels(user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">): Promise<AccessibleModel[]> {
+export async function listAccessibleModels(user: Pick<DbUser, "id" | "role" | "group_id" | "allowed_model_aliases">): Promise<AccessibleModel[]> {
   const rows = await gatewayDb.query<{ alias: string; real_model: string; is_public: number; created_at: string | null; token_multiplier: number; request_multiplier: number; supports_vision: number; supported_protocols: string; model_weight: number; channel_id: number; channel_name: string; channel_weight: number }>(ACCESSIBLE_MODEL_ROWS_SQL);
   const allowedChannelIds = await getUserAllowedChannelIds(user);
   const allowedChannelSet = allowedChannelIds ? new Set(allowedChannelIds) : null;
@@ -163,9 +168,10 @@ export async function listAccessibleModels(user: Pick<DbUser, "role" | "group_id
     for (const row of rows) processRow(row);
   } else {
     const allowed = new Set(await getEffectiveAllowedAliases(user));
+    const redeemAliases = new Set((await listRedeemCoveredAuthorization(user.id)).aliases);
     for (const row of rows) {
       if (allowedChannelSet && !allowedChannelSet.has(row.channel_id)) continue;
-      if (row.is_public !== 1 && !allowed.has(row.alias)) continue;
+      if (row.is_public !== 1 && !allowed.has(row.alias) && !redeemAliases.has(row.alias)) continue;
       processRow(row);
     }
   }

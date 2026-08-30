@@ -289,22 +289,23 @@ export async function listUserBalances(userId: number): Promise<Array<RedeemBala
 }
 
 // 网关侧：查找匹配当前渠道+模型的用户有效定向额度。
+// 与授权侧（redeem-authorization）共用同一有效性条件：兑换码启用、未过期、额度未耗尽，避免停用后计费仍命中。
 export async function findMatchingRedeemBalance(userId: number, channelId: number | null, modelAlias: string | null): Promise<RedeemBalanceRow | null> {
   if (channelId === null || !modelAlias) return null;
+  const now = toMysqlDatetime(new Date());
   const rows = await gatewayDb.query<RedeemBalanceRow>(
-    `SELECT * FROM redeem_balances WHERE user_id = ? ORDER BY id`,
-    [userId],
+    `SELECT b.*
+       FROM redeem_balances b
+       JOIN redeem_codes c ON c.id = b.code_id
+       WHERE b.user_id = ?
+         AND c.enabled = 1
+         AND (b.expires_at IS NULL OR b.expires_at > ?)
+         AND (b.token_quota IS NULL OR b.used_tokens < b.token_quota)
+         AND (b.request_quota IS NULL OR b.used_requests < b.request_quota)
+       ORDER BY b.id`,
+    [userId, now],
   );
   for (const row of rows) {
-    // 校验有效期与额度
-    const remainingTokens = row.token_quota !== null ? row.token_quota - row.used_tokens : null;
-    const remainingRequests = row.request_quota !== null ? row.request_quota - row.used_requests : null;
-    if (remainingTokens !== null && remainingTokens <= 0) continue;
-    if (remainingRequests !== null && remainingRequests <= 0) continue;
-    if (row.expires_at) {
-      const expires = parseStoredUtc(row.expires_at);
-      if (expires && expires.getTime() <= Date.now()) continue;
-    }
     const channelIds = parseAllowedChannelIds(row.allowed_channel_ids);
     const aliases = parseAllowedModelAliases(row.allowed_model_aliases);
     const channelMatch = channelIds.length === 0 || channelIds.includes(channelId);

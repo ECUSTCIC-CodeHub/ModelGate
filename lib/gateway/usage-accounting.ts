@@ -1,6 +1,6 @@
 import { gatewayDb } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
-import { parseStoredUtc } from "@/lib/core/db/datetime";
+import { parseStoredUtc, toMysqlDatetime } from "@/lib/core/db/datetime";
 import { parseAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { parseAllowedModelAliases } from "@/lib/gateway/model-access";
 
@@ -27,10 +27,17 @@ async function findMatchingBalanceInTx(
     allowed_model_aliases: string;
     expires_at: string | null;
   }>(
-    `SELECT id, token_quota, request_quota, used_tokens, used_requests,
-            allowed_channel_ids, allowed_model_aliases, expires_at
-       FROM redeem_balances WHERE user_id = ? ORDER BY id`,
-    [userId],
+    `SELECT b.id, b.token_quota, b.request_quota, b.used_tokens, b.used_requests,
+            b.allowed_channel_ids, b.allowed_model_aliases, b.expires_at
+       FROM redeem_balances b
+       JOIN redeem_codes c ON c.id = b.code_id
+       WHERE b.user_id = ?
+         AND c.enabled = 1
+         AND (b.expires_at IS NULL OR b.expires_at > ?)
+         AND (b.token_quota IS NULL OR b.used_tokens < b.token_quota)
+         AND (b.request_quota IS NULL OR b.used_requests < b.request_quota)
+       ORDER BY b.id`,
+    [userId, toMysqlDatetime(new Date())],
   );
 
   for (const row of rows) {

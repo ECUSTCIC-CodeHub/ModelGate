@@ -6,6 +6,7 @@ import { jsonOk } from "@/lib/core/http";
 import { parseStoredUtc } from "@/lib/core/db/datetime";
 import { parseAllowedModelAliases } from "@/lib/gateway/model-access";
 import { parseAllowedChannelIds } from "@/lib/gateway/channel-access";
+import { listRedeemCoveredAuthorization } from "@/lib/services/redeem-authorization";
 
 function formatPeriodLabel(seconds: number): string {
   if (seconds === 3600) return "每小时";
@@ -60,13 +61,17 @@ export async function GET(request: Request) {
        AND m.deleted_at IS NULL AND c.deleted_at IS NULL`,
   );
 
+  const redeem = await listRedeemCoveredAuthorization(user.id);
+  const redeemChannels = new Set(redeem.channelIds);
+  const redeemAliases = new Set(redeem.aliases);
+
   const accessible = models.filter((m) => {
-    if (groupAllowedChannels.length > 0 && !groupAllowedChannels.includes(m.channel_id)) return false;
+    if (groupAllowedChannels.length > 0 && !groupAllowedChannels.includes(m.channel_id) && !redeemChannels.has(m.channel_id)) return false;
     if (m.is_public === 1) return true;
     if (m.alias === "*") return true;
     const userHasAlias = userAllowedAliases.includes(m.alias);
     const groupHasAlias = groupAllowedAliases.includes(m.alias);
-    return userHasAlias || groupHasAlias;
+    return userHasAlias || groupHasAlias || redeemAliases.has(m.alias);
   });
 
   const now = new Date();

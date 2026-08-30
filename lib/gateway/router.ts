@@ -293,7 +293,7 @@ export type VisionFallbackOptions = {
   protocol?: GatewayProtocol;
   allowedChannelIds?: number[] | null;
   userAgent?: string | null;
-  user?: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">;
+  user?: Pick<DbUser, "id" | "role" | "group_id" | "allowed_model_aliases">;
 };
 
 /**
@@ -337,7 +337,7 @@ export type ModelFallbackOptions = {
   protocol?: GatewayProtocol;
   allowedChannelIds?: number[] | null;
   userAgent?: string | null;
-  user?: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">;
+  user?: Pick<DbUser, "id" | "role" | "group_id" | "allowed_model_aliases">;
 };
 
 /**
@@ -376,7 +376,7 @@ export type QuotaFallbackOptions = {
   protocol?: GatewayProtocol;
   allowedChannelIds?: number[] | null;
   userAgent?: string | null;
-  user?: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">;
+  user?: Pick<DbUser, "id" | "role" | "group_id" | "allowed_model_aliases">;
 };
 
 /**
@@ -428,7 +428,7 @@ export async function findQuotaFallbackRoute(options: QuotaFallbackOptions): Pro
  * 全局开关关闭时返回 null；否则优先使用管理员指定的全局别名，留空时由权重自动分配。
  */
 export async function resolveModelFallbackAlias(params: {
-  user: Pick<DbUser, "role" | "group_id" | "allowed_model_aliases">;
+  user: Pick<DbUser, "id" | "role" | "group_id" | "allowed_model_aliases">;
   requestedAlias: string;
   fallbackEnabled: boolean;
   preferredGlobalAlias: string;
