@@ -1,9 +1,10 @@
 "use client";
 
-import { type ReactNode, useState, useEffect } from "react";
+import { type ReactNode } from "react";
 import { Menu, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useIsClient } from "@/lib/shared/use-is-client";
 
 type DashboardTopbarProps = {
   title: string;
@@ -22,8 +23,7 @@ export function DashboardTopbar({
   onToggleTheme,
   onOpenMobileNav,
 }: DashboardTopbarProps) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  const mounted = useIsClient();
 
   const resolvedTheme = mounted ? theme : "light";
   const themeLabel = resolvedTheme === "dark" ? "切换到浅色模式" : "切换到深色模式";

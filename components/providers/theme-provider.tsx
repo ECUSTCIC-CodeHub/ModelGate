@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useIsClient } from "@/lib/shared/use-is-client";
 
 type Appearance = "default" | "retro";
 type ThemeMode = "light" | "dark" | "system";
@@ -107,12 +108,7 @@ export function ThemeProvider({ children, initialAppearance, initialMode }: Them
     const stored = readStored();
     return stored.mode;
   });
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    applyThemeClasses(appearance, mode);
-    setMounted(true);
-  }, []);
+  const mounted = useIsClient();
 
   useEffect(() => {
     if (!mounted) return;

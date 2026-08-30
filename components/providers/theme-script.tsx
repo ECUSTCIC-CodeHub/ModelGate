@@ -1,4 +1,3 @@
-import Script from "next/script";
 import { generateThemeCssVariables, cssVariablesToText } from "@/lib/shared/color";
 
 export function ThemeScript({ themeColor }: { themeColor: string | null }) {
@@ -18,8 +17,10 @@ export function ThemeScript({ themeColor }: { themeColor: string | null }) {
   }
 
   return (
-    <Script id="theme-bootstrap" strategy="beforeInteractive">{`
-      (function() {
+    <script
+      id="theme-bootstrap"
+      dangerouslySetInnerHTML={{
+        __html: `(function() {
         try {
           var root = document.documentElement;
           var appearance = root.dataset.appearance || 'default';
@@ -38,7 +39,8 @@ export function ThemeScript({ themeColor }: { themeColor: string | null }) {
           }
         } catch(e) {}
       })();
-      ${colorScript}
-    `}</Script>
+      ${colorScript}`,
+      }}
+    />
   );
 }

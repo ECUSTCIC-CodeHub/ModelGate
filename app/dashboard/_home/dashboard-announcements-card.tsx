@@ -41,7 +41,9 @@ export function DashboardAnnouncementsCard() {
   }, []);
 
   useEffect(() => {
-    void fetchAnnouncements();
+    void (async () => {
+      await fetchAnnouncements();
+    })();
   }, [fetchAnnouncements]);
 
   function toggleExpand(id: number) {

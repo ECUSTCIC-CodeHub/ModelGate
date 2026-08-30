@@ -152,7 +152,9 @@ export default function AvailableModelsPage() {
 
   useEffect(() => {
     const saved = localStorage.getItem("modelGuideView");
-    if (saved === "card" || saved === "list") setView(saved);
+    if (saved === "card" || saved === "list") {
+      queueMicrotask(() => setView(saved as "card" | "list"));
+    }
   }, []);
 
   function changeView(v: "card" | "list") {

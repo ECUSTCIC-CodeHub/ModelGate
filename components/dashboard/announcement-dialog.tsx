@@ -47,7 +47,9 @@ export function AnnouncementDialog() {
   }, []);
 
   useEffect(() => {
-    void fetchAndShow();
+    void (async () => {
+      await fetchAndShow();
+    })();
   }, [fetchAndShow]);
 
   useEffect(() => {

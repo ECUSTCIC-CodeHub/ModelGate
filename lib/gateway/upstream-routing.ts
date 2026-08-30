@@ -3,7 +3,7 @@ import { checkChannelQuota } from "@/lib/gateway/channel-quota";
 import { checkModelQuota, type ModelQuotaInfo } from "@/lib/gateway/model-quota";
 import { buildUpstreamUrl, fetchUpstreamRequest } from "@/lib/gateway/proxy";
 import { selectModelRoute, type RoutedModel } from "@/lib/gateway/router";
-import { isTimeoutError, shouldRetryUpstreamStatus } from "@/lib/gateway/upstream-error";
+import { shouldRetryUpstreamStatus } from "@/lib/gateway/upstream-error";
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 
 type ChannelAcquireResult = Awaited<ReturnType<typeof acquireChannel>>;

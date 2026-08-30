@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -88,10 +88,11 @@ export function AppearanceSettingsCard({
   setDefaultMode: (value: "light" | "dark" | "system") => void;
 }) {
   const [inputValue, setInputValue] = useState(themeColor);
-
-  useEffect(() => {
+  const [prevThemeColor, setPrevThemeColor] = useState(themeColor);
+  if (prevThemeColor !== themeColor) {
+    setPrevThemeColor(themeColor);
     setInputValue(themeColor);
-  }, [themeColor]);
+  }
 
   function applyColor(value: string) {
     const normalized = value.toLowerCase();
@@ -263,7 +264,7 @@ export function AppearanceSettingsCard({
               Brand Logo
             </label>
             <p className="mt-0.5 text-xs text-[var(--color-foreground-muted)]">
-              设置后侧边栏和主页将用 Logo 图片替换 "ModelGate" 文字。
+              设置后侧边栏和主页将用 Logo 图片替换 &quot;ModelGate&quot; 文字。
             </p>
           </div>
 

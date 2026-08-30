@@ -4,7 +4,7 @@ import { z } from "zod";
 import { gatewayDb } from "@/lib/core/db";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
-import { GATEWAY_PROTOCOLS, type GatewayProtocol, normalizeSupportedProtocols, parseSupportedProtocols, stringifySupportedProtocols, supportsProtocol } from "@/lib/gateway/protocols";
+import { GATEWAY_PROTOCOLS, type GatewayProtocol, parseSupportedProtocols, stringifySupportedProtocols, supportsProtocol } from "@/lib/gateway/protocols";
 import type { ModelQuotaMode } from "@/lib/core/db/types";
 import { softDeleteModel } from "@/lib/services/soft-delete-service";
 import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";

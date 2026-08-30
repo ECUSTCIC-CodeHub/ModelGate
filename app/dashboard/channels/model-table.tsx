@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { cn } from "@/lib/shared/utils";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { Button } from "@/components/ui/button";
@@ -111,27 +111,19 @@ export function ModelTable({
   const [collapsed, setCollapsed] = useState<Set<number>>(() => computeDefaultCollapsed(models));
   const [manualToggled, setManualToggled] = useState<Set<number>>(new Set());
 
-  const modelSignature = useMemo(
-    () => models.map((m) => `${m.channel_id}:${m.channel_enabled}:${m.enabled}`).join("|"),
-    [models],
-  );
-
-  useEffect(() => {
+  // 渠道禁用/模型启用状态变化时，未手动切换的渠道跟随默认折叠状态。
+  // 改为派生状态，避免在 effect 中同步更新折叠状态造成级联渲染。
+  const effectiveCollapsed = useMemo(() => {
     const defaults = computeDefaultCollapsed(models);
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      for (const model of models) {
-        const id = model.channel_id;
-        if (manualToggled.has(id)) continue;
-        if (defaults.has(id)) next.add(id);
-        else next.delete(id);
-      }
-      // 仅依赖 modelSignature：models/manualToggled 通过闭包取本次 render 最新值，
-      // 避免每次渲染都重算，同时保证数据（渠道禁用/模型启用状态）变化后重算默认折叠
-      if (next.size === prev.size && [...next].every((v) => prev.has(v))) return prev;
-      return next;
-    });
-  }, [modelSignature]); // eslint-disable-line react-hooks/exhaustive-deps
+    const next = new Set(collapsed);
+    for (const model of models) {
+      const id = model.channel_id;
+      if (manualToggled.has(id)) continue;
+      if (defaults.has(id)) next.add(id);
+      else next.delete(id);
+    }
+    return next;
+  }, [models, collapsed, manualToggled]);
   const [view, setView] = useState<"card" | "list" | "flat">(() => {
     if (typeof window === "undefined") return "card";
     const saved = localStorage.getItem("modelView");
@@ -310,7 +302,7 @@ export function ModelTable({
       ) : view === "list" ? (
         <div className="space-y-3">
           {groups.map((group) => {
-            const isCollapsed = collapsed.has(group.channelId);
+            const isCollapsed = effectiveCollapsed.has(group.channelId);
             return (
               <div key={group.channelId} className="rounded-xl border border-[var(--color-border)]">
                 <div className="flex items-center justify-between gap-2 px-4 py-3 transition-colors hover:bg-[var(--color-surface-hover)]">
@@ -432,7 +424,7 @@ export function ModelTable({
       ) : (
         <div className="space-y-3">
           {groups.map((group) => {
-            const isCollapsed = collapsed.has(group.channelId);
+            const isCollapsed = effectiveCollapsed.has(group.channelId);
             return (
               <div key={group.channelId} className="rounded-xl border border-[var(--color-border)]">
                 <div className="flex items-center justify-between gap-2 px-4 py-3 transition-colors hover:bg-[var(--color-surface-hover)]">

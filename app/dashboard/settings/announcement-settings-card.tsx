@@ -50,7 +50,9 @@ export function AnnouncementSettingsCard({
   }, []);
 
   useEffect(() => {
-    void fetchAnnouncements();
+    void (async () => {
+      await fetchAnnouncements();
+    })();
   }, [fetchAnnouncements]);
 
   function resetForm() {

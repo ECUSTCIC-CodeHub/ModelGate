@@ -70,7 +70,8 @@ export default function AccessGuidePage() {
 
   const [origin, setOrigin] = useState("");
   useEffect(() => {
-    setOrigin(window.location.origin);
+    const t = setTimeout(() => setOrigin(window.location.origin), 0);
+    return () => clearTimeout(t);
   }, []);
 
   const base = origin.replace(/\/+$/, "");
