@@ -232,7 +232,7 @@ export async function listUserBalances(userId: number): Promise<Array<RedeemBala
 export async function findMatchingRedeemBalance(userId: number, channelId: number | null, modelAlias: string | null): Promise<RedeemBalanceRow | null> {
   if (channelId === null || !modelAlias) return null;
   const rows = await gatewayDb.query<RedeemBalanceRow>(
-    `SELECT * FROM redeem_balances WHERE user_id = ?`,
+    `SELECT * FROM redeem_balances WHERE user_id = ? ORDER BY id`,
     [userId],
   );
   for (const row of rows) {

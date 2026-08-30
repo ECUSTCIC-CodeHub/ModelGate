@@ -7,6 +7,7 @@ import { jsonError, jsonOk } from "@/lib/core/http";
 import { gatewayDb } from "@/lib/core/db";
 import { listExistingChannelIds } from "@/lib/gateway/channel-access";
 import { listExistingModelAliases } from "@/lib/gateway/model-access";
+import { toMysqlDatetime } from "@/lib/core/db/datetime";
 import { generateRedeemCodes, listCodes, getCodeByCode } from "@/lib/services/redeem-codes";
 
 const generateSchema = z.object({
@@ -64,7 +65,8 @@ export async function POST(request: Request) {
   if (expiresAt) {
     const parsedDate = new Date(expiresAt);
     if (Number.isNaN(parsedDate.getTime())) return jsonError("有效期格式不正确", 400);
-    expiresAt = parsedDate.toISOString().slice(0, 19).replace("T", " ") + "Z";
+    // 与其他时间字段一致，统一存储无时区后缀的 UTC 裸字符串
+    expiresAt = toMysqlDatetime(parsedDate);
   }
 
   const { codes, batchId } = await generateRedeemCodes({

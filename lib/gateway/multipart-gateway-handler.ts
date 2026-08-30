@@ -167,11 +167,13 @@ export async function handleMultipartGatewayRequest(request: Request) {
   const quotaMode = existingRoute.model.quota_mode;
   const bypassUserLimits = quotaMode === "bypass_group" || quotaMode === "independent";
 
-  // 命中用户定向额度（兑换码）时，跳过用户全局配额检查。
+  // 命中用户定向额度（兑换码）时，跳过用户全局配额检查，并记录该定向额度供扣减时保持一致。
   let redeemCovered = false;
+  let matchedRedeemBalanceId: number | null = null;
   if (!bypassUserLimits && modelGateFeatures.redeemCode) {
     const redeem = await findMatchingRedeemBalance(auth.user.id, existingRoute.channel.id, existingRoute.model.alias);
     redeemCovered = redeem !== null;
+    matchedRedeemBalanceId = redeem?.id ?? null;
   }
 
   const quotaHeaders: Record<string, string> = {};
@@ -321,7 +323,7 @@ export async function handleMultipartGatewayRequest(request: Request) {
     }
 
     lease.complete({ ok: true, latencyMs: Date.now() - startedAt });
-    addUsage(auth.user.id, auth.key.id, Math.max(1, estimatedTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id, route.model.alias);
+    addUsage(auth.user.id, auth.key.id, Math.max(1, estimatedTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id, route.model.alias, matchedRedeemBalanceId);
     insertChatLog({
       user_id: auth.user.id,
       key_id: auth.key.id,

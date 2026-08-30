@@ -163,10 +163,11 @@ export async function handlePassthroughRequest(request: Request, upstreamPath: s
     return jsonError("模型别名不存在或已禁用", 404);
   }
 
-  // 命中用户定向额度（兑换码）时，跳过用户全局配额检查。
-  const redeemCovered = modelGateFeatures.redeemCode
-    ? (await findMatchingRedeemBalance(auth.user.id, route.channel.id, route.model.alias)) !== null
-    : false;
+  // 命中用户定向额度（兑换码）时，跳过用户全局配额检查，并记录该定向额度供扣减时保持一致。
+  const redeemBalance = modelGateFeatures.redeemCode
+    ? await findMatchingRedeemBalance(auth.user.id, route.channel.id, route.model.alias)
+    : null;
+  const redeemCovered = redeemBalance !== null;
 
   const quotaResult = redeemCovered ? { ok: true as const, quota: undefined as undefined } : await checkQuota(auth.user.id, 0);
   const quotaHeaders: Record<string, string> = {};
@@ -226,7 +227,7 @@ export async function handlePassthroughRequest(request: Request, upstreamPath: s
     user_agent: clientUserAgent,
   });
   if (success) {
-    addUsage(auth.user.id, auth.key.id, 0, 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id, route.model.alias);
+    addUsage(auth.user.id, auth.key.id, 0, 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id, route.model.alias, redeemBalance?.id ?? null);
   }
 
   const responseHeaders = new Headers();

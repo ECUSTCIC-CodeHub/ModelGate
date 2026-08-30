@@ -27,6 +27,7 @@ export type UpstreamPickResult =
       attemptedChannels: number[];
       attemptedChannelNames: string[];
       modelQuota: ModelQuotaInfo | null;
+      redeemBalanceId: number | null;
     }
   | {
       ok: true;
@@ -36,6 +37,7 @@ export type UpstreamPickResult =
       attemptedChannels: number[];
       attemptedChannelNames: string[];
       modelQuota: ModelQuotaInfo | null;
+      redeemBalanceId: number | null;
     }
   | {
       ok: false;
@@ -46,11 +48,14 @@ export type UpstreamPickResult =
       failure: UpstreamFailureInfo | null;
       quotaReason: string | null;
       modelQuota: ModelQuotaInfo | null;
+      redeemBalanceId: number | null;
     };
 
 // 用户全局配额守卫：针对实际候选路由判断是否需要拦截（命中定向额度/绕过用户限额时放行）。
 // 返回 { ok: false; reason } 表示该候选路由不应被使用，交由调用方继续选路或整体失败。
-export type UserQuotaGuard = (route: RoutedModel) => Promise<{ ok: true } | { ok: false; reason: string }>;
+// 返回 { ok: true; redeemBalanceId } 时，redeemBalanceId 为请求时命中并据以跳过全局配额检查的定向额度 id，
+// 供调用方在扣减时使用，保证“跳过检查”与“实际扣减”针对同一定向额度。
+export type UserQuotaGuard = (route: RoutedModel) => Promise<{ ok: true; redeemBalanceId?: number | null } | { ok: false; reason: string }>;
 
 function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
   return typeof value === "object" && value !== null && "then" in value;
@@ -110,6 +115,8 @@ export async function requestUpstreamWithFallback({
   let lastModelQuotaReason: string | null = null;
   let lastModelQuota: ModelQuotaInfo | null = null;
   let lastUserQuotaReason: string | null = null;
+  // 请求时守卫确认命中的定向额度 id（供扣减时使用），仅对成功放行的路由记录
+  let approvedRedeemBalanceId: number | null = null;
 
   // 候选路由的模型独立配额检查：quota_mode 非 independent/dual 时直接放行（返回 null 配额信息）。
   // 配额不足时返回 reason，由调用方排除该候选继续选路。
@@ -145,6 +152,7 @@ export async function requestUpstreamWithFallback({
           lastUserQuotaReason = uq.reason;
           break;
         }
+        approvedRedeemBalanceId = uq.redeemBalanceId ?? null;
       }
       const runtimeKey = makeModelRuntimeKey(lastRoute.channel.id, lastRoute.model.real_model);
       const leaseResult = acquireChannel(runtimeKey, lastRoute.channel.max_concurrency, requestSignal);
@@ -157,6 +165,7 @@ export async function requestUpstreamWithFallback({
           attemptedChannels: [...attemptedChannels],
           attemptedChannelNames: [...attemptedChannelNames],
           modelQuota: lastQuotaCheck.quota,
+          redeemBalanceId: approvedRedeemBalanceId,
         };
       }
       if (!leaseResult.ok) break;
@@ -185,6 +194,7 @@ export async function requestUpstreamWithFallback({
             attemptedChannels: [...attemptedChannels],
             attemptedChannelNames: [...attemptedChannelNames],
             modelQuota: lastQuotaCheck.quota,
+            redeemBalanceId: approvedRedeemBalanceId,
           };
         } catch (error) {
           const summary = summarizeError(error);
@@ -232,6 +242,7 @@ export async function requestUpstreamWithFallback({
         lastUserQuotaReason = uq.reason;
         continue;
       }
+      approvedRedeemBalanceId = uq.redeemBalanceId ?? null;
     }
 
     const runtimeKey = makeModelRuntimeKey(route.channel.id, route.model.real_model);
@@ -245,6 +256,7 @@ export async function requestUpstreamWithFallback({
         attemptedChannels: [...attemptedChannels],
         attemptedChannelNames: [...attemptedChannelNames],
         modelQuota: modelQuotaCheck.quota,
+        redeemBalanceId: approvedRedeemBalanceId,
       };
     }
 
@@ -279,6 +291,7 @@ export async function requestUpstreamWithFallback({
           attemptedChannels: [...attemptedChannels],
           attemptedChannelNames: [...attemptedChannelNames],
           modelQuota: modelQuotaCheck.quota,
+          redeemBalanceId: approvedRedeemBalanceId,
         };
       } catch (error) {
         const summary = summarizeError(error);
@@ -315,5 +328,6 @@ export async function requestUpstreamWithFallback({
     failure: lastFailure,
     quotaReason: lastUserQuotaReason ?? lastModelQuotaReason,
     modelQuota: lastModelQuota,
+    redeemBalanceId: approvedRedeemBalanceId,
   };
 }
