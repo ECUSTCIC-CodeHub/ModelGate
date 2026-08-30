@@ -139,6 +139,13 @@ export async function requestUpstreamWithFallback({
       // 没有其他渠道了，用最后一个渠道继续重试（适用于 429 同渠道重试）
       const lastQuotaCheck = await checkCandidateModelQuota(lastRoute);
       if (!lastQuotaCheck.ok) break;
+      if (userQuotaGuard) {
+        const uq = await userQuotaGuard(lastRoute);
+        if (!uq.ok) {
+          lastUserQuotaReason = uq.reason;
+          break;
+        }
+      }
       const runtimeKey = makeModelRuntimeKey(lastRoute.channel.id, lastRoute.model.real_model);
       const leaseResult = acquireChannel(runtimeKey, lastRoute.channel.max_concurrency, requestSignal);
       if (isPromiseLike(leaseResult)) {
@@ -158,14 +165,6 @@ export async function requestUpstreamWithFallback({
       if (!channelQuota.ok) {
         lease.abandon();
         break;
-      }
-      if (userQuotaGuard) {
-        const uq = await userQuotaGuard(lastRoute);
-        if (!uq.ok) {
-          lease.abandon();
-          lastUserQuotaReason = uq.reason;
-          break;
-        }
       }
       try {
         attempt += 1;
@@ -228,6 +227,14 @@ export async function requestUpstreamWithFallback({
     attemptedChannelNames.push(route.channel.name);
     attempt += 1;
 
+    if (userQuotaGuard) {
+      const uq = await userQuotaGuard(route);
+      if (!uq.ok) {
+        lastUserQuotaReason = uq.reason;
+        continue;
+      }
+    }
+
     const runtimeKey = makeModelRuntimeKey(route.channel.id, route.model.real_model);
     const leaseResult = acquireChannel(runtimeKey, route.channel.max_concurrency, requestSignal);
     if (isPromiseLike(leaseResult)) {
@@ -250,15 +257,6 @@ export async function requestUpstreamWithFallback({
     if (!channelQuota.ok) {
       lease.abandon();
       continue;
-    }
-
-    if (userQuotaGuard) {
-      const uq = await userQuotaGuard(route);
-      if (!uq.ok) {
-        lease.abandon();
-        lastUserQuotaReason = uq.reason;
-        continue;
-      }
     }
 
     try {
