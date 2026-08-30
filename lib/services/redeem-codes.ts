@@ -1,8 +1,19 @@
 import { randomBytes } from "node:crypto";
 import { gatewayDb } from "@/lib/core/db";
+import type { ExecuteResult } from "@/lib/core/db/adapter";
 import { toMysqlDatetime, parseStoredUtc } from "@/lib/core/db/datetime";
 import { parseAllowedChannelIds, stringifyAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
+
+
+// 判断是否为唯一约束冲突（SQLite: UNIQUE constraint failed; MySQL: ER_DUP_ENTRY）。
+function isUniqueConstraintError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return /UNIQUE constraint failed|ER_DUP_ENTRY|duplicate entry/i.test(err.message ?? String(err));
+}
+
+// 用于在并发重复兑换时强制回滚事务，再由外层转为友好提示，避免多计一次核销次数。
+class RedeemAlreadyRedeemedError extends Error {}
 
 export type RedeemCodeRow = {
   id: number;
@@ -149,7 +160,9 @@ export async function redeemCodeForUser(userId: number, code: string): Promise<{
     return { ok: false, reason: validity.reason ?? "兑换码不可用" };
   }
 
-  const result = await gatewayDb.transaction(async (tx) => {
+  let result: { ok: false; reason: string } | { ok: true; balance: RedeemBalanceRow } | undefined;
+  try {
+    result = await gatewayDb.transaction(async (tx) => {
     const existing = await tx.queryOne<{ id: number }>(
       "SELECT id FROM redeem_balances WHERE code_id = ? AND user_id = ?",
       [row.id, userId],
@@ -171,22 +184,33 @@ export async function redeemCodeForUser(userId: number, code: string): Promise<{
       return { ok: false as const, reason: "该兑换码已失效或使用次数已达上限" };
     }
 
-    const balanceResult = await tx.execute(
-      `INSERT INTO redeem_balances (
-         code_id, user_id, token_quota, request_quota,
-         allowed_channel_ids, allowed_model_aliases, expires_at, created_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        row.id,
-        userId,
-        row.token_quota,
-        row.request_quota,
-        row.allowed_channel_ids,
-        row.allowed_model_aliases,
-        row.expires_at,
-        toMysqlDatetime(new Date()),
-      ],
-    );
+    // 并发下同一用户重复兑换同一多用途兑换码时，SELECT 无法兜底，
+    // 唯一约束会让后到事务抛错。捕获唯一约束冲突并转为友好提示。
+    let balanceResult: ExecuteResult | undefined;
+    try {
+      balanceResult = await tx.execute(
+        `INSERT INTO redeem_balances (
+           code_id, user_id, token_quota, request_quota,
+           allowed_channel_ids, allowed_model_aliases, expires_at, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          row.id,
+          userId,
+          row.token_quota,
+          row.request_quota,
+          row.allowed_channel_ids,
+          row.allowed_model_aliases,
+          row.expires_at,
+          toMysqlDatetime(new Date()),
+        ],
+      );
+    } catch (err) {
+      if (isUniqueConstraintError(err)) {
+        // 抛出以回滚事务（回滚本次 used_count 自增），由外层捕获转为友好提示。
+        throw new RedeemAlreadyRedeemedError();
+      }
+      throw err;
+    }
 
     await tx.execute(
       `INSERT INTO redeem_redemptions (code_id, user_id) VALUES (?, ?)`,
@@ -198,7 +222,13 @@ export async function redeemCodeForUser(userId: number, code: string): Promise<{
       [balanceResult.lastInsertRowid],
     );
     return { ok: true as const, balance: balance! };
-  });
+    });
+  } catch (err) {
+    if (err instanceof RedeemAlreadyRedeemedError) {
+      return { ok: false as const, reason: "您已兑换过该兑换码" };
+    }
+    throw err;
+  }
 
   return result;
 }
