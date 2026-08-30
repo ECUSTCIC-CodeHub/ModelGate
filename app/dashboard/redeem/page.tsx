@@ -31,15 +31,6 @@ type Balance = {
 
 type Redemption = { id: number; code: string; redeemed_at: string };
 
-function parseChannelIds(raw: string | null | undefined): number[] {
-  if (!raw) return [];
-  try { const p = JSON.parse(raw); return Array.isArray(p) ? p.filter((x): x is number => typeof x === "number") : []; } catch { return []; }
-}
-function parseAliases(raw: string | null | undefined): string[] {
-  if (!raw) return [];
-  try { const p = JSON.parse(raw); return Array.isArray(p) ? p.filter((x): x is string => typeof x === "string") : []; } catch { return []; }
-}
-
 export default function RedeemPage() {
   const initialProfile = useAuthProfile();
   const [role] = useState<"admin" | "user">(() => (initialProfile?.role as "admin" | "user" | undefined) ?? (getCachedProfile()?.role as "admin" | "user" | undefined) ?? "user");
@@ -55,8 +46,8 @@ export default function RedeemPage() {
     if (!data) return;
     setBalances((data.data ?? []).map((b: Record<string, unknown>) => ({
       ...b,
-      allowed_channel_ids: parseChannelIds(b.allowed_channel_ids as string | null),
-      allowed_model_aliases: parseAliases(b.allowed_model_aliases as string | null),
+      allowed_channel_ids: Array.isArray(b.allowed_channel_ids) ? b.allowed_channel_ids : [],
+      allowed_model_aliases: Array.isArray(b.allowed_model_aliases) ? b.allowed_model_aliases : [],
     })));
     setRedemptions(data.redemptions ?? []);
   }, []);

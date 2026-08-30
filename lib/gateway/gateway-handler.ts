@@ -361,6 +361,12 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       const redeem = await findMatchingRedeemBalance(auth.user.id, route.channel.id, route.model.alias);
       if (redeem) return { ok: true };
     }
+    // 复用初始循环已执行过的用户全局配额/频率检查结果，避免对同一请求重复消耗 RPM/QPS/TPM
+    if (userQuotaChecked && cachedUserQuota) {
+      if (!cachedUserQuota.ok) return { ok: false, reason: cachedUserQuota.reason };
+      if (cachedUserRate && !cachedUserRate.ok) return { ok: false, reason: cachedUserRate.reason };
+      return { ok: true };
+    }
     const quotaResult = await checkQuota(auth.user.id, estimatedTokens);
     if (!quotaResult.ok) return { ok: false, reason: quotaResult.reason };
     const rate = await checkUserRateLimit(auth.user, estimatedTokens);
