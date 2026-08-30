@@ -22,6 +22,8 @@ import { resolveTokenUsage, tokenUsageMetadata } from "@/lib/gateway/token-usage
 import { resolveTriState } from "@/lib/gateway/user-preferences";
 import { buildErrorResponseBody, parseUpstreamError } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
+import { findMatchingRedeemBalance } from "@/lib/services/redeem-codes";
+import { modelGateFeatures } from "@/lib/core/features";
 import { requestUpstreamWithFallback } from "@/lib/gateway/upstream-routing";
 import {
   applyCopilotCompatibilityToChatStream,
@@ -224,9 +226,16 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     const quotaMode = existingRoute.model.quota_mode;
     const bypassUserLimits = quotaMode === "bypass_group" || quotaMode === "independent";
 
+    // 命中用户定向额度（兑换码）时，跳过用户全局配额检查，由定向额度兜底。
+    let redeemCovered = false;
+    if (!bypassUserLimits && modelGateFeatures.redeemCode) {
+      const redeem = await findMatchingRedeemBalance(auth.user.id, existingRoute.channel.id, existingRoute.model.alias);
+      redeemCovered = redeem !== null;
+    }
+
     let exceededReason: string | null = null;
 
-    if (!bypassUserLimits) {
+    if (!bypassUserLimits && !redeemCovered) {
       if (!userQuotaChecked) {
         cachedUserQuota = await checkQuota(auth.user.id, estimatedTokens);
         if (cachedUserQuota.ok) {
@@ -563,7 +572,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
           : null;
 
       lease.complete({ ok: upstream.status < 400, latencyMs: Date.now() - startedAt });
-      addUsage(auth.user.id, auth.key.id, Math.max(1, tokenUsage.totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id);
+      addUsage(auth.user.id, auth.key.id, Math.max(1, tokenUsage.totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id, route.model.alias);
       insertChatLog({
         user_id: auth.user.id,
         key_id: auth.key.id,
@@ -620,7 +629,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       const firstTokenLatencyMs = firstTokenAt !== null ? Math.max(0, firstTokenAt - startedAt) : null;
 
       if (success) {
-        addUsage(auth.user.id, auth.key.id, Math.max(1, tokenUsage.totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id);
+        addUsage(auth.user.id, auth.key.id, Math.max(1, tokenUsage.totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id, route.model.alias);
       }
       insertChatLog({
         user_id: auth.user.id,
@@ -733,7 +742,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       : null;
 
   lease.complete({ ok: true, latencyMs: Date.now() - startedAt });
-  addUsage(auth.user.id, auth.key.id, Math.max(1, tokenUsage.totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id);
+  addUsage(auth.user.id, auth.key.id, Math.max(1, tokenUsage.totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id, route.model.alias);
   insertChatLog({
     user_id: auth.user.id,
     key_id: auth.key.id,

@@ -12,7 +12,8 @@ import { selectModelRoute, findUaDenyMatchForAlias, resolveModelFallbackAlias } 
 import { resolveClientIp } from "@/lib/core/client-ip";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { resolveTriState } from "@/lib/gateway/user-preferences";
-import { isFeatureEnabled } from "@/lib/core/features";
+import { isFeatureEnabled, modelGateFeatures } from "@/lib/core/features";
+import { findMatchingRedeemBalance } from "@/lib/services/redeem-codes";
 import { checkUserAgentRestrictions, parseUaRestrictions } from "@/lib/gateway/ua-restrictions";
 import { buildErrorResponseBody, parseUpstreamError } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
@@ -166,11 +167,18 @@ export async function handleMultipartGatewayRequest(request: Request) {
   const quotaMode = existingRoute.model.quota_mode;
   const bypassUserLimits = quotaMode === "bypass_group" || quotaMode === "independent";
 
+  // 命中用户定向额度（兑换码）时，跳过用户全局配额检查。
+  let redeemCovered = false;
+  if (!bypassUserLimits && modelGateFeatures.redeemCode) {
+    const redeem = await findMatchingRedeemBalance(auth.user.id, existingRoute.channel.id, existingRoute.model.alias);
+    redeemCovered = redeem !== null;
+  }
+
   const quotaHeaders: Record<string, string> = {};
   let channelQuotaHeaders: Record<string, string> | null = null;
   let modelQuotaHeaders: Record<string, string> | null = null;
 
-  if (!bypassUserLimits) {
+  if (!bypassUserLimits && !redeemCovered) {
     const quotaResult = await checkQuota(auth.user.id, estimatedTokens);
     if (!quotaResult.ok) {
       logRejected(429, quotaResult.reason, alias, estimatedTokens);
@@ -313,7 +321,7 @@ export async function handleMultipartGatewayRequest(request: Request) {
     }
 
     lease.complete({ ok: true, latencyMs: Date.now() - startedAt });
-    addUsage(auth.user.id, auth.key.id, Math.max(1, estimatedTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id);
+    addUsage(auth.user.id, auth.key.id, Math.max(1, estimatedTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id, route.model.alias);
     insertChatLog({
       user_id: auth.user.id,
       key_id: auth.key.id,
