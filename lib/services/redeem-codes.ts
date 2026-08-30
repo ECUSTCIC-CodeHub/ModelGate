@@ -147,6 +147,36 @@ export async function getCodeById(id: number): Promise<RedeemCodeRow | undefined
   return gatewayDb.queryOne<RedeemCodeRow>("SELECT * FROM redeem_codes WHERE id = ?", [id]);
 }
 
+// 批量启用/停用，返回实际影响行数（不存在的兑换码被忽略）。
+export async function setRedeemCodesEnabled(codes: string[], enabled: boolean): Promise<number> {
+  if (codes.length === 0) return 0;
+  const placeholders = codes.map(() => "?").join(",");
+  const result = await gatewayDb.execute(
+    `UPDATE redeem_codes SET enabled = ? WHERE code IN (${placeholders})`,
+    [enabled ? 1 : 0, ...codes],
+  );
+  return result.changes;
+}
+
+// 批量删除兑换码及其定向额度与核销记录，返回实际删除数量。
+export async function deleteRedeemCodes(codes: string[]): Promise<number> {
+  if (codes.length === 0) return 0;
+  const placeholders = codes.map(() => "?").join(",");
+  const ids = (await gatewayDb.query<{ id: number }>(
+    `SELECT id FROM redeem_codes WHERE code IN (${placeholders})`,
+    codes,
+  )).map((row) => row.id);
+  if (ids.length === 0) return 0;
+
+  await gatewayDb.transaction(async (tx) => {
+    const idPlaceholders = ids.map(() => "?").join(",");
+    await tx.execute(`DELETE FROM redeem_redemptions WHERE code_id IN (${idPlaceholders})`, ids);
+    await tx.execute(`DELETE FROM redeem_balances WHERE code_id IN (${idPlaceholders})`, ids);
+    await tx.execute(`DELETE FROM redeem_codes WHERE id IN (${idPlaceholders})`, ids);
+  });
+  return ids.length;
+}
+
 // 用户兑换：校验有效性、限定渠道/模型是否存在，创建定向额度并登记核销。
 export async function redeemCodeForUser(userId: number, code: string): Promise<{ ok: true; balance: RedeemBalanceRow } | { ok: false; reason: string }> {
   const normalized = code.trim().toUpperCase();

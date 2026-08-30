@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SectionTitle } from "@/components/dashboard/section-title";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PagePagination } from "@/components/dashboard/page-pagination";
 import { authedFetch } from "@/lib/auth/client-auth";
@@ -49,7 +50,27 @@ function parseAliases(raw: string | null | undefined): string[] {
   } catch { return []; }
 }
 
+// 生成后立即导出 CSV 文件，方便批量分发（含 BOM，Excel 打开不乱码）。
+// 通过组件内常驻的 <a> 元素触发下载，避免在异步回调中动态创建元素被浏览器拦截。
+function downloadRedeemCodesCsv(anchor: HTMLAnchorElement, codes: string[], batchId: string) {
+  const escapeCell = (value: string) => {
+    // 公式注入防护：以 = + - @ 空格/制表符/回车开头的单元格强制引号包裹，Excel 打开时视为文本
+    const needsQuote = /[",\n\r]/.test(value) || /^[=+\-@\t\r ]/.test(value);
+    return needsQuote ? `"${value.replace(/"/g, '""')}"` : value;
+  };
+  const header = "\uFEFF兑换码,批次\n";
+  const rows = codes.map((code) => `${escapeCell(code)},${escapeCell(batchId)}`).join("\n");
+  const blob = new Blob([header + rows], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  anchor.href = url;
+  anchor.download = batchId ? `兑换码-${batchId.slice(-8)}.csv` : `兑换码-${Date.now()}.csv`;
+  anchor.click();
+  // 下载启动是异步的，延迟到宏任务再释放 Blob URL，避免个别浏览器中断下载
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 export default function AdminRedeemCodesPage() {
+  const downloadAnchorRef = useRef<HTMLAnchorElement>(null);
   const [channels, setChannels] = useState<ChannelOption[]>([]);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [rows, setRows] = useState<CodeRow[]>([]);
@@ -57,6 +78,7 @@ export default function AdminRedeemCodesPage() {
   const [page, setPage] = useState(1);
   const pageSize = 20;
   const [keyword, setKeyword] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   const [count, setCount] = useState(10);
   const [tokenQuota, setTokenQuota] = useState("");
@@ -78,6 +100,7 @@ export default function AdminRedeemCodesPage() {
     setRows(data.data ?? []);
     setTotal(data.paging?.total ?? 0);
     setPage(targetPage);
+    setSelectedIds(new Set());
   }, [keyword]);
 
   const loadOptions = useCallback(async () => {
@@ -91,7 +114,21 @@ export default function AdminRedeemCodesPage() {
     }
     if (mRes.ok) {
       const data = await mRes.json().catch(() => null);
-      if (data?.data) setModels(data.data.map((m: { alias: string; real_model: string }) => ({ alias: m.alias, real_model: m.real_model })));
+      if (data?.data) {
+        // 同一模型别名可由多个渠道提供，/api/admin/models 会返回多行同 alias 记录；
+        // 兑换码限定模型以别名维度匹配，这里过滤已禁用记录并按别名去重，避免渲染重复 key。
+        const seen = new Set<string>();
+        setModels(
+          data.data
+            .filter((m: { alias: string; enabled: number }) => {
+              if (m.enabled !== 1) return false;
+              if (seen.has(m.alias)) return false;
+              seen.add(m.alias);
+              return true;
+            })
+            .map((m: { alias: string; real_model: string }) => ({ alias: m.alias, real_model: m.real_model })),
+        );
+      }
     }
   }, []);
 
@@ -131,9 +168,14 @@ export default function AdminRedeemCodesPage() {
         toast.error(data?.error?.message ?? "生成失败");
         return;
       }
-      toast.success(data?.message ?? "生成成功");
-      if (data?.data?.codes?.length) {
-        window.navigator.clipboard?.writeText(data.data.codes.join("\n")).catch(() => undefined);
+      if (data?.data?.codes?.length && downloadAnchorRef.current) {
+        const { codes, batch_id: rawBatchId } = data.data as { codes: string[]; batch_id?: unknown };
+        const batchId = typeof rawBatchId === "string" ? rawBatchId : "";
+        downloadRedeemCodesCsv(downloadAnchorRef.current, codes, batchId);
+        const copyOk = (await window.navigator.clipboard?.writeText(codes.join("\n")).then(() => true).catch(() => false)) ?? false;
+        toast.success(`${data.message ?? "生成成功"}。已导出 CSV${copyOk ? "，并已复制到剪贴板。" : "；剪贴板复制失败，请从 CSV 文件获取。"}`);
+      } else {
+        toast.success(data?.message ?? "生成成功");
       }
       setCount(10);
       setTokenQuota("");
@@ -176,9 +218,64 @@ export default function AdminRedeemCodesPage() {
     await loadCodes(page);
   };
 
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const allSelected = rows.length > 0 && rows.every((r) => selectedIds.has(r.id));
+
+  const toggleSelectAll = () => {
+    setSelectedIds(allSelected ? new Set() : new Set(rows.map((r) => r.id)));
+  };
+
+  const selectedCodes = () => rows.filter((r) => selectedIds.has(r.id)).map((r) => r.code);
+
+  const batchToggle = async (enabled: boolean) => {
+    const codes = selectedCodes();
+    if (codes.length === 0) return;
+    const res = await authedFetch("/api/admin/redeem-codes", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ codes, enabled }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      toast.error(data?.error?.message ?? "操作失败");
+      return;
+    }
+    toast.success(data?.message ?? "操作成功");
+    setSelectedIds(new Set());
+    await loadCodes(page);
+  };
+
+  const batchRemove = async () => {
+    const codes = selectedCodes();
+    if (codes.length === 0) return;
+    if (!window.confirm(`确定删除选中的 ${codes.length} 个兑换码？相关额度与核销记录将一并删除。`)) return;
+    const res = await authedFetch("/api/admin/redeem-codes", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ codes }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      toast.error(data?.error?.message ?? "删除失败");
+      return;
+    }
+    toast.success(data?.message ?? "删除成功");
+    setSelectedIds(new Set());
+    await loadCodes(page);
+  };
+
   return (
     <DashboardShell role="admin" title="兑换码管理" subtitle="批量生成定向兑换码，限定渠道与模型，供用户兑换后获得定向额度。">
       <div className="space-y-4 pb-6">
+        <a ref={downloadAnchorRef} className="hidden" aria-hidden="true" />
         <Card>
           <CardHeader>
             <SectionTitle title="批量生成" description="一次生成 N 个兑换码，共享同一套渠道/模型限定与额度。生成的兑换码会复制到剪贴板。" />
@@ -252,7 +349,7 @@ export default function AdminRedeemCodesPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-[var(--color-foreground-muted)]">
                 已选渠道：{channelIds.length} 个，已选模型：{aliases.length} 个
               </p>
@@ -265,15 +362,23 @@ export default function AdminRedeemCodesPage() {
 
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <SectionTitle title="兑换码列表" description="管理已生成的兑换码，支持停用与删除。" />
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {selectedIds.size > 0 ? (
+                  <>
+                    <span className="text-xs text-[var(--color-foreground-muted)]">已选 {selectedIds.size} 项</span>
+                    <Button variant="outline" size="sm" onClick={() => void batchToggle(true)}>批量启用</Button>
+                    <Button variant="outline" size="sm" onClick={() => void batchToggle(false)}>批量停用</Button>
+                    <Button variant="ghost" size="sm" onClick={() => void batchRemove()}>批量删除</Button>
+                  </>
+                ) : null}
                 <Input
                   placeholder="搜索兑换码"
                   value={keyword}
                   onChange={(e) => setKeyword(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") void loadCodes(1); }}
-                  className="w-56"
+                  className="w-full sm:w-56"
                 />
                 <Button variant="outline" onClick={() => void loadCodes(1)}>搜索</Button>
               </div>
@@ -284,6 +389,9 @@ export default function AdminRedeemCodesPage() {
               <Table className="min-w-[1000px]">
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox checked={allSelected} onCheckedChange={toggleSelectAll} aria-label="全选当前页" />
+                    </TableHead>
                     <TableHead>兑换码</TableHead>
                     <TableHead>批次</TableHead>
                     <TableHead>Token 额度</TableHead>
@@ -299,7 +407,7 @@ export default function AdminRedeemCodesPage() {
                 <TableBody>
                   {rows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="py-8 text-center text-sm text-[var(--color-foreground-muted)]">
+                      <TableCell colSpan={11} className="py-8 text-center text-sm text-[var(--color-foreground-muted)]">
                         暂无兑换码
                       </TableCell>
                     </TableRow>
@@ -309,6 +417,13 @@ export default function AdminRedeemCodesPage() {
                       const al = parseAliases(row.allowed_model_aliases);
                       return (
                         <TableRow key={row.id}>
+                          <TableCell className="w-10">
+                            <Checkbox
+                              checked={selectedIds.has(row.id)}
+                              onCheckedChange={() => toggleSelect(row.id)}
+                              aria-label={`选择兑换码 ${row.code}`}
+                            />
+                          </TableCell>
                           <TableCell className="font-mono text-sm">{row.code}</TableCell>
                           <TableCell>
                             <Badge variant="outline" className="font-mono text-xs">{row.batch_id.slice(-8)}</Badge>

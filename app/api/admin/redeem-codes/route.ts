@@ -4,11 +4,10 @@ import { z } from "zod";
 import { requireFeature } from "@/lib/core/features";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
-import { gatewayDb } from "@/lib/core/db";
 import { listExistingChannelIds } from "@/lib/gateway/channel-access";
 import { listExistingModelAliases } from "@/lib/gateway/model-access";
 import { toMysqlDatetime } from "@/lib/core/db/datetime";
-import { generateRedeemCodes, listCodes, getCodeByCode } from "@/lib/services/redeem-codes";
+import { generateRedeemCodes, listCodes, getCodeByCode, setRedeemCodesEnabled, deleteRedeemCodes } from "@/lib/services/redeem-codes";
 
 const generateSchema = z.object({
   count: z.number().int().min(1).max(500),
@@ -89,6 +88,14 @@ export async function POST(request: Request) {
   }, 201);
 }
 
+function normalizeCodes(body: unknown): string[] {
+  if (!body || typeof body !== "object") return [];
+  const raw = (body as Record<string, unknown>).codes;
+  return Array.isArray(raw)
+    ? raw.filter((c): c is string => typeof c === "string").map((c) => c.trim().toUpperCase()).filter(Boolean)
+    : [];
+}
+
 export async function PUT(request: Request) {
   const unavailable = requireFeature("redeemCode");
   if (unavailable) return unavailable;
@@ -97,15 +104,44 @@ export async function PUT(request: Request) {
   if ("error" in guard) return guard.error;
 
   const body = await request.json().catch(() => null);
-  const code = typeof body?.code === "string" ? body.code.trim().toUpperCase() : "";
   const enabled = body?.enabled;
+  if (typeof enabled !== "boolean") return jsonError("请求参数不正确", 400);
 
-  if (!code || typeof enabled !== "boolean") return jsonError("请求参数不正确", 400);
+  const codes = normalizeCodes(body);
+  const singleCode = typeof body?.code === "string" ? body.code.trim().toUpperCase() : "";
+  if (codes.length === 0 && !singleCode) return jsonError("请求参数不正确", 400);
+  if (codes.length > 500) return jsonError("一次最多操作 500 个兑换码", 400);
 
-  const row = await getCodeByCode(code);
-  if (!row) return jsonError("兑换码不存在", 404);
+  const targets = codes.length > 0 ? codes : [singleCode];
+  if (codes.length === 0) {
+    const row = await getCodeByCode(singleCode);
+    if (!row) return jsonError("兑换码不存在", 404);
+  }
 
-  await gatewayDb.execute("UPDATE redeem_codes SET enabled = ? WHERE id = ?", [enabled ? 1 : 0, row.id]);
+  const changed = await setRedeemCodesEnabled(targets, enabled);
 
-  return jsonOk({ message: enabled ? "兑换码已启用。" : "兑换码已停用。" });
+  return jsonOk({ message: enabled ? `已启用 ${changed} 个兑换码。` : `已停用 ${changed} 个兑换码。` });
+}
+
+export async function DELETE(request: Request) {
+  const unavailable = requireFeature("redeemCode");
+  if (unavailable) return unavailable;
+
+  const guard = await ensureAdmin(request);
+  if ("error" in guard) return guard.error;
+
+  const body = await request.json().catch(() => null);
+  const codes = normalizeCodes(body);
+  const singleCode = typeof body?.code === "string" ? body.code.trim().toUpperCase() : "";
+  if (codes.length === 0 && !singleCode) return jsonError("请求参数不正确", 400);
+  if (codes.length > 500) return jsonError("一次最多操作 500 个兑换码", 400);
+
+  const targets = codes.length > 0 ? codes : [singleCode];
+  if (codes.length === 0) {
+    const row = await getCodeByCode(singleCode);
+    if (!row) return jsonError("兑换码不存在", 404);
+  }
+  const deleted = await deleteRedeemCodes(targets);
+
+  return jsonOk({ message: `已删除 ${deleted} 个兑换码。` });
 }
