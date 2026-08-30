@@ -6,7 +6,8 @@ import { checkQuota, appendQuotaHeaders } from "@/lib/gateway/quota";
 import { resolveAccessibleModelAlias } from "@/lib/gateway/model-access";
 import { selectModelRoute, findUaDenyMatchForAlias, type RoutedModel } from "@/lib/gateway/router";
 import { getGatewaySettings } from "@/lib/core/settings";
-import { isFeatureEnabled } from "@/lib/core/features";
+import { isFeatureEnabled, modelGateFeatures } from "@/lib/core/features";
+import { findMatchingRedeemBalance } from "@/lib/services/redeem-codes";
 import { checkUserAgentRestrictions, parseUaRestrictions } from "@/lib/gateway/ua-restrictions";
 import { resolveClientIp } from "@/lib/core/client-ip";
 import { normalizeUserAgent } from "@/lib/gateway/queued-upstream-response";
@@ -162,14 +163,20 @@ export async function handlePassthroughRequest(request: Request, upstreamPath: s
     return jsonError("模型别名不存在或已禁用", 404);
   }
 
-  const quotaResult = await checkQuota(auth.user.id, 0);
+  // 命中用户定向额度（兑换码）时，跳过用户全局配额检查，并记录该定向额度供扣减时保持一致。
+  const redeemBalance = modelGateFeatures.redeemCode
+    ? await findMatchingRedeemBalance(auth.user.id, route.channel.id, route.model.alias)
+    : null;
+  const redeemCovered = redeemBalance !== null;
+
+  const quotaResult = redeemCovered ? { ok: true as const, quota: undefined as undefined } : await checkQuota(auth.user.id, 0);
   const quotaHeaders: Record<string, string> = {};
   if (!quotaResult.ok) {
     if (quotaResult.quota) appendQuotaHeaders(quotaHeaders, quotaResult.quota);
     logRejected(429, quotaResult.reason, alias);
     return jsonError(quotaResult.reason, 429, undefined, quotaHeaders);
   }
-  appendQuotaHeaders(quotaHeaders, quotaResult.quota);
+  if (quotaResult.quota) appendQuotaHeaders(quotaHeaders, quotaResult.quota);
 
   let upstream: Response;
   try {
@@ -220,7 +227,7 @@ export async function handlePassthroughRequest(request: Request, upstreamPath: s
     user_agent: clientUserAgent,
   });
   if (success) {
-    addUsage(auth.user.id, auth.key.id, 0, 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id);
+    addUsage(auth.user.id, auth.key.id, 0, 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id, route.model.alias, redeemBalance?.id ?? null);
   }
 
   const responseHeaders = new Headers();

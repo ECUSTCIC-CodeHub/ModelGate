@@ -7,6 +7,7 @@ import {
   Shield,
   SlidersHorizontal,
   Sparkles,
+  Ticket,
   UserCog,
   Users,
   Waypoints,
@@ -22,6 +23,7 @@ const adminMenus: DashboardMenuItem[] = [
   { href: "/dashboard/access", label: "接入指南", icon: Shield },
   { href: "/dashboard/channels", label: "渠道管理", icon: Waypoints },
   { href: "/dashboard/users", label: "用户管理", icon: UserCog },
+  { href: "/dashboard/redeem-codes", label: "兑换码管理", icon: Ticket },
   { href: "/dashboard/groups", label: "用户组管理", icon: Users },
   { href: "/dashboard/personal-settings", label: "个人设置", icon: SlidersHorizontal },
   { href: "/dashboard/settings", label: "系统设置", icon: Settings2 },
@@ -33,6 +35,7 @@ const userMenus: DashboardMenuItem[] = [
   { href: "/dashboard/keys", label: "密钥管理", icon: KeyRound },
   { href: "/dashboard/quota", label: "配额与限制", icon: Gauge },
   { href: "/dashboard/models", label: "模型列表", icon: Boxes },
+  { href: "/dashboard/redeem", label: "兑换码", icon: Ticket },
   { href: "/dashboard/access", label: "接入指南", icon: Shield },
   { href: "/dashboard/personal-settings", label: "个人设置", icon: SlidersHorizontal },
 ];

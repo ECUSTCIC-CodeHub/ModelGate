@@ -12,8 +12,8 @@ ModelGate 是一个 LLM 网关，提供 OpenAI 兼容的 API 端点，支持用�
 
 | 版本 | 取值 | 功能范围 |
 |:---|:---|:---|
-| 完整版 | `full`（默认） | 包含 OIDC、周期配额、系统公告、接入指南通知等完整功能 |
-| 精简版 | `lite` | 不包含 OIDC、周期配额、系统公告、接入指南通知、Webhook 回调；相关页面不渲染，相关 API 功能不可用或忽略对应字段 |
+| 完整版 | `full`（默认） | 包含 OIDC、周期配额、系统公告、接入指南通知、兑换码等完整功能 |
+| 精简版 | `lite` | 不包含 OIDC、周期配额、系统公告、接入指南通知、Webhook 回调、兑换码；相关页面不渲染，相关 API 功能不可用或忽略对应字段 |
 
 > 精简版保持与完整版相同的数据库结构，便于不同制品切换。精简版行为差异：
 
@@ -25,6 +25,7 @@ ModelGate 是一个 LLM 网关，提供 OpenAI 兼容的 API 端点，支持用�
 - 渠道的周期配额字段在精简版中不参与创建/更新和配额校验，不返回渠道周期配额响应头。
 - `reset_usage: "period"` 返回 404；`reset_usage: "all"` 在精简版中只重置总用量。
 - OIDC 设置和用户组 OIDC Claim 映射字段在精简版中不参与创建/更新；已有数据库值会保留，切回完整版后仍可使用。
+- 兑换码相关管理/兑换接口返回 404，兑换码页面不渲染。
 
 ## 数据库配置
 
@@ -1580,6 +1581,118 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 ---
 
+
+## 管理接口 - 兑换码管理
+
+> 兑换码功能为完整版专属（`redeemCode`）。兑换码用于生成「定向额度」，仅当请求命中所限定的渠道与模型时才扣减，不占用用户全局配额。精简版调用相关接口返回 404。
+
+### POST /api/admin/redeem-codes
+
+批量生成兑换码。一次生成 N 个共享同一套渠道/模型限定与额度的兑换码，归入同一批次（`batch_id`）。
+
+**认证:** 管理员
+
+**请求体:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|:---|:---|:---|:---|
+| count | int | 是 | 生成数量，1-500 |
+| token_quota | int | 否 | Token 额度，与 request_quota 至少填一项 |
+| request_quota | int | 否 | 请求额度 |
+| allowed_channel_ids | int[] | 否 | 限定渠道 ID 列表，空表示不限制 |
+| allowed_model_aliases | string[] | 否 | 限定模型别名列表，空表示不限制 |
+| expires_at | string | 否 | 有效期（ISO 时间），空表示长期有效 |
+| max_uses | int | 否 | 每个码最多兑换次数，0 表示不限（默认 1） |
+| note | string | 否 | 备注，最长 500 字符 |
+
+**响应 (201):**
+```json
+{
+  "message": "已生成 10 个兑换码。",
+  "data": {
+    "batch_id": "1725000000000-a1b2c3d4",
+    "codes": ["XXXX-XXXX-XXXX", "..."]
+  }
+}
+```
+
+### GET /api/admin/redeem-codes
+
+分页查询兑换码列表。
+
+**认证:** 管理员
+
+**查询参数:**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|:---|:---|:---|:---|
+| limit | 1-100 | 20 | 每页数量 |
+| offset | int | 0 | 偏移量 |
+| keyword | string | | 按兑换码模糊搜索 |
+| batch_id | string | | 按批次筛选 |
+
+**响应 (200):**
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "code": "XXXX-XXXX-XXXX",
+      "batch_id": "1725000000000-a1b2c3d4",
+      "token_quota": 1000000,
+      "request_quota": null,
+      "allowed_channel_ids": "[1]",
+      "allowed_model_aliases": "[\"gpt-4o\"]",
+      "expires_at": null,
+      "enabled": 1,
+      "max_uses": 1,
+      "used_count": 0,
+      "note": null,
+      "created_at": "..."
+    }
+  ],
+  "paging": { "limit": 20, "offset": 0, "total": 1 }
+}
+```
+
+### PUT /api/admin/redeem-codes
+
+启用 / 停用指定兑换码。
+
+**认证:** 管理员
+
+**请求体:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|:---|:---|:---|:---|
+| code | string | 是 | 兑换码 |
+| enabled | boolean | 是 | 是否启用 |
+
+### GET /api/admin/redeem-codes/{id}
+
+获取兑换码详情及其核销（兑换）记录。
+
+**认证:** 管理员
+
+**响应 (200):**
+```json
+{
+  "data": { "...": "兑换码信息" },
+  "redemptions": {
+    "data": [ { "id": 1, "code_id": 1, "user_id": 2, "redeemed_at": "...", "code": "...", "username": "user1" } ],
+    "total": 1
+  }
+}
+```
+
+### DELETE /api/admin/redeem-codes/{id}
+
+删除指定兑换码，同时删除其相关的定向额度与核销记录。
+
+**认证:** 管理员
+
+---
+
 ## 用户接口 - 密钥管理
 
 ### GET /api/user/keys
@@ -1782,6 +1895,76 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 > 返回当前用户有权访问的所有模型。`channel_id` 为模型所属渠道 ID，`channel_name` 为渠道名称。`follow_group` 模型的配额字段均为 `null`（受用户组配额约束）；`bypass_group` 模型的配额字段均为 `null`（不受配额限制）；`independent` 模型使用自身的配额额度；`dual` 模型同时受用户组配额与模型自身配额约束，配额字段同 `independent` 返回模型自身配额额度。`token_multiplier` 和 `request_multiplier` 表示实际扣量倍率。
 >
 > 精简版 `quota_period`、`period_label`、`period_quota_*`、`period_used_*`、`period_remaining_*`、`period_reset_at` 字段均为 `null`。
+
+---
+
+
+## 用户接口 - 兑换码
+
+> 兑换码功能为完整版专属（`redeemCode`）。用户兑换后获得「定向额度」，仅当请求命中所限定的渠道与模型时才从该额度扣减，不占用账户全局配额。
+
+### POST /api/user/redeem
+
+兑换兑换码，为当前用户创建一条定向额度。
+
+**认证:** 用户
+
+**请求体:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|:---|:---|:---|:---|
+| code | string | 是 | 兑换码 |
+
+**响应 (201):**
+```json
+{
+  "message": "兑换成功。",
+  "data": {
+    "id": 1,
+    "code_id": 1,
+    "token_quota": 1000000,
+    "request_quota": null,
+    "used_tokens": 0,
+    "used_requests": 0,
+    "allowed_channel_ids": [1],
+    "allowed_model_aliases": ["gpt-4o"],
+    "expires_at": null,
+    "remaining_tokens": 1000000,
+    "remaining_requests": null
+  }
+}
+```
+
+### GET /api/user/redeem
+
+获取当前用户的定向额度列表与兑换记录。
+
+**认证:** 用户
+
+**响应 (200):**
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "code_id": 1,
+      "token_quota": 1000000,
+      "request_quota": null,
+      "used_tokens": 0,
+      "used_requests": 0,
+      "allowed_channel_ids": [1],
+      "allowed_model_aliases": ["gpt-4o"],
+      "expires_at": null,
+      "remaining_tokens": 1000000,
+      "remaining_requests": null,
+      "active": true
+    }
+  ],
+  "redemptions": [
+    { "id": 1, "code_id": 1, "redeemed_at": "...", "code": "XXXX-XXXX-XXXX", "token_quota": 1000000, "request_quota": null }
+  ]
+}
+```
 
 ---
 

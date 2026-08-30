@@ -22,6 +22,8 @@ import { resolveTokenUsage, tokenUsageMetadata } from "@/lib/gateway/token-usage
 import { resolveTriState } from "@/lib/gateway/user-preferences";
 import { buildErrorResponseBody, parseUpstreamError } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
+import { findMatchingRedeemBalance } from "@/lib/services/redeem-codes";
+import { modelGateFeatures } from "@/lib/core/features";
 import { requestUpstreamWithFallback } from "@/lib/gateway/upstream-routing";
 import {
   applyCopilotCompatibilityToChatStream,
@@ -224,9 +226,16 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     const quotaMode = existingRoute.model.quota_mode;
     const bypassUserLimits = quotaMode === "bypass_group" || quotaMode === "independent";
 
+    // 命中用户定向额度（兑换码）时，跳过用户全局配额检查，由定向额度兜底。
+    let redeemCovered = false;
+    if (!bypassUserLimits && modelGateFeatures.redeemCode) {
+      const redeem = await findMatchingRedeemBalance(auth.user.id, existingRoute.channel.id, existingRoute.model.alias);
+      redeemCovered = redeem !== null;
+    }
+
     let exceededReason: string | null = null;
 
-    if (!bypassUserLimits) {
+    if (!bypassUserLimits && !redeemCovered) {
       if (!userQuotaChecked) {
         cachedUserQuota = await checkQuota(auth.user.id, estimatedTokens);
         if (cachedUserQuota.ok) {
@@ -343,6 +352,28 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       : transformed;
   };
 
+  // 针对实际选中的候选路由做用户全局配额守卫：命中定向额度或该路由绕过用户限额时放行，
+  // 否则需通过用户全局配额与频率限制，避免因上游回退切换到未覆盖渠道时绕过配额检查。
+  const userQuotaGuard = async (route: RoutedModel): Promise<{ ok: true; redeemBalanceId?: number | null } | { ok: false; reason: string }> => {
+    const routeBypass = route.model.quota_mode === "bypass_group" || route.model.quota_mode === "independent";
+    if (routeBypass) return { ok: true, redeemBalanceId: null };
+    if (modelGateFeatures.redeemCode) {
+      const redeem = await findMatchingRedeemBalance(auth.user.id, route.channel.id, route.model.alias);
+      if (redeem) return { ok: true, redeemBalanceId: redeem.id };
+    }
+    // 复用初始循环已执行过的用户全局配额/频率检查结果，避免对同一请求重复消耗 RPM/QPS/TPM
+    if (userQuotaChecked && cachedUserQuota) {
+      if (!cachedUserQuota.ok) return { ok: false, reason: cachedUserQuota.reason };
+      if (cachedUserRate && !cachedUserRate.ok) return { ok: false, reason: cachedUserRate.reason };
+      return { ok: true, redeemBalanceId: null };
+    }
+    const quotaResult = await checkQuota(auth.user.id, estimatedTokens);
+    if (!quotaResult.ok) return { ok: false, reason: quotaResult.reason };
+    const rate = await checkUserRateLimit(auth.user, estimatedTokens);
+    if (!rate.ok) return { ok: false, reason: rate.reason };
+    return { ok: true, redeemBalanceId: null };
+  };
+
   const picked = await requestUpstreamWithFallback({
     resolvedAlias: effectiveAlias,
     inboundProtocol,
@@ -355,6 +386,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     startedAt,
     estimatedTokens,
     buildRequestBody: adaptRequestBodyForRoute,
+    userQuotaGuard,
   });
   const buildFailureMessage = (stage: string, message: string, upstreamUrl?: string | null) => {
     const parts = [`阶段=${stage}`, message];
@@ -461,7 +493,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     }));
   }
 
-  const { route, upstream, lease, attemptedChannels, attemptedChannelNames, modelQuota } = picked;
+  const { route, upstream, lease, attemptedChannels, attemptedChannelNames, modelQuota, redeemBalanceId } = picked;
   if (modelQuota) {
     modelQuotaHeaders = {};
     appendModelQuotaHeaders(modelQuotaHeaders, modelQuota);
@@ -563,7 +595,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
           : null;
 
       lease.complete({ ok: upstream.status < 400, latencyMs: Date.now() - startedAt });
-      addUsage(auth.user.id, auth.key.id, Math.max(1, tokenUsage.totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id);
+      addUsage(auth.user.id, auth.key.id, Math.max(1, tokenUsage.totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id, route.model.alias, redeemBalanceId);
       insertChatLog({
         user_id: auth.user.id,
         key_id: auth.key.id,
@@ -620,7 +652,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       const firstTokenLatencyMs = firstTokenAt !== null ? Math.max(0, firstTokenAt - startedAt) : null;
 
       if (success) {
-        addUsage(auth.user.id, auth.key.id, Math.max(1, tokenUsage.totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id);
+        addUsage(auth.user.id, auth.key.id, Math.max(1, tokenUsage.totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id, route.model.alias, redeemBalanceId);
       }
       insertChatLog({
         user_id: auth.user.id,
@@ -733,7 +765,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       : null;
 
   lease.complete({ ok: true, latencyMs: Date.now() - startedAt });
-  addUsage(auth.user.id, auth.key.id, Math.max(1, tokenUsage.totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id);
+  addUsage(auth.user.id, auth.key.id, Math.max(1, tokenUsage.totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id, route.model.alias, redeemBalanceId);
   insertChatLog({
     user_id: auth.user.id,
     key_id: auth.key.id,

@@ -204,6 +204,46 @@ CREATE TABLE IF NOT EXISTS email_send_log (
   content TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS redeem_codes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  code VARCHAR(255) UNIQUE NOT NULL,
+  batch_id VARCHAR(64) NOT NULL,
+  token_quota BIGINT,
+  request_quota BIGINT,
+  allowed_channel_ids TEXT DEFAULT NULL,
+  allowed_model_aliases TEXT DEFAULT NULL,
+  expires_at DATETIME DEFAULT NULL,
+  enabled TINYINT(1) DEFAULT 1,
+  max_uses INT DEFAULT 1,
+  used_count INT DEFAULT 0,
+  note TEXT,
+  created_by INT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS redeem_balances (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  code_id INT NOT NULL,
+  user_id INT NOT NULL,
+  token_quota BIGINT,
+  request_quota BIGINT,
+  used_tokens DOUBLE DEFAULT 0,
+  used_requests DOUBLE DEFAULT 0,
+  allowed_channel_ids TEXT DEFAULT NULL,
+  allowed_model_aliases TEXT DEFAULT NULL,
+  expires_at DATETIME DEFAULT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_redeem_balances_code_user (code_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS redeem_redemptions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  code_id INT NOT NULL,
+  user_id INT NOT NULL,
+  redeemed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_redeem_redemptions_code_user (code_id, user_id)
+);
 `;
 
 export const MYSQL_BASE_INDEXES = [
@@ -222,6 +262,9 @@ export const MYSQL_BASE_INDEXES = [
   { name: "idx_email_senders_enabled", table: "email_senders", expr: "(enabled)" },
   { name: "idx_email_send_log_announcement", table: "email_send_log", expr: "(announcement_id)" },
   { name: "idx_email_send_log_status", table: "email_send_log", expr: "(status)" },
+  { name: "idx_redeem_codes_batch", table: "redeem_codes", expr: "(batch_id)" },
+  { name: "idx_redeem_balances_user", table: "redeem_balances", expr: "(user_id)" },
+  { name: "idx_redeem_redemptions_user", table: "redeem_redemptions", expr: "(user_id)" },
 ] as const;
 
 export const MYSQL_POST_MIGRATION_INDEXES = [

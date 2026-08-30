@@ -15,6 +15,7 @@ export const modelGateFeatures = {
   webhook: modelGateEdition === "full",
   accessGuideNotice: modelGateEdition === "full",
   uaRestrictions: modelGateEdition === "full",
+  redeemCode: modelGateEdition === "full",
 } as const;
 
 export type ModelGateFeature = keyof typeof modelGateFeatures;
@@ -26,6 +27,7 @@ const featureNames: Record<ModelGateFeature, string> = {
   webhook: "Webhook",
   accessGuideNotice: "接入指南通知",
   uaRestrictions: "User-Agent 限制",
+  redeemCode: "兑换码",
 };
 
 export function featureUnavailableMessage(featureName: string) {
