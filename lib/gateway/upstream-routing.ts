@@ -217,7 +217,7 @@ export async function requestUpstreamWithFallback({
     lastRoute = route;
 
     // 模型独立配额检查：配额不足则排除该候选模型实例（不排除整个渠道，避免同渠道其他实例被连坐跳过），
-    // 继续尝试下一个候选。配额不足不消耗重试预算（attempt 与渠道排除在配额通过后才执行）
+    // 继续尝试下一个候选。模型配额不足不消耗重试预算（attempt 仅在真正发起上游请求前递增）
     const modelQuotaCheck = await checkCandidateModelQuota(route);
     if (!modelQuotaCheck.ok) {
       excludedModelIds.add(route.model.id);
@@ -225,7 +225,6 @@ export async function requestUpstreamWithFallback({
     }
     attemptedChannels.add(route.channel.id);
     attemptedChannelNames.push(route.channel.name);
-    attempt += 1;
 
     if (userQuotaGuard) {
       const uq = await userQuotaGuard(route);
@@ -258,6 +257,9 @@ export async function requestUpstreamWithFallback({
       lease.abandon();
       continue;
     }
+
+    // 预检守卫（渠道并发获取、渠道配额、用户配额）失败均不消耗重试预算，只有真正发起上游请求才递增 attempt
+    attempt += 1;
 
     try {
       const upstreamBody = buildRequestBody(route);
