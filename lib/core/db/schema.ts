@@ -173,6 +173,49 @@ CREATE TABLE IF NOT EXISTS email_send_log (
 );
 CREATE INDEX IF NOT EXISTS idx_email_send_log_announcement ON email_send_log(announcement_id);
 CREATE INDEX IF NOT EXISTS idx_email_send_log_status ON email_send_log(status);
+
+CREATE TABLE IF NOT EXISTS redeem_codes (
+  id INTEGER PRIMARY KEY,
+  code TEXT UNIQUE NOT NULL,
+  batch_id TEXT NOT NULL,
+  token_quota INTEGER,
+  request_quota INTEGER,
+  allowed_channel_ids TEXT DEFAULT '[]',
+  allowed_model_aliases TEXT DEFAULT '[]',
+  expires_at DATETIME DEFAULT NULL,
+  enabled INTEGER DEFAULT 1,
+  max_uses INTEGER DEFAULT 1,
+  used_count INTEGER DEFAULT 0,
+  note TEXT,
+  created_by INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_redeem_codes_batch ON redeem_codes(batch_id);
+
+CREATE TABLE IF NOT EXISTS redeem_balances (
+  id INTEGER PRIMARY KEY,
+  code_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  token_quota INTEGER,
+  request_quota INTEGER,
+  used_tokens INTEGER DEFAULT 0,
+  used_requests INTEGER DEFAULT 0,
+  allowed_channel_ids TEXT DEFAULT '[]',
+  allowed_model_aliases TEXT DEFAULT '[]',
+  expires_at DATETIME DEFAULT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(code_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_redeem_balances_user ON redeem_balances(user_id);
+
+CREATE TABLE IF NOT EXISTS redeem_redemptions (
+  id INTEGER PRIMARY KEY,
+  code_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  redeemed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(code_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_redeem_redemptions_user ON redeem_redemptions(user_id);
 `;
 
 export const POST_MIGRATION_INDEXES_SQL = `
