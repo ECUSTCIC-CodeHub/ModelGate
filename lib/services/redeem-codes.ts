@@ -256,21 +256,6 @@ export async function findMatchingRedeemBalance(userId: number, channelId: numbe
   return null;
 }
 
-// 定向扣减：命中匹配的定向额度时从中扣减，返回是否完全覆盖（即用户全局用量不再扣）。
-export async function deductRedeemBalance(userId: number, channelId: number | null, modelAlias: string | null, tokens: number, requests: number): Promise<boolean> {
-  if (channelId === null || !modelAlias) return false;
-  const balance = await findMatchingRedeemBalance(userId, channelId, modelAlias);
-  if (!balance) return false;
-
-  await gatewayDb.execute(
-    `UPDATE redeem_balances
-       SET used_tokens = used_tokens + ?, used_requests = used_requests + ?
-       WHERE id = ?`,
-    [Math.max(0, tokens), Math.max(0, requests), balance.id],
-  );
-  return true;
-}
-
 // 管理员：按批次查看兑换码列表。
 export async function listCodes(options: { keyword?: string; limit: number; offset: number; batchId?: string }) {
   const { keyword = "", limit, offset, batchId } = options;

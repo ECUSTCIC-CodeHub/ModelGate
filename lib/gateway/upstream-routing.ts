@@ -48,6 +48,10 @@ export type UpstreamPickResult =
       modelQuota: ModelQuotaInfo | null;
     };
 
+// 用户全局配额守卫：针对实际候选路由判断是否需要拦截（命中定向额度/绕过用户限额时放行）。
+// 返回 { ok: false; reason } 表示该候选路由不应被使用，交由调用方继续选路或整体失败。
+export type UserQuotaGuard = (route: RoutedModel) => Promise<{ ok: true } | { ok: false; reason: string }>;
+
 function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
   return typeof value === "object" && value !== null && "then" in value;
 }
@@ -80,6 +84,7 @@ export async function requestUpstreamWithFallback({
   startedAt,
   estimatedTokens,
   buildRequestBody,
+  userQuotaGuard,
 }: {
   resolvedAlias: string;
   inboundProtocol: GatewayProtocol;
@@ -92,6 +97,7 @@ export async function requestUpstreamWithFallback({
   startedAt: number;
   estimatedTokens: number;
   buildRequestBody: (route: RoutedModel) => Record<string, unknown>;
+  userQuotaGuard?: UserQuotaGuard;
 }): Promise<UpstreamPickResult> {
   const attemptedChannels = new Set<number>();
   const attemptedChannelNames: string[] = [];
@@ -103,6 +109,7 @@ export async function requestUpstreamWithFallback({
   let lastFailure: UpstreamFailureInfo | null = null;
   let lastModelQuotaReason: string | null = null;
   let lastModelQuota: ModelQuotaInfo | null = null;
+  let lastUserQuotaReason: string | null = null;
 
   // 候选路由的模型独立配额检查：quota_mode 非 independent/dual 时直接放行（返回 null 配额信息）。
   // 配额不足时返回 reason，由调用方排除该候选继续选路。
@@ -151,6 +158,14 @@ export async function requestUpstreamWithFallback({
       if (!channelQuota.ok) {
         lease.abandon();
         break;
+      }
+      if (userQuotaGuard) {
+        const uq = await userQuotaGuard(lastRoute);
+        if (!uq.ok) {
+          lease.abandon();
+          lastUserQuotaReason = uq.reason;
+          break;
+        }
       }
       try {
         attempt += 1;
@@ -237,6 +252,15 @@ export async function requestUpstreamWithFallback({
       continue;
     }
 
+    if (userQuotaGuard) {
+      const uq = await userQuotaGuard(route);
+      if (!uq.ok) {
+        lease.abandon();
+        lastUserQuotaReason = uq.reason;
+        continue;
+      }
+    }
+
     try {
       const upstreamBody = buildRequestBody(route);
       try {
@@ -289,7 +313,7 @@ export async function requestUpstreamWithFallback({
     attemptedChannels: [...attemptedChannels],
     attemptedChannelNames: [...attemptedChannelNames],
     failure: lastFailure,
-    quotaReason: lastModelQuotaReason,
+    quotaReason: lastUserQuotaReason ?? lastModelQuotaReason,
     modelQuota: lastModelQuota,
   };
 }
