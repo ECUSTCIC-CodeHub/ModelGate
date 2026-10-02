@@ -65,9 +65,11 @@ export function RedeemCodeEditDialog({
       return;
     }
 
-    // 有效期不能留空：null 会让 atomic 核销的 SQL 判定豁免过期，收紧额度却永远不失效。
+    // 有效期留空分两种：原本就是长期有效（null）时表示「不改有效期」，
+    // 直接不提交该字段；原本有限期的清空则会被后端当成「改成长期有效」而拒绝。
+    const expiresAtTouched = expiresAt !== toLocalInput(row.expires_at);
     const nextExpiresAt = expiresAt ? new Date(expiresAt).toISOString() : null;
-    if (nextExpiresAt === null) {
+    if (expiresAtTouched && nextExpiresAt === null) {
       toast.error("有效期不能留空，请填写一个不早于当前有效期的到期时间");
       return;
     }
@@ -109,7 +111,7 @@ export function RedeemCodeEditDialog({
     if (tokenValue !== row.token_quota) payload.token_quota = tokenValue;
     if (requestValue !== row.request_quota) payload.request_quota = requestValue;
     if (maxUses !== row.max_uses) payload.max_uses = maxUses;
-    if (nextExpiresAt !== normalized(row.expires_at)) payload.expires_at = nextExpiresAt;
+    if (expiresAtTouched && nextExpiresAt !== normalized(row.expires_at)) payload.expires_at = nextExpiresAt;
 
     const trimmedNote = note.trim();
     const nextNote = trimmedNote ? trimmedNote : null;
@@ -168,7 +170,7 @@ export function RedeemCodeEditDialog({
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <Label>有效期（只能延长，不可留空）</Label>
+              <Label>{row.expires_at ? "有效期（只能延长）" : "有效期（长期有效，如需设置请填写）"}</Label>
               <Input type="datetime-local" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
             </div>
             <div>

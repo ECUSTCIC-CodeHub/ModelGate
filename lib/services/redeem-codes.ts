@@ -144,11 +144,17 @@ export type RedeemCodeListRow = RedeemCodeRow & {
   used_requests_sum: number;
 };
 
-// 管理员列表用的聚合查询：LEFT JOIN 创建人用户名 + 聚合已兑换人数与已用额度。
+// 管理员列表用的聚合查询：LEFT JOIN 创建人用户名 + 聚合持有人数与已用额度。
 // 用 GROUP BY rc.id 而不是 JOIN 后直接分页，避免一个码对应多条 balance 时把行数放大导致 total 失准。
+// redeemed_users 的统计口径与 redeem-authorization 的行为保持一致：只数「当前仍有效」的额度，
+// 已用尽/已过期的不算，否则列表上会显示成还有人持有。
 const CODE_LIST_SELECT = `SELECT rc.*,
          cu.username AS created_by_username,
-         COUNT(b.id) AS redeemed_users,
+         COUNT(CASE WHEN b.id IS NOT NULL
+                      AND (b.expires_at IS NULL OR b.expires_at > ?)
+                      AND (b.token_quota IS NULL OR b.used_tokens < b.token_quota)
+                      AND (b.request_quota IS NULL OR b.used_requests < b.request_quota)
+                    THEN 1 END) AS redeemed_users,
          COALESCE(SUM(b.used_tokens), 0) AS used_tokens_sum,
          COALESCE(SUM(b.used_requests), 0) AS used_requests_sum
     FROM redeem_codes rc
@@ -352,7 +358,7 @@ export async function listCodes(options: { keyword?: string; limit: number; offs
   const whereSql = whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
   const rows = await gatewayDb.query<RedeemCodeListRow>(
     `${CODE_LIST_SELECT} ${whereSql} GROUP BY rc.id ORDER BY rc.id DESC LIMIT ? OFFSET ?`,
-    [...args, limit, offset],
+    [toMysqlDatetime(new Date()), ...args, limit, offset],
   );
   const totalRow = await gatewayDb.queryOne<{ total: number }>(
     `SELECT COUNT(*) AS total FROM redeem_codes rc ${whereSql}`,
@@ -368,7 +374,7 @@ export async function listCodes(options: { keyword?: string; limit: number; offs
 export async function getCodeDetail(id: number): Promise<RedeemCodeListRow | undefined> {
   return gatewayDb.queryOne<RedeemCodeListRow>(
     `${CODE_LIST_SELECT} WHERE rc.id = ? GROUP BY rc.id`,
-    [id],
+    [toMysqlDatetime(new Date()), id],
   );
 }
 
