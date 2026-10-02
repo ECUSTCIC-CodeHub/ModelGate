@@ -77,12 +77,13 @@ export function RedeemCodeDetailDialog({
               <div>剩余额度（Token）：{remainingToken(code.token_quota, code.used_tokens_sum)}</div>
               <div>剩余额度（请求）：{remainingRequest(code.request_quota, code.used_requests_sum)}</div>
               <div>
-                已兑换 {formatNumber(code.redeemed_users)} 人 / 使用 {code.used_count}
+                有效持有 {formatNumber(code.redeemed_users)} 人 / 已兑换 {code.used_count}
                 {code.max_uses === 0 ? " 次（不限）" : ` / ${code.max_uses} 次`}
               </div>
               <div>创建人：{code.created_by_username ?? "—"}</div>
               <div>创建时间：{new Date(code.created_at).toLocaleString()}</div>
               <div>有效期：{code.expires_at ? new Date(code.expires_at).toLocaleString() : "长期有效"}</div>
+              <div>状态：{code.enabled === 1 ? "启用" : "停用"}</div>
               <div className="sm:col-span-2">备注：{code.note ?? "—"}</div>
             </div>
           ) : null}

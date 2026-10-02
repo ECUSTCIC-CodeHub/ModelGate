@@ -146,10 +146,11 @@ export type RedeemCodeListRow = RedeemCodeRow & {
 // 管理员列表用的聚合查询：LEFT JOIN 创建人用户名 + 聚合持有人数与已用额度。
 // 用 GROUP BY rc.id 而不是 JOIN 后直接分页，避免一个码对应多条 balance 时把行数放大导致 total 失准。
 // redeemed_users 的统计口径与 redeem-authorization 的行为保持一致：只数「当前仍有效」的额度，
-// 已用尽/已过期的不算，否则列表上会显示成还有人持有。
+// 已用尽/已过期/所属兑换码已停用的都不算，否则列表上会显示成还有人持有。
 const CODE_LIST_SELECT = `SELECT rc.*,
          cu.username AS created_by_username,
-         COUNT(CASE WHEN b.id IS NOT NULL
+         COUNT(CASE WHEN rc.enabled = 1
+                      AND b.id IS NOT NULL
                       AND (b.expires_at IS NULL OR b.expires_at > ?)
                       AND (b.token_quota IS NULL OR b.used_tokens < b.token_quota)
                       AND (b.request_quota IS NULL OR b.used_requests < b.request_quota)
@@ -338,7 +339,7 @@ export async function findMatchingRedeemBalance(userId: number, channelId: numbe
   return null;
 }
 
-// 管理员：按批次查看兑换码列表，附带创建人、已兑换人数与已用额度聚合。
+// 管理员：按批次查看兑换码列表，附带创建人、当前有效持有人数与已用额度聚合。
 export async function listCodes(options: { keyword?: string; limit: number; offset: number; batchId?: string }) {
   const { keyword = "", limit, offset, batchId } = options;
   const whereParts: string[] = [];

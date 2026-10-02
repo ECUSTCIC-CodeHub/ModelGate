@@ -386,7 +386,7 @@ export default function AdminRedeemCodesPage() {
                     <TableHead>限定渠道</TableHead>
                     <TableHead>限定模型</TableHead>
                     <TableHead>有效期</TableHead>
-                    <TableHead>兑换/使用</TableHead>
+                    <TableHead>持有/兑换</TableHead>
                     <TableHead>创建人</TableHead>
                     <TableHead>状态</TableHead>
                     <TableHead>操作</TableHead>
@@ -427,7 +427,7 @@ export default function AdminRedeemCodesPage() {
                           <TableCell>{al.length === 0 ? "不限" : al.join(",")}</TableCell>
                           <TableCell>{row.expires_at ? new Date(row.expires_at).toLocaleString() : "长期有效"}</TableCell>
                           <TableCell className="whitespace-nowrap text-xs">
-                            {formatNumber(row.redeemed_users)} 人已领
+                            {formatNumber(row.redeemed_users)} 人有效持有
                             <br />
                             {row.used_count}/{row.max_uses === 0 ? "∞" : row.max_uses} 次
                           </TableCell>

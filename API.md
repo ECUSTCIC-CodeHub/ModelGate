@@ -1636,10 +1636,10 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 ### GET /api/admin/redeem-codes
 
-分页查询兑换码列表，按码聚合已兑换人数与已用额度。
+分页查询兑换码列表，按码聚合当前有效持有人数与已用额度。
 
-`redeemed_users` 为该码当前仍持有有效定向额度的人数（已用尽/已过期的额度不计入），`used_tokens_sum` / `used_requests_sum` 为这些额度累计已用；
-剩余额度 = `token_quota` - `used_tokens_sum`（`token_quota` 为 null 表示不限，不做扣减统计）。
+`redeemed_users` 为该码当前仍持有有效定向额度的人数（已用尽/已过期/所属兑换码已停用的额度不计入），`used_tokens_sum` / `used_requests_sum` 为该码**全部**已发放额度的累计已用（不区分额度是否仍有效，故停用码也可能有非零累计值）；
+剩余额度 = `token_quota` - `used_tokens_sum`（`token_quota` 为 null 表示不限，不做扣减统计）；该值只反映已发放额度的累计消耗，兑换码停用或过期后不再代表用户可领取的量。
 注意 `used_count` 是**兑换次数**，与 `max_uses` 配对；额度余量看 `used_tokens_sum`，两者不是一回事。
 
 **认证:** 管理员
