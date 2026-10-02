@@ -31,14 +31,19 @@ export function isRuntimeToggleableFeature(feature: ModelGateFeature): boolean {
   return runtimeToggleableFeatures.includes(feature);
 }
 
-// 运行时功能开关（合并管理员设置）。settings 行缺失时回落到构建版本默认值。
+// 运行时功能开关（合并管理员设置）。
+// 语义是「只能收窄，不能放宽」：构建版本不含该功能时，settings 里残留的 "1" 不得把它放出来，
+// 否则精简版切到完整版再切回去，就会凭一行历史设置复活一个本该不存在的接口。
 export function resolveRuntimeFeatures(settings: Record<string, unknown>): Record<ModelGateFeature, boolean> {
   const merged = { ...modelGateFeatures } as Record<ModelGateFeature, boolean>;
   for (const feature of runtimeToggleableFeatures) {
-    const key = featureSettingsKey(feature);
-    const raw = settings[key];
+    const buildDefault = modelGateFeatures[feature];
+    if (!buildDefault) {
+      merged[feature] = false;
+      continue;
+    }
+    const raw = settings[featureSettingsKey(feature)];
     if (raw === 0 || raw === "0") merged[feature] = false;
-    else if (raw === 1 || raw === "1") merged[feature] = true;
   }
   return merged;
 }
