@@ -61,9 +61,13 @@ export async function POST(request: Request) {
   const existingAliases = await listExistingModelAliases(aliases);
   const droppedAliases = aliases.filter((a) => !existingAliases.includes(a));
 
-  let expiresAt: string | null = parsed.data.expires_at ?? null;
-  if (expiresAt) {
-    const parsedDate = new Date(expiresAt);
+  // 空串与纯空白串按「不设有效期」处理：空串本身就是非法时间值，落库后会让核销 SQL 的
+  // `expires_at IS NULL OR expires_at > ?` 失去意义（SQLite 下恒不成立、码永远兑换不了，
+  // MySQL 严格模式下直接拒写），因此这里与不传该字段等价。
+  let expiresAt: string | null = null;
+  const rawExpiresAt = parsed.data.expires_at?.trim();
+  if (rawExpiresAt) {
+    const parsedDate = new Date(rawExpiresAt);
     if (Number.isNaN(parsedDate.getTime())) return jsonError("有效期格式不正确", 400);
     // 与其他时间字段一致，统一存储无时区后缀的 UTC 裸字符串
     expiresAt = toMysqlDatetime(parsedDate);

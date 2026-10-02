@@ -13,7 +13,7 @@ const patchSchema = z
   .object({
     note: z.string().max(500).nullable().optional(),
     enabled: z.boolean().optional(),
-    expires_at: z.string().min(1).optional(),
+    expires_at: z.string().nullable().optional(),
     max_uses: z.number().int().min(0).optional(),
     token_quota: z.number().int().min(1).nullable().optional(),
     request_quota: z.number().int().min(1).nullable().optional(),
@@ -60,11 +60,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   // 额度与有效期属「只增不减」字段，落库前统一成无时区后缀的 UTC 裸字符串。
   // 有效期不允许清空：NULL 会被核销 SQL 的过期判定豁免，等于让额度永久有效。
-  let expiresAt: string | undefined;
+  // 解析层面放行 null / 空串，把「不许清空」的定向文案交给 service 统一给出。
+  let expiresAt: string | null | undefined;
   if (parsed.data.expires_at !== undefined) {
-    const parsedDate = new Date(parsed.data.expires_at);
-    if (Number.isNaN(parsedDate.getTime())) return jsonError("有效期格式不正确", 400);
-    expiresAt = toMysqlDatetime(parsedDate);
+    const raw = parsed.data.expires_at?.trim() ?? null;
+    if (raw === null || raw === "") {
+      expiresAt = null;
+    } else {
+      const parsedDate = new Date(raw);
+      if (Number.isNaN(parsedDate.getTime())) return jsonError("有效期格式不正确", 400);
+      expiresAt = toMysqlDatetime(parsedDate);
+    }
   }
 
   const result = await updateRedeemCode(codeId, {

@@ -172,6 +172,11 @@ export function RedeemCodeEditDialog({
             <div>
               <Label>{row.expires_at ? "有效期（只能延长）" : "有效期（长期有效，如需设置请填写）"}</Label>
               <Input type="datetime-local" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
+              <p className="mt-1 text-xs text-[var(--color-foreground-muted)]">
+                {row.expires_at
+                  ? "不支持清空有效期；如需永久有效请停用该码并重新生成"
+                  : "留空表示长期有效；已有人兑换时无法再设置，设置后不能改回长期有效"}
+              </p>
             </div>
             <div>
               <Label>最多兑换次数（0 表示不限，只能放宽）</Label>
