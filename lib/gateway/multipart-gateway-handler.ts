@@ -12,7 +12,7 @@ import { selectModelRoute, findUaDenyMatchForAlias, resolveModelFallbackAlias } 
 import { resolveClientIp } from "@/lib/core/client-ip";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { resolveTriState } from "@/lib/gateway/user-preferences";
-import { isFeatureEnabled, modelGateFeatures } from "@/lib/core/features";
+import { isFeatureEnabled } from "@/lib/core/features";
 import { findMatchingRedeemBalance } from "@/lib/services/redeem-codes";
 import { checkUserAgentRestrictions, parseUaRestrictions } from "@/lib/gateway/ua-restrictions";
 import { buildErrorResponseBody, parseUpstreamError } from "@/lib/gateway/upstream-error";
@@ -170,7 +170,7 @@ export async function handleMultipartGatewayRequest(request: Request) {
   // 命中用户定向额度（兑换码）时，跳过用户全局配额检查，并记录该定向额度供扣减时保持一致。
   let redeemCovered = false;
   let matchedRedeemBalanceId: number | null = null;
-  if (!bypassUserLimits && modelGateFeatures.redeemCode) {
+  if (!bypassUserLimits && settings.runtime_features.redeemCode) {
     const redeem = await findMatchingRedeemBalance(auth.user.id, existingRoute.channel.id, existingRoute.model.alias);
     redeemCovered = redeem !== null;
     matchedRedeemBalanceId = redeem?.id ?? null;

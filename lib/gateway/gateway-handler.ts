@@ -23,7 +23,6 @@ import { resolveTriState } from "@/lib/gateway/user-preferences";
 import { buildErrorResponseBody, parseUpstreamError } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
 import { findMatchingRedeemBalance } from "@/lib/services/redeem-codes";
-import { modelGateFeatures } from "@/lib/core/features";
 import { requestUpstreamWithFallback } from "@/lib/gateway/upstream-routing";
 import {
   applyCopilotCompatibilityToChatStream,
@@ -228,7 +227,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
 
     // 命中用户定向额度（兑换码）时，跳过用户全局配额检查，由定向额度兜底。
     let redeemCovered = false;
-    if (!bypassUserLimits && modelGateFeatures.redeemCode) {
+    if (!bypassUserLimits && settings.runtime_features.redeemCode) {
       const redeem = await findMatchingRedeemBalance(auth.user.id, existingRoute.channel.id, existingRoute.model.alias);
       redeemCovered = redeem !== null;
     }
@@ -357,7 +356,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   const userQuotaGuard = async (route: RoutedModel): Promise<{ ok: true; redeemBalanceId?: number | null } | { ok: false; reason: string }> => {
     const routeBypass = route.model.quota_mode === "bypass_group" || route.model.quota_mode === "independent";
     if (routeBypass) return { ok: true, redeemBalanceId: null };
-    if (modelGateFeatures.redeemCode) {
+    if (settings.runtime_features.redeemCode) {
       const redeem = await findMatchingRedeemBalance(auth.user.id, route.channel.id, route.model.alias);
       if (redeem) return { ok: true, redeemBalanceId: redeem.id };
     }

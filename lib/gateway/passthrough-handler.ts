@@ -6,7 +6,7 @@ import { checkQuota, appendQuotaHeaders } from "@/lib/gateway/quota";
 import { resolveAccessibleModelAlias } from "@/lib/gateway/model-access";
 import { selectModelRoute, findUaDenyMatchForAlias, type RoutedModel } from "@/lib/gateway/router";
 import { getGatewaySettings } from "@/lib/core/settings";
-import { isFeatureEnabled, modelGateFeatures } from "@/lib/core/features";
+import { isFeatureEnabled } from "@/lib/core/features";
 import { findMatchingRedeemBalance } from "@/lib/services/redeem-codes";
 import { checkUserAgentRestrictions, parseUaRestrictions } from "@/lib/gateway/ua-restrictions";
 import { resolveClientIp } from "@/lib/core/client-ip";
@@ -164,7 +164,7 @@ export async function handlePassthroughRequest(request: Request, upstreamPath: s
   }
 
   // 命中用户定向额度（兑换码）时，跳过用户全局配额检查，并记录该定向额度供扣减时保持一致。
-  const redeemBalance = modelGateFeatures.redeemCode
+  const redeemBalance = settings.runtime_features.redeemCode
     ? await findMatchingRedeemBalance(auth.user.id, route.channel.id, route.model.alias)
     : null;
   const redeemCovered = redeemBalance !== null;

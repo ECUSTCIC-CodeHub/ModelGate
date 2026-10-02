@@ -1,7 +1,8 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { requireFeature } from "@/lib/core/features";
+import { requireRedeemCodeFeature } from "@/lib/core/features";
+import { getGatewaySettings } from "@/lib/core/settings";
 import { ensureUser } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { gatewayDb } from "@/lib/core/db";
@@ -14,7 +15,7 @@ const redeemSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const unavailable = requireFeature("redeemCode");
+  const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
   if (unavailable) return unavailable;
 
   const guard = await ensureUser(request);
@@ -43,7 +44,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const unavailable = requireFeature("redeemCode");
+  const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
   if (unavailable) return unavailable;
 
   const guard = await ensureUser(request);

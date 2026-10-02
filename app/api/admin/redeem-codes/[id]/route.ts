@@ -1,7 +1,8 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { requireFeature } from "@/lib/core/features";
+import { requireRedeemCodeFeature } from "@/lib/core/features";
+import { getGatewaySettings } from "@/lib/core/settings";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { gatewayDb } from "@/lib/core/db";
@@ -12,7 +13,7 @@ const patchSchema = z
   .object({
     note: z.string().max(500).nullable().optional(),
     enabled: z.boolean().optional(),
-    expires_at: z.string().nullable().optional(),
+    expires_at: z.string().min(1).optional(),
     max_uses: z.number().int().min(0).optional(),
     token_quota: z.number().int().min(1).nullable().optional(),
     request_quota: z.number().int().min(1).nullable().optional(),
@@ -20,7 +21,7 @@ const patchSchema = z
   .refine((value) => Object.keys(value).length > 0, { message: "没有需要更新的字段" });
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const unavailable = requireFeature("redeemCode");
+  const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
   if (unavailable) return unavailable;
 
   const guard = await ensureAdmin(request);
@@ -43,7 +44,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const unavailable = requireFeature("redeemCode");
+  const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
   if (unavailable) return unavailable;
 
   const guard = await ensureAdmin(request);
@@ -57,16 +58,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
-  // 额度与有效期属「只增不减」字段，落库前统一成无时区后缀的 UTC 裸字符串
-  let expiresAt: string | null | undefined;
+  // 额度与有效期属「只增不减」字段，落库前统一成无时区后缀的 UTC 裸字符串。
+  // 有效期不允许清空：NULL 会被核销 SQL 的过期判定豁免，等于让额度永久有效。
+  let expiresAt: string | undefined;
   if (parsed.data.expires_at !== undefined) {
-    if (parsed.data.expires_at === null || parsed.data.expires_at === "") {
-      expiresAt = null;
-    } else {
-      const parsedDate = new Date(parsed.data.expires_at);
-      if (Number.isNaN(parsedDate.getTime())) return jsonError("有效期格式不正确", 400);
-      expiresAt = toMysqlDatetime(parsedDate);
-    }
+    const parsedDate = new Date(parsed.data.expires_at);
+    if (Number.isNaN(parsedDate.getTime())) return jsonError("有效期格式不正确", 400);
+    expiresAt = toMysqlDatetime(parsedDate);
   }
 
   const result = await updateRedeemCode(codeId, {
@@ -84,7 +82,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const unavailable = requireFeature("redeemCode");
+  const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
   if (unavailable) return unavailable;
 
   const guard = await ensureAdmin(_request);

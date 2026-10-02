@@ -1,7 +1,8 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { requireFeature } from "@/lib/core/features";
+import { requireRedeemCodeFeature } from "@/lib/core/features";
+import { getGatewaySettings } from "@/lib/core/settings";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { listExistingChannelIds } from "@/lib/gateway/channel-access";
@@ -21,7 +22,7 @@ const generateSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const unavailable = requireFeature("redeemCode");
+  const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
   if (unavailable) return unavailable;
 
   const guard = await ensureAdmin(request);
@@ -38,7 +39,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const unavailable = requireFeature("redeemCode");
+  const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
   if (unavailable) return unavailable;
 
   const guard = await ensureAdmin(request);
@@ -97,7 +98,7 @@ function normalizeCodes(body: unknown): string[] {
 }
 
 export async function PUT(request: Request) {
-  const unavailable = requireFeature("redeemCode");
+  const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
   if (unavailable) return unavailable;
 
   const guard = await ensureAdmin(request);
@@ -124,7 +125,7 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const unavailable = requireFeature("redeemCode");
+  const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
   if (unavailable) return unavailable;
 
   const guard = await ensureAdmin(request);
