@@ -47,7 +47,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   const allowedChannelIds = await getUserAllowedChannelIds(auth.user);
 
   const denyByUa = (match: UaRestrictionMatch & { matched: true }, alias: string | null): Response => {
-    logRejected(429, match.rule.error_message, alias);
+    logRejected(match.rule.error_code, match.rule.error_message, alias);
     return jsonError(match.rule.error_message, match.rule.error_code, {
       type: "invalid_request_error",
       param: "user-agent",
@@ -128,15 +128,17 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   const modelFallbackEnabled = resolveTriState(auth.user.pref_model_fallback, settings.model_fallback_enabled === 1);
   const resolved = await resolveAccessibleModelAlias(auth.user, alias);
   let resolvedAlias: string;
-  const modelAliasGranted = resolved.ok;
+  // 仅由定向额度放行的别名（公开模型与用户/组白名单都不覆盖）走的是「任意渠道」宽松门禁，
+  // 配对是否命中要等选路阶段才知道，因此无路由时应判定为无权限，而不是当别名不存在。
+  const redeemOnlyAliasGrant = resolved.ok && resolved.viaRedeemScope;
   let modelFallbackNote: string | null = null;
   let visionFallbackNote: string | null = null;
   if (!resolved.ok) {
-    // 别名门禁只做「任意渠道」的宽松放行，配对收紧在选路阶段。拿到具体渠道后
-    // 若仍无可用路由，说明该别名只是碰巧落在（组白名单 × 额度别名）的交叉区域，
-    // 不属于「无权访问该模型」，按「别名不存在或已禁用」走回退，与单通道模型行为一致。
+    // 别名门禁只做「任意渠道」的宽松放行，配对收紧在选路阶段。别名级与配对级的别名口径同源，
+    // 因此这里通常探不到路由，按别名不可用返回 404（不触发模型替补，避免把无权限静默换成别的模型）；
+    // 仅当两级口径不一致时（如 MySQL 的别名比较不区分大小写）才会探到，此时返回 403。
     if (resolved.reason === "forbidden") {
-      const grantedRoute = await selectModelRoute(alias, { user: auth.user });
+      const grantedRoute = await selectModelRoute(alias, { protocol: inboundProtocol, user: auth.user });
       if (!grantedRoute) {
         logRejected(404, "模型别名不存在或已禁用", alias, estimatedTokens);
         return jsonError("模型别名不存在或已禁用", 404);
@@ -196,12 +198,6 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     user: auth.user,
   });
   if (!initialRoute) {
-    // 别名级放行只保证「某张定向额度覆盖了该别名」，不代表请求所用的渠道也落在配对区域内。
-    // 此时若换成别名不可见时的回退策略，反而把一个明确的无权限变成静默换模型。
-    if (modelAliasGranted) {
-      logRejected(403, "当前用户无权访问该模型", alias, estimatedTokens);
-      return jsonError("当前用户无权访问该模型", 403);
-    }
     if (uaEnabled) {
       const nonUaRoute = await selectModelRoute(effectiveAlias, { protocol: inboundProtocol, allowedChannelIds, user: auth.user });
       if (nonUaRoute !== null) {
@@ -209,9 +205,17 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
         if (denyMatch) return denyByUa(denyMatch, alias);
       }
     }
+    // 额度放行的别名配对没命中就是无权限，不能退化成「别名不存在或已禁用」。
+    // 额度来源取自别名门禁所用的请求别名，被视觉替补换过别名后不再适用，交由渠道级诊断或 404 处理。
+    if (redeemOnlyAliasGrant && effectiveAlias === resolvedAlias) {
+      logRejected(403, "当前用户无权访问该模型", alias, estimatedTokens);
+      return jsonError("当前用户无权访问该模型", 403);
+    }
     if (allowedChannelIds) {
-      const withoutRestriction = await selectModelRoute(effectiveAlias, { protocol: inboundProtocol, user: auth.user });
-      if (withoutRestriction !== null) {
+      // 这里只问「该别名是否存在可用渠道」，不能带 user 与 userAgent：任何请求级过滤都会把
+      // 组渠道白名单之外的路由剔掉，令这条诊断对非公开别名不可达，最终误报 404。
+      const anyChannelRoute = await selectModelRoute(effectiveAlias, { protocol: inboundProtocol });
+      if (anyChannelRoute !== null) {
         logRejected(403, "当前用户组无可用渠道", alias, estimatedTokens);
         return jsonError("当前用户组无可用渠道", 403);
       }

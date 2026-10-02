@@ -71,7 +71,7 @@ export async function handleMultipartGatewayRequest(request: Request) {
       modelRules: [],
     });
     if (globalMatch.matched && !globalMatch.allowed) {
-      logRejected(429, globalMatch.rule.error_message, null);
+      logRejected(globalMatch.rule.error_code, globalMatch.rule.error_message, null);
       return jsonError(globalMatch.rule.error_message, globalMatch.rule.error_code, {
         type: "invalid_request_error",
         param: "user-agent",
@@ -108,10 +108,12 @@ export async function handleMultipartGatewayRequest(request: Request) {
   const resolved = await resolveAccessibleModelAlias(auth.user, alias);
   let resolvedAlias: string;
   let modelFallbackNote: string | null = null;
+  // 仅由定向额度放行的别名走的是「任意渠道」宽松门禁，配对是否命中要等选路阶段才知道。
+  const redeemOnlyAliasGrant = resolved.ok && resolved.viaRedeemScope;
   if (!resolved.ok) {
-    // 别名门禁只做「任意渠道」的宽松放行，配对收紧在选路阶段。拿到具体渠道后
-    // 若仍无可用路由，说明该别名只是碰巧落在（组白名单 × 额度别名）的交叉区域，
-    // 不属于「无权访问该模型」，按「别名不存在或已禁用」处理，与单通道模型行为一致。
+    // 别名门禁只做「任意渠道」的宽松放行，配对收紧在选路阶段。别名级与配对级的别名口径同源，
+    // 因此这里通常探不到路由，按别名不可用返回 404（不触发模型替补，避免把无权限静默换成别的模型）；
+    // 仅当两级口径不一致时（如 MySQL 的别名比较不区分大小写）才会探到，此时返回 403。
     if (resolved.reason === "forbidden") {
       const grantedRoute = await selectModelRoute(alias, { user: auth.user, protocol: "images" });
       if (!grantedRoute) {
@@ -153,7 +155,7 @@ export async function handleMultipartGatewayRequest(request: Request) {
       if (nonUaRoute !== null) {
         const denyMatch = await findUaDenyMatchForAlias(resolvedAlias, clientUserAgent, allowedChannelIds, "images", auth.user);
         if (denyMatch) {
-          logRejected(429, denyMatch.rule.error_message, alias);
+          logRejected(denyMatch.rule.error_code, denyMatch.rule.error_message, alias);
           return jsonError(denyMatch.rule.error_message, denyMatch.rule.error_code, {
             type: "invalid_request_error",
             param: "user-agent",
@@ -162,9 +164,16 @@ export async function handleMultipartGatewayRequest(request: Request) {
         }
       }
     }
+    // 额度放行的别名配对没命中就是无权限，不能退化成「别名不存在或已禁用」。
+    if (redeemOnlyAliasGrant) {
+      logRejected(403, "当前用户无权访问该模型", alias, estimatedTokens);
+      return jsonError("当前用户无权访问该模型", 403);
+    }
     if (allowedChannelIds) {
-      const withoutRestriction = await selectModelRoute(resolvedAlias, { protocol: "images", user: auth.user });
-      if (withoutRestriction !== null) {
+      // 只问「该别名是否存在可用渠道」，不带 user 与 userAgent，否则非公开模型在组渠道
+      // 白名单之外的路由会被配对过滤剔掉，令这条诊断不可达。
+      const anyChannelRoute = await selectModelRoute(resolvedAlias, { protocol: "images" });
+      if (anyChannelRoute !== null) {
         logRejected(403, "当前用户组无可用渠道", alias, estimatedTokens);
         return jsonError("当前用户组无可用渠道", 403);
       }

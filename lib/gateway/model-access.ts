@@ -68,21 +68,30 @@ const ACCESSIBLE_MODEL_ROWS_SQL = `SELECT m.alias, m.real_model, m.is_public, m.
      AND m.alias != '*'
    ORDER BY m.alias ASC, m.id ASC`;
 
-export async function canUserAccessModelAlias(user: Pick<DbUser, "id" | "role" | "group_id" | "allowed_model_aliases">, alias: string) {
-  if (user.role === "admin") return true;
+type AliasGrantSource = "public" | "whitelist" | "redeem";
+
+// 别名可见性的唯一来源判定，按优先级返回来源：
+//   public    该别名存在公开实例
+//   whitelist 在用户/组模型白名单内
+//   redeem    仅由某张有效定向额度（兑换码）的别名维度覆盖
+// 来源要区分开：只有 redeem 来源属于「按渠道配对的授权尚未验证」，选路为空时
+// 应判定为无权限，而不是当别名不存在（详见 gateway-handler 的 403/404 分支）。
+async function resolveAliasGrantSource(
+  user: Pick<DbUser, "id" | "role" | "group_id" | "allowed_model_aliases">,
+  alias: string,
+): Promise<AliasGrantSource | null> {
+  if (user.role === "admin") return "public";
 
   const models = await gatewayDb.query<{ is_public: number }>(MODEL_PUBLIC_BY_ALIAS_SQL, [alias]);
-
-  if (models.length === 0) return false;
-  if (models.some((m) => m.is_public === 1)) return true;
+  if (models.length === 0) return null;
+  if (models.some((m) => m.is_public === 1)) return "public";
 
   const effective = await getEffectiveAllowedAliases(user);
-  if (effective.includes(alias)) return true;
+  if (effective.includes(alias)) return "whitelist";
 
-  // 定向额度限定的别名也是授权来源（兑换即授权）。此处只有别名维度（渠道未知，
-  // 网关选路之后才知道具体渠道），故用「任意渠道」的宽松口径放行，配对收紧交给
-  // filterGrantedRows —— 只看渠道并集会把「渠道9 + 别名A」的额度错当成渠道 9 的独立授权。
-  return scopesHaveAlias(await listRedeemScopes(user.id), alias);
+  // 定额度限定的别名也是授权来源（兑换即授权）。此处只有别名维度（渠道未知），
+  // 故用「任意渠道」的宽松口径放行，配对收紧交给选路阶段的 filterGrantedRows。
+  return scopesHaveAlias(await listRedeemScopes(user.id), alias) ? "redeem" : null;
 }
 
 export async function hasEnabledModelAlias(alias: string) {
@@ -93,15 +102,17 @@ export async function hasEnabledModelAlias(alias: string) {
 export async function resolveAccessibleModelAlias(
   user: Pick<DbUser, "id" | "role" | "group_id" | "allowed_model_aliases">,
   requestedAlias: string,
-): Promise<{ ok: true; alias: string } | { ok: false; reason: "not_found" | "forbidden" }> {
+): Promise<{ ok: true; alias: string; viaRedeemScope: boolean } | { ok: false; reason: "not_found" | "forbidden" }> {
   const requestedAliasExists = await hasEnabledModelAlias(requestedAlias);
-  if (requestedAliasExists && await canUserAccessModelAlias(user, requestedAlias)) {
-    return { ok: true, alias: requestedAlias };
+  if (requestedAliasExists) {
+    const source = await resolveAliasGrantSource(user, requestedAlias);
+    if (source !== null) return { ok: true, alias: requestedAlias, viaRedeemScope: source === "redeem" };
   }
 
   const wildcardAliasExists = await hasEnabledModelAlias("*");
-  if (wildcardAliasExists && await canUserAccessModelAlias(user, "*")) {
-    return { ok: true, alias: "*" };
+  if (wildcardAliasExists) {
+    const source = await resolveAliasGrantSource(user, "*");
+    if (source !== null) return { ok: true, alias: "*", viaRedeemScope: source === "redeem" };
   }
 
   return requestedAliasExists ? { ok: false, reason: "forbidden" } : { ok: false, reason: "not_found" };
