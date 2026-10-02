@@ -66,8 +66,10 @@ export async function GET(request: Request) {
   const redeemScopes = await listRedeemScopes(user.id);
 
   const accessible = models.filter((m) => {
-    if (m.is_public === 1 || m.alias === "*") return true;
+    // 渠道白名单先于公开模型判定：选路阶段的 allowSet 对公开模型一样生效，
+    // 这里放开就等于展示「看得见、请求必然 403」的组合。
     if (groupAllowedChannels.length > 0 && !groupAllowedChannels.includes(m.channel_id)) return false;
+    if (m.is_public === 1 || m.alias === "*") return true;
     const userHasAlias = userAllowedAliases.includes(m.alias);
     const groupHasAlias = groupAllowedAliases.includes(m.alias);
     if (userHasAlias || groupHasAlias) return true;
