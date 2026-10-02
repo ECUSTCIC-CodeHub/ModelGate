@@ -1,13 +1,26 @@
 export const dynamic = "force-dynamic";
 
-import { requireFeature } from "@/lib/core/features";
+import { z } from "zod";
+import { requireRedeemCodeFeature } from "@/lib/core/features";
+import { getGatewaySettings } from "@/lib/core/settings";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { gatewayDb } from "@/lib/core/db";
-import { getCodeById, listRedemptions } from "@/lib/services/redeem-codes";
+import { parseExpiresInput, getCodeById, getCodeDetail, listRedemptions, updateRedeemCode } from "@/lib/services/redeem-codes";
+
+const patchSchema = z
+  .strictObject({
+    note: z.string().max(500).nullable().optional(),
+    enabled: z.boolean().optional(),
+    expires_at: z.string().nullable().optional(),
+    max_uses: z.number().int().min(0).optional(),
+    token_quota: z.number().int().min(1).nullable().optional(),
+    request_quota: z.number().int().min(1).nullable().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, { message: "没有需要更新的字段" });
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const unavailable = requireFeature("redeemCode");
+  const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
   if (unavailable) return unavailable;
 
   const guard = await ensureAdmin(request);
@@ -25,11 +38,56 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0));
 
   const redemptions = await listRedemptions({ codeId, limit, offset });
-  return jsonOk({ data: code, redemptions });
+  const detail = await getCodeDetail(codeId);
+  return jsonOk({ data: detail ?? code, redemptions });
+}
+
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
+  if (unavailable) return unavailable;
+
+  const guard = await ensureAdmin(request);
+  if ("error" in guard) return guard.error;
+
+  const { id } = await params;
+  const codeId = Number(id);
+  if (!Number.isFinite(codeId) || codeId <= 0) return jsonError("参数不正确", 400);
+
+  const body = await request.json().catch(() => null);
+  const parsed = patchSchema.safeParse(body);
+  if (!parsed.success) return jsonError("请求参数不正确", 400);
+
+  // 额度与有效期属「只增不减」字段，落库前统一成无时区后缀的 UTC 裸字符串。
+  // 有效期不允许清空：NULL 会被核销 SQL 的过期判定豁免，等于让额度永久有效。
+  // 解析层面放行 null / 空串，把「不许清空」的定向文案交给 service 统一给出。
+  let expiresAt: string | null | undefined;
+  if (parsed.data.expires_at !== undefined) {
+    const raw = parsed.data.expires_at?.trim() ?? null;
+    if (raw === null || raw === "") {
+      expiresAt = null;
+    } else {
+      const parsedExpiresAt = parseExpiresInput(raw);
+      if (!parsedExpiresAt.ok) return jsonError(parsedExpiresAt.reason, 400);
+      expiresAt = parsedExpiresAt.value;
+    }
+  }
+
+  const result = await updateRedeemCode(codeId, {
+    note: parsed.data.note,
+    enabled: parsed.data.enabled,
+    expiresAt,
+    maxUses: parsed.data.max_uses,
+    tokenQuota: parsed.data.token_quota,
+    requestQuota: parsed.data.request_quota,
+  });
+  if (!result.ok) return jsonError(result.reason, 400);
+
+  const detail = await getCodeDetail(codeId);
+  return jsonOk({ message: "兑换码已更新。", data: detail });
 }
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const unavailable = requireFeature("redeemCode");
+  const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
   if (unavailable) return unavailable;
 
   const guard = await ensureAdmin(_request);

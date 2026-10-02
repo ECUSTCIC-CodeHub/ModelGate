@@ -1,7 +1,8 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { requireFeature } from "@/lib/core/features";
+import { requireRedeemCodeFeature } from "@/lib/core/features";
+import { getGatewaySettings } from "@/lib/core/settings";
 import { ensureUser } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { gatewayDb } from "@/lib/core/db";
@@ -14,13 +15,18 @@ const redeemSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const unavailable = requireFeature("redeemCode");
+  const settings = await getGatewaySettings();
+  const unavailable = requireRedeemCodeFeature(settings);
   if (unavailable) return unavailable;
 
   const guard = await ensureUser(request);
   if ("error" in guard) return guard.error;
 
-  const balances = await listUserBalances(guard.auth.user.id);
+  const balances = (await listUserBalances(guard.auth.user.id)).map((balance) => ({
+    ...balance,
+    allowed_channel_ids: parseAllowedChannelIds(balance.allowed_channel_ids),
+    allowed_model_aliases: parseAllowedModelAliases(balance.allowed_model_aliases),
+  }));
 
   // 补充兑换记录与渠道/模型可读信息
   const redemptions = await gatewayDb.query<Record<string, unknown>>(
@@ -32,18 +38,11 @@ export async function GET(request: Request) {
     [guard.auth.user.id],
   );
 
-  return jsonOk({
-    data: balances.map((b) => ({
-      ...b,
-      allowed_channel_ids: parseAllowedChannelIds(b.allowed_channel_ids),
-      allowed_model_aliases: parseAllowedModelAliases(b.allowed_model_aliases),
-    })),
-    redemptions,
-  });
+  return jsonOk({ data: balances, redemptions });
 }
 
 export async function POST(request: Request) {
-  const unavailable = requireFeature("redeemCode");
+  const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
   if (unavailable) return unavailable;
 
   const guard = await ensureUser(request);
@@ -67,6 +66,9 @@ export async function POST(request: Request) {
       allowed_model_aliases: parseAllowedModelAliases(balance.allowed_model_aliases),
       remaining_tokens: balance.token_quota !== null ? Math.max(0, balance.token_quota - balance.used_tokens) : null,
       remaining_requests: balance.request_quota !== null ? Math.max(0, balance.request_quota - balance.used_requests) : null,
+      // 与 GET /api/user/redeem 保持同一形状：核销成功即代表该额度当下有效
+      active: true,
+      inactive_reason: null,
     },
   }, 201);
 }

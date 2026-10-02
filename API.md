@@ -27,6 +27,8 @@ ModelGate 是一个 LLM 网关，提供 OpenAI 兼容的 API 端点，支持用�
 - OIDC 设置和用户组 OIDC Claim 映射字段在精简版中不参与创建/更新；已有数据库值会保留，切回完整版后仍可使用。
 - 兑换码相关管理/兑换接口返回 404，兑换码页面不渲染。
 
+> 完整版另有「运行时功能开关」：`redeemCode` 默认开启，管理员可通过 `PUT /api/admin/settings` 的 `runtime_features` 关闭。关闭后兑换码管理/兑换接口返回 404、菜单入口隐藏，已生成的兑换码与已发放额度数据保留，重新开启即恢复。普通用户侧的「兑换码」菜单仅在已持有定向额度时出现。
+
 ## 数据库配置
 
 通过环境变量选择数据库驱动，支持 SQLite（默认）和 MySQL。
@@ -393,7 +395,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
     "quota_fallback_enabled": 0,
     "quota_fallback_alias": "",
     "default_model_is_public": 1,
-    "model_brand_groups": ""
+    "model_brand_groups": "",
+    "runtime_features": { "redeemCode": true }
   }
 }
 ```
@@ -442,7 +445,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "quota_fallback_enabled": false,
   "quota_fallback_alias": "",
   "default_model_is_public": true,
-  "model_brand_groups": "[{\"label\":\"深度求索\",\"pattern\":\"deepseek*\"}]"
+  "model_brand_groups": "[{\"label\":\"深度求索\",\"pattern\":\"deepseek*\"}]",
+  "runtime_features": { "redeemCode": true }
 }
 ```
 
@@ -488,6 +492,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | quota_fallback_alias | string | 指定优先路由的模型别名（最长 255 字符）；留空时从已启用且当前用户可见的模型中按权重自动挑选。用户配额超限时建议指定独立配额或不计费模型 |
 | default_model_is_public | boolean | 新增模型的默认可见性（默认 true）；开启后新创建的模型对所有非管理员用户可见，关闭后新增模型默认仅对授权用户可见（白名单）。仅影响新增模型预设值，编辑已有模型以其自身 `is_public` 为准 |
 | model_brand_groups | string | 模型品牌分组规则（JSON 字符串），形如 `[{"label":"深度求索","pattern":"deepseek*"}]`；`pattern` 支持通配符 `*`（匹配任意字符、不区分大小写），按模型 ID 前缀归组，用于模型列表页按品牌筛选展示。未命中任何品牌组的模型归入「其他」 |
+| runtime_features | object | 可运行时开关的功能，形如 `{ "redeemCode": true }`。仅包含当前构建版本支持的功能；`redeemCode` 为完整版专属。关闭后对应入口从菜单隐藏、相关接口返回 404，已发放数据保留 |
 
 > 精简版固定保留账号密码登录；返回时会隐藏 OIDC 配置、公告内容、公告展示条数、接入指南通知和 Webhook 密钥，更新时忽略 `oidc_*`、`announcement_content`、`announcement_display_count`、`access_guide_notice` 与 `webhook_secret` 字段。
 
@@ -777,7 +782,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "data": {
     "icp_filing_number": "苏ICP备2023000758号-3",
     "public_security_filing_number": "沪公网安备31012102000146号",
-    "feedback_url": "https://cnb.cool/ecustcic/ModelGate/-/issues/new/choose"
+    "feedback_url": "https://cnb.cool/ecustcic/ModelGate/-/issues/new/choose",
+    "runtime_features": { "redeemCode": true }
   }
 }
 ```
@@ -787,6 +793,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | icp_filing_number | string | ICP 备案号，未配置时为空字符串 |
 | public_security_filing_number | string | 公安联网备案号，未配置时为空字符串 |
 | feedback_url | string | 问题反馈链接，未配置时为空字符串 |
+| runtime_features | object | 面向客户端的运行时功能开关子集（构建版本与管理员设置合并后的结果），供前端决定菜单入口是否展示 |
 
 ---
 
@@ -966,7 +973,7 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
 | quota_tokens / quota_requests | int/null | 否 | null | 总量配额，`null` 表示继承组设置，`-1` 表示不限制（覆盖组） |
 | quota_period | int/null | 否 | null | 周期配额重置周期（秒），null 表示继承组设置 |
 | period_quota_tokens / period_quota_requests | int/null | 否 | null | 周期配额，`null` 表示继承组设置，`-1` 表示不限制（覆盖组） |
-| allowed_model_aliases | string[] | 否 | [] | 可访问的模型白名单 |
+| allowed_model_aliases | string[] | 否 | [] | 非公开模型白名单，为空表示不额外授权（公开模型不受白名单限制） |
 | note | string | 否 | null | 备注，最长 500 字符 |
 
 **响应 (201):**
@@ -1193,7 +1200,7 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
 | quota_requests / quota_tokens | int/null | 否 | null | 总量配额，null 表示不限 |
 | quota_period | int/null | 否 | null | 周期配额重置周期（秒），null 表示不启用 |
 | period_quota_requests / period_quota_tokens | int/null | 否 | null | 周期请求/Token 配额，null 表示不限 |
-| allowed_model_aliases | string[] | 否 | [] | 可访问模型白名单 |
+| allowed_model_aliases | string[] | 否 | [] | 非公开模型白名单，为空表示不额外授权（公开模型不受白名单限制） |
 | allowed_channel_ids | int[] | 否 | [] | 可命中渠道白名单（按渠道 id），为空表示允许所有渠道；不在白名单内的渠道在路由和模型列表中会被过滤 |
 | oidc_claim_expr | string | 否 | null | OIDC Claim 匹配表达式，最长 512 字符 |
 | oidc_claim_priority | int | 否 | 0 | 匹配优先级，0-9999，越大越优先 |
@@ -1584,7 +1591,18 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 ## 管理接口 - 兑换码管理
 
-> 兑换码功能为完整版专属（`redeemCode`）。兑换码用于生成「定向额度」，仅当请求命中所限定的渠道与模型时才扣减，不占用用户全局配额。同时，兑换码明确限定的渠道/模型会作为该用户的访问授权来源（兑换即授权）：额度有效期内用户可获得限定的渠道/模型访问权，额度用尽/过期/兑换码停用后自动回收；未限定的部分保持用户原有权限，不扩大也不缩小。精简版调用相关接口返回 404。
+> 兑换码功能为完整版专属（`redeemCode`），且受系统设置 `runtime_features.redeemCode` 运行时开关控制，关闭时与精简版一致返回 404。兑换码用于生成「定向额度」，仅当请求命中所限定的渠道与模型时才扣减，不占用用户全局配额。同时，兑换码明确限定的渠道/模型会作为该用户的访问授权来源（兑换即授权）：额度有效期内用户可获得限定的渠道/模型访问权，额度用尽/过期/兑换码停用后自动回收；未限定的部分保持用户原有权限，不扩大也不缩小。
+>
+> **授权按「(渠道, 别名) 配对」判定**，而不是把渠道与别名各自并入白名单。用户可访问某个 (渠道, 别名) 组合，当且仅当满足以下任一条：
+>
+> 1. 命中用户组/用户白名单区域 —— 组或用户已授予该渠道（或渠道不限）**且**该别名在其模型白名单内；
+> 2. 命中某张有效定向额度的配对区域 —— 该额度的 `allowed_channel_ids` 覆盖该渠道（空 = 任意渠道）**且** `allowed_model_aliases` 覆盖该别名（空 = 任意别名）。
+>
+> 注意两个维度的空值语义按来源区分：**用户组/用户白名单里的空别名表示「不额外授权非公开模型」**（公开模型不受白名单限制，单独放行）；**兑换额度的空限定表示「不限」**（空别名 = 任意别名，空渠道 = 该额度不限制渠道，与计费侧一致）。
+>
+> 用户实际可用的渠道集合为「用户组渠道白名单 ∪ 额度显式列出的渠道」（组渠道白名单为空表示不限渠道，管理员不受此限制），因此额度只在显式列出渠道时才能把用户带到组白名单之外的渠道；额度渠道不限时不会扩大该用户可用渠道，组渠道白名单之外的渠道会被判定为无可用渠道并返回 403（该别名在任何启用渠道都没有可用路由时为 404）。
+>
+> 举例：一张限定「渠道 9 + 别名 A」的兑换码，只授予 `A@渠道9` 这一个组合；不会让用户在组内其他渠道上使用别名 A，也不会让用户在渠道 9 上使用其他别名（组白名单之外的）。该判定与计费侧 `findMatchingRedeemBalance` 共用同一份实现，模型列表、配额页展示与网关选路均按同一规则过滤。
 
 ### POST /api/admin/redeem-codes
 
@@ -1601,9 +1619,11 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | request_quota | int | 否 | 请求额度 |
 | allowed_channel_ids | int[] | 否 | 限定渠道 ID 列表，空表示不限制 |
 | allowed_model_aliases | string[] | 否 | 限定模型别名列表，空表示不限制 |
-| expires_at | string | 否 | 有效期（ISO 时间），空表示长期有效 |
+| expires_at | string \| null | 否 | 有效期，接受 `YYYY-MM-DD`、`YYYY-MM-DD HH:MM[:SS[.SSS]]` 以及 `T`/空格分隔的 ISO 写法（如 `2026-12-01T00:00:00Z`）；不带时区后缀按 UTC 解释；须晚于当前时间。不传、`null`、空串或纯空白串都表示长期有效 |
 | max_uses | int | 否 | 每个码最多兑换次数，0 表示不限（默认 1） |
 | note | string | 否 | 备注，最长 500 字符 |
+
+未列出的字段会被忽略，不会返回 400（字段名写错时会按默认值生成，例如拼错的 `expires_at` 会生成长期有效的码）。
 
 **响应 (201):**
 ```json
@@ -1618,7 +1638,11 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 ### GET /api/admin/redeem-codes
 
-分页查询兑换码列表。
+分页查询兑换码列表，按码聚合当前有效持有人数与已用额度。
+
+`redeemed_users` 为该码当前仍持有有效定向额度的人数（已用尽/已过期/所属兑换码已停用的额度不计入），`used_tokens_sum` / `used_requests_sum` 为该码**全部**已发放额度的累计已用（不区分额度是否仍有效，故停用码也可能有非零累计值）；
+剩余额度 = `token_quota` - `used_tokens_sum`（`token_quota` 为 null 表示不限，不做扣减统计）；该值只反映已发放额度的累计消耗，兑换码停用或过期后不再代表用户可领取的量。
+注意 `used_count` 是**兑换次数**，与 `max_uses` 配对；额度余量看 `used_tokens_sum`，两者不是一回事。
 
 **认证:** 管理员
 
@@ -1648,12 +1672,20 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
       "max_uses": 1,
       "used_count": 0,
       "note": null,
+      "created_by": 1,
+      "created_by_username": "admin",
+      "redeemed_users": 2,
+      "used_tokens_sum": 300,
+      "used_requests_sum": 10,
       "created_at": "..."
     }
   ],
   "paging": { "limit": 20, "offset": 0, "total": 1 }
 }
 ```
+
+> `created_by_username` 来自 `users` 左连接，创建人已被删除时为 null。
+> 分页按 `GROUP BY redeem_codes.id` 聚合，一个码对应多条额度不会放大 `paging.total`。
 
 ### PUT /api/admin/redeem-codes
 
@@ -1688,20 +1720,96 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 ### GET /api/admin/redeem-codes/{id}
 
-获取兑换码详情及其核销（兑换）记录。
+获取兑换码详情及其核销（兑换）记录。`data` 与列表接口同形，额外带上 `created_by_username` 与聚合用量。
 
 **认证:** 管理员
+
+**查询参数:**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|:---|:---|:---|:---|
+| limit | 1-100 | 20 | 核销记录每页数量 |
+| offset | int | 0 | 核销记录偏移量 |
 
 **响应 (200):**
 ```json
 {
-  "data": { "...": "兑换码信息" },
+  "data": {
+    "id": 1,
+    "code": "XXXX-XXXX-XXXX",
+    "token_quota": 1000000,
+    "request_quota": null,
+    "max_uses": 5,
+    "used_count": 2,
+    "created_by_username": "admin",
+    "redeemed_users": 2,
+    "used_tokens_sum": 300,
+    "used_requests_sum": 10,
+    "expires_at": null,
+    "note": "活动赠码",
+    "enabled": 1,
+    "created_at": "..."
+  },
   "redemptions": {
-    "data": [ { "id": 1, "code_id": 1, "user_id": 2, "redeemed_at": "...", "code": "...", "username": "user1" } ],
+    "data": [
+      {
+        "id": 1,
+        "code_id": 1,
+        "user_id": 2,
+        "redeemed_at": "...",
+        "code": "XXXX-XXXX-XXXX",
+        "username": "user1",
+        "token_quota": 1000000,
+        "request_quota": null,
+        "used_tokens": 300,
+        "used_requests": 10,
+        "expires_at": null
+      }
+    ],
     "total": 1
   }
 }
 ```
+
+> 每条核销记录的剩余额度按 `token_quota - used_tokens`（`request_quota - used_requests`）计算，额度为 null 表示不限。
+
+### PATCH /api/admin/redeem-codes/{id}
+
+编辑单个兑换码。遵循**只增不减**原则：额度与有效期只允许放宽，避免下调后已兑换用户的余量凭空变小。
+字段变更会原样应用到该码已发放的定向额度上（只放宽不收紧，不会让已兑换用户余量变小）。
+
+限制规则：
+
+- `token_quota` / `request_quota`：只允许上调；原值为有限额度时不允许改成 `null`（不限）。`null` 是最宽形态，放宽到不限请停用旧码并重新生成
+- `max_uses`：只允许放宽（`0` 为不限，属最宽），且不能小于 `used_count`
+- `expires_at`：格式与 POST 相同（不带时区后缀按 UTC 解释）；只允许延长、且必须晚于当前时间（避免设出一个立刻失效的码）；不能早于已发放额度的过期时间，已发放额度的有效期无法解析时同样拒绝；已发放额度为长期有效（null）时不允许改为有限期；不允许改为 `null`、空串或纯空白串（`null` 会让 SQL 原子核销的过期判定被豁免，等于给额度开了永久有效口子；空串是非法时间值，SQLite 下会让核销条件恒不成立、码永远兑换不了，MySQL 严格模式下直接写入失败）
+- `code` / `batch_id` / `allowed_channel_ids` / `allowed_model_aliases` **不在白名单**，传入会返回 400；其余未列出的字段同样按未知字段拒绝
+- 不传任何字段返回 400
+
+**认证:** 管理员
+
+**请求体（至少一项）:**
+
+| 字段 | 类型 | 说明 |
+|:---|:---|:---|
+| note | string \| null | 备注，最长 500 字符 |
+| enabled | boolean | 是否启用 |
+| expires_at | string \| null | 有效期（格式同 POST，须晚于当前时间）。要保留长期有效就不传该字段；传 `null`、空串或纯空白串等同于清空有效期，会被拒绝并返回 400「有效期不能为空；如需永久有效请重新生成兑换码」 |
+| max_uses | int | 最多兑换次数，0 表示不限 |
+| token_quota | int \| null | Token 额度，null 表示不限 |
+| request_quota | int \| null | 请求额度，null 表示不限 |
+
+**响应 (200):**
+```json
+{
+  "message": "兑换码已更新。",
+  "data": { "...": "更新后的兑换码详情（同 GET 详情）" }
+}
+```
+
+**错误 (400):** `{ "error": { "message": "Token 额度只能上调，不能下调；如需下调请停用旧码并重新生成" } }`、`{ "error": { "message": "有效期不能为空；如需永久有效请重新生成兑换码" } }`
+
+**错误 (404 语义):** 兑换码不存在时返回 400 `兑换码不存在`
 
 ### DELETE /api/admin/redeem-codes/{id}
 
@@ -1919,7 +2027,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 ## 用户接口 - 兑换码
 
-> 兑换码功能为完整版专属（`redeemCode`）。用户兑换后获得「定向额度」，仅当请求命中所限定的渠道与模型时才从该额度扣减，不占用账户全局配额。兑换码明确限定的渠道/模型同时作为用户访问授权来源（兑换即授权），额度失效后授权自动回收；未限定部分保持用户原有权限。
+> 兑换码功能为完整版专属（`redeemCode`），且受系统设置 `runtime_features.redeemCode` 运行时开关控制，关闭时接口返回 404。用户兑换后获得「定向额度」，仅当请求命中所限定的渠道与模型时才从该额度扣减，不占用账户全局配额。兑换码明确限定的渠道/模型同时作为用户访问授权来源（兑换即授权），额度失效后授权自动回收；未限定部分保持用户原有权限。
 
 ### POST /api/user/redeem
 
@@ -1940,6 +2048,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
   "data": {
     "id": 1,
     "code_id": 1,
+    "user_id": 1,
     "token_quota": 1000000,
     "request_quota": null,
     "used_tokens": 0,
@@ -1947,8 +2056,11 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
     "allowed_channel_ids": [1],
     "allowed_model_aliases": ["gpt-4o"],
     "expires_at": null,
+    "created_at": "2026-01-01 00:00:00",
     "remaining_tokens": 1000000,
-    "remaining_requests": null
+    "remaining_requests": null,
+    "active": true,
+    "inactive_reason": null
   }
 }
 ```
@@ -1966,6 +2078,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
     {
       "id": 1,
       "code_id": 1,
+      "user_id": 1,
       "token_quota": 1000000,
       "request_quota": null,
       "used_tokens": 0,
@@ -1973,9 +2086,11 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
       "allowed_channel_ids": [1],
       "allowed_model_aliases": ["gpt-4o"],
       "expires_at": null,
+      "created_at": "2026-01-01 00:00:00",
       "remaining_tokens": 1000000,
       "remaining_requests": null,
-      "active": true
+      "active": true,
+      "inactive_reason": null
     }
   ],
   "redemptions": [
@@ -1983,6 +2098,8 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
   ]
 }
 ```
+
+`active` 与 `inactive_reason` 由服务端按授权、计费侧同一口径计算（兑换码启用、未过期、额度未耗尽），失效原因取值：`来源兑换码缺失`、`兑换码已停用`、`有效期数据异常`、`已过期`、`Token 额度已用尽`、`请求额度已用尽`。
 
 ---
 

@@ -21,3 +21,4 @@ export { UaRestrictionsSettingsCard } from "./ua-restrictions-settings-card";
 export { WebhookSettingsCard } from "./webhook-settings-card";
 export { TopUsersVisibilitySettingsCard } from "./top-users-visibility-settings-card";
 export { OverviewScopeSettingsCard } from "./overview-scope-settings-card";
+export { FeatureSettingsCard } from "./feature-settings-card";

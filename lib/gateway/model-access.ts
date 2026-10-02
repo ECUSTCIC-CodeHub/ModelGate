@@ -2,7 +2,7 @@ import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { getUserAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { getUserGroup } from "@/lib/gateway/effective-limits";
 import { parseSupportedProtocols, type GatewayProtocol } from "@/lib/gateway/protocols";
-import { listRedeemCoveredAuthorization } from "@/lib/services/redeem-authorization";
+import { getUserScope, listRedeemScopes, scopeCoversPair, scopesCoverPair, scopesHaveAlias } from "@/lib/services/redeem-authorization";
 
 export function parseAllowedModelAliases(raw: string | null | undefined) {
   if (!raw) return [];
@@ -68,20 +68,30 @@ const ACCESSIBLE_MODEL_ROWS_SQL = `SELECT m.alias, m.real_model, m.is_public, m.
      AND m.alias != '*'
    ORDER BY m.alias ASC, m.id ASC`;
 
-export async function canUserAccessModelAlias(user: Pick<DbUser, "id" | "role" | "group_id" | "allowed_model_aliases">, alias: string) {
-  if (user.role === "admin") return true;
+type AliasGrantSource = "public" | "whitelist" | "redeem";
+
+// 别名可见性的唯一来源判定，按优先级返回来源：
+//   public    该别名存在公开实例
+//   whitelist 在用户/组模型白名单内
+//   redeem    仅由某张有效定向额度（兑换码）的别名维度覆盖
+// 来源要区分开：只有 redeem 来源属于「按渠道配对的授权尚未验证」，选路为空时
+// 应判定为无权限，而不是当别名不存在（详见 gateway-handler 的 403/404 分支）。
+async function resolveAliasGrantSource(
+  user: Pick<DbUser, "id" | "role" | "group_id" | "allowed_model_aliases">,
+  alias: string,
+): Promise<AliasGrantSource | null> {
+  if (user.role === "admin") return "public";
 
   const models = await gatewayDb.query<{ is_public: number }>(MODEL_PUBLIC_BY_ALIAS_SQL, [alias]);
-
-  if (models.length === 0) return false;
-  if (models.some((m) => m.is_public === 1)) return true;
+  if (models.length === 0) return null;
+  if (models.some((m) => m.is_public === 1)) return "public";
 
   const effective = await getEffectiveAllowedAliases(user);
-  if (effective.includes(alias)) return true;
+  if (effective.includes(alias)) return "whitelist";
 
-  // 定向额度明确限定的模型作为额外授权来源（兑换即授权）
-  const redeem = await listRedeemCoveredAuthorization(user.id);
-  return redeem.aliases.includes(alias);
+  // 定额度限定的别名也是授权来源（兑换即授权）。此处只有别名维度（渠道未知），
+  // 故用「任意渠道」的宽松口径放行，配对收紧交给选路阶段的 filterGrantedRows。
+  return scopesHaveAlias(await listRedeemScopes(user.id), alias) ? "redeem" : null;
 }
 
 export async function hasEnabledModelAlias(alias: string) {
@@ -92,15 +102,17 @@ export async function hasEnabledModelAlias(alias: string) {
 export async function resolveAccessibleModelAlias(
   user: Pick<DbUser, "id" | "role" | "group_id" | "allowed_model_aliases">,
   requestedAlias: string,
-): Promise<{ ok: true; alias: string } | { ok: false; reason: "not_found" | "forbidden" }> {
+): Promise<{ ok: true; alias: string; viaRedeemScope: boolean } | { ok: false; reason: "not_found" | "forbidden" }> {
   const requestedAliasExists = await hasEnabledModelAlias(requestedAlias);
-  if (requestedAliasExists && await canUserAccessModelAlias(user, requestedAlias)) {
-    return { ok: true, alias: requestedAlias };
+  if (requestedAliasExists) {
+    const source = await resolveAliasGrantSource(user, requestedAlias);
+    if (source !== null) return { ok: true, alias: requestedAlias, viaRedeemScope: source === "redeem" };
   }
 
   const wildcardAliasExists = await hasEnabledModelAlias("*");
-  if (wildcardAliasExists && await canUserAccessModelAlias(user, "*")) {
-    return { ok: true, alias: "*" };
+  if (wildcardAliasExists) {
+    const source = await resolveAliasGrantSource(user, "*");
+    if (source !== null) return { ok: true, alias: "*", viaRedeemScope: source === "redeem" };
   }
 
   return requestedAliasExists ? { ok: false, reason: "forbidden" } : { ok: false, reason: "not_found" };
@@ -167,11 +179,18 @@ export async function listAccessibleModels(user: Pick<DbUser, "id" | "role" | "g
   if (user.role === "admin") {
     for (const row of rows) processRow(row);
   } else {
-    const allowed = new Set(await getEffectiveAllowedAliases(user));
-    const redeemAliases = new Set((await listRedeemCoveredAuthorization(user.id)).aliases);
+    const userScope = await getUserScope(user);
+    const redeemScopes = await listRedeemScopes(user.id);
     for (const row of rows) {
+      // 渠道白名单对所有模型生效，公开模型也不例外：选路阶段的 allowSet 一视同仁，
+      // 展示侧若对公开模型放开，就会列出「看得见、请求必然 403」的组合。
       if (allowedChannelSet && !allowedChannelSet.has(row.channel_id)) continue;
-      if (row.is_public !== 1 && !allowed.has(row.alias) && !redeemAliases.has(row.alias)) continue;
+      // 其余模型再按 (渠道, 别名) 配对校验，与网关实际选路保持一致。
+      if (row.is_public !== 1) {
+        const granted = (userScope !== null && scopeCoversPair(userScope, row.channel_id, row.alias))
+          || scopesCoverPair(redeemScopes, row.channel_id, row.alias);
+        if (!granted) continue;
+      }
       processRow(row);
     }
   }

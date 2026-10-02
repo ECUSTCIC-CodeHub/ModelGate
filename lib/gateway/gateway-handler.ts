@@ -4,7 +4,7 @@ import { checkChannelQuota, appendChannelQuotaHeaders } from "@/lib/gateway/chan
 import { insertChatLog, withSubstitutionNote } from "@/lib/gateway/chat-log";
 import { jsonError } from "@/lib/core/http";
 import { checkModelQuota, appendModelQuotaHeaders } from "@/lib/gateway/model-quota";
-import { resolveAccessibleModelAlias, canUserAccessModelAlias } from "@/lib/gateway/model-access";
+import { resolveAccessibleModelAlias } from "@/lib/gateway/model-access";
 import { getGatewayProtocolAdapter, type GatewayProtocolAdapter } from "@/lib/gateway/protocol-adapters";
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 import type { ResponseAdapterOptions } from "@/lib/gateway/protocol-adapters/intermediate";
@@ -23,7 +23,6 @@ import { resolveTriState } from "@/lib/gateway/user-preferences";
 import { buildErrorResponseBody, parseUpstreamError } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
 import { findMatchingRedeemBalance } from "@/lib/services/redeem-codes";
-import { modelGateFeatures } from "@/lib/core/features";
 import { requestUpstreamWithFallback } from "@/lib/gateway/upstream-routing";
 import {
   applyCopilotCompatibilityToChatStream,
@@ -48,7 +47,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   const allowedChannelIds = await getUserAllowedChannelIds(auth.user);
 
   const denyByUa = (match: UaRestrictionMatch & { matched: true }, alias: string | null): Response => {
-    logRejected(429, match.rule.error_message, alias);
+    logRejected(match.rule.error_code, match.rule.error_message, alias);
     return jsonError(match.rule.error_message, match.rule.error_code, {
       type: "invalid_request_error",
       param: "user-agent",
@@ -129,10 +128,21 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   const modelFallbackEnabled = resolveTriState(auth.user.pref_model_fallback, settings.model_fallback_enabled === 1);
   const resolved = await resolveAccessibleModelAlias(auth.user, alias);
   let resolvedAlias: string;
+  // 仅由定向额度放行的别名（公开模型与用户/组白名单都不覆盖）走的是「任意渠道」宽松门禁，
+  // 配对是否命中要等选路阶段才知道，因此无路由时应判定为无权限，而不是当别名不存在。
+  const redeemOnlyAliasGrant = resolved.ok && resolved.viaRedeemScope;
   let modelFallbackNote: string | null = null;
   let visionFallbackNote: string | null = null;
   if (!resolved.ok) {
+    // 别名门禁只做「任意渠道」的宽松放行，配对收紧在选路阶段。别名级与配对级的别名口径同源，
+    // 因此这里通常探不到路由，按别名不可用返回 404（不触发模型替补，避免把无权限静默换成别的模型）；
+    // 仅当两级口径不一致时（如 MySQL 的别名比较不区分大小写）才会探到，此时返回 403。
     if (resolved.reason === "forbidden") {
+      const grantedRoute = await selectModelRoute(alias, { protocol: inboundProtocol, user: auth.user });
+      if (!grantedRoute) {
+        logRejected(404, "模型别名不存在或已禁用", alias, estimatedTokens);
+        return jsonError("模型别名不存在或已禁用", 404);
+      }
       logRejected(403, "当前用户无权访问该模型", alias, estimatedTokens);
       return jsonError("当前用户无权访问该模型", 403);
     }
@@ -164,6 +174,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       protocol: inboundProtocol,
       allowedChannelIds,
       userAgent: uaEnabled ? clientUserAgent : undefined,
+      user: auth.user,
     });
     if (sourceRoute && sourceRoute.model.supports_vision !== 1) {
       const visionRoute = await findVisionFallbackRoute({
@@ -173,7 +184,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
         userAgent: uaEnabled ? clientUserAgent : undefined,
         user: auth.user,
       });
-      if (visionRoute && (auth.user.role === "admin" || await canUserAccessModelAlias(auth.user, visionRoute.model.alias))) {
+      if (visionRoute) {
         effectiveAlias = visionRoute.model.alias;
         visionFallbackNote = "目标模型不支持识图，已自动路由到识图模型";
       }
@@ -184,18 +195,27 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     protocol: inboundProtocol,
     allowedChannelIds,
     userAgent: uaEnabled ? clientUserAgent : undefined,
+    user: auth.user,
   });
   if (!initialRoute) {
     if (uaEnabled) {
-      const nonUaRoute = await selectModelRoute(effectiveAlias, { protocol: inboundProtocol, allowedChannelIds });
+      const nonUaRoute = await selectModelRoute(effectiveAlias, { protocol: inboundProtocol, allowedChannelIds, user: auth.user });
       if (nonUaRoute !== null) {
-        const denyMatch = await findUaDenyMatchForAlias(effectiveAlias, clientUserAgent, allowedChannelIds, inboundProtocol);
+        const denyMatch = await findUaDenyMatchForAlias(effectiveAlias, clientUserAgent, allowedChannelIds, inboundProtocol, auth.user);
         if (denyMatch) return denyByUa(denyMatch, alias);
       }
     }
+    // 额度放行的别名配对没命中就是无权限，不能退化成「别名不存在或已禁用」。
+    // 额度来源取自别名门禁所用的请求别名，被视觉替补换过别名后不再适用，交由渠道级诊断或 404 处理。
+    if (redeemOnlyAliasGrant && effectiveAlias === resolvedAlias) {
+      logRejected(403, "当前用户无权访问该模型", alias, estimatedTokens);
+      return jsonError("当前用户无权访问该模型", 403);
+    }
     if (allowedChannelIds) {
-      const withoutRestriction = await selectModelRoute(effectiveAlias, { protocol: inboundProtocol });
-      if (withoutRestriction !== null) {
+      // 这里只问「该别名是否存在可用渠道」，不能带 user 与 userAgent：任何请求级过滤都会把
+      // 组渠道白名单之外的路由剔掉，令这条诊断对非公开别名不可达，最终误报 404。
+      const anyChannelRoute = await selectModelRoute(effectiveAlias, { protocol: inboundProtocol });
+      if (anyChannelRoute !== null) {
         logRejected(403, "当前用户组无可用渠道", alias, estimatedTokens);
         return jsonError("当前用户组无可用渠道", 403);
       }
@@ -228,7 +248,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
 
     // 命中用户定向额度（兑换码）时，跳过用户全局配额检查，由定向额度兜底。
     let redeemCovered = false;
-    if (!bypassUserLimits && modelGateFeatures.redeemCode) {
+    if (!bypassUserLimits && settings.runtime_features.redeemCode) {
       const redeem = await findMatchingRedeemBalance(auth.user.id, existingRoute.channel.id, existingRoute.model.alias);
       redeemCovered = redeem !== null;
     }
@@ -357,7 +377,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   const userQuotaGuard = async (route: RoutedModel): Promise<{ ok: true; redeemBalanceId?: number | null } | { ok: false; reason: string }> => {
     const routeBypass = route.model.quota_mode === "bypass_group" || route.model.quota_mode === "independent";
     if (routeBypass) return { ok: true, redeemBalanceId: null };
-    if (modelGateFeatures.redeemCode) {
+    if (settings.runtime_features.redeemCode) {
       const redeem = await findMatchingRedeemBalance(auth.user.id, route.channel.id, route.model.alias);
       if (redeem) return { ok: true, redeemBalanceId: redeem.id };
     }
@@ -387,6 +407,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     estimatedTokens,
     buildRequestBody: adaptRequestBodyForRoute,
     userQuotaGuard,
+    user: auth.user,
   });
   const buildFailureMessage = (stage: string, message: string, upstreamUrl?: string | null) => {
     const parts = [`阶段=${stage}`, message];

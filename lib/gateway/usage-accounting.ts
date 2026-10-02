@@ -1,8 +1,8 @@
 import { gatewayDb } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
+import { getGatewaySettings } from "@/lib/core/settings";
 import { parseStoredUtc, toMysqlDatetime } from "@/lib/core/db/datetime";
-import { parseAllowedChannelIds } from "@/lib/gateway/channel-access";
-import { parseAllowedModelAliases } from "@/lib/gateway/model-access";
+import { buildRedeemScope, scopeCoversPair } from "@/lib/services/redeem-authorization";
 
 function cleanFloat(value: number): number {
   const rounded = Math.round(value);
@@ -49,11 +49,8 @@ async function findMatchingBalanceInTx(
       const expires = parseStoredUtc(row.expires_at);
       if (expires && expires.getTime() <= Date.now()) continue;
     }
-    const channelIds = parseAllowedChannelIds(row.allowed_channel_ids);
-    const aliases = parseAllowedModelAliases(row.allowed_model_aliases);
-    const channelMatch = channelIds.length === 0 || channelIds.includes(channelId);
-    const aliasMatch = aliases.length === 0 || aliases.includes(modelAlias);
-    if (channelMatch && aliasMatch) {
+    // 与授权侧的配对判定共用同一份逻辑，避免两处规则漂移。
+    if (scopeCoversPair(buildRedeemScope(row.allowed_channel_ids, row.allowed_model_aliases), channelId, modelAlias)) {
       return { id: row.id };
     }
   }
@@ -68,13 +65,14 @@ type TransactionContextLike = {
 export async function addUsage(userId: number, keyId: number, tokens: number, requests = 1, tokenMultiplier = 1, requestMultiplier = 1, channelId?: number, modelId?: number, modelAlias?: string | null, redeemBalanceId?: number | null) {
   const billedTokens = cleanFloat(Math.max(0, tokens * tokenMultiplier));
   const billedRequests = cleanFloat(Math.max(0, requests * requestMultiplier));
+  const settings = await getGatewaySettings();
 
   await gatewayDb.transaction(async (tx) => {
     // 命中用户定向额度（兑换码）时，从定向额度中扣减，且不再计入用户全局用量。
     // 优先使用请求时守卫已确认命中的定向额度（redeemBalanceId），保证“跳过全局配额检查”与实际扣减针对同一定向额度，
     // 避免定向额度在请求期间耗尽/过期后回落到未检查过的用户全局配额。
     let coveredByRedeem = false;
-    if (channelId != null && modelAlias && modelGateFeatures.redeemCode) {
+    if (channelId != null && modelAlias && settings.runtime_features.redeemCode) {
       const balanceId = redeemBalanceId ?? (await findMatchingBalanceInTx(tx, userId, channelId, modelAlias))?.id ?? null;
       if (balanceId != null) {
         // 仅当该定向额度仍存在（未被删除）时才视为已覆盖，避免余额被删除后形成免费使用

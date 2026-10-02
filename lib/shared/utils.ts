@@ -32,6 +32,14 @@ export function formatDatetime(value: string | null | undefined) {
   return new Date(value).toLocaleString();
 }
 
+// 展示存储的到期时间：null 为长期有效，解析不出来（空串、零日期等历史数据）标注异常，
+// 避免直接渲染成 Invalid Date，也避免把永远核销不了的空串显示成长期有效。
+export function formatExpiresAt(value: string | null | undefined) {
+  if (value == null) return "长期有效";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "有效期异常" : date.toLocaleString();
+}
+
 export function formatAnnouncementDate(value: string, withTime = false) {
   if (!value) return "";
   const date = new Date(value.includes("T") ? value : value.replace(" ", "T"));

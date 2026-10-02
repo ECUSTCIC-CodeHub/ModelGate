@@ -1,13 +1,13 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { requireFeature } from "@/lib/core/features";
+import { requireRedeemCodeFeature } from "@/lib/core/features";
+import { getGatewaySettings } from "@/lib/core/settings";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { listExistingChannelIds } from "@/lib/gateway/channel-access";
 import { listExistingModelAliases } from "@/lib/gateway/model-access";
-import { toMysqlDatetime } from "@/lib/core/db/datetime";
-import { generateRedeemCodes, listCodes, getCodeByCode, setRedeemCodesEnabled, deleteRedeemCodes } from "@/lib/services/redeem-codes";
+import { parseExpiresInput, EXPIRES_FUTURE_HINT, generateRedeemCodes, listCodes, getCodeByCode, setRedeemCodesEnabled, deleteRedeemCodes } from "@/lib/services/redeem-codes";
 
 const generateSchema = z.object({
   count: z.number().int().min(1).max(500),
@@ -21,7 +21,7 @@ const generateSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const unavailable = requireFeature("redeemCode");
+  const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
   if (unavailable) return unavailable;
 
   const guard = await ensureAdmin(request);
@@ -38,7 +38,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const unavailable = requireFeature("redeemCode");
+  const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
   if (unavailable) return unavailable;
 
   const guard = await ensureAdmin(request);
@@ -60,12 +60,16 @@ export async function POST(request: Request) {
   const existingAliases = await listExistingModelAliases(aliases);
   const droppedAliases = aliases.filter((a) => !existingAliases.includes(a));
 
-  let expiresAt: string | null = parsed.data.expires_at ?? null;
-  if (expiresAt) {
-    const parsedDate = new Date(expiresAt);
-    if (Number.isNaN(parsedDate.getTime())) return jsonError("有效期格式不正确", 400);
-    // 与其他时间字段一致，统一存储无时区后缀的 UTC 裸字符串
-    expiresAt = toMysqlDatetime(parsedDate);
+  // 空串与纯空白串按「不设有效期」处理：空串本身就是非法时间值，落库后会让核销 SQL 的
+  // `expires_at IS NULL OR expires_at > ?` 失去意义（SQLite 下恒不成立、码永远兑换不了，
+  // MySQL 严格模式下直接拒写），因此这里与不传该字段等价。
+  let expiresAt: string | null = null;
+  const rawExpiresAt = parsed.data.expires_at?.trim();
+  if (rawExpiresAt) {
+    const parsedExpiresAt = parseExpiresInput(rawExpiresAt);
+    if (!parsedExpiresAt.ok) return jsonError(parsedExpiresAt.reason, 400);
+    if (parsedExpiresAt.time <= Date.now()) return jsonError(EXPIRES_FUTURE_HINT, 400);
+    expiresAt = parsedExpiresAt.value;
   }
 
   const { codes, batchId } = await generateRedeemCodes({
@@ -97,7 +101,7 @@ function normalizeCodes(body: unknown): string[] {
 }
 
 export async function PUT(request: Request) {
-  const unavailable = requireFeature("redeemCode");
+  const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
   if (unavailable) return unavailable;
 
   const guard = await ensureAdmin(request);
@@ -124,7 +128,7 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const unavailable = requireFeature("redeemCode");
+  const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
   if (unavailable) return unavailable;
 
   const guard = await ensureAdmin(request);

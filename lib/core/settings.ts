@@ -1,5 +1,6 @@
 import { gatewayDb } from "@/lib/core/db";
 import { clampStatusLightHours } from "@/lib/shared/utils";
+import { featureSettingsKey, modelGateFeatures, resolveRuntimeFeatures, runtimeFeatureDefaults, runtimeToggleableFeatures, type ModelGateFeature } from "@/lib/core/features";
 
 const DEFAULTS = {
   registration_enabled: 1,
@@ -63,6 +64,7 @@ export type GatewaySettings = {
   model_brand_groups: string;
   default_appearance: "default" | "retro";
   default_mode: "light" | "dark" | "system";
+  runtime_features: Record<string, boolean>;
 };
 
 export type ModelBrandGroup = {
@@ -120,6 +122,13 @@ const OIDC_KEYS = [
   "public_base_url",
 ] as const;
 
+// 可运行时开关的功能对应的 settings 键（仅构建版本支持该功能时才参与配置）。
+const RUNTIME_FEATURE_KEYS = ([
+  "redeemCode",
+] as const)
+  .filter((feature) => modelGateFeatures[feature])
+  .map((feature) => featureSettingsKey(feature));
+
 const GATEWAY_KEYS = [
   "registration_enabled",
   "password_login_enabled",
@@ -158,6 +167,7 @@ const GATEWAY_KEYS = [
   "model_brand_groups",
   "default_appearance",
   "default_mode",
+  ...RUNTIME_FEATURE_KEYS,
 ] as const;
 
 const SETTINGS_SELECT_SQL = `SELECT \`key\`, value FROM settings WHERE \`key\` IN (${GATEWAY_KEYS.map(() => "?").join(", ")})`;
@@ -216,6 +226,7 @@ async function readGatewaySettingsFromDb(): Promise<GatewaySettings> {
     model_brand_groups: map.get("model_brand_groups") ?? "",
     default_appearance: (map.get("default_appearance") as "default" | "retro") ?? "default",
     default_mode: (map.get("default_mode") as "light" | "dark" | "system") ?? "system",
+    runtime_features: resolveRuntimeFeatures(Object.fromEntries(map)),
   };
 }
 
@@ -228,6 +239,17 @@ export async function getGatewaySettings(): Promise<GatewaySettings> {
   const value = await readGatewaySettingsFromDb();
   cachedGatewaySettings = { value, expiresAt: now + GATEWAY_SETTINGS_CACHE_TTL_MS };
   return value;
+}
+
+// 面向客户端的安全子集：名单与 settings key 都由服务端维护，不把全部设置暴露出去。
+// 运行时功能开关直接影响菜单入口，客户端需要拿到服务端算好的值。
+export async function getClientRuntimeFeatures(): Promise<Record<ModelGateFeature, boolean>> {
+  const settings = await getGatewaySettings();
+  const result = {} as Record<ModelGateFeature, boolean>;
+  for (const feature of runtimeToggleableFeatures) {
+    result[feature] = settings.runtime_features[feature] === true;
+  }
+  return result;
 }
 
 export async function setGatewaySettings(input: {
@@ -276,6 +298,7 @@ export async function setGatewaySettings(input: {
   model_brand_groups?: string;
   default_appearance?: "default" | "retro";
   default_mode?: "light" | "dark" | "system";
+  runtime_features?: Record<string, boolean>;
 }) {
   const values: Record<string, string> = {
     registration_enabled: input.registration_enabled ? "1" : "0",
@@ -325,6 +348,10 @@ export async function setGatewaySettings(input: {
   if (input.model_brand_groups !== undefined) values.model_brand_groups = input.model_brand_groups;
   if (input.default_appearance !== undefined) values.default_appearance = input.default_appearance;
   if (input.default_mode !== undefined) values.default_mode = input.default_mode;
+  for (const feature of Object.keys(runtimeFeatureDefaults)) {
+    const next = input.runtime_features?.[feature];
+    if (typeof next === "boolean") values[featureSettingsKey(feature as keyof typeof modelGateFeatures)] = next ? "1" : "0";
+  }
 
   const isMysql = await gatewayDb.getDriver() === "mysql";
   const upsertSql = isMysql

@@ -1,3 +1,4 @@
+import type { DbUser } from "@/lib/core/db";
 import { acquireChannel, type ChannelLease, makeModelRuntimeKey } from "@/lib/gateway/channel-runtime";
 import { checkChannelQuota } from "@/lib/gateway/channel-quota";
 import { checkModelQuota, type ModelQuotaInfo } from "@/lib/gateway/model-quota";
@@ -90,6 +91,7 @@ export async function requestUpstreamWithFallback({
   estimatedTokens,
   buildRequestBody,
   userQuotaGuard,
+  user,
 }: {
   resolvedAlias: string;
   inboundProtocol: GatewayProtocol;
@@ -103,6 +105,7 @@ export async function requestUpstreamWithFallback({
   estimatedTokens: number;
   buildRequestBody: (route: RoutedModel) => Record<string, unknown>;
   userQuotaGuard?: UserQuotaGuard;
+  user?: Pick<DbUser, "id" | "role" | "group_id" | "allowed_model_aliases">;
 }): Promise<UpstreamPickResult> {
   const attemptedChannels = new Set<number>();
   const attemptedChannelNames: string[] = [];
@@ -139,6 +142,7 @@ export async function requestUpstreamWithFallback({
       protocol: inboundProtocol,
       allowedChannelIds,
       userAgent,
+      user,
     });
 
     if (!route) {
