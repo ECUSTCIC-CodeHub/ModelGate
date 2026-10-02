@@ -6,11 +6,10 @@ import { getGatewaySettings } from "@/lib/core/settings";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { gatewayDb } from "@/lib/core/db";
-import { toMysqlDatetime } from "@/lib/core/db/datetime";
-import { getCodeById, getCodeDetail, listRedemptions, updateRedeemCode } from "@/lib/services/redeem-codes";
+import { parseExpiresInput, getCodeById, getCodeDetail, listRedemptions, updateRedeemCode } from "@/lib/services/redeem-codes";
 
 const patchSchema = z
-  .object({
+  .strictObject({
     note: z.string().max(500).nullable().optional(),
     enabled: z.boolean().optional(),
     expires_at: z.string().nullable().optional(),
@@ -67,9 +66,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (raw === null || raw === "") {
       expiresAt = null;
     } else {
-      const parsedDate = new Date(raw);
-      if (Number.isNaN(parsedDate.getTime())) return jsonError("有效期格式不正确", 400);
-      expiresAt = toMysqlDatetime(parsedDate);
+      const parsedExpiresAt = parseExpiresInput(raw);
+      if (!parsedExpiresAt.ok) return jsonError(parsedExpiresAt.reason, 400);
+      expiresAt = parsedExpiresAt.value;
     }
   }
 

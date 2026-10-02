@@ -120,6 +120,39 @@ function generateRedeemCode(): string {
   return `${out.slice(0, 4)}-${out.slice(4, 8)}-${out.slice(8, 12)}`;
 }
 
+// 管理员输入的到期时间只接受 `YYYY-MM-DD`、`YYYY-MM-DD HH:MM[:SS]` 或带时区的 ISO 写法，
+// 不带时区后缀时按存储约定解释为 UTC（与 parseStoredUtc 一致），`new Date` 那种把 "0"、"2026" 也收下的宽松解析不使用。
+const EXPIRES_INPUT_PATTERN = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+const EXPIRES_INPUT_HINT = "有效期格式不正确，请使用 ISO 时间（如 2026-12-01T00:00:00Z）";
+export const EXPIRES_FUTURE_HINT = "有效期需晚于当前时间；如需立即失效请停用该兑换码";
+
+export function parseExpiresInput(raw: string): { ok: true; value: string; time: number } | { ok: false; reason: string } {
+  const match = EXPIRES_INPUT_PATTERN.exec(raw.trim());
+  if (!match) return { ok: false, reason: EXPIRES_INPUT_HINT };
+  const [, year, month, day, hour, minute, second, milli, zone] = match;
+  const y = Number(year);
+  const mo = Number(month);
+  const d = Number(day);
+  const h = hour === undefined ? 0 : Number(hour);
+  const mi = minute === undefined ? 0 : Number(minute);
+  const s = second === undefined ? 0 : Number(second);
+  const ms = milli === undefined ? 0 : Number(milli.padEnd(3, "0"));
+  // 先按字面年月日构造再校验，避免 2 月 30 日、24 点这类输入被 Date 自动进位成另一个时刻
+  const base = new Date(Date.UTC(2000, mo - 1, d, h, mi, s, ms));
+  base.setUTCFullYear(y);
+  if (mo < 1 || mo > 12 || h > 23 || mi > 59 || s > 59 || base.getUTCMonth() !== mo - 1 || base.getUTCDate() !== d) {
+    return { ok: false, reason: EXPIRES_INPUT_HINT };
+  }
+  // 存储精度到秒，先截断再返回，保证调用方的时点判定与落库值、回读值一致
+  const time = Math.floor((zone ? new Date(raw.trim()).getTime() : base.getTime()) / 1000) * 1000;
+  const result = new Date(time);
+  // 带偏移的输入会改变 UTC 年份，越界值落库后不可用（数据库拒写或比较恒假），这里按结果再校验一次
+  if (Number.isNaN(time) || result.getUTCFullYear() < 1000 || result.getUTCFullYear() > 9999) {
+    return { ok: false, reason: EXPIRES_INPUT_HINT };
+  }
+  return { ok: true, value: toMysqlDatetime(result), time };
+}
+
 export function isCodeValid(row: Pick<RedeemCodeRow, "enabled" | "expires_at" | "max_uses" | "used_count">): { ok: boolean; reason?: string } {
   if (row.enabled !== 1) {
     return { ok: false, reason: "该兑换码已停用" };
@@ -447,7 +480,9 @@ export async function updateRedeemCode(
       return { ok: false, reason: "有效期不能为空；如需永久有效请重新生成兑换码" };
     }
     const next = parseStoredUtc(input.expiresAt);
-    if (!next) return { ok: false, reason: "有效期格式不正确" };
+    if (!next) return { ok: false, reason: EXPIRES_INPUT_HINT };
+    // 设为已经过去的时刻只会得到一个立刻失效的码，没有可兑换窗口。
+    if (next.getTime() <= Date.now()) return { ok: false, reason: EXPIRES_FUTURE_HINT };
     const current = row.expires_at ? parseStoredUtc(row.expires_at) : null;
     if (current && next.getTime() < current.getTime()) {
       return { ok: false, reason: "有效期只能延长，不能缩短；如需缩短请停用该兑换码" };

@@ -1619,9 +1619,11 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | request_quota | int | 否 | 请求额度 |
 | allowed_channel_ids | int[] | 否 | 限定渠道 ID 列表，空表示不限制 |
 | allowed_model_aliases | string[] | 否 | 限定模型别名列表，空表示不限制 |
-| expires_at | string \| null | 否 | 有效期（ISO 时间），不传、`null`、空串或纯空白串都表示长期有效 |
+| expires_at | string \| null | 否 | 有效期，接受 `YYYY-MM-DD`、`YYYY-MM-DD HH:MM[:SS[.SSS]]` 以及 `T`/空格分隔的 ISO 写法（如 `2026-12-01T00:00:00Z`）；不带时区后缀按 UTC 解释；须晚于当前时间。不传、`null`、空串或纯空白串都表示长期有效 |
 | max_uses | int | 否 | 每个码最多兑换次数，0 表示不限（默认 1） |
 | note | string | 否 | 备注，最长 500 字符 |
+
+未列出的字段会被忽略，不会返回 400（字段名写错时会按默认值生成，例如拼错的 `expires_at` 会生成长期有效的码）。
 
 **响应 (201):**
 ```json
@@ -1780,8 +1782,8 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 - `token_quota` / `request_quota`：只允许上调；原值为有限额度时不允许改成 `null`（不限）。`null` 是最宽形态，放宽到不限请停用旧码并重新生成
 - `max_uses`：只允许放宽（`0` 为不限，属最宽），且不能小于 `used_count`
-- `expires_at`：只允许延长；不能早于已发放额度的过期时间；已发放额度为长期有效（null）时不允许改为有限期；不允许改为 `null`、空串或纯空白串（`null` 会让 SQL 原子核销的过期判定被豁免，等于给额度开了永久有效口子；空串是非法时间值，SQLite 下会让核销条件恒不成立、码永远兑换不了，MySQL 严格模式下直接写入失败）
-- `code` / `batch_id` / `allowed_channel_ids` / `allowed_model_aliases` **不在白名单**，传入会返回 400
+- `expires_at`：格式与 POST 相同（不带时区后缀按 UTC 解释）；只允许延长、且必须晚于当前时间（避免设出一个立刻失效的码）；不能早于已发放额度的过期时间，已发放额度的有效期无法解析时同样拒绝；已发放额度为长期有效（null）时不允许改为有限期；不允许改为 `null`、空串或纯空白串（`null` 会让 SQL 原子核销的过期判定被豁免，等于给额度开了永久有效口子；空串是非法时间值，SQLite 下会让核销条件恒不成立、码永远兑换不了，MySQL 严格模式下直接写入失败）
+- `code` / `batch_id` / `allowed_channel_ids` / `allowed_model_aliases` **不在白名单**，传入会返回 400；其余未列出的字段同样按未知字段拒绝
 - 不传任何字段返回 400
 
 **认证:** 管理员
@@ -1792,7 +1794,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 |:---|:---|:---|
 | note | string \| null | 备注，最长 500 字符 |
 | enabled | boolean | 是否启用 |
-| expires_at | string \| null | 有效期（ISO 时间）。要保留长期有效就不传该字段；传 `null`、空串或纯空白串等同于清空有效期，会被拒绝并返回 400「有效期不能为空；如需永久有效请重新生成兑换码」 |
+| expires_at | string \| null | 有效期（格式同 POST，须晚于当前时间）。要保留长期有效就不传该字段；传 `null`、空串或纯空白串等同于清空有效期，会被拒绝并返回 400「有效期不能为空；如需永久有效请重新生成兑换码」 |
 | max_uses | int | 最多兑换次数，0 表示不限 |
 | token_quota | int \| null | Token 额度，null 表示不限 |
 | request_quota | int \| null | 请求额度，null 表示不限 |
