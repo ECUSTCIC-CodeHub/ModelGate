@@ -51,6 +51,8 @@ export function useDashboardShell(role: Role) {
         if (cancelled) return;
         const raw = data?.data?.runtime_features;
         if (raw && typeof raw === "object") setRuntimeFeatures(raw as Record<string, boolean>);
+        const url = data?.data?.feedback_url;
+        if (typeof url === "string" && url.trim()) setFeedbackUrl(url.trim());
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -69,16 +71,6 @@ export function useDashboardShell(role: Role) {
       .catch(() => {});
     return () => { cancelled = true; };
   }, [role]);
-
-  useEffect(() => {
-    void fetch("/api/site-info", { cache: "no-store" })
-      .then((res) => res.json())
-      .then((data) => {
-        const url = data?.data?.feedback_url;
-        if (typeof url === "string" && url.trim()) setFeedbackUrl(url.trim());
-      })
-      .catch(() => {});
-  }, []);
 
   function openPasswordDialog() {
     setPasswordDialogOpen(true);
