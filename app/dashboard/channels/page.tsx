@@ -10,6 +10,7 @@ import { ChannelDrawer } from "./channel-drawer";
 import { ChannelTable } from "./channel-table";
 import { ModelDrawer } from "./model-drawer";
 import { ModelTable } from "./model-table";
+import { StaleModelDialog } from "./stale-model-dialog";
 import { UpstreamModelPicker } from "./upstream-model-picker";
 import { useChannelAdmin } from "./use-channel-admin";
 
@@ -46,6 +47,8 @@ export default function AdminChannelsPage() {
                   onEdit={admin.openEditChannel}
                   onToggle={admin.toggleChannel}
                   onCreateModel={admin.openCreateModel}
+                  probingChannelId={admin.probingChannelId}
+                  onPruneModels={admin.startCleanup}
                   onRemove={admin.removeChannel}
                 />
               </TabsContent>
@@ -56,8 +59,10 @@ export default function AdminChannelsPage() {
                   models={admin.allModels}
                   channelsCount={admin.channels.length}
                   testingModelId={admin.testingModelId}
+                  probingChannelId={admin.probingChannelId}
                   onCreate={() => admin.openCreateModel(admin.channels[0]?.id ?? 0)}
                   onAddForChannel={(id) => admin.openCreateModel(id)}
+                  onPruneForChannel={admin.startCleanup}
                   onTest={admin.testModel}
                   onEdit={admin.openEditModel}
                   onToggle={admin.toggleModel}
@@ -121,6 +126,19 @@ export default function AdminChannelsPage() {
         onToggleModel={admin.toggleUpstreamModel}
         onSelectFiltered={admin.selectFilteredUpstreamModels}
         onConfirm={() => admin.confirmUpstreamModelSelection(admin.activeDraftProtocols)}
+      />
+
+      <StaleModelDialog
+        open={admin.cleanupPreview !== null}
+        channelName={admin.cleanupPreview?.channelName ?? ""}
+        protocols={admin.cleanupPreview?.protocols ?? []}
+        result={admin.cleanupPreview?.result ?? null}
+        selectedIds={admin.selectedStaleIds}
+        deleting={admin.deletingCleanup}
+        onOpenChange={(open) => { if (!open) admin.closeCleanupDialog(); }}
+        onToggleModel={admin.toggleStaleModel}
+        onSelectModels={admin.selectStaleModels}
+        onConfirm={() => void admin.confirmCleanup()}
       />
     </DashboardShell>
   );

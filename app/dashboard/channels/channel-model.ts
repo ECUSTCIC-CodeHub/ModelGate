@@ -183,6 +183,25 @@ export type UpstreamModelOption = {
   disabled: boolean;
 };
 
+export type StaleModelRow = {
+  id: number;
+  alias: string;
+  real_model: string;
+  enabled: number;
+  alias_match: boolean;
+};
+
+export type StaleModelsResult = {
+  channel_id: number;
+  channel_name: string;
+  upstream_count: number;
+  local_count: number;
+  kept: number;
+  skipped_wildcard: number;
+  stale: StaleModelRow[];
+  missing_upstream: string[];
+};
+
 export type ModelWithChannel = ModelRow & {
   channel_name: string;
   channel_weight: number;

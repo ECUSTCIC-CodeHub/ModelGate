@@ -9,7 +9,7 @@ import { ResizeHandle } from "@/components/ui/resize-handle";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useResizableColumns, type ColumnWidthDef } from "@/lib/shared/use-resizable-columns";
-import { Pencil, Plus, Power, Trash2 } from "lucide-react";
+import { Eraser, Loader2, Pencil, Plus, Power, Trash2 } from "lucide-react";
 import { parseSupportedProtocols, shortProtocolLabel, type Channel } from "./channel-model";
 
 function isExpired(exp?: string | Date | null): boolean {
@@ -34,6 +34,8 @@ export function ChannelTable({
   onEdit,
   onToggle,
   onCreateModel,
+  probingChannelId,
+  onPruneModels,
   onRemove,
 }: {
   channels: Channel[];
@@ -41,6 +43,8 @@ export function ChannelTable({
   onEdit: (row: Channel) => void;
   onToggle: (row: Channel) => void;
   onCreateModel: (channelId: number) => void;
+  probingChannelId: number | null;
+  onPruneModels: (channelId: number) => void;
   onRemove: (id: number) => void;
 }) {
   const colDefs = useMemo<ColumnWidthDef[]>(
@@ -158,6 +162,21 @@ export function ChannelTable({
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>新增模型</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0"
+                        disabled={!row.models?.length || probingChannelId !== null}
+                        onClick={() => onPruneModels(row.id)}
+                        aria-label={`清理渠道 ${row.name} 上游已下架的模型`}
+                      >
+                        {probingChannelId === row.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eraser className="h-4 w-4" />}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{!row.models?.length ? "该渠道暂无模型" : "清理上游已下架的模型"}</TooltipContent>
                   </Tooltip>
                   <ConfirmDialog
                     trigger={
