@@ -136,6 +136,24 @@ export function isCodeValid(row: Pick<RedeemCodeRow, "enabled" | "expires_at" | 
   return { ok: true };
 }
 
+export type RedeemCodeListRow = RedeemCodeRow & {
+  created_by_username: string | null;
+  redeemed_users: number;
+  used_tokens_sum: number;
+  used_requests_sum: number;
+};
+
+// 管理员列表用的聚合查询：LEFT JOIN 创建人用户名 + 聚合已兑换人数与已用额度。
+// 用 GROUP BY rc.id 而不是 JOIN 后直接分页，避免一个码对应多条 balance 时把行数放大导致 total 失准。
+const CODE_LIST_SELECT = `SELECT rc.*,
+         cu.username AS created_by_username,
+         COUNT(b.id) AS redeemed_users,
+         COALESCE(SUM(b.used_tokens), 0) AS used_tokens_sum,
+         COALESCE(SUM(b.used_requests), 0) AS used_requests_sum
+    FROM redeem_codes rc
+    LEFT JOIN users cu ON cu.id = rc.created_by
+    LEFT JOIN redeem_balances b ON b.code_id = rc.id`;
+
 export async function getCodeByCode(code: string): Promise<RedeemCodeRow | undefined> {
   return gatewayDb.queryOne<RedeemCodeRow>(
     "SELECT * FROM redeem_codes WHERE code = ?",
@@ -317,32 +335,158 @@ export async function findMatchingRedeemBalance(userId: number, channelId: numbe
   return null;
 }
 
-// 管理员：按批次查看兑换码列表。
+// 管理员：按批次查看兑换码列表，附带创建人、已兑换人数与已用额度聚合。
 export async function listCodes(options: { keyword?: string; limit: number; offset: number; batchId?: string }) {
   const { keyword = "", limit, offset, batchId } = options;
   const whereParts: string[] = [];
   const args: Array<string | number> = [];
   if (keyword) {
-    whereParts.push("code LIKE ?");
+    whereParts.push("rc.code LIKE ?");
     args.push(`%${keyword.toUpperCase()}%`);
   }
   if (batchId) {
-    whereParts.push("batch_id = ?");
+    whereParts.push("rc.batch_id = ?");
     args.push(batchId);
   }
   const whereSql = whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
-  const rows = await gatewayDb.query<RedeemCodeRow>(
-    `SELECT * FROM redeem_codes ${whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`,
+  const rows = await gatewayDb.query<RedeemCodeListRow>(
+    `${CODE_LIST_SELECT} ${whereSql} GROUP BY rc.id ORDER BY rc.id DESC LIMIT ? OFFSET ?`,
     [...args, limit, offset],
   );
   const totalRow = await gatewayDb.queryOne<{ total: number }>(
-    `SELECT COUNT(*) AS total FROM redeem_codes ${whereSql}`,
+    `SELECT COUNT(*) AS total FROM redeem_codes rc ${whereSql}`,
     args,
   );
   return {
     data: rows,
     total: totalRow?.total ?? 0,
   };
+}
+
+// 管理员：取单个兑换码的汇总详情（创建人 + 聚合用量）。
+export async function getCodeDetail(id: number): Promise<RedeemCodeListRow | undefined> {
+  return gatewayDb.queryOne<RedeemCodeListRow>(
+    `${CODE_LIST_SELECT} WHERE rc.id = ? GROUP BY rc.id`,
+    [id],
+  );
+}
+
+export type UpdateRedeemCodeInput = {
+  note?: string | null;
+  enabled?: boolean;
+  expiresAt?: string | null;
+  maxUses?: number;
+  tokenQuota?: number | null;
+  requestQuota?: number | null;
+};
+
+// 管理员编辑单个兑换码。遵循「只增不减」：额度类字段只允许上调，
+// max_uses 只允许放宽（0 视为不限，属最宽），避免收紧后已兑换用户凭空失效。
+// 有效期收紧时不得早于任一已发放额度的过期时间（NULL 表示长期有效，不能收紧为有限期）。
+export async function updateRedeemCode(
+  id: number,
+  input: UpdateRedeemCodeInput,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const row = await getCodeById(id);
+  if (!row) return { ok: false, reason: "兑换码不存在" };
+
+  const sets: string[] = [];
+  const args: Array<string | number | null> = [];
+
+  if (input.note !== undefined) {
+    sets.push("note = ?");
+    args.push(input.note === null ? null : input.note.trim() || null);
+  }
+
+  if (input.enabled !== undefined) {
+    sets.push("enabled = ?");
+    args.push(input.enabled ? 1 : 0);
+  }
+
+  if (input.maxUses !== undefined) {
+    if (input.maxUses !== 0 && row.max_uses !== 0 && input.maxUses < row.max_uses) {
+      return { ok: false, reason: "最多兑换次数只能放宽，不能收紧" };
+    }
+    if (input.maxUses !== 0 && input.maxUses < row.used_count) {
+      return { ok: false, reason: `该兑换码已被兑换 ${row.used_count} 次，最多兑换次数不能小于该值` };
+    }
+    sets.push("max_uses = ?");
+    args.push(input.maxUses);
+  }
+
+  if (input.tokenQuota !== undefined) {
+    if (input.tokenQuota !== null && row.token_quota !== null && input.tokenQuota < row.token_quota) {
+      return { ok: false, reason: "Token 额度只能上调，不能下调；如需下调请停用旧码并重新生成" };
+    }
+    sets.push("token_quota = ?");
+    args.push(input.tokenQuota);
+  }
+
+  if (input.requestQuota !== undefined) {
+    if (input.requestQuota !== null && row.request_quota !== null && input.requestQuota < row.request_quota) {
+      return { ok: false, reason: "请求额度只能上调，不能下调；如需下调请停用旧码并重新生成" };
+    }
+    sets.push("request_quota = ?");
+    args.push(input.requestQuota);
+  }
+
+  if (input.expiresAt !== undefined) {
+    if (input.expiresAt !== null) {
+      const next = parseStoredUtc(input.expiresAt);
+      if (!next) return { ok: false, reason: "有效期格式不正确" };
+      const current = row.expires_at ? parseStoredUtc(row.expires_at) : null;
+      if (current && next.getTime() < current.getTime()) {
+        return { ok: false, reason: "有效期只能延长，不能缩短；如需缩短请停用该兑换码" };
+      }
+      // 所有已发放额度的过期时间都要放宽到新有效期之后：
+      // 只看一条（LIMIT 1）会漏掉过期时间更晚的其他额度，导致它们凭空提前失效。
+      const issued = await gatewayDb.query<{ expires_at: string | null }>(
+        "SELECT expires_at FROM redeem_balances WHERE code_id = ?",
+        [id],
+      );
+      if (issued.some((b) => !b.expires_at)) {
+        return { ok: false, reason: "已有用户兑换该码且额度长期有效，无法为其设置有效期" };
+      }
+      for (const balance of issued) {
+        const issuedExpires = balance.expires_at ? parseStoredUtc(balance.expires_at) : null;
+        if (issuedExpires && next.getTime() < issuedExpires.getTime()) {
+          return { ok: false, reason: "有效期不能早于已发放额度的过期时间" };
+        }
+      }
+    }
+    sets.push("expires_at = ?");
+    args.push(input.expiresAt);
+  }
+
+  if (sets.length === 0) return { ok: false, reason: "没有需要更新的字段" };
+
+  // 原样应用到已发放额度：只放宽不收紧，不会让已兑换用户的余量变小。
+  const balanceSets: string[] = [];
+  const balanceArgs: Array<string | number | null> = [];
+  if (input.tokenQuota !== undefined) {
+    balanceSets.push("token_quota = ?");
+    balanceArgs.push(input.tokenQuota);
+  }
+  if (input.requestQuota !== undefined) {
+    balanceSets.push("request_quota = ?");
+    balanceArgs.push(input.requestQuota);
+  }
+  if (input.expiresAt !== undefined && input.expiresAt !== null) {
+    balanceSets.push("expires_at = ?");
+    balanceArgs.push(input.expiresAt);
+  }
+
+  await gatewayDb.transaction(async (tx) => {
+    await tx.execute(`UPDATE redeem_codes SET ${sets.join(", ")} WHERE id = ?`, [...args, id]);
+    if (balanceSets.length > 0) {
+      await tx.execute(
+        `UPDATE redeem_balances SET ${balanceSets.join(", ")} WHERE code_id = ?`,
+        [...balanceArgs, id],
+      );
+    }
+  });
+
+  return { ok: true };
 }
 
 // 管理员：查看某批次的核销/兑换记录。
@@ -360,10 +504,12 @@ export async function listRedemptions(options: { codeId?: number; userId?: numbe
   }
   const whereSql = whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
   const rows = await gatewayDb.query<Record<string, unknown>>(
-    `SELECT r.id, r.code_id, r.user_id, r.redeemed_at, c.code, u.username
+    `SELECT r.id, r.code_id, r.user_id, r.redeemed_at, c.code, u.username,
+            b.token_quota, b.request_quota, b.used_tokens, b.used_requests, b.expires_at
        FROM redeem_redemptions r
        LEFT JOIN redeem_codes c ON c.id = r.code_id
        LEFT JOIN users u ON u.id = r.user_id
+       LEFT JOIN redeem_balances b ON b.code_id = r.code_id AND b.user_id = r.user_id
        ${whereSql}
        ORDER BY r.id DESC LIMIT ? OFFSET ?`,
     [...args, limit, offset],

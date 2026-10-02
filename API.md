@@ -1618,7 +1618,11 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 ### GET /api/admin/redeem-codes
 
-分页查询兑换码列表。
+分页查询兑换码列表，按码聚合已兑换人数与已用额度。
+
+`redeemed_users` 为该码当前持有定向额度的人数，`used_tokens_sum` / `used_requests_sum` 为这些额度累计已用；
+剩余额度 = `token_quota` - `used_tokens_sum`（`token_quota` 为 null 表示不限，不做扣减统计）。
+注意 `used_count` 是**兑换次数**，与 `max_uses` 配对；额度余量看 `used_tokens_sum`，两者不是一回事。
 
 **认证:** 管理员
 
@@ -1648,12 +1652,20 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
       "max_uses": 1,
       "used_count": 0,
       "note": null,
+      "created_by": 1,
+      "created_by_username": "admin",
+      "redeemed_users": 2,
+      "used_tokens_sum": 300,
+      "used_requests_sum": 10,
       "created_at": "..."
     }
   ],
   "paging": { "limit": 20, "offset": 0, "total": 1 }
 }
 ```
+
+> `created_by_username` 来自 `users` 左连接，创建人已被删除时为 null。
+> 分页按 `GROUP BY redeem_codes.id` 聚合，一个码对应多条额度不会放大 `paging.total`。
 
 ### PUT /api/admin/redeem-codes
 
@@ -1688,20 +1700,96 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 ### GET /api/admin/redeem-codes/{id}
 
-获取兑换码详情及其核销（兑换）记录。
+获取兑换码详情及其核销（兑换）记录。`data` 与列表接口同形，额外带上 `created_by_username` 与聚合用量。
 
 **认证:** 管理员
+
+**查询参数:**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|:---|:---|:---|:---|
+| limit | 1-100 | 20 | 核销记录每页数量 |
+| offset | int | 0 | 核销记录偏移量 |
 
 **响应 (200):**
 ```json
 {
-  "data": { "...": "兑换码信息" },
+  "data": {
+    "id": 1,
+    "code": "XXXX-XXXX-XXXX",
+    "token_quota": 1000000,
+    "request_quota": null,
+    "max_uses": 5,
+    "used_count": 2,
+    "created_by_username": "admin",
+    "redeemed_users": 2,
+    "used_tokens_sum": 300,
+    "used_requests_sum": 10,
+    "expires_at": null,
+    "note": "活动赠码",
+    "enabled": 1,
+    "created_at": "..."
+  },
   "redemptions": {
-    "data": [ { "id": 1, "code_id": 1, "user_id": 2, "redeemed_at": "...", "code": "...", "username": "user1" } ],
+    "data": [
+      {
+        "id": 1,
+        "code_id": 1,
+        "user_id": 2,
+        "redeemed_at": "...",
+        "code": "XXXX-XXXX-XXXX",
+        "username": "user1",
+        "token_quota": 1000000,
+        "request_quota": null,
+        "used_tokens": 300,
+        "used_requests": 10,
+        "expires_at": null
+      }
+    ],
     "total": 1
   }
 }
 ```
+
+> 每条核销记录的剩余额度按 `token_quota - used_tokens`（`request_quota - used_requests`）计算，额度为 null 表示不限。
+
+### PATCH /api/admin/redeem-codes/{id}
+
+编辑单个兑换码。遵循**只增不减**原则：额度与有效期只允许放宽，避免下调后已兑换用户的余量凭空变小。
+字段变更会原样应用到该码已发放的定向额度上（只放宽不收紧，不会让已兑换用户余量变小）。
+
+限制规则：
+
+- `token_quota` / `request_quota`：只允许上调，`null`（不限）只能在原值非 null 时设置
+- `max_uses`：只允许放宽（`0` 为不限，属最宽），且不能小于 `used_count`
+- `expires_at`：只允许延长；不能早于已发放额度的过期时间；已发放额度为长期有效（null）时不允许改为有限期
+- `code` / `batch_id` / `allowed_channel_ids` / `allowed_model_aliases` **不在白名单**，传入会返回 400
+- 不传任何字段返回 400
+
+**认证:** 管理员
+
+**请求体（至少一项）:**
+
+| 字段 | 类型 | 说明 |
+|:---|:---|:---|
+| note | string \| null | 备注，最长 500 字符 |
+| enabled | boolean | 是否启用 |
+| expires_at | string \| null | 有效期（ISO 时间），null 或空串表示长期有效 |
+| max_uses | int | 最多兑换次数，0 表示不限 |
+| token_quota | int \| null | Token 额度，null 表示不限 |
+| request_quota | int \| null | 请求额度，null 表示不限 |
+
+**响应 (200):**
+```json
+{
+  "message": "兑换码已更新。",
+  "data": { "...": "更新后的兑换码详情（同 GET 详情）" }
+}
+```
+
+**错误 (400):** `{ "error": { "message": "Token 额度只能上调，不能下调；如需下调请停用旧码并重新生成" } }`
+
+**错误 (404 语义):** 兑换码不存在时返回 400 `兑换码不存在`
 
 ### DELETE /api/admin/redeem-codes/{id}
 

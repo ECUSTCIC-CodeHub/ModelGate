@@ -14,25 +14,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { PagePagination } from "@/components/dashboard/page-pagination";
 import { authedFetch } from "@/lib/auth/client-auth";
 import { formatNumber, formatTokenCount } from "@/lib/shared/utils";
-
-type ChannelOption = { id: number; name: string };
-type ModelOption = { alias: string; real_model: string };
-
-type CodeRow = {
-  id: number;
-  code: string;
-  batch_id: string;
-  token_quota: number | null;
-  request_quota: number | null;
-  allowed_channel_ids: string;
-  allowed_model_aliases: string;
-  expires_at: string | null;
-  enabled: number;
-  max_uses: number;
-  used_count: number;
-  note: string | null;
-  created_at: string;
-};
+import { RedeemCodeDetailDialog, useRedeemCodeDetail } from "./redeem-code-detail-dialog";
+import { RedeemCodeEditDialog } from "./redeem-code-edit-dialog";
+import type { ChannelOption, CodeRow, ModelOption } from "./redeem-code-types";
 
 function parseChannelIds(raw: string | null | undefined): number[] {
   if (!raw) return [];
@@ -79,6 +63,8 @@ export default function AdminRedeemCodesPage() {
   const pageSize = 20;
   const [keyword, setKeyword] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [editingRow, setEditingRow] = useState<CodeRow | null>(null);
+  const codeDetail = useRedeemCodeDetail();
 
   const [count, setCount] = useState(10);
   const [tokenQuota, setTokenQuota] = useState("");
@@ -363,7 +349,7 @@ export default function AdminRedeemCodesPage() {
         <Card>
           <CardHeader>
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <SectionTitle title="兑换码列表" description="管理已生成的兑换码，支持停用与删除。" />
+              <SectionTitle title="兑换码列表" description="管理已生成的兑换码，支持详情、编辑、停用与删除。" />
               <div className="flex flex-wrap items-center gap-2">
                 {selectedIds.size > 0 ? (
                   <>
@@ -396,10 +382,12 @@ export default function AdminRedeemCodesPage() {
                     <TableHead>批次</TableHead>
                     <TableHead>Token 额度</TableHead>
                     <TableHead>请求额度</TableHead>
+                    <TableHead>剩余额度</TableHead>
                     <TableHead>限定渠道</TableHead>
                     <TableHead>限定模型</TableHead>
                     <TableHead>有效期</TableHead>
-                    <TableHead>使用</TableHead>
+                    <TableHead>兑换/使用</TableHead>
+                    <TableHead>创建人</TableHead>
                     <TableHead>状态</TableHead>
                     <TableHead>操作</TableHead>
                   </TableRow>
@@ -407,7 +395,7 @@ export default function AdminRedeemCodesPage() {
                 <TableBody>
                   {rows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={11} className="py-8 text-center text-sm text-[var(--color-foreground-muted)]">
+                      <TableCell colSpan={13} className="py-8 text-center text-sm text-[var(--color-foreground-muted)]">
                         暂无兑换码
                       </TableCell>
                     </TableRow>
@@ -430,10 +418,20 @@ export default function AdminRedeemCodesPage() {
                           </TableCell>
                           <TableCell>{row.token_quota != null ? formatTokenCount(row.token_quota) : "不限"}</TableCell>
                           <TableCell>{row.request_quota != null ? formatNumber(row.request_quota) : "不限"}</TableCell>
+                          <TableCell className="whitespace-nowrap text-xs">
+                            {row.token_quota == null ? "Token 不限" : `Token ${formatTokenCount(Math.max(0, row.token_quota - row.used_tokens_sum))}`}
+                            <br />
+                            {row.request_quota == null ? "请求不限" : `请求 ${formatNumber(Math.max(0, row.request_quota - row.used_requests_sum))}`}
+                          </TableCell>
                           <TableCell>{ch.length === 0 ? "不限" : ch.join(",")}</TableCell>
                           <TableCell>{al.length === 0 ? "不限" : al.join(",")}</TableCell>
                           <TableCell>{row.expires_at ? new Date(row.expires_at).toLocaleString() : "长期有效"}</TableCell>
-                          <TableCell>{row.used_count}/{row.max_uses === 0 ? "∞" : row.max_uses}</TableCell>
+                          <TableCell className="whitespace-nowrap text-xs">
+                            {formatNumber(row.redeemed_users)} 人已领
+                            <br />
+                            {row.used_count}/{row.max_uses === 0 ? "∞" : row.max_uses} 次
+                          </TableCell>
+                          <TableCell>{row.created_by_username ?? "—"}</TableCell>
                           <TableCell>
                             <Badge variant={row.enabled === 1 ? "default" : "outline"}>
                               {row.enabled === 1 ? "启用" : "停用"}
@@ -441,6 +439,8 @@ export default function AdminRedeemCodesPage() {
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
+                              <Button variant="ghost" size="sm" onClick={() => codeDetail.openDetail(row.id)}>详情</Button>
+                              <Button variant="ghost" size="sm" onClick={() => setEditingRow(row)}>编辑</Button>
                               <Button variant="outline" size="sm" onClick={() => void toggleEnabled(row)}>
                                 {row.enabled === 1 ? "停用" : "启用"}
                               </Button>
@@ -463,6 +463,25 @@ export default function AdminRedeemCodesPage() {
             />
           </CardContent>
         </Card>
+
+        {codeDetail.detailId !== null ? (
+          <RedeemCodeDetailDialog
+            codeId={codeDetail.detailId}
+            detail={codeDetail.detail}
+            page={codeDetail.detailPage}
+            loading={codeDetail.loadingDetail}
+            onPageChange={codeDetail.changeDetailPage}
+            onClose={codeDetail.closeDetail}
+          />
+        ) : null}
+        {editingRow ? (
+          <RedeemCodeEditDialog
+            key={editingRow.id}
+            row={editingRow}
+            onClose={() => setEditingRow(null)}
+            onSaved={() => void loadCodes(page)}
+          />
+        ) : null}
       </div>
     </DashboardShell>
   );
