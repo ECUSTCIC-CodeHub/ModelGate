@@ -2,10 +2,9 @@ import { randomBytes } from "node:crypto";
 import { gatewayDb } from "@/lib/core/db";
 import type { ExecuteResult } from "@/lib/core/db/adapter";
 import { toMysqlDatetime, parseStoredUtc } from "@/lib/core/db/datetime";
-import { parseAllowedChannelIds, stringifyAllowedChannelIds } from "@/lib/gateway/channel-access";
-import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
-import { scopeCoversPair } from "@/lib/services/redeem-authorization";
-
+import { stringifyAllowedChannelIds } from "@/lib/gateway/channel-access";
+import { stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
+import { buildRedeemScope, scopeCoversPair } from "@/lib/services/redeem-authorization";
 
 // 判断是否为唯一约束冲突（SQLite: UNIQUE constraint failed; MySQL: ER_DUP_ENTRY）。
 function isUniqueConstraintError(err: unknown): boolean {
@@ -332,10 +331,7 @@ export async function findMatchingRedeemBalance(userId: number, channelId: numbe
   );
   for (const row of rows) {
     // 与授权侧的配对判定共用同一份逻辑，避免两处规则漂移。
-    if (scopeCoversPair({
-      channelIds: parseAllowedChannelIds(row.allowed_channel_ids),
-      aliases: parseAllowedModelAliases(row.allowed_model_aliases),
-    }, channelId, modelAlias)) {
+    if (scopeCoversPair(buildRedeemScope(row.allowed_channel_ids, row.allowed_model_aliases), channelId, modelAlias)) {
       return row;
     }
   }

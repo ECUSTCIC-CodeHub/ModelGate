@@ -973,7 +973,7 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
 | quota_tokens / quota_requests | int/null | 否 | null | 总量配额，`null` 表示继承组设置，`-1` 表示不限制（覆盖组） |
 | quota_period | int/null | 否 | null | 周期配额重置周期（秒），null 表示继承组设置 |
 | period_quota_tokens / period_quota_requests | int/null | 否 | null | 周期配额，`null` 表示继承组设置，`-1` 表示不限制（覆盖组） |
-| allowed_model_aliases | string[] | 否 | [] | 可访问的模型白名单 |
+| allowed_model_aliases | string[] | 否 | [] | 非公开模型白名单，为空表示不额外授权（公开模型不受白名单限制） |
 | note | string | 否 | null | 备注，最长 500 字符 |
 
 **响应 (201):**
@@ -1200,7 +1200,7 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
 | quota_requests / quota_tokens | int/null | 否 | null | 总量配额，null 表示不限 |
 | quota_period | int/null | 否 | null | 周期配额重置周期（秒），null 表示不启用 |
 | period_quota_requests / period_quota_tokens | int/null | 否 | null | 周期请求/Token 配额，null 表示不限 |
-| allowed_model_aliases | string[] | 否 | [] | 可访问模型白名单 |
+| allowed_model_aliases | string[] | 否 | [] | 非公开模型白名单，为空表示不额外授权（公开模型不受白名单限制） |
 | allowed_channel_ids | int[] | 否 | [] | 可命中渠道白名单（按渠道 id），为空表示允许所有渠道；不在白名单内的渠道在路由和模型列表中会被过滤 |
 | oidc_claim_expr | string | 否 | null | OIDC Claim 匹配表达式，最长 512 字符 |
 | oidc_claim_priority | int | 否 | 0 | 匹配优先级，0-9999，越大越优先 |
@@ -1595,8 +1595,12 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 >
 > **授权按「(渠道, 别名) 配对」判定**，而不是把渠道与别名各自并入白名单。用户可访问某个 (渠道, 别名) 组合，当且仅当满足以下任一条：
 >
-> 1. 命中用户组/用户白名单区域 —— 组或用户已授予该渠道（或渠道不限）**且**已授予该别名（或别名不限）；
+> 1. 命中用户组/用户白名单区域 —— 组或用户已授予该渠道（或渠道不限）**且**该别名在其模型白名单内；
 > 2. 命中某张有效定向额度的配对区域 —— 该额度的 `allowed_channel_ids` 覆盖该渠道（空 = 任意渠道）**且** `allowed_model_aliases` 覆盖该别名（空 = 任意别名）。
+>
+> 注意两个维度的空值语义按来源区分：**用户组/用户白名单里的空别名表示「不额外授权非公开模型」**（公开模型不受白名单限制，单独放行）；**兑换额度的空限定表示「不限」**（空别名 = 任意别名，空渠道 = 该额度不限制渠道，与计费侧一致）。
+>
+> 用户实际可用的渠道集合为「用户组渠道白名单 ∪ 额度显式列出的渠道」（组渠道白名单为空表示不限渠道，管理员不受此限制），因此额度只在显式列出渠道时才能把用户带到组白名单之外的渠道；额度渠道不限时不会扩大该用户可用渠道，组渠道白名单之外的渠道会被判定为无可用渠道并返回 403（该别名在任何启用渠道都没有可用路由时为 404）。
 >
 > 举例：一张限定「渠道 9 + 别名 A」的兑换码，只授予 `A@渠道9` 这一个组合；不会让用户在组内其他渠道上使用别名 A，也不会让用户在渠道 9 上使用其他别名（组白名单之外的）。该判定与计费侧 `findMatchingRedeemBalance` 共用同一份实现，模型列表、配额页展示与网关选路均按同一规则过滤。
 

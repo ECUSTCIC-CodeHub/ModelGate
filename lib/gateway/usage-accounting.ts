@@ -2,9 +2,7 @@ import { gatewayDb } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { parseStoredUtc, toMysqlDatetime } from "@/lib/core/db/datetime";
-import { parseAllowedChannelIds } from "@/lib/gateway/channel-access";
-import { parseAllowedModelAliases } from "@/lib/gateway/model-access";
-import { scopeCoversPair } from "@/lib/services/redeem-authorization";
+import { buildRedeemScope, scopeCoversPair } from "@/lib/services/redeem-authorization";
 
 function cleanFloat(value: number): number {
   const rounded = Math.round(value);
@@ -52,10 +50,7 @@ async function findMatchingBalanceInTx(
       if (expires && expires.getTime() <= Date.now()) continue;
     }
     // 与授权侧的配对判定共用同一份逻辑，避免两处规则漂移。
-    if (scopeCoversPair({
-      channelIds: parseAllowedChannelIds(row.allowed_channel_ids),
-      aliases: parseAllowedModelAliases(row.allowed_model_aliases),
-    }, channelId, modelAlias)) {
+    if (scopeCoversPair(buildRedeemScope(row.allowed_channel_ids, row.allowed_model_aliases), channelId, modelAlias)) {
       return { id: row.id };
     }
   }
