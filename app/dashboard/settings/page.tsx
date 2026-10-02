@@ -28,6 +28,7 @@ import {
   VisionFallbackSettingsCard,
   ModelFallbackSettingsCard,
   QuotaFallbackSettingsCard,
+  FeatureSettingsCard,
   ModelDefaultVisibilitySettingsCard,
   ModelBrandGroupsSettingsCard,
   WebhookSettingsCard,
@@ -93,6 +94,7 @@ export default function AdminSettingsPage() {
   const [modelBrandGroups, setModelBrandGroups] = useState("");
   const [defaultAppearance, setDefaultAppearance] = useState<"default" | "retro">("default");
   const [defaultMode, setDefaultMode] = useState<"light" | "dark" | "system">("system");
+  const [redeemCodeEnabled, setRedeemCodeEnabled] = useState(modelGateFeatures.redeemCode);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const oidcFeatureEnabled = modelGateFeatures.oidc;
@@ -100,6 +102,7 @@ export default function AdminSettingsPage() {
   const accessGuideNoticeFeatureEnabled = modelGateFeatures.accessGuideNotice;
   const webhookFeatureEnabled = modelGateFeatures.webhook;
   const uaRestrictionsFeatureEnabled = modelGateFeatures.uaRestrictions;
+  const redeemCodeFeatureEnabled = modelGateFeatures.redeemCode;
 
   const applySettings = useCallback((settings: Record<string, unknown>) => {
     setRegistrationEnabled(settings.registration_enabled === 1);
@@ -149,6 +152,13 @@ export default function AdminSettingsPage() {
     setModelFallbackAlias(stringValue(settings.model_fallback_alias));
     setQuotaFallbackEnabled(settings.quota_fallback_enabled === 1);
     setQuotaFallbackAlias(stringValue(settings.quota_fallback_alias));
+    if (redeemCodeFeatureEnabled) {
+      const features = settings.runtime_features;
+      const raw = features && typeof features === "object"
+        ? (features as Record<string, unknown>).redeemCode
+        : undefined;
+      setRedeemCodeEnabled(raw === undefined ? modelGateFeatures.redeemCode : raw !== false);
+    }
     setDefaultModelIsPublic(settings.default_model_is_public !== 0);
     setModelBrandGroups(stringValue(settings.model_brand_groups));
     const da = stringValue(settings.default_appearance);
@@ -159,7 +169,7 @@ export default function AdminSettingsPage() {
     } else {
       setDefaultMode("light");
     }
-  }, [accessGuideNoticeFeatureEnabled, announcementFeatureEnabled, oidcFeatureEnabled, webhookFeatureEnabled, uaRestrictionsFeatureEnabled]);
+  }, [accessGuideNoticeFeatureEnabled, announcementFeatureEnabled, oidcFeatureEnabled, redeemCodeFeatureEnabled, webhookFeatureEnabled, uaRestrictionsFeatureEnabled]);
 
   useEffect(() => {
     let cancelled = false;
@@ -226,6 +236,7 @@ export default function AdminSettingsPage() {
         model_brand_groups: modelBrandGroups,
         default_appearance: defaultAppearance,
         default_mode: defaultMode,
+        ...(redeemCodeFeatureEnabled ? { runtime_features: { redeemCode: redeemCodeEnabled } } : {}),
       };
 
       const response = await authedFetch("/api/admin/settings", {
@@ -423,6 +434,12 @@ export default function AdminSettingsPage() {
         </TabsContent>
 
         <TabsContent value="system" className="space-y-4">
+          {redeemCodeFeatureEnabled ? (
+            <FeatureSettingsCard
+              redeemCodeEnabled={redeemCodeEnabled}
+              setRedeemCodeEnabled={setRedeemCodeEnabled}
+            />
+          ) : null}
           <LogRetentionSettingsCard days={logRetentionDays} setDays={setLogRetentionDays} />
         </TabsContent>
 

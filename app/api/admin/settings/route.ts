@@ -58,6 +58,7 @@ const schema = z.object({
   model_brand_groups: z.string().max(20000).optional(),
   default_appearance: z.enum(["default", "retro"]).optional(),
   default_mode: z.enum(["light", "dark", "system"]).optional(),
+  runtime_features: z.record(z.string(), z.boolean()).optional(),
 });
 
 export async function GET(request: Request) {

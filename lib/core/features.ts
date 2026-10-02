@@ -20,6 +20,38 @@ export const modelGateFeatures = {
 
 export type ModelGateFeature = keyof typeof modelGateFeatures;
 
+// 可运行时开关的功能：构建版本为 full 时默认开启，管理员可在系统设置中关闭。
+const runtimeToggleableFeatures: ModelGateFeature[] = ["redeemCode"];
+
+export const runtimeFeatureDefaults: Record<string, boolean> = Object.fromEntries(
+  runtimeToggleableFeatures.map((feature) => [feature, modelGateFeatures[feature]]),
+);
+
+export function isRuntimeToggleableFeature(feature: ModelGateFeature): boolean {
+  return runtimeToggleableFeatures.includes(feature);
+}
+
+// 运行时功能开关（合并管理员设置）。settings 行缺失时回落到构建版本默认值。
+export function resolveRuntimeFeatures(settings: Record<string, unknown>): Record<ModelGateFeature, boolean> {
+  const merged = { ...modelGateFeatures } as Record<ModelGateFeature, boolean>;
+  for (const feature of runtimeToggleableFeatures) {
+    const key = featureSettingsKey(feature);
+    const raw = settings[key];
+    if (raw === 0 || raw === "0") merged[feature] = false;
+    else if (raw === 1 || raw === "1") merged[feature] = true;
+  }
+  return merged;
+}
+
+export function featureSettingsKey(feature: ModelGateFeature): string {
+  return `feature_${feature}_enabled`;
+}
+
+// 兑换码接口的统一守卫：构建版本不含该功能、或管理员在系统设置中关闭时，均返回 404。
+export function requireRedeemCodeFeature(settings: { runtime_features: Record<string, boolean> }) {
+  return requireRuntimeFeature(settings.runtime_features.redeemCode === true, featureNames.redeemCode);
+}
+
 const featureNames: Record<ModelGateFeature, string> = {
   oidc: "OIDC",
   periodQuota: "周期配额",
@@ -39,7 +71,12 @@ export function isFeatureEnabled(feature: ModelGateFeature) {
 }
 
 export function requireFeature(feature: ModelGateFeature, featureName = featureNames[feature]) {
-  if (isFeatureEnabled(feature)) return null;
+  return requireRuntimeFeature(modelGateFeatures[feature], featureName);
+}
+
+// 与 requireFeature 同语义，但接受已解析的运行时开关值，供需要合并管理员设置的调用方使用。
+export function requireRuntimeFeature(enabled: boolean, featureName: string) {
+  if (enabled) return null;
   return new Response(
     JSON.stringify({
       error: {
