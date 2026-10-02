@@ -34,7 +34,7 @@ export function ChannelTable({
   onEdit,
   onToggle,
   onCreateModel,
-  probingChannelId,
+  probingChannelIds,
   onPruneModels,
   onRemove,
 }: {
@@ -43,7 +43,7 @@ export function ChannelTable({
   onEdit: (row: Channel) => void;
   onToggle: (row: Channel) => void;
   onCreateModel: (channelId: number) => void;
-  probingChannelId: number | null;
+  probingChannelIds: Set<number>;
   onPruneModels: (channelId: number) => void;
   onRemove: (id: number) => void;
 }) {
@@ -169,11 +169,11 @@ export function ChannelTable({
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 shrink-0"
-                        disabled={!row.models?.length || probingChannelId !== null}
+                        disabled={!row.models?.length || probingChannelIds.has(row.id)}
                         onClick={() => onPruneModels(row.id)}
                         aria-label={`清理渠道 ${row.name} 上游已下架的模型`}
                       >
-                        {probingChannelId === row.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eraser className="h-4 w-4" />}
+                        {probingChannelIds.has(row.id) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eraser className="h-4 w-4" />}
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>{!row.models?.length ? "该渠道暂无模型" : "清理上游已下架的模型"}</TooltipContent>

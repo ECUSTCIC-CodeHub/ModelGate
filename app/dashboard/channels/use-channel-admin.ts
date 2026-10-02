@@ -639,7 +639,7 @@ export function useChannelAdmin() {
     openEditChannel,
     openEditModel,
     periodQuotaEnabled,
-    probingChannelId: modelCleanup.probingChannelId,
+    probingChannelIds: modelCleanup.probingChannelIds,
     probingModels: upstreamPicker.probingModels,
     probeUpstreamModels: upstreamPicker.probeUpstreamModels,
     removeChannel,

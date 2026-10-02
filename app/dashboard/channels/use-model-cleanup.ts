@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useToast } from "@/components/ui/toast";
 import { authedFetch } from "@/lib/auth/client-auth";
 import { getApiMessage } from "@/lib/shared/api-message";
@@ -21,20 +21,33 @@ export function useModelCleanup({
   loadChannels: () => Promise<void>;
 }) {
   const { toast } = useToast();
-  const [probingChannelId, setProbingChannelId] = useState<number | null>(null);
+  const [probingChannelIds, setProbingChannelIds] = useState<Set<number>>(new Set());
+  const probingChannelIdsRef = useRef<Set<number>>(new Set());
   const [cleanupPreview, setCleanupPreview] = useState<CleanupPreview | null>(null);
   const [selectedStaleIds, setSelectedStaleIds] = useState<Set<number>>(new Set());
   const [deletingCleanup, setDeletingCleanup] = useState(false);
 
+  function markProbing(channelId: number): boolean {
+    if (probingChannelIdsRef.current.has(channelId)) return false;
+    probingChannelIdsRef.current = new Set(probingChannelIdsRef.current).add(channelId);
+    setProbingChannelIds(probingChannelIdsRef.current);
+    return true;
+  }
+
+  function unmarkProbing(channelId: number) {
+    const next = new Set(probingChannelIdsRef.current);
+    next.delete(channelId);
+    probingChannelIdsRef.current = next;
+    setProbingChannelIds(next);
+  }
+
   async function startCleanup(channelId: number) {
-    if (probingChannelId !== null) return;
     const channel = channels.find((item) => item.id === channelId);
     if (!channel) {
       toast({ variant: "error", description: "渠道不存在，请刷新页面后重试。" });
       return;
     }
-
-    setProbingChannelId(channelId);
+    if (!markProbing(channelId)) return;
     try {
       const response = await authedFetch(`/api/admin/channels/${channelId}/prune-models`, {
         method: "POST",
@@ -64,7 +77,7 @@ export function useModelCleanup({
       });
       setSelectedStaleIds(new Set(result.stale.map((item) => item.id)));
     } finally {
-      setProbingChannelId(null);
+      unmarkProbing(channelId);
     }
   }
 
@@ -142,7 +155,7 @@ export function useModelCleanup({
     closeCleanupDialog,
     confirmCleanup,
     deletingCleanup,
-    probingChannelId,
+    probingChannelIds,
     selectStaleModels,
     selectedStaleIds,
     startCleanup,
