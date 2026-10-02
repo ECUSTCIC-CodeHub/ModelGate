@@ -73,7 +73,7 @@ export function ModelTable({
   models,
   channelsCount,
   testingModelId,
-  probingChannelId,
+  probingChannelIds,
   onCreate,
   onAddForChannel,
   onPruneForChannel,
@@ -85,7 +85,7 @@ export function ModelTable({
   models: ModelWithChannel[];
   channelsCount: number;
   testingModelId: number | null;
-  probingChannelId: number | null;
+  probingChannelIds: Set<number>;
   onCreate: () => void;
   onAddForChannel: (channelId: number) => void;
   onPruneForChannel: (channelId: number) => void;
@@ -340,11 +340,11 @@ export function ModelTable({
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 shrink-0"
-                        disabled={probingChannelId !== null}
+                        disabled={probingChannelIds.has(group.channelId)}
                         aria-label={`清理渠道 ${group.channelName} 上游已下架的模型`}
                         onClick={() => onPruneForChannel(group.channelId)}
                       >
-                        {probingChannelId === group.channelId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eraser className="h-4 w-4" />}
+                        {probingChannelIds.has(group.channelId) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eraser className="h-4 w-4" />}
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>清理上游已下架的模型</TooltipContent>
@@ -478,11 +478,11 @@ export function ModelTable({
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 shrink-0"
-                        disabled={probingChannelId !== null}
+                        disabled={probingChannelIds.has(group.channelId)}
                         aria-label={`清理渠道 ${group.channelName} 上游已下架的模型`}
                         onClick={() => onPruneForChannel(group.channelId)}
                       >
-                        {probingChannelId === group.channelId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eraser className="h-4 w-4" />}
+                        {probingChannelIds.has(group.channelId) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eraser className="h-4 w-4" />}
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>清理上游已下架的模型</TooltipContent>

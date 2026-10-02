@@ -47,7 +47,7 @@ export default function AdminChannelsPage() {
                   onEdit={admin.openEditChannel}
                   onToggle={admin.toggleChannel}
                   onCreateModel={admin.openCreateModel}
-                  probingChannelId={admin.probingChannelId}
+                  probingChannelIds={admin.probingChannelIds}
                   onPruneModels={admin.startCleanup}
                   onRemove={admin.removeChannel}
                 />
@@ -59,7 +59,7 @@ export default function AdminChannelsPage() {
                   models={admin.allModels}
                   channelsCount={admin.channels.length}
                   testingModelId={admin.testingModelId}
-                  probingChannelId={admin.probingChannelId}
+                  probingChannelIds={admin.probingChannelIds}
                   onCreate={() => admin.openCreateModel(admin.channels[0]?.id ?? 0)}
                   onAddForChannel={(id) => admin.openCreateModel(id)}
                   onPruneForChannel={admin.startCleanup}
