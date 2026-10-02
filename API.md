@@ -27,6 +27,8 @@ ModelGate 是一个 LLM 网关，提供 OpenAI 兼容的 API 端点，支持用�
 - OIDC 设置和用户组 OIDC Claim 映射字段在精简版中不参与创建/更新；已有数据库值会保留，切回完整版后仍可使用。
 - 兑换码相关管理/兑换接口返回 404，兑换码页面不渲染。
 
+> 完整版另有「运行时功能开关」：`redeemCode` 默认开启，管理员可通过 `PUT /api/admin/settings` 的 `runtime_features` 关闭。关闭后兑换码管理/兑换接口返回 404、菜单入口隐藏，已生成的兑换码与已发放额度数据保留，重新开启即恢复。普通用户侧的「兑换码」菜单仅在已持有定向额度时出现。
+
 ## 数据库配置
 
 通过环境变量选择数据库驱动，支持 SQLite（默认）和 MySQL。
@@ -393,7 +395,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
     "quota_fallback_enabled": 0,
     "quota_fallback_alias": "",
     "default_model_is_public": 1,
-    "model_brand_groups": ""
+    "model_brand_groups": "",
+    "runtime_features": { "redeemCode": true }
   }
 }
 ```
@@ -442,7 +445,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "quota_fallback_enabled": false,
   "quota_fallback_alias": "",
   "default_model_is_public": true,
-  "model_brand_groups": "[{\"label\":\"深度求索\",\"pattern\":\"deepseek*\"}]"
+  "model_brand_groups": "[{\"label\":\"深度求索\",\"pattern\":\"deepseek*\"}]",
+  "runtime_features": { "redeemCode": true }
 }
 ```
 
@@ -488,6 +492,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | quota_fallback_alias | string | 指定优先路由的模型别名（最长 255 字符）；留空时从已启用且当前用户可见的模型中按权重自动挑选。用户配额超限时建议指定独立配额或不计费模型 |
 | default_model_is_public | boolean | 新增模型的默认可见性（默认 true）；开启后新创建的模型对所有非管理员用户可见，关闭后新增模型默认仅对授权用户可见（白名单）。仅影响新增模型预设值，编辑已有模型以其自身 `is_public` 为准 |
 | model_brand_groups | string | 模型品牌分组规则（JSON 字符串），形如 `[{"label":"深度求索","pattern":"deepseek*"}]`；`pattern` 支持通配符 `*`（匹配任意字符、不区分大小写），按模型 ID 前缀归组，用于模型列表页按品牌筛选展示。未命中任何品牌组的模型归入「其他」 |
+| runtime_features | object | 可运行时开关的功能，形如 `{ "redeemCode": true }`。仅包含当前构建版本支持的功能；`redeemCode` 为完整版专属。关闭后对应入口从菜单隐藏、相关接口返回 404，已发放数据保留 |
 
 > 精简版固定保留账号密码登录；返回时会隐藏 OIDC 配置、公告内容、公告展示条数、接入指南通知和 Webhook 密钥，更新时忽略 `oidc_*`、`announcement_content`、`announcement_display_count`、`access_guide_notice` 与 `webhook_secret` 字段。
 
@@ -1584,7 +1589,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 ## 管理接口 - 兑换码管理
 
-> 兑换码功能为完整版专属（`redeemCode`）。兑换码用于生成「定向额度」，仅当请求命中所限定的渠道与模型时才扣减，不占用用户全局配额。同时，兑换码明确限定的渠道/模型会作为该用户的访问授权来源（兑换即授权）：额度有效期内用户可获得限定的渠道/模型访问权，额度用尽/过期/兑换码停用后自动回收；未限定的部分保持用户原有权限，不扩大也不缩小。精简版调用相关接口返回 404。
+> 兑换码功能为完整版专属（`redeemCode`），且受系统设置 `runtime_features.redeemCode` 运行时开关控制，关闭时与精简版一致返回 404。兑换码用于生成「定向额度」，仅当请求命中所限定的渠道与模型时才扣减，不占用用户全局配额。同时，兑换码明确限定的渠道/模型会作为该用户的访问授权来源（兑换即授权）：额度有效期内用户可获得限定的渠道/模型访问权，额度用尽/过期/兑换码停用后自动回收；未限定的部分保持用户原有权限，不扩大也不缩小。
 
 ### POST /api/admin/redeem-codes
 
@@ -1760,9 +1765,9 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 限制规则：
 
-- `token_quota` / `request_quota`：只允许上调，`null`（不限）只能在原值非 null 时设置
+- `token_quota` / `request_quota`：只允许上调；原值为有限额度时不允许改成 `null`（不限）。`null` 是最宽形态，放宽到不限请停用旧码并重新生成
 - `max_uses`：只允许放宽（`0` 为不限，属最宽），且不能小于 `used_count`
-- `expires_at`：只允许延长；不能早于已发放额度的过期时间；已发放额度为长期有效（null）时不允许改为有限期
+- `expires_at`：只允许延长；不能早于已发放额度的过期时间；已发放额度为长期有效（null）时不允许改为有限期；不允许改为 `null`（`null` 会让 SQL 原子核销的过期判定被豁免，等于给额度开了永久有效口子）
 - `code` / `batch_id` / `allowed_channel_ids` / `allowed_model_aliases` **不在白名单**，传入会返回 400
 - 不传任何字段返回 400
 
@@ -1787,7 +1792,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 }
 ```
 
-**错误 (400):** `{ "error": { "message": "Token 额度只能上调，不能下调；如需下调请停用旧码并重新生成" } }`
+**错误 (400):** `{ "error": { "message": "Token 额度只能上调，不能下调；如需下调请停用旧码并重新生成" } }`、`{ "error": { "message": "有效期不能为空；如需永久有效请重新生成兑换码" } }`
 
 **错误 (404 语义):** 兑换码不存在时返回 400 `兑换码不存在`
 
@@ -2007,7 +2012,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 ## 用户接口 - 兑换码
 
-> 兑换码功能为完整版专属（`redeemCode`）。用户兑换后获得「定向额度」，仅当请求命中所限定的渠道与模型时才从该额度扣减，不占用账户全局配额。兑换码明确限定的渠道/模型同时作为用户访问授权来源（兑换即授权），额度失效后授权自动回收；未限定部分保持用户原有权限。
+> 兑换码功能为完整版专属（`redeemCode`），且受系统设置 `runtime_features.redeemCode` 运行时开关控制，关闭时接口返回 404。用户兑换后获得「定向额度」，仅当请求命中所限定的渠道与模型时才从该额度扣减，不占用账户全局配额。兑换码明确限定的渠道/模型同时作为用户访问授权来源（兑换即授权），额度失效后授权自动回收；未限定部分保持用户原有权限。
 
 ### POST /api/user/redeem
 
