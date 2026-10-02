@@ -20,6 +20,7 @@ type RedemptionRow = {
   request_quota: number | null;
   used_tokens: number | null;
   used_requests: number | null;
+  // 来自该用户持有的定向额度（redeem_balances）而非兑换码本身，两者过期时间可能不同。
   expires_at: string | null;
 };
 
@@ -65,7 +66,7 @@ export function RedeemCodeDetailDialog({
         <DialogHeader>
           <DialogTitle>兑换码详情</DialogTitle>
           <DialogDescription>
-            列表按码聚合，这里看逐条领取记录：领取人、领取时间与每人剩余额度。
+            列表按码聚合，这里看逐条领取记录：领取人、领取时间、每人剩余额度与各自额度的有效期。
           </DialogDescription>
         </DialogHeader>
 
@@ -130,7 +131,7 @@ export function RedeemCodeDetailDialog({
           ) : null}
 
           <p className="text-xs text-[var(--color-foreground-muted)]">
-            兑换码 #{codeId}，剩余额度按「额度 - 已用」计算，不限额度不做扣减统计。
+            兑换码 #{codeId}，剩余额度按「额度 - 已用」计算，不限额度不做扣减统计；有效期列为该用户所持额度的到期时间。
           </p>
         </div>
 

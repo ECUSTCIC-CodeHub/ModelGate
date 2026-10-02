@@ -415,6 +415,9 @@ export async function updateRedeemCode(
   }
 
   if (input.tokenQuota !== undefined) {
+    if (input.tokenQuota === null && row.token_quota !== null) {
+      return { ok: false, reason: "Token 额度不能改为不限；如需放宽到不限请停用旧码并重新生成" };
+    }
     if (input.tokenQuota !== null && row.token_quota !== null && input.tokenQuota < row.token_quota) {
       return { ok: false, reason: "Token 额度只能上调，不能下调；如需下调请停用旧码并重新生成" };
     }
@@ -423,6 +426,9 @@ export async function updateRedeemCode(
   }
 
   if (input.requestQuota !== undefined) {
+    if (input.requestQuota === null && row.request_quota !== null) {
+      return { ok: false, reason: "请求额度不能改为不限；如需放宽到不限请停用旧码并重新生成" };
+    }
     if (input.requestQuota !== null && row.request_quota !== null && input.requestQuota < row.request_quota) {
       return { ok: false, reason: "请求额度只能上调，不能下调；如需下调请停用旧码并重新生成" };
     }
@@ -431,27 +437,30 @@ export async function updateRedeemCode(
   }
 
   if (input.expiresAt !== undefined) {
-    if (input.expiresAt !== null) {
-      const next = parseStoredUtc(input.expiresAt);
-      if (!next) return { ok: false, reason: "有效期格式不正确" };
-      const current = row.expires_at ? parseStoredUtc(row.expires_at) : null;
-      if (current && next.getTime() < current.getTime()) {
-        return { ok: false, reason: "有效期只能延长，不能缩短；如需缩短请停用该兑换码" };
-      }
-      // 所有已发放额度的过期时间都要放宽到新有效期之后：
-      // 只看一条（LIMIT 1）会漏掉过期时间更晚的其他额度，导致它们凭空提前失效。
-      const issued = await gatewayDb.query<{ expires_at: string | null }>(
-        "SELECT expires_at FROM redeem_balances WHERE code_id = ?",
-        [id],
-      );
-      if (issued.some((b) => !b.expires_at)) {
-        return { ok: false, reason: "已有用户兑换该码且额度长期有效，无法为其设置有效期" };
-      }
-      for (const balance of issued) {
-        const issuedExpires = balance.expires_at ? parseStoredUtc(balance.expires_at) : null;
-        if (issuedExpires && next.getTime() < issuedExpires.getTime()) {
-          return { ok: false, reason: "有效期不能早于已发放额度的过期时间" };
-        }
+    if (input.expiresAt === null) {
+      // NULL 会被核销 SQL 的 `expires_at IS NULL OR expires_at > ?` 豁免过期判定，
+      // 允许改成 NULL 等于给该码开永久有效口子，故只允许延长、不允许清空。
+      return { ok: false, reason: "有效期不能为空；如需永久有效请重新生成兑换码" };
+    }
+    const next = parseStoredUtc(input.expiresAt);
+    if (!next) return { ok: false, reason: "有效期格式不正确" };
+    const current = row.expires_at ? parseStoredUtc(row.expires_at) : null;
+    if (current && next.getTime() < current.getTime()) {
+      return { ok: false, reason: "有效期只能延长，不能缩短；如需缩短请停用该兑换码" };
+    }
+    // 所有已发放额度的过期时间都要放宽到新有效期之后：
+    // 只看一条（LIMIT 1）会漏掉过期时间更晚的其他额度，导致它们凭空提前失效。
+    const issued = await gatewayDb.query<{ expires_at: string | null }>(
+      "SELECT expires_at FROM redeem_balances WHERE code_id = ?",
+      [id],
+    );
+    if (issued.some((b) => !b.expires_at)) {
+      return { ok: false, reason: "已有用户兑换该码且额度长期有效，无法为其设置有效期" };
+    }
+    for (const balance of issued) {
+      const issuedExpires = balance.expires_at ? parseStoredUtc(balance.expires_at) : null;
+      if (issuedExpires && next.getTime() < issuedExpires.getTime()) {
+        return { ok: false, reason: "有效期不能早于已发放额度的过期时间" };
       }
     }
     sets.push("expires_at = ?");
