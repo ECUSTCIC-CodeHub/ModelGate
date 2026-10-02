@@ -21,6 +21,7 @@ import {
   type Protocol,
 } from "./channel-model";
 import { useChannelRecords } from "./use-channel-records";
+import { useModelCleanup } from "./use-model-cleanup";
 import { useUpstreamModelPicker } from "./use-upstream-model-picker";
 
 function expiresAtToInputValue(value: unknown): string {
@@ -61,6 +62,8 @@ export function useChannelAdmin() {
     getDefaultProtocols: () => channelForm.supported_protocols,
     defaultModelIsPublic,
   });
+
+  const modelCleanup = useModelCleanup({ channels, loadChannels });
 
   useEffect(() => {
     let cancelled = false;
@@ -622,7 +625,11 @@ export function useChannelAdmin() {
     channelForm,
     channelModels,
     channels,
+    cleanupPreview: modelCleanup.cleanupPreview,
+    closeCleanupDialog: modelCleanup.closeCleanupDialog,
+    confirmCleanup: modelCleanup.confirmCleanup,
     confirmUpstreamModelSelection: upstreamPicker.confirmUpstreamModelSelection,
+    deletingCleanup: modelCleanup.deletingCleanup,
     error,
     modelDrawerOpen,
     modelEditingId,
@@ -632,6 +639,7 @@ export function useChannelAdmin() {
     openEditChannel,
     openEditModel,
     periodQuotaEnabled,
+    probingChannelId: modelCleanup.probingChannelId,
     probingModels: upstreamPicker.probingModels,
     probeUpstreamModels: upstreamPicker.probeUpstreamModels,
     removeChannel,
@@ -639,17 +647,21 @@ export function useChannelAdmin() {
     removeModel,
     selectedChannel,
     selectedChannelProtocols,
+    selectedStaleIds: modelCleanup.selectedStaleIds,
     selectFilteredUpstreamModels: upstreamPicker.selectFilteredUpstreamModels,
+    selectStaleModels: modelCleanup.selectStaleModels,
     setChannelDrawerOpen,
     setModelDrawerOpen,
     setUpstreamPickerOpen: upstreamPicker.setUpstreamPickerOpen,
     setUpstreamPickerQuery: upstreamPicker.setUpstreamPickerQuery,
+    startCleanup: modelCleanup.startCleanup,
     submitChannel,
     submitModel,
     testingModelId,
     testModel,
     toggleChannel,
     toggleModel,
+    toggleStaleModel: modelCleanup.toggleStaleModel,
     toggleUpstreamModel: upstreamPicker.toggleUpstreamModel,
     updateChannelForm,
     updateChannelModelDraft,

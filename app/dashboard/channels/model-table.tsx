@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronRight, Copy, EyeOff, LayoutGrid, List, Plus, Search, Table2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronRight, Copy, Eraser, EyeOff, LayoutGrid, List, Loader2, Plus, Search, Table2 } from "lucide-react";
 import { parseSupportedProtocols, shortProtocolLabel } from "./channel-model";
 import type { ModelRow, ModelWithChannel } from "./channel-model";
 import { ModelCard } from "./model-card";
@@ -73,8 +73,10 @@ export function ModelTable({
   models,
   channelsCount,
   testingModelId,
+  probingChannelId,
   onCreate,
   onAddForChannel,
+  onPruneForChannel,
   onTest,
   onEdit,
   onToggle,
@@ -83,8 +85,10 @@ export function ModelTable({
   models: ModelWithChannel[];
   channelsCount: number;
   testingModelId: number | null;
+  probingChannelId: number | null;
   onCreate: () => void;
   onAddForChannel: (channelId: number) => void;
+  onPruneForChannel: (channelId: number) => void;
   onTest: (row: ModelRow) => void;
   onEdit: (row: ModelRow) => void;
   onToggle: (row: ModelRow) => void;
@@ -329,6 +333,22 @@ export function ModelTable({
                   >
                     <Copy className="h-4 w-4" />
                   </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0"
+                        disabled={probingChannelId !== null}
+                        aria-label={`清理渠道 ${group.channelName} 上游已下架的模型`}
+                        onClick={() => onPruneForChannel(group.channelId)}
+                      >
+                        {probingChannelId === group.channelId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eraser className="h-4 w-4" />}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>清理上游已下架的模型</TooltipContent>
+                  </Tooltip>
                   <Button
                     type="button"
                     variant="ghost"
@@ -451,6 +471,22 @@ export function ModelTable({
                   >
                     <Copy className="h-4 w-4" />
                   </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0"
+                        disabled={probingChannelId !== null}
+                        aria-label={`清理渠道 ${group.channelName} 上游已下架的模型`}
+                        onClick={() => onPruneForChannel(group.channelId)}
+                      >
+                        {probingChannelId === group.channelId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eraser className="h-4 w-4" />}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>清理上游已下架的模型</TooltipContent>
+                  </Tooltip>
                   <Button
                     type="button"
                     variant="ghost"
