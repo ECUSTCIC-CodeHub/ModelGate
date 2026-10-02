@@ -15,13 +15,18 @@ const redeemSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
+  const settings = await getGatewaySettings();
+  const unavailable = requireRedeemCodeFeature(settings);
   if (unavailable) return unavailable;
 
   const guard = await ensureUser(request);
   if ("error" in guard) return guard.error;
 
-  const balances = await listUserBalances(guard.auth.user.id);
+  const balances = (await listUserBalances(guard.auth.user.id)).map((balance) => ({
+    ...balance,
+    allowed_channel_ids: parseAllowedChannelIds(balance.allowed_channel_ids),
+    allowed_model_aliases: parseAllowedModelAliases(balance.allowed_model_aliases),
+  }));
 
   // 补充兑换记录与渠道/模型可读信息
   const redemptions = await gatewayDb.query<Record<string, unknown>>(
@@ -33,14 +38,7 @@ export async function GET(request: Request) {
     [guard.auth.user.id],
   );
 
-  return jsonOk({
-    data: balances.map((b) => ({
-      ...b,
-      allowed_channel_ids: parseAllowedChannelIds(b.allowed_channel_ids),
-      allowed_model_aliases: parseAllowedModelAliases(b.allowed_model_aliases),
-    })),
-    redemptions,
-  });
+  return jsonOk({ data: balances, redemptions });
 }
 
 export async function POST(request: Request) {
