@@ -6,7 +6,7 @@ import { jsonOk } from "@/lib/core/http";
 import { parseStoredUtc } from "@/lib/core/db/datetime";
 import { parseAllowedModelAliases } from "@/lib/gateway/model-access";
 import { parseAllowedChannelIds } from "@/lib/gateway/channel-access";
-import { listRedeemCoveredAuthorization } from "@/lib/services/redeem-authorization";
+import { getUserScope, listRedeemScopes, scopeCoversPair, scopesCoverPair } from "@/lib/services/redeem-authorization";
 
 function formatPeriodLabel(seconds: number): string {
   if (seconds === 3600) return "每小时";
@@ -61,17 +61,18 @@ export async function GET(request: Request) {
        AND m.deleted_at IS NULL AND c.deleted_at IS NULL`,
   );
 
-  const redeem = await listRedeemCoveredAuthorization(user.id);
-  const redeemChannels = new Set(redeem.channelIds);
-  const redeemAliases = new Set(redeem.aliases);
+  // 与网关选路共用同一份 (渠道, 别名) 配对判定，只展示用户实际请求得到的组合。
+  const userScope = await getUserScope(user);
+  const redeemScopes = await listRedeemScopes(user.id);
 
   const accessible = models.filter((m) => {
-    if (groupAllowedChannels.length > 0 && !groupAllowedChannels.includes(m.channel_id) && !redeemChannels.has(m.channel_id)) return false;
-    if (m.is_public === 1) return true;
-    if (m.alias === "*") return true;
+    if (m.is_public === 1 || m.alias === "*") return true;
+    if (groupAllowedChannels.length > 0 && !groupAllowedChannels.includes(m.channel_id)) return false;
     const userHasAlias = userAllowedAliases.includes(m.alias);
     const groupHasAlias = groupAllowedAliases.includes(m.alias);
-    return userHasAlias || groupHasAlias || redeemAliases.has(m.alias);
+    if (userHasAlias || groupHasAlias) return true;
+    return (userScope !== null && scopeCoversPair(userScope, m.channel_id, m.alias))
+      || scopesCoverPair(redeemScopes, m.channel_id, m.alias);
   });
 
   const now = new Date();

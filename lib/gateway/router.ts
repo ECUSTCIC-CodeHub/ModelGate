@@ -1,5 +1,5 @@
 import { gatewayDb, type DbChannel, type DbModel, type DbUser } from "@/lib/core/db";
-import { canUserAccessModelAlias } from "@/lib/gateway/model-access";
+import { getUserScope, listRedeemScopes, scopeCoversPair, scopesCoverPair } from "@/lib/services/redeem-authorization";
 import type { ModelQuotaMode } from "@/lib/core/db/types";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { makeModelRuntimeKey, scoreChannel } from "@/lib/gateway/channel-runtime";
@@ -223,41 +223,66 @@ function isProtocolCompatible(inboundProtocol: GatewayProtocol, upstreamProtocol
   return !PASSTHROUGH_PROTOCOLS.includes(upstreamProtocol);
 }
 
-export async function listModelRoutes(alias: string, options?: { excludeChannelIds?: number[]; excludeModelIds?: number[]; protocol?: GatewayProtocol; allowedChannelIds?: number[] | null; userAgent?: string | null }): Promise<RoutedModel[]> {
+// 按 (渠道, 别名) 配对过滤候选路由：公开模型不受限，其余走组合级授权。
+// 未传用户时不做该过滤（保持内部调用方历史行为）。
+async function filterGrantedRows<T extends { alias: string; is_public: number; channel_id_2: number }>(rows: T[], user: ModelRouteOptions["user"]): Promise<T[]> {
+  if (!user || user.role === "admin") return rows;
+  const userScope = await getUserScope(user);
+  const redeemScopes = await listRedeemScopes(user.id);
+  return rows.filter((row) => row.is_public === 1
+    || (userScope !== null && scopeCoversPair(userScope, row.channel_id_2, row.alias))
+    || scopesCoverPair(redeemScopes, row.channel_id_2, row.alias));
+}
+
+export type ModelRouteOptions = {
+  excludeChannelIds?: number[];
+  excludeModelIds?: number[];
+  protocol?: GatewayProtocol;
+  allowedChannelIds?: number[] | null;
+  userAgent?: string | null;
+  // 传入用户后按 (渠道, 别名) 配对校验候选路由，与计费侧的判定共用同一份逻辑。
+  user?: Pick<DbUser, "id" | "role" | "group_id" | "allowed_model_aliases">;
+};
+
+export async function listModelRoutes(alias: string, options?: ModelRouteOptions): Promise<RoutedModel[]> {
   const exclude = new Set(options?.excludeChannelIds ?? []);
   const excludeModels = new Set(options?.excludeModelIds ?? []);
   const protocol = options?.protocol;
   const userAgent = options?.userAgent;
+  const user = options?.user;
   const allowSet = options?.allowedChannelIds && options.allowedChannelIds.length > 0
     ? new Set(options.allowedChannelIds)
     : null;
   const findRows = async (targetAlias: string) => gatewayDb.query<CandidateRow>(LIST_MODEL_ROUTES_SQL, [targetAlias]);
 
-  const filterRows = (rows: CandidateRow[]) => rows.filter((row) => {
-    if (exclude.has(row.channel_id_2)) return false;
-    if (excludeModels.has(row.model_id)) return false;
-    if (allowSet && !allowSet.has(row.channel_id_2)) return false;
-    if (protocol) {
-      const channelProtocols = parseSupportedProtocols(row.supported_protocols);
-      const modelProtocols = row.model_supported_protocols
-        ? parseSupportedProtocols(row.model_supported_protocols)
-        : channelProtocols;
-      if (!isProtocolCompatible(protocol, row.upstream_protocol ?? "chat_completions", modelProtocols, channelProtocols)) return false;
-    }
-    if (userAgent !== undefined) {
-      const scoped = checkScopedUaRestrictions(userAgent, row.channel_ua_restrictions, row.model_ua_restrictions);
-      if (scoped.matched && !scoped.allowed) return false;
-    }
-    if (isChannelExpired(row.channel_expires_at)) return false;
-    if (!isChannelTimeAllowed(row.channel_time_restrictions)) return false;
-    if (isModelExpired(row.model_expires_at)) return false;
-    return true;
-  });
+  const filterRows = async (rows: CandidateRow[]) => {
+    const granted = await filterGrantedRows(rows, user);
+    return granted.filter((row) => {
+      if (exclude.has(row.channel_id_2)) return false;
+      if (excludeModels.has(row.model_id)) return false;
+      if (allowSet && !allowSet.has(row.channel_id_2)) return false;
+      if (protocol) {
+        const channelProtocols = parseSupportedProtocols(row.supported_protocols);
+        const modelProtocols = row.model_supported_protocols
+          ? parseSupportedProtocols(row.model_supported_protocols)
+          : channelProtocols;
+        if (!isProtocolCompatible(protocol, row.upstream_protocol ?? "chat_completions", modelProtocols, channelProtocols)) return false;
+      }
+      if (userAgent !== undefined) {
+        const scoped = checkScopedUaRestrictions(userAgent, row.channel_ua_restrictions, row.model_ua_restrictions);
+        if (scoped.matched && !scoped.allowed) return false;
+      }
+      if (isChannelExpired(row.channel_expires_at)) return false;
+      if (!isChannelTimeAllowed(row.channel_time_restrictions)) return false;
+      if (isModelExpired(row.model_expires_at)) return false;
+      return true;
+    });
+  };
 
-  const exactRows = filterRows(await findRows(alias));
+  const exactRows = await filterRows(await findRows(alias));
   const candidateRows = exactRows.length > 0
     ? exactRows
-    : filterRows(await findRows("*"));
+    : await filterRows(await findRows("*"));
 
   const settings = await getGatewaySettings();
   const strictPriority = settings.upstream_strict_priority === 1;
@@ -283,7 +308,7 @@ export async function listModelRoutes(alias: string, options?: { excludeChannelI
     .map((item) => item.route);
 }
 
-export async function selectModelRoute(alias: string, options?: { excludeChannelIds?: number[]; excludeModelIds?: number[]; protocol?: GatewayProtocol; allowedChannelIds?: number[] | null; userAgent?: string | null }): Promise<RoutedModel | null> {
+export async function selectModelRoute(alias: string, options?: ModelRouteOptions): Promise<RoutedModel | null> {
   const routes = await listModelRoutes(alias, options);
   return routes[0] ?? null;
 }
@@ -296,15 +321,7 @@ export type VisionFallbackOptions = {
   user?: Pick<DbUser, "id" | "role" | "group_id" | "allowed_model_aliases">;
 };
 
-/**
- * 校验候选路由对当前用户可见：模型级白名单/公开；渠道级访问已由 selectModelRoute 的 allowedChannelIds 过滤。
- * 不传 user 时退化为仅做渠道级校验（保持历史行为）。
- */
-async function isVisionRouteAccessible(user: VisionFallbackOptions["user"], route: RoutedModel): Promise<boolean> {
-  if (!user) return true;
-  if (user.role === "admin") return true;
-  return canUserAccessModelAlias(user, route.model.alias);
-}
+// 候选路由的可见性已由 listModelRoutes 的 (渠道, 别名) 配对校验保证。
 
 /**
  * 当请求包含图片但目标模型不支持识图时，选择一个支持识图且当前用户可见的模型路由。
@@ -313,7 +330,7 @@ async function isVisionRouteAccessible(user: VisionFallbackOptions["user"], rout
 export async function findVisionFallbackRoute(options: VisionFallbackOptions): Promise<RoutedModel | null> {
   if (options.preferredAlias && options.preferredAlias.length > 0) {
     const route = await selectModelRoute(options.preferredAlias, options);
-    if (route && route.model.supports_vision === 1 && await isVisionRouteAccessible(options.user, route)) return route;
+    if (route && route.model.supports_vision === 1) return route;
   }
 
   const aliases = await gatewayDb.query<{ alias: string }>(
@@ -326,7 +343,7 @@ export async function findVisionFallbackRoute(options: VisionFallbackOptions): P
   );
   for (const row of aliases) {
     const route = await selectModelRoute(row.alias, options);
-    if (route && route.model.supports_vision === 1 && await isVisionRouteAccessible(options.user, route)) return route;
+    if (route && route.model.supports_vision === 1) return route;
   }
   return null;
 }
@@ -349,7 +366,7 @@ export async function findModelFallbackRoute(options: ModelFallbackOptions): Pro
   const excludeAlias = options.requestedAlias;
   if (options.preferredAlias && options.preferredAlias.length > 0 && options.preferredAlias !== "*" && options.preferredAlias !== excludeAlias) {
     const route = await selectModelRoute(options.preferredAlias, options);
-    if (route && await isVisionRouteAccessible(options.user, route)) return route;
+    if (route) return route;
   }
 
   const aliases = await gatewayDb.query<{ alias: string }>(
@@ -363,7 +380,7 @@ export async function findModelFallbackRoute(options: ModelFallbackOptions): Pro
   for (const row of aliases) {
     if (row.alias === excludeAlias) continue;
     const route = await selectModelRoute(row.alias, options);
-    if (route && await isVisionRouteAccessible(options.user, route)) return route;
+    if (route) return route;
   }
   return null;
 }
@@ -397,7 +414,6 @@ export async function findQuotaFallbackRoute(options: QuotaFallbackOptions): Pro
     if (!route) return null;
     if (options.requireVision && route.model.supports_vision !== 1) return null;
     if (options.requireBypassUserLimits && !isBypassMode(route)) return null;
-    if (!(await isVisionRouteAccessible(options.user, route))) return null;
     return route;
   };
 
@@ -462,8 +478,9 @@ export async function findUaDenyMatchForAlias(
   userAgent: string | null,
   allowedChannelIds?: number[] | null,
   protocol?: GatewayProtocol,
+  user?: Pick<DbUser, "id" | "role" | "group_id" | "allowed_model_aliases">,
 ): Promise<(UaRestrictionMatch & { matched: true }) | null> {
-  const routes = await listModelRoutes(alias, { protocol, allowedChannelIds });
+  const routes = await listModelRoutes(alias, { protocol, allowedChannelIds, user });
   for (const route of routes) {
     const match = checkScopedUaRestrictions(userAgent, route.channel.ua_restrictions, route.model.ua_restrictions);
     if (match.matched && !match.allowed) return match;

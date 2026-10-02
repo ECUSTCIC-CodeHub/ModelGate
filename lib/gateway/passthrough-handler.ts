@@ -135,12 +135,13 @@ export async function handlePassthroughRequest(request: Request, upstreamPath: s
   const effectiveAlias = resolved.alias;
 
   const route = await selectModelRoute(effectiveAlias, {
+    user: auth.user,
     allowedChannelIds,
     userAgent: uaEnabled ? clientUserAgent : undefined,
   });
   if (!route) {
     if (uaEnabled) {
-      const denyMatch = await findUaDenyMatchForAlias(effectiveAlias, clientUserAgent, allowedChannelIds);
+      const denyMatch = await findUaDenyMatchForAlias(effectiveAlias, clientUserAgent, allowedChannelIds, undefined, auth.user);
       if (denyMatch) {
         logRejected(denyMatch.rule.error_code, denyMatch.rule.error_message, alias);
         return jsonError(denyMatch.rule.error_message, denyMatch.rule.error_code, {
@@ -152,6 +153,7 @@ export async function handlePassthroughRequest(request: Request, upstreamPath: s
     }
     if (allowedChannelIds) {
       const withoutRestriction = await selectModelRoute(effectiveAlias, {
+        user: auth.user,
         userAgent: uaEnabled ? clientUserAgent : undefined,
       });
       if (withoutRestriction !== null) {

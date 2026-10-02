@@ -2,7 +2,7 @@ import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { getUserAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { getUserGroup } from "@/lib/gateway/effective-limits";
 import { parseSupportedProtocols, type GatewayProtocol } from "@/lib/gateway/protocols";
-import { listRedeemCoveredAuthorization } from "@/lib/services/redeem-authorization";
+import { getUserScope, listRedeemScopes, scopeCoversPair, scopesCoverPair } from "@/lib/services/redeem-authorization";
 
 export function parseAllowedModelAliases(raw: string | null | undefined) {
   if (!raw) return [];
@@ -77,11 +77,7 @@ export async function canUserAccessModelAlias(user: Pick<DbUser, "id" | "role" |
   if (models.some((m) => m.is_public === 1)) return true;
 
   const effective = await getEffectiveAllowedAliases(user);
-  if (effective.includes(alias)) return true;
-
-  // 定向额度明确限定的模型作为额外授权来源（兑换即授权）
-  const redeem = await listRedeemCoveredAuthorization(user.id);
-  return redeem.aliases.includes(alias);
+  return effective.includes(alias);
 }
 
 export async function hasEnabledModelAlias(alias: string) {
@@ -167,11 +163,17 @@ export async function listAccessibleModels(user: Pick<DbUser, "id" | "role" | "g
   if (user.role === "admin") {
     for (const row of rows) processRow(row);
   } else {
-    const allowed = new Set(await getEffectiveAllowedAliases(user));
-    const redeemAliases = new Set((await listRedeemCoveredAuthorization(user.id)).aliases);
+    const userScope = await getUserScope(user);
+    const redeemScopes = await listRedeemScopes(user.id);
     for (const row of rows) {
-      if (allowedChannelSet && !allowedChannelSet.has(row.channel_id)) continue;
-      if (row.is_public !== 1 && !allowed.has(row.alias) && !redeemAliases.has(row.alias)) continue;
+      // 公开模型不受渠道白名单限制；其余模型按 (渠道, 别名) 配对校验，
+      // 与网关实际选路保持一致，避免列表展示出请求不了的组合。
+      if (row.is_public !== 1) {
+        if (allowedChannelSet && !allowedChannelSet.has(row.channel_id)) continue;
+        const covered = (userScope !== null && scopeCoversPair(userScope, row.channel_id, row.alias))
+          || scopesCoverPair(redeemScopes, row.channel_id, row.alias);
+        if (!covered) continue;
+      }
       processRow(row);
     }
   }

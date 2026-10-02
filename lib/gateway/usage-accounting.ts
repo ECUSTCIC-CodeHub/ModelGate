@@ -4,6 +4,7 @@ import { getGatewaySettings } from "@/lib/core/settings";
 import { parseStoredUtc, toMysqlDatetime } from "@/lib/core/db/datetime";
 import { parseAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { parseAllowedModelAliases } from "@/lib/gateway/model-access";
+import { scopeCoversPair } from "@/lib/services/redeem-authorization";
 
 function cleanFloat(value: number): number {
   const rounded = Math.round(value);
@@ -50,11 +51,11 @@ async function findMatchingBalanceInTx(
       const expires = parseStoredUtc(row.expires_at);
       if (expires && expires.getTime() <= Date.now()) continue;
     }
-    const channelIds = parseAllowedChannelIds(row.allowed_channel_ids);
-    const aliases = parseAllowedModelAliases(row.allowed_model_aliases);
-    const channelMatch = channelIds.length === 0 || channelIds.includes(channelId);
-    const aliasMatch = aliases.length === 0 || aliases.includes(modelAlias);
-    if (channelMatch && aliasMatch) {
+    // 与授权侧的配对判定共用同一份逻辑，避免两处规则漂移。
+    if (scopeCoversPair({
+      channelIds: parseAllowedChannelIds(row.allowed_channel_ids),
+      aliases: parseAllowedModelAliases(row.allowed_model_aliases),
+    }, channelId, modelAlias)) {
       return { id: row.id };
     }
   }

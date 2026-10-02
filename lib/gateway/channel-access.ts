@@ -1,6 +1,6 @@
 import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { getUserGroup } from "@/lib/gateway/effective-limits";
-import { listRedeemCoveredAuthorization } from "@/lib/services/redeem-authorization";
+import { listRedeemScopes } from "@/lib/services/redeem-authorization";
 
 export function parseAllowedChannelIds(raw: string | null | undefined): number[] {
   if (!raw) return [];
@@ -20,6 +20,10 @@ export function stringifyAllowedChannelIds(ids: number[]): string {
   return JSON.stringify(normalized);
 }
 
+// 用户可用渠道的「候选集合」：组白名单并上定向额度限定的渠道。
+// 注意这只是候选范围，用于放开渠道级预过滤；真正的授权判定必须走
+// canUserAccessModelOnChannel 的 (渠道, 别名) 配对校验 —— 单看这个并集
+// 会把「渠道9 + 别名A」的额度错当成「渠道9」和「别名A」两笔独立授权。
 export async function getUserAllowedChannelIds(user: Pick<DbUser, "id" | "role" | "group_id">): Promise<number[] | null> {
   if (user.role === "admin") return null;
   const group = await getUserGroup(user.group_id ?? null);
@@ -27,9 +31,7 @@ export async function getUserAllowedChannelIds(user: Pick<DbUser, "id" | "role" 
   // 组渠道为空（不限）时保持不限：定向额度只扩大授权，不缩小原本可用的全部渠道
   if (groupIds.length === 0) return null;
   const ids = [...groupIds];
-  // 定向额度明确限定的渠道作为额外授权来源（兑换即授权）
-  const redeem = await listRedeemCoveredAuthorization(user.id);
-  for (const id of redeem.channelIds) {
+  for (const id of (await listRedeemScopes(user.id)).flatMap((scope) => scope.channelIds)) {
     if (!ids.includes(id)) ids.push(id);
   }
   return ids;

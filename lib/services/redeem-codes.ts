@@ -4,6 +4,7 @@ import type { ExecuteResult } from "@/lib/core/db/adapter";
 import { toMysqlDatetime, parseStoredUtc } from "@/lib/core/db/datetime";
 import { parseAllowedChannelIds, stringifyAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
+import { scopeCoversPair } from "@/lib/services/redeem-authorization";
 
 
 // 判断是否为唯一约束冲突（SQLite: UNIQUE constraint failed; MySQL: ER_DUP_ENTRY）。
@@ -324,11 +325,11 @@ export async function findMatchingRedeemBalance(userId: number, channelId: numbe
     [userId, now],
   );
   for (const row of rows) {
-    const channelIds = parseAllowedChannelIds(row.allowed_channel_ids);
-    const aliases = parseAllowedModelAliases(row.allowed_model_aliases);
-    const channelMatch = channelIds.length === 0 || channelIds.includes(channelId);
-    const aliasMatch = aliases.length === 0 || aliases.includes(modelAlias);
-    if (channelMatch && aliasMatch) {
+    // 与授权侧的配对判定共用同一份逻辑，避免两处规则漂移。
+    if (scopeCoversPair({
+      channelIds: parseAllowedChannelIds(row.allowed_channel_ids),
+      aliases: parseAllowedModelAliases(row.allowed_model_aliases),
+    }, channelId, modelAlias)) {
       return row;
     }
   }

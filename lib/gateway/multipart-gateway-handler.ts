@@ -134,15 +134,16 @@ export async function handleMultipartGatewayRequest(request: Request) {
   }
 
   const existingRoute = await selectModelRoute(resolvedAlias, {
+    user: auth.user,
     protocol: "images",
     allowedChannelIds,
     userAgent: uaEnabled ? clientUserAgent : undefined,
   });
   if (!existingRoute) {
     if (uaEnabled) {
-      const nonUaRoute = await selectModelRoute(resolvedAlias, { protocol: "images", allowedChannelIds });
+      const nonUaRoute = await selectModelRoute(resolvedAlias, { protocol: "images", allowedChannelIds, user: auth.user });
       if (nonUaRoute !== null) {
-        const denyMatch = await findUaDenyMatchForAlias(resolvedAlias, clientUserAgent, allowedChannelIds, "images");
+        const denyMatch = await findUaDenyMatchForAlias(resolvedAlias, clientUserAgent, allowedChannelIds, "images", auth.user);
         if (denyMatch) {
           logRejected(429, denyMatch.rule.error_message, alias);
           return jsonError(denyMatch.rule.error_message, denyMatch.rule.error_code, {
@@ -154,7 +155,7 @@ export async function handleMultipartGatewayRequest(request: Request) {
       }
     }
     if (allowedChannelIds) {
-      const withoutRestriction = await selectModelRoute(resolvedAlias, { protocol: "images" });
+      const withoutRestriction = await selectModelRoute(resolvedAlias, { protocol: "images", user: auth.user });
       if (withoutRestriction !== null) {
         logRejected(403, "当前用户组无可用渠道", alias, estimatedTokens);
         return jsonError("当前用户组无可用渠道", 403);

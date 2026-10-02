@@ -4,7 +4,7 @@ import { checkChannelQuota, appendChannelQuotaHeaders } from "@/lib/gateway/chan
 import { insertChatLog, withSubstitutionNote } from "@/lib/gateway/chat-log";
 import { jsonError } from "@/lib/core/http";
 import { checkModelQuota, appendModelQuotaHeaders } from "@/lib/gateway/model-quota";
-import { resolveAccessibleModelAlias, canUserAccessModelAlias } from "@/lib/gateway/model-access";
+import { resolveAccessibleModelAlias } from "@/lib/gateway/model-access";
 import { getGatewayProtocolAdapter, type GatewayProtocolAdapter } from "@/lib/gateway/protocol-adapters";
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 import type { ResponseAdapterOptions } from "@/lib/gateway/protocol-adapters/intermediate";
@@ -163,6 +163,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       protocol: inboundProtocol,
       allowedChannelIds,
       userAgent: uaEnabled ? clientUserAgent : undefined,
+      user: auth.user,
     });
     if (sourceRoute && sourceRoute.model.supports_vision !== 1) {
       const visionRoute = await findVisionFallbackRoute({
@@ -172,7 +173,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
         userAgent: uaEnabled ? clientUserAgent : undefined,
         user: auth.user,
       });
-      if (visionRoute && (auth.user.role === "admin" || await canUserAccessModelAlias(auth.user, visionRoute.model.alias))) {
+      if (visionRoute) {
         effectiveAlias = visionRoute.model.alias;
         visionFallbackNote = "目标模型不支持识图，已自动路由到识图模型";
       }
@@ -183,17 +184,18 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     protocol: inboundProtocol,
     allowedChannelIds,
     userAgent: uaEnabled ? clientUserAgent : undefined,
+    user: auth.user,
   });
   if (!initialRoute) {
     if (uaEnabled) {
-      const nonUaRoute = await selectModelRoute(effectiveAlias, { protocol: inboundProtocol, allowedChannelIds });
+      const nonUaRoute = await selectModelRoute(effectiveAlias, { protocol: inboundProtocol, allowedChannelIds, user: auth.user });
       if (nonUaRoute !== null) {
-        const denyMatch = await findUaDenyMatchForAlias(effectiveAlias, clientUserAgent, allowedChannelIds, inboundProtocol);
+        const denyMatch = await findUaDenyMatchForAlias(effectiveAlias, clientUserAgent, allowedChannelIds, inboundProtocol, auth.user);
         if (denyMatch) return denyByUa(denyMatch, alias);
       }
     }
     if (allowedChannelIds) {
-      const withoutRestriction = await selectModelRoute(effectiveAlias, { protocol: inboundProtocol });
+      const withoutRestriction = await selectModelRoute(effectiveAlias, { protocol: inboundProtocol, user: auth.user });
       if (withoutRestriction !== null) {
         logRejected(403, "当前用户组无可用渠道", alias, estimatedTokens);
         return jsonError("当前用户组无可用渠道", 403);
@@ -386,6 +388,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     estimatedTokens,
     buildRequestBody: adaptRequestBodyForRoute,
     userQuotaGuard,
+    user: auth.user,
   });
   const buildFailureMessage = (stage: string, message: string, upstreamUrl?: string | null) => {
     const parts = [`阶段=${stage}`, message];
