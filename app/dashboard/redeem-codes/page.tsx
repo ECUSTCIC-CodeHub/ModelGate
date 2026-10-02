@@ -13,7 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PagePagination } from "@/components/dashboard/page-pagination";
 import { authedFetch } from "@/lib/auth/client-auth";
-import { formatNumber, formatTokenCount } from "@/lib/shared/utils";
+import { formatExpiresAt, formatNumber, formatTokenCount } from "@/lib/shared/utils";
 import { RedeemCodeDetailDialog, useRedeemCodeDetail } from "./redeem-code-detail-dialog";
 import { RedeemCodeEditDialog } from "./redeem-code-edit-dialog";
 import type { ChannelOption, CodeRow, ModelOption } from "./redeem-code-types";
@@ -425,7 +425,7 @@ export default function AdminRedeemCodesPage() {
                           </TableCell>
                           <TableCell>{ch.length === 0 ? "不限" : ch.join(",")}</TableCell>
                           <TableCell>{al.length === 0 ? "不限" : al.join(",")}</TableCell>
-                          <TableCell>{row.expires_at ? new Date(row.expires_at).toLocaleString() : "长期有效"}</TableCell>
+                          <TableCell>{formatExpiresAt(row.expires_at)}</TableCell>
                           <TableCell className="whitespace-nowrap text-xs">
                             {formatNumber(row.redeemed_users)} 人有效持有
                             <br />

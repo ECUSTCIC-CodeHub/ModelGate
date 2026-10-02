@@ -153,6 +153,14 @@ export function parseExpiresInput(raw: string): { ok: true; value: string; time:
   return { ok: true, value: toMysqlDatetime(result), time };
 }
 
+// 存储的到期时间语义：null 为长期有效，解析不出来（历史数据里的空串、零日期）视为异常。
+// 与授权、核销 SQL 的 `expires_at IS NULL OR expires_at > ?` 保持一致，避免「界面显示长期有效却永远核销不了」。
+function resolveStoredExpiry(value: string | null | undefined): { kind: "none" } | { kind: "invalid" } | { kind: "at"; time: number } {
+  if (value == null) return { kind: "none" };
+  const parsed = parseStoredUtc(value);
+  return parsed ? { kind: "at", time: parsed.getTime() } : { kind: "invalid" };
+}
+
 export function isCodeValid(row: Pick<RedeemCodeRow, "enabled" | "expires_at" | "max_uses" | "used_count">): { ok: boolean; reason?: string } {
   if (row.enabled !== 1) {
     return { ok: false, reason: "该兑换码已停用" };
@@ -160,11 +168,12 @@ export function isCodeValid(row: Pick<RedeemCodeRow, "enabled" | "expires_at" | 
   if (row.max_uses !== 0 && row.used_count >= row.max_uses) {
     return { ok: false, reason: "该兑换码使用次数已达上限" };
   }
-  if (row.expires_at) {
-    const expires = parseStoredUtc(row.expires_at);
-    if (expires && expires.getTime() <= Date.now()) {
-      return { ok: false, reason: "该兑换码已过期" };
-    }
+  const expiry = resolveStoredExpiry(row.expires_at);
+  if (expiry.kind === "invalid") {
+    return { ok: false, reason: "该兑换码有效期数据异常，请联系管理员" };
+  }
+  if (expiry.kind === "at" && expiry.time <= Date.now()) {
+    return { ok: false, reason: "该兑换码已过期" };
   }
   return { ok: true };
 }
@@ -321,27 +330,37 @@ export async function redeemCodeForUser(userId: number, code: string): Promise<{
   return result;
 }
 
-// 查询用户所有有效的定向额度。
-export async function listUserBalances(userId: number): Promise<Array<RedeemBalanceRow & { remaining_tokens: number | null; remaining_requests: number | null; active: boolean }>> {
-  const rows = await gatewayDb.query<RedeemBalanceRow>(
-    "SELECT * FROM redeem_balances WHERE user_id = ? ORDER BY id DESC",
+// 查询用户所有定向额度，有效性判定与授权、计费侧保持一致：兑换码启用、未过期、额度未耗尽。
+// 停用码的额度在网关侧已不再授权，这里同样不算有效，否则界面会对拿不到权限的额度显示「有效」。
+export async function listUserBalances(
+  userId: number,
+): Promise<Array<RedeemBalanceRow & { remaining_tokens: number | null; remaining_requests: number | null; active: boolean; inactive_reason: string | null }>> {
+  const rows = await gatewayDb.query<RedeemBalanceRow & { code_enabled: number | null }>(
+    `SELECT b.*, c.enabled AS code_enabled
+       FROM redeem_balances b
+       LEFT JOIN redeem_codes c ON c.id = b.code_id
+      WHERE b.user_id = ?
+      ORDER BY b.id DESC`,
     [userId],
   );
-  return rows.map((row) => {
+  const now = Date.now();
+  return rows.map(({ code_enabled: codeEnabled, ...row }) => {
     const remainingTokens = row.token_quota !== null ? Math.max(0, row.token_quota - row.used_tokens) : null;
     const remainingRequests = row.request_quota !== null ? Math.max(0, row.request_quota - row.used_requests) : null;
-    let active = true;
-    if (row.expires_at) {
-      const expires = parseStoredUtc(row.expires_at);
-      if (expires && expires.getTime() <= Date.now()) active = false;
-    }
-    if (remainingTokens !== null && remainingTokens <= 0) active = false;
-    if (remainingRequests !== null && remainingRequests <= 0) active = false;
+    const expiry = resolveStoredExpiry(row.expires_at);
+    let inactiveReason: string | null = null;
+    if (codeEnabled === null) inactiveReason = "来源兑换码缺失";
+    else if (codeEnabled !== 1) inactiveReason = "兑换码已停用";
+    else if (expiry.kind === "invalid") inactiveReason = "有效期数据异常";
+    else if (expiry.kind === "at" && expiry.time <= now) inactiveReason = "已过期";
+    else if (remainingTokens !== null && remainingTokens <= 0) inactiveReason = "Token 额度已用尽";
+    else if (remainingRequests !== null && remainingRequests <= 0) inactiveReason = "请求额度已用尽";
     return {
       ...row,
       remaining_tokens: remainingTokens,
       remaining_requests: remainingRequests,
-      active,
+      active: inactiveReason === null,
+      inactive_reason: inactiveReason,
     };
   });
 }
@@ -493,8 +512,12 @@ export async function updateRedeemCode(
       "SELECT expires_at FROM redeem_balances WHERE code_id = ?",
       [id],
     );
-    if (issued.some((b) => !b.expires_at)) {
+    if (issued.some((b) => resolveStoredExpiry(b.expires_at).kind === "none")) {
       return { ok: false, reason: "已有用户兑换该码且额度长期有效，无法为其设置有效期" };
+    }
+    // 解析不出来的额度无法参与下面的比较，若它的值在 SQL 比较下仍算未过期，改小就成了静默缩短
+    if (issued.some((b) => resolveStoredExpiry(b.expires_at).kind === "invalid")) {
+      return { ok: false, reason: "已有用户兑换该码且额度有效期数据异常，请先处理该额度" };
     }
     for (const balance of issued) {
       const issuedExpires = balance.expires_at ? parseStoredUtc(balance.expires_at) : null;

@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PagePagination } from "@/components/dashboard/page-pagination";
 import { authedFetch } from "@/lib/auth/client-auth";
-import { formatNumber, formatTokenCount } from "@/lib/shared/utils";
+import { formatExpiresAt, formatNumber, formatTokenCount } from "@/lib/shared/utils";
 import type { CodeRow } from "./redeem-code-types";
 
 type RedemptionRow = {
@@ -82,8 +82,8 @@ export function RedeemCodeDetailDialog({
               </div>
               <div>创建人：{code.created_by_username ?? "—"}</div>
               <div>创建时间：{new Date(code.created_at).toLocaleString()}</div>
-              <div>有效期：{code.expires_at ? new Date(code.expires_at).toLocaleString() : "长期有效"}</div>
-              <div>状态：{code.enabled === 1 ? "启用" : "停用"}</div>
+              <div>有效期：{formatExpiresAt(code.expires_at)}</div>
+              <div className="sm:col-span-2">状态：{code.enabled === 1 ? "启用" : "停用"}</div>
               <div className="sm:col-span-2">备注：{code.note ?? "—"}</div>
             </div>
           ) : null}
@@ -113,7 +113,7 @@ export function RedeemCodeDetailDialog({
                       <TableCell>{new Date(row.redeemed_at).toLocaleString()}</TableCell>
                       <TableCell>{remainingToken(row.token_quota, row.used_tokens)}</TableCell>
                       <TableCell>{remainingRequest(row.request_quota, row.used_requests)}</TableCell>
-                      <TableCell>{row.expires_at ? new Date(row.expires_at).toLocaleString() : "长期有效"}</TableCell>
+                      <TableCell>{formatExpiresAt(row.expires_at)}</TableCell>
                     </TableRow>
                   ))
                 )}

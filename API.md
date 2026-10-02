@@ -2048,6 +2048,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
   "data": {
     "id": 1,
     "code_id": 1,
+    "user_id": 1,
     "token_quota": 1000000,
     "request_quota": null,
     "used_tokens": 0,
@@ -2055,8 +2056,11 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
     "allowed_channel_ids": [1],
     "allowed_model_aliases": ["gpt-4o"],
     "expires_at": null,
+    "created_at": "2026-01-01 00:00:00",
     "remaining_tokens": 1000000,
-    "remaining_requests": null
+    "remaining_requests": null,
+    "active": true,
+    "inactive_reason": null
   }
 }
 ```
@@ -2074,6 +2078,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
     {
       "id": 1,
       "code_id": 1,
+      "user_id": 1,
       "token_quota": 1000000,
       "request_quota": null,
       "used_tokens": 0,
@@ -2081,9 +2086,11 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
       "allowed_channel_ids": [1],
       "allowed_model_aliases": ["gpt-4o"],
       "expires_at": null,
+      "created_at": "2026-01-01 00:00:00",
       "remaining_tokens": 1000000,
       "remaining_requests": null,
-      "active": true
+      "active": true,
+      "inactive_reason": null
     }
   ],
   "redemptions": [
@@ -2091,6 +2098,8 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
   ]
 }
 ```
+
+`active` 与 `inactive_reason` 由服务端按授权、计费侧同一口径计算（兑换码启用、未过期、额度未耗尽），失效原因取值：`来源兑换码缺失`、`兑换码已停用`、`有效期数据异常`、`已过期`、`Token 额度已用尽`、`请求额度已用尽`。
 
 ---
 

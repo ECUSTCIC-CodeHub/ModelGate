@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { authedFetch, getCachedProfile } from "@/lib/auth/client-auth";
 import { useAuthProfile } from "@/components/providers/auth-provider";
-import { formatNumber, formatTokenCount } from "@/lib/shared/utils";
+import { formatExpiresAt, formatNumber, formatTokenCount } from "@/lib/shared/utils";
 
 type Balance = {
   id: number;
@@ -27,6 +27,7 @@ type Balance = {
   remaining_tokens: number | null;
   remaining_requests: number | null;
   active: boolean;
+  inactive_reason: string | null;
 };
 
 type Redemption = { id: number; code: string; redeemed_at: string };
@@ -143,9 +144,9 @@ export default function RedeemPage() {
                         </TableCell>
                         <TableCell>{b.allowed_channel_ids.length === 0 ? "不限" : b.allowed_channel_ids.join(",")}</TableCell>
                         <TableCell>{b.allowed_model_aliases.length === 0 ? "不限" : b.allowed_model_aliases.join(",")}</TableCell>
-                        <TableCell>{b.expires_at ? new Date(b.expires_at).toLocaleString() : "长期有效"}</TableCell>
+                        <TableCell>{formatExpiresAt(b.expires_at)}</TableCell>
                         <TableCell>
-                          <Badge variant={b.active ? "default" : "outline"}>{b.active ? "有效" : "已用尽/过期"}</Badge>
+                          <Badge variant={b.active ? "default" : "outline"}>{b.active ? "有效" : b.inactive_reason ?? "已用尽/过期"}</Badge>
                         </TableCell>
                       </TableRow>
                     ))}

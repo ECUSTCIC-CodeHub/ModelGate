@@ -66,6 +66,9 @@ export async function POST(request: Request) {
       allowed_model_aliases: parseAllowedModelAliases(balance.allowed_model_aliases),
       remaining_tokens: balance.token_quota !== null ? Math.max(0, balance.token_quota - balance.used_tokens) : null,
       remaining_requests: balance.request_quota !== null ? Math.max(0, balance.request_quota - balance.used_requests) : null,
+      // 与 GET /api/user/redeem 保持同一形状：核销成功即代表该额度当下有效
+      active: true,
+      inactive_reason: null,
     },
   }, 201);
 }
