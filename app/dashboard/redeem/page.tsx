@@ -104,6 +104,12 @@ export default function RedeemPage() {
           </CardContent>
         </Card>
 
+        {balances.length === 0 ? (
+          <p className="text-sm text-[var(--color-foreground-muted)]">
+            还没有定向额度。拿到管理员发放的兑换码后，在上方输入即可解锁对应渠道与模型。
+          </p>
+        ) : null}
+
         {balances.length > 0 ? (
           <Card>
             <CardHeader>

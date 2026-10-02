@@ -5,7 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuthProfile, useOidcEnabled, usePasswordLoginEnabled } from "@/components/providers/auth-provider";
 import { useTheme } from "@/components/providers/theme-provider";
 import { useToast } from "@/components/ui/toast";
-import { getDashboardMenus } from "@/components/layout/dashboard-shell/menus";
+import { getDashboardMenus, withRedeemEntry } from "@/components/layout/dashboard-shell/menus";
+import { modelGateFeatures } from "@/lib/core/features";
 import type { ProfileBrief, Role } from "@/components/layout/dashboard-shell/types";
 import { authedFetch, clearCachedProfile, clearSession, getCachedProfile, getOrFetchProfile } from "@/lib/auth/client-auth";
 import { getApiMessage } from "@/lib/shared/api-message";
@@ -16,7 +17,13 @@ export function useDashboardShell(role: Role) {
   const initialProfile = useAuthProfile();
   const { toast } = useToast();
   const { mode, toggleMode } = useTheme();
-  const menus = useMemo(() => getDashboardMenus(role), [role]);
+  // 普通用户的兑换入口按需出现，只有持有定向额度时才显示，避免打扰未参与活动的用户。
+  const [hasRedeemBalance, setHasRedeemBalance] = useState(false);
+  const menus = useMemo(() => {
+    const base = getDashboardMenus(role);
+    if (role === "admin" || !modelGateFeatures.redeemCode) return base;
+    return withRedeemEntry(base, hasRedeemBalance);
+  }, [hasRedeemBalance, role]);
   const [profileBrief, setProfileBrief] = useState<ProfileBrief | null>(() => initialProfile ?? getCachedProfile());
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [feedbackUrl, setFeedbackUrl] = useState("");
@@ -32,6 +39,20 @@ export function useDashboardShell(role: Role) {
       if (next) setProfileBrief(next);
     });
   }, []);
+
+  useEffect(() => {
+    if (role === "admin" || !modelGateFeatures.redeemCode) return;
+    let cancelled = false;
+    void authedFetch("/api/user/redeem")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        if (cancelled || !payload) return;
+        const balances = Array.isArray(payload.data) ? payload.data : [];
+        setHasRedeemBalance(balances.length > 0);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [role]);
 
   useEffect(() => {
     void fetch("/api/site-info", { cache: "no-store" })
