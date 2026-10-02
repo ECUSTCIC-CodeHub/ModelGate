@@ -125,7 +125,15 @@ export async function handlePassthroughRequest(request: Request, upstreamPath: s
 
   const resolved = await resolveAccessibleModelAlias(auth.user, alias);
   if (!resolved.ok) {
+    // 别名门禁只做「任意渠道」的宽松放行，配对收紧在选路阶段。拿到具体渠道后
+    // 若仍无可用路由，说明该别名只是碰巧落在（组白名单 × 额度别名）的交叉区域，
+    // 不属于「无权访问该模型」，按「别名不存在或已禁用」处理，与单通道模型行为一致。
     if (resolved.reason === "forbidden") {
+      const grantedRoute = await selectModelRoute(alias, { user: auth.user });
+      if (!grantedRoute) {
+        logRejected(404, "模型别名不存在或已禁用", alias);
+        return jsonError("模型别名不存在或已禁用", 404);
+      }
       logRejected(403, "当前用户无权访问该模型", alias);
       return jsonError("当前用户无权访问该模型", 403);
     }

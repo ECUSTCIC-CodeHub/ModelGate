@@ -61,6 +61,18 @@ export function scopesCoverPair(scopes: RedeemScope[], channelId: number | null,
   return scopes.some((scope) => scopeCoversPair(scope, channelId, modelAlias));
 }
 
+// 别名级判定：某张授权区域是否限定了该别名（空 aliases = 任意别名，即覆盖一切）。
+// 网关在拿到具体渠道之前无法做配对判定，别名门禁与选路诊断只能用这个宽松口径；
+// 真正的配对收紧发生在选路阶段（filterGrantedRows → scopeCoversPair）。
+export function scopeHasAlias(scope: RedeemScope, modelAlias: string | null): boolean {
+  if (!modelAlias) return false;
+  return scope.aliases.length === 0 || scope.aliases.includes(modelAlias);
+}
+
+export function scopesHaveAlias(scopes: RedeemScope[], modelAlias: string | null): boolean {
+  return scopes.some((scope) => scopeHasAlias(scope, modelAlias));
+}
+
 // 用户自身（用户 + 用户组）的限定区域。两个维度都为空表示不受限，
 // 返回 null 与「有具体限定但都不覆盖该配对」区分开。
 export async function getUserScope(user: Pick<DbUser, "group_id" | "allowed_model_aliases">): Promise<RedeemScope | null> {

@@ -2,7 +2,7 @@ import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { getUserAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { getUserGroup } from "@/lib/gateway/effective-limits";
 import { parseSupportedProtocols, type GatewayProtocol } from "@/lib/gateway/protocols";
-import { getUserScope, listRedeemScopes, scopeCoversPair, scopesCoverPair } from "@/lib/services/redeem-authorization";
+import { getUserScope, listRedeemScopes, scopeCoversPair, scopesCoverPair, scopesHaveAlias } from "@/lib/services/redeem-authorization";
 
 export function parseAllowedModelAliases(raw: string | null | undefined) {
   if (!raw) return [];
@@ -77,7 +77,12 @@ export async function canUserAccessModelAlias(user: Pick<DbUser, "id" | "role" |
   if (models.some((m) => m.is_public === 1)) return true;
 
   const effective = await getEffectiveAllowedAliases(user);
-  return effective.includes(alias);
+  if (effective.includes(alias)) return true;
+
+  // 定向额度限定的别名也是授权来源（兑换即授权）。此处只有别名维度（渠道未知，
+  // 网关选路之后才知道具体渠道），故用「任意渠道」的宽松口径放行，配对收紧交给
+  // filterGrantedRows —— 只看渠道并集会把「渠道9 + 别名A」的额度错当成渠道 9 的独立授权。
+  return scopesHaveAlias(await listRedeemScopes(user.id), alias);
 }
 
 export async function hasEnabledModelAlias(alias: string) {
@@ -166,13 +171,14 @@ export async function listAccessibleModels(user: Pick<DbUser, "id" | "role" | "g
     const userScope = await getUserScope(user);
     const redeemScopes = await listRedeemScopes(user.id);
     for (const row of rows) {
-      // 公开模型不受渠道白名单限制；其余模型按 (渠道, 别名) 配对校验，
-      // 与网关实际选路保持一致，避免列表展示出请求不了的组合。
+      // 渠道白名单对所有模型生效，公开模型也不例外：选路阶段的 allowSet 一视同仁，
+      // 展示侧若对公开模型放开，就会列出「看得见、请求必然 403」的组合。
+      if (allowedChannelSet && !allowedChannelSet.has(row.channel_id)) continue;
+      // 其余模型再按 (渠道, 别名) 配对校验，与网关实际选路保持一致。
       if (row.is_public !== 1) {
-        if (allowedChannelSet && !allowedChannelSet.has(row.channel_id)) continue;
-        const covered = (userScope !== null && scopeCoversPair(userScope, row.channel_id, row.alias))
+        const granted = (userScope !== null && scopeCoversPair(userScope, row.channel_id, row.alias))
           || scopesCoverPair(redeemScopes, row.channel_id, row.alias);
-        if (!covered) continue;
+        if (!granted) continue;
       }
       processRow(row);
     }

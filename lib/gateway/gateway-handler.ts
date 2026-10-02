@@ -128,10 +128,19 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
   const modelFallbackEnabled = resolveTriState(auth.user.pref_model_fallback, settings.model_fallback_enabled === 1);
   const resolved = await resolveAccessibleModelAlias(auth.user, alias);
   let resolvedAlias: string;
+  const modelAliasGranted = resolved.ok;
   let modelFallbackNote: string | null = null;
   let visionFallbackNote: string | null = null;
   if (!resolved.ok) {
+    // 别名门禁只做「任意渠道」的宽松放行，配对收紧在选路阶段。拿到具体渠道后
+    // 若仍无可用路由，说明该别名只是碰巧落在（组白名单 × 额度别名）的交叉区域，
+    // 不属于「无权访问该模型」，按「别名不存在或已禁用」走回退，与单通道模型行为一致。
     if (resolved.reason === "forbidden") {
+      const grantedRoute = await selectModelRoute(alias, { user: auth.user });
+      if (!grantedRoute) {
+        logRejected(404, "模型别名不存在或已禁用", alias, estimatedTokens);
+        return jsonError("模型别名不存在或已禁用", 404);
+      }
       logRejected(403, "当前用户无权访问该模型", alias, estimatedTokens);
       return jsonError("当前用户无权访问该模型", 403);
     }
@@ -187,6 +196,12 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     user: auth.user,
   });
   if (!initialRoute) {
+    // 别名级放行只保证「某张定向额度覆盖了该别名」，不代表请求所用的渠道也落在配对区域内。
+    // 此时若换成别名不可见时的回退策略，反而把一个明确的无权限变成静默换模型。
+    if (modelAliasGranted) {
+      logRejected(403, "当前用户无权访问该模型", alias, estimatedTokens);
+      return jsonError("当前用户无权访问该模型", 403);
+    }
     if (uaEnabled) {
       const nonUaRoute = await selectModelRoute(effectiveAlias, { protocol: inboundProtocol, allowedChannelIds, user: auth.user });
       if (nonUaRoute !== null) {
