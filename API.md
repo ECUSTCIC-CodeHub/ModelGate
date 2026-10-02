@@ -782,7 +782,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "data": {
     "icp_filing_number": "苏ICP备2023000758号-3",
     "public_security_filing_number": "沪公网安备31012102000146号",
-    "feedback_url": "https://cnb.cool/ecustcic/ModelGate/-/issues/new/choose"
+    "feedback_url": "https://cnb.cool/ecustcic/ModelGate/-/issues/new/choose",
+    "runtime_features": { "redeemCode": true }
   }
 }
 ```
@@ -792,6 +793,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | icp_filing_number | string | ICP 备案号，未配置时为空字符串 |
 | public_security_filing_number | string | 公安联网备案号，未配置时为空字符串 |
 | feedback_url | string | 问题反馈链接，未配置时为空字符串 |
+| runtime_features | object | 面向客户端的运行时功能开关子集（构建版本与管理员设置合并后的结果），供前端决定菜单入口是否展示 |
 
 ---
 
@@ -1632,7 +1634,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 分页查询兑换码列表，按码聚合已兑换人数与已用额度。
 
-`redeemed_users` 为该码当前持有定向额度的人数，`used_tokens_sum` / `used_requests_sum` 为这些额度累计已用；
+`redeemed_users` 为该码当前仍持有有效定向额度的人数（已用尽/已过期的额度不计入），`used_tokens_sum` / `used_requests_sum` 为这些额度累计已用；
 剩余额度 = `token_quota` - `used_tokens_sum`（`token_quota` 为 null 表示不限，不做扣减统计）。
 注意 `used_count` 是**兑换次数**，与 `max_uses` 配对；额度余量看 `used_tokens_sum`，两者不是一回事。
 
@@ -1786,7 +1788,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 |:---|:---|:---|
 | note | string \| null | 备注，最长 500 字符 |
 | enabled | boolean | 是否启用 |
-| expires_at | string \| null | 有效期（ISO 时间），null 或空串表示长期有效 |
+| expires_at | string | 有效期（ISO 时间，不允许空串或 `null`）。要保留长期有效就不传该字段 |
 | max_uses | int | 最多兑换次数，0 表示不限 |
 | token_quota | int \| null | Token 额度，null 表示不限 |
 | request_quota | int \| null | 请求额度，null 表示不限 |

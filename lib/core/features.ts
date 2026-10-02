@@ -21,15 +21,11 @@ export const modelGateFeatures = {
 export type ModelGateFeature = keyof typeof modelGateFeatures;
 
 // 可运行时开关的功能：构建版本为 full 时默认开启，管理员可在系统设置中关闭。
-const runtimeToggleableFeatures: ModelGateFeature[] = ["redeemCode"];
+export const runtimeToggleableFeatures: ModelGateFeature[] = ["redeemCode"];
 
 export const runtimeFeatureDefaults: Record<string, boolean> = Object.fromEntries(
   runtimeToggleableFeatures.map((feature) => [feature, modelGateFeatures[feature]]),
 );
-
-export function isRuntimeToggleableFeature(feature: ModelGateFeature): boolean {
-  return runtimeToggleableFeatures.includes(feature);
-}
 
 // 运行时功能开关（合并管理员设置）。
 // 语义是「只能收窄，不能放宽」：构建版本不含该功能时，settings 里残留的 "1" 不得把它放出来，

@@ -1,6 +1,6 @@
 import { gatewayDb } from "@/lib/core/db";
 import { clampStatusLightHours } from "@/lib/shared/utils";
-import { featureSettingsKey, modelGateFeatures, resolveRuntimeFeatures, runtimeFeatureDefaults } from "@/lib/core/features";
+import { featureSettingsKey, modelGateFeatures, resolveRuntimeFeatures, runtimeFeatureDefaults, runtimeToggleableFeatures, type ModelGateFeature } from "@/lib/core/features";
 
 const DEFAULTS = {
   registration_enabled: 1,
@@ -239,6 +239,17 @@ export async function getGatewaySettings(): Promise<GatewaySettings> {
   const value = await readGatewaySettingsFromDb();
   cachedGatewaySettings = { value, expiresAt: now + GATEWAY_SETTINGS_CACHE_TTL_MS };
   return value;
+}
+
+// 面向客户端的安全子集：名单与 settings key 都由服务端维护，不把全部设置暴露出去。
+// 运行时功能开关直接影响菜单入口，客户端需要拿到服务端算好的值。
+export async function getClientRuntimeFeatures(): Promise<Record<ModelGateFeature, boolean>> {
+  const settings = await getGatewaySettings();
+  const result = {} as Record<ModelGateFeature, boolean>;
+  for (const feature of runtimeToggleableFeatures) {
+    result[feature] = settings.runtime_features[feature] === true;
+  }
+  return result;
 }
 
 export async function setGatewaySettings(input: {

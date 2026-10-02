@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { getGatewaySettings } from "@/lib/core/settings";
+import { getClientRuntimeFeatures, getGatewaySettings } from "@/lib/core/settings";
 import { jsonOk } from "@/lib/core/http";
 
 export async function GET() {
@@ -16,6 +16,7 @@ export async function GET() {
       icp_filing_number: settings.icp_filing_number ?? "",
       public_security_filing_number: settings.public_security_filing_number ?? "",
       feedback_url: feedbackUrl,
+      runtime_features: await getClientRuntimeFeatures(),
     },
   });
 }

@@ -153,11 +153,13 @@ export default function AdminSettingsPage() {
     setQuotaFallbackEnabled(settings.quota_fallback_enabled === 1);
     setQuotaFallbackAlias(stringValue(settings.quota_fallback_alias));
     if (redeemCodeFeatureEnabled) {
+      // 服务端已经按「构建版本收窄管理员设置」算过一次，客户端不再叠加构建期判断，
+      // 否则精简版切回完整版后设置页与接口/菜单的实际行为会对不上。
       const features = settings.runtime_features;
       const raw = features && typeof features === "object"
         ? (features as Record<string, unknown>).redeemCode
         : undefined;
-      setRedeemCodeEnabled(raw === undefined ? modelGateFeatures.redeemCode : raw !== false);
+      setRedeemCodeEnabled(raw !== false);
     }
     setDefaultModelIsPublic(settings.default_model_is_public !== 0);
     setModelBrandGroups(stringValue(settings.model_brand_groups));
