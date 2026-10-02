@@ -1425,6 +1425,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 - 渠道已处于启用状态时再次更新其他字段，不会改动模型的启用状态。
 - 启用渠道时若已存在使用未被支持协议的启用模型，返回 400「该渠道下存在使用未被保留协议的启用模型」。
 - 管理员对任意渠道执行创建、更新或删除操作后，系统会扫描并彻底禁用所有已到过期时间（`expires_at`）的启用渠道，并级联禁用其模型；同时也会扫描并禁用所有已到过期时间（模型自身 `expires_at`）的启用模型。
+- 模型清理不随渠道更新自动触发，只能由管理员在「渠道与模型管理」页手动执行上游已下架模型清理。
 
 ### DELETE /api/admin/channels/:id
 
@@ -1479,6 +1480,85 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 ```json
 { "data": ["gpt-4-turbo", "gpt-3.5-turbo"] }
 ```
+
+### POST /api/admin/channels/:id/prune-models
+
+探测该渠道上游 `/models`，找出本地 `real_model` 已不存在的模型并批量软删除。
+
+**认证:** 管理员
+
+> 探测使用渠道自身配置的 `base_url`、`api_key`、`user_agent`、`proxy_url`，请求体不需要也不接受这些字段（避免密钥回传）。
+>
+> 判定规则：以 `real_model` 归一化（去首尾空格、忽略大小写）后是否存在于上游列表为准。`alias` 为 `*` 的兜底模型与 `real_model` 含 `*` 的模型**永不删除**。模型的启用状态、所属协议、渠道启用状态都不影响判定。
+
+**请求体:**
+
+预览（默认）：
+
+```json
+{ "dry_run": true }
+```
+
+执行删除：
+
+```json
+{ "dry_run": false, "ids": [7, 9, 12] }
+```
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|:---|:---|:---|:---|:---|
+| dry_run | boolean | 否 | true | true 只返回对比结果，不修改任何数据；false 按 `ids` 执行软删除 |
+| ids | int[] | `dry_run=false` 时必填 | | 要删除的模型 ID，必须属于该渠道且未删除，单次最多 2000 个 |
+
+**预览响应 (200):**
+
+```json
+{
+  "message": "发现 3 个上游已不存在的模型。",
+  "data": {
+    "channel_id": 2,
+    "channel_name": "openai-main",
+    "upstream_count": 42,
+    "local_count": 15,
+    "kept": 11,
+    "skipped_wildcard": 1,
+    "stale": [
+      { "id": 7, "alias": "gpt-4", "real_model": "gpt-4-turbo", "enabled": 1, "alias_match": false }
+    ],
+    "missing_upstream": ["o3-mini"]
+  }
+}
+```
+
+| 字段 | 类型 | 说明 |
+|:---|:---|:---|
+| upstream_count | int | 上游返回并去重后的模型数 |
+| local_count | int | 该渠道下未删除的模型总数，等于 `kept + stale.length + skipped_wildcard` |
+| kept | int | 判定为上游仍存在的模型数 |
+| skipped_wildcard | int | 被跳过的兜底模型数（`alias` 为 `*` 或 `real_model` 含 `*`） |
+| stale | array | 待删除模型，字段为 `id` / `alias` / `real_model` / `enabled` / `alias_match`；`alias_match` 表示该 `alias` 仍在上游列表中（仅作提示，模型仍属待删除） |
+| missing_upstream | string[] | 上游有、但本地 `real_model` 与 `alias` 都未引用的模型 ID（仅作提示） |
+
+无待删项时 `stale` 为空数组，`message` 为 `上游模型与本地一致，无需清理。`。
+
+**执行响应 (200):**
+
+```json
+{
+  "message": "已删除 3 个模型。",
+  "data": { "deleted": 3, "aliases_cleaned": 1 }
+}
+```
+
+`aliases_cleaned` 为实际从用户组 / 用户模型白名单中移除的不同别名个数（仅当该别名已无其它启用且未删除的模型时才移除）。
+
+**错误:**
+
+| 状态码 | 说明 |
+|:---|:---|
+| 400 | 请求参数不正确 / 请选择要删除的模型 / 没有可删除的模型 |
+| 404 | 渠道不存在 |
+| 502 | 请求上游失败、上游返回非 2xx、上游响应非合法 JSON、未解析到任何模型 ID（此时不会修改任何数据） |
 
 ---
 
