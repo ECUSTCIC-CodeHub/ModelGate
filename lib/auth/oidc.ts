@@ -65,12 +65,34 @@ function markJwksRefreshBackoff(key: string) {
 // 真实轮换后第一次刷新即可拿到新密钥，故不影响正常登录
 const jwksForcedRefreshAt = new Map<string, number>();
 const JWKS_FORCED_REFRESH_MIN_INTERVAL_MS = 10_000;
+const JWKS_CACHE_MAX_ENTRIES = 64;
 
 function canForceJwksRefresh(jwksUri: string): boolean {
   const last = jwksForcedRefreshAt.get(jwksUri) ?? 0;
   if (Date.now() - last < JWKS_FORCED_REFRESH_MIN_INTERVAL_MS) return false;
+  // 键为 jwks_uri，来自管理员配置的单一 issuer，正常是单元素集合；
+  // 仍设上限以防御未来引入多 issuer / 运行期切换配置
+  if (jwksForcedRefreshAt.size >= JWKS_CACHE_MAX_ENTRIES) {
+    const cutoff = Date.now() - JWKS_FORCED_REFRESH_MIN_INTERVAL_MS;
+    for (const [k, at] of jwksForcedRefreshAt) {
+      if (at <= cutoff) jwksForcedRefreshAt.delete(k);
+    }
+    if (jwksForcedRefreshAt.size >= JWKS_CACHE_MAX_ENTRIES) jwksForcedRefreshAt.clear();
+  }
   jwksForcedRefreshAt.set(jwksUri, Date.now());
   return true;
+}
+
+// jwksCache 同样按 uri 增长，统一设上限
+function setBoundedJwksCache(jwksUri: string, keys: OidcJwk[]) {
+  if (jwksCache.size >= JWKS_CACHE_MAX_ENTRIES && !jwksCache.has(jwksUri)) {
+    const now = Date.now();
+    for (const [k, v] of jwksCache) {
+      if (v.expiresAt <= now) jwksCache.delete(k);
+    }
+    if (jwksCache.size >= JWKS_CACHE_MAX_ENTRIES) jwksCache.clear();
+  }
+  jwksCache.set(jwksUri, { keys, expiresAt: Date.now() + DISCOVERY_TTL_MS });
 }
 const OIDC_ID_TOKEN_ALGORITHMS: Algorithm[] = ["RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512"];
 
@@ -226,8 +248,11 @@ async function fetchJwks(jwksUri: string, forceRefresh = false): Promise<OidcJwk
   if (!forceRefresh && cached && cached.expiresAt > now) return cached.keys;
 
   // 同一 uri 的并发拉取共享一个 Promise：轮换瞬间多个登录会同时走到这里，
-  // 若各自发请求会对 IdP 造成 N 倍瞬时负载
-  const existing = jwksInFlight.get(jwksUri);
+  // 若各自发请求会对 IdP 造成 N 倍瞬时负载。
+  // key 必须含 forceRefresh：否则一次非强制调用会挂上另一个 uri 的在途 Promise
+  // 而拿到不属于自己的 keys（当前 uri 恒定故不可达，但会破坏按凭据隔离的不变量）
+  const inFlightKey = `${jwksUri}\u0000${forceRefresh ? "1" : "0"}`;
+  const existing = jwksInFlight.get(inFlightKey);
   if (existing) return existing;
 
   const pending = (async () => {
@@ -238,15 +263,15 @@ async function fetchJwks(jwksUri: string, forceRefresh = false): Promise<OidcJwk
       throw new Error("OIDC JWKS response missing keys");
     }
 
-    jwksCache.set(jwksUri, { keys: data.keys, expiresAt: Date.now() + DISCOVERY_TTL_MS });
+    setBoundedJwksCache(jwksUri, data.keys);
     return data.keys;
   })();
 
-  jwksInFlight.set(jwksUri, pending);
+  jwksInFlight.set(inFlightKey, pending);
   try {
     return await pending;
   } finally {
-    jwksInFlight.delete(jwksUri);
+    jwksInFlight.delete(inFlightKey);
   }
 }
 
@@ -295,8 +320,11 @@ async function resolveJwkForHeader(
     // 该 kid 刚刷新过且仍找不到，说明它是伪造的：退避期内不再发请求
     const backoffKey = `${jwksUri}\u0000${header.kid}`;
     if ((jwksRefreshBackoff.get(backoffKey) ?? 0) > Date.now()) throw error;
-    // 同一 URI 的强制刷新限流，挡住「每次换一个随机 kid」的伪造请求
-    if (!canForceJwksRefresh(jwksUri)) throw error;
+    // 同一 URI 的强制刷新限流，挡住「每次换一个随机 kid」的伪造请求。
+    // 错误信息与「密钥确实不存在」区分开，否则运维无法判断是自己被限流还是 IdP 真有问题
+    if (!canForceJwksRefresh(jwksUri)) {
+      throw new Error("ID token signing key not found（JWKS 强制刷新被限流，请稍后重试）", { cause: error });
+    }
 
     let refreshed: OidcJwk[];
     try {
