@@ -14,7 +14,7 @@ export function utf8ByteLength(value: string) {
 export function passwordSchema() {
   return z
     .string()
-    .min(PASSWORD_MIN_LENGTH, PASSWORD_LENGTH_MESSAGE)
+    .refine((value) => utf8ByteLength(value) >= PASSWORD_MIN_LENGTH, PASSWORD_LENGTH_MESSAGE)
     .refine((value) => utf8ByteLength(value) <= PASSWORD_MAX_BYTES, PASSWORD_LENGTH_MESSAGE);
 }
 
