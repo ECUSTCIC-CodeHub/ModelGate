@@ -59,15 +59,8 @@ export function normalizeAnthropicMessages(messages: unknown, system?: unknown):
         continue;
       }
 
-      if (type === "image") {
-        const source = asRecord(content.source);
-        if (typeof source?.data === "string" && source.data.length > 0) {
-          textParts.push({ type: "image", image_url: source.data, detail: null });
-        } else if (typeof source?.url === "string" && source.url.length > 0) {
-          textParts.push({ type: "image", image_url: source.url, detail: null });
-        }
-      }
-
+      // 图片块与其余块统一交给 normalizeContentParts：原先这里额外 push 一次裸 base64，
+      // 随后同一块又被兜成 unknown，图片既丢了 media_type 又多出一个无用块
       textParts.push(...normalizeContentParts([content]));
     }
 

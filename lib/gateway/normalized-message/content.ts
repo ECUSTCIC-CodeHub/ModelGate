@@ -1,6 +1,45 @@
 import type { NormalizedContentPart } from "@/lib/gateway/normalized-message/types";
 import { asRecord } from "@/lib/gateway/normalized-message/utils";
 
+const DEFAULT_IMAGE_MEDIA_TYPE = "image/png";
+
+// Anthropic 的图片是 {type:"image", source:{type:"base64"|"url", ...}}，
+// 中间协议只保留一个 URL 字符串，故 base64 统一落成 data URL，与其他协议一致。
+function anthropicImageUrl(record: Record<string, unknown>): string | null {
+  const source = asRecord(record.source);
+  if (!source) return null;
+  const sourceType = typeof source.type === "string" ? source.type : "";
+
+  const url = typeof source.url === "string" ? source.url : "";
+  if (sourceType === "url" || (sourceType === "" && url)) {
+    return url || null;
+  }
+
+  const data = typeof source.data === "string" ? source.data : "";
+  if (sourceType !== "base64" && !(sourceType === "" && data)) return null;
+  if (!data) return null;
+  if (data.startsWith("data:")) return data;
+  const mediaType = typeof source.media_type === "string" && source.media_type ? source.media_type : DEFAULT_IMAGE_MEDIA_TYPE;
+  return `data:${mediaType};base64,${data}`;
+}
+
+// 反向：Anthropic 只接受 base64 或 url 两种 source，data URL 必须拆回 base64。
+// 不用正则是为了让 base64 里可能出现的换行也能原样保留。
+export function anthropicImageSource(imageUrl: string) {
+  if (imageUrl.startsWith("data:")) {
+    const commaIndex = imageUrl.indexOf(",");
+    const header = commaIndex === -1 ? "" : imageUrl.slice("data:".length, commaIndex);
+    if (commaIndex !== -1 && header.endsWith(";base64")) {
+      return {
+        type: "base64",
+        media_type: header.slice(0, -";base64".length) || DEFAULT_IMAGE_MEDIA_TYPE,
+        data: imageUrl.slice(commaIndex + 1),
+      };
+    }
+  }
+  return { type: "url", url: imageUrl };
+}
+
 export function normalizeContentParts(value: unknown): NormalizedContentPart[] {
   if (typeof value === "string") {
     return value.length > 0 ? [{ type: "text", text: value }] : [];
@@ -56,6 +95,12 @@ export function normalizeContentParts(value: unknown): NormalizedContentPart[] {
         const detail = typeof record.detail === "string" ? record.detail : null;
         parts.push({ type: "image", image_url: imageUrl, detail });
       }
+      continue;
+    }
+
+    if (type === "image") {
+      const imageUrl = anthropicImageUrl(record);
+      if (imageUrl) parts.push({ type: "image", image_url: imageUrl, detail: null });
       continue;
     }
 
@@ -138,10 +183,7 @@ export function normalizedPartsToAnthropicContent(parts: NormalizedContentPart[]
     if (part.type === "image") {
       return [{
         type: "image",
-        source: {
-          type: "url",
-          url: part.image_url,
-        },
+        source: anthropicImageSource(part.image_url),
       }];
     }
     if (part.type === "file") {
