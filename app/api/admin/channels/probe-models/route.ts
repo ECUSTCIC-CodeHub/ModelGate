@@ -6,7 +6,7 @@ import { gatewayDb } from "@/lib/core/db";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { fetchUpstreamModelIds } from "@/lib/gateway/upstream-model-list";
 import { isValidProxyUrl } from "@/lib/gateway/upstream-proxy";
-import { resolveSubmittedApiKey } from "@/lib/shared/redact";
+import { isMaskedApiKey, resolveSubmittedApiKey } from "@/lib/shared/redact";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 
 const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
@@ -22,6 +22,8 @@ const bodySchema = z.object({
 type StoredChannel = {
   base_url: string;
   api_key: string | null;
+  api_key_private: number | null;
+  created_by: number | null;
   user_agent: string | null;
   proxy_url: string | null;
 };
@@ -42,12 +44,26 @@ export async function POST(request: Request) {
 
   if (parsed.data.channel_id !== undefined) {
     const channel = await gatewayDb.queryOne<StoredChannel>(
-      "SELECT base_url, api_key, user_agent, proxy_url FROM channels WHERE id = ? AND deleted_at IS NULL",
+      "SELECT base_url, api_key, api_key_private, created_by, user_agent, proxy_url FROM channels WHERE id = ? AND deleted_at IS NULL",
       [parsed.data.channel_id],
     );
     if (!channel) return jsonError("渠道不存在", 404);
+
+    // 与 PUT /api/admin/channels/:id 相同的边界：非添加人不得借本接口把「仅添加人可见」的密钥
+    // 发往自己指定的地址（含 proxy_url 取值），因此这里必须先判定密钥可用性再取库内明文。
+    const isOwner = channel.created_by !== null && channel.created_by === guard.auth.user.id;
+    const canUseStoredKey = channel.api_key_private !== 1 || isOwner;
+    const submittedKey = parsed.data.api_key;
+    const hasExplicitKey =
+      typeof submittedKey === "string" && submittedKey.trim() !== "" && !isMaskedApiKey(submittedKey, channel.api_key);
+    if (!canUseStoredKey && !hasExplicitKey) {
+      return jsonError("该渠道的 API Key 仅添加人可用，请先填写 API Key 后再探测", 403);
+    }
+
     baseUrl = parsed.data.base_url ?? channel.base_url;
-    apiKey = resolveSubmittedApiKey(parsed.data.api_key, channel.api_key ?? "");
+    apiKey = canUseStoredKey
+      ? resolveSubmittedApiKey(submittedKey, channel.api_key) ?? ""
+      : submittedKey!.trim();
     userAgent = parsed.data.user_agent ?? channel.user_agent ?? undefined;
     proxyUrl = parsed.data.proxy_url ?? channel.proxy_url ?? undefined;
   }

@@ -109,6 +109,20 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
   const canManageKey = nextPrivate === 0 || nextCreatedBy === userId;
 
+  // 「仅添加人可见」的渠道若允许他人改上游地址与代理，非添加人可把地址指向自己的服务器，
+  // 再由渠道测试或真实流量取出密钥，从而使该开关失效，故这里一并收紧。
+  if (!canManageKey) {
+    const existingBaseUrl = (existing as { base_url?: string | null }).base_url ?? "";
+    const existingProxyUrl = (existing as { proxy_url?: string | null }).proxy_url ?? "";
+    const baseUrlChanged =
+      parsed.data.base_url !== undefined && parsed.data.base_url !== existingBaseUrl;
+    const proxyUrlChanged =
+      parsed.data.proxy_url !== undefined && normalizeProxyUrl(parsed.data.proxy_url) !== existingProxyUrl;
+    if (baseUrlChanged || proxyUrlChanged) {
+      return jsonError("该渠道的 API Key 仅添加人可见，仅添加人可修改上游地址与代理", 403);
+    }
+  }
+
   if (nextEnabled === 1) {
     const placeholders = nextProtocolList.map(() => "?").join(", ");
     const incompatibleModel = await gatewayDb
@@ -151,10 +165,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     enabled: nextEnabled,
   };
 
-  const existingApiKey = (existing as { api_key?: string | null }).api_key ?? "";
+  const existingApiKey = (existing as { api_key?: string | null }).api_key ?? null;
   if (parsed.data.api_key !== undefined) {
     (merged as { api_key?: string | null }).api_key = canManageKey
-      ? resolveSubmittedApiKey(parsed.data.api_key, existingApiKey)
+      ? resolveSubmittedApiKey(parsed.data.api_key, existingApiKey, { clearOnEmpty: true })
       : existingApiKey;
   }
 
@@ -168,7 +182,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         [
           (merged as { name: string }).name,
           (merged as { base_url: string }).base_url,
-          (merged as { api_key: string }).api_key,
+          (merged as { api_key: string | null }).api_key,
           (merged as { supported_protocols: string }).supported_protocols,
           (merged as { user_agent: string }).user_agent,
           (merged as { proxy_url: string }).proxy_url,

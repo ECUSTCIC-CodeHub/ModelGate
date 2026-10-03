@@ -11,8 +11,13 @@ export function isMaskedApiKey(value: string, existing: string | null | undefine
   return value === maskApiKey(existing ?? "");
 }
 
-export function resolveSubmittedApiKey(input: string | undefined, existing: string): string {
-  if (input === undefined || input === "") return existing;
+export function resolveSubmittedApiKey(
+  input: string | undefined,
+  existing: string | null,
+  options?: { clearOnEmpty?: boolean },
+): string | null {
+  if (input === undefined) return existing;
+  if (input === "") return options?.clearOnEmpty ? "" : existing;
   if (isMaskedApiKey(input, existing)) return existing;
   return input;
 }
