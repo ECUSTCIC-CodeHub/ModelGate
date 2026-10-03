@@ -60,12 +60,34 @@ export async function getPublicOrigin(requestUrl: string): Promise<string> {
 
 export const OIDC_REDIRECT_URI_HINT = "OIDC 登录需要先在设置中配置对外服务域名 public_base_url";
 
+// public_base_url 会被直接拼接成 redirect_uri 回传给 IdP，因此除协议与主机外，
+// 还必须排除 userinfo（凭据会随连接泄漏给 IdP）、query/hash（拼接后地址不成立）与空端口。
+export function isValidPublicBaseUrl(value: string): boolean {
+  const authority = value.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, "").split(/[/?#]/)[0];
+  if (authority === "" || authority.endsWith(":")) return false;
+
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  return (
+    (url.protocol === "http:" || url.protocol === "https:") &&
+    url.hostname !== "" &&
+    url.username === "" &&
+    url.password === "" &&
+    url.search === "" &&
+    url.hash === ""
+  );
+}
+
 export type RedirectUriResult = { ok: true; redirectUri: string } | { ok: false; message: string };
 
 export async function resolveRedirectUri(): Promise<RedirectUriResult> {
   const s = await getGatewaySettings();
   const base = (s.public_base_url ?? "").trim().replace(/\/+$/, "");
-  if (!base) return { ok: false, message: OIDC_REDIRECT_URI_HINT };
+  if (!base || !isValidPublicBaseUrl(base)) return { ok: false, message: OIDC_REDIRECT_URI_HINT };
   return { ok: true, redirectUri: `${base}/api/auth/oidc/callback` };
 }
 

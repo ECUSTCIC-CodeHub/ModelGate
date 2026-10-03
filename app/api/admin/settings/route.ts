@@ -5,6 +5,7 @@ import { filterSettingsInputForEdition, maskSettingsForEdition } from "@/lib/cor
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
+import { isValidPublicBaseUrl } from "@/lib/auth/oidc";
 import { getGatewaySettings, setGatewaySettings } from "@/lib/core/settings";
 import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
 import { parseModelBrandGroups } from "@/lib/core/settings";
@@ -35,8 +36,8 @@ const schema = z.object({
     .string()
     .max(2000)
     .refine(
-      (v) => v.trim() === "" || /^https?:\/\/[^\s/]+/i.test(v.trim()),
-      "对外服务域名必须以 http(s):// 开头且包含主机名",
+      (v) => v.trim() === "" || isValidPublicBaseUrl(v.trim()),
+      "对外服务域名必须为 http(s):// 开头的合法地址且包含主机名",
     )
     .optional(),
   announcement_content: z.string().max(5000).optional(),
