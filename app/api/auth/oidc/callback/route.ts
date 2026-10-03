@@ -79,7 +79,9 @@ export async function GET(request: Request) {
   if (statePayload.state !== returnedState) {
     return redirectWithError(origin, "状态验证失败", isBind);
   }
-  const redirectUri = await resolveRedirectUri(request.url);
+  const redirectResult = await resolveRedirectUri();
+  if (!redirectResult.ok) return redirectWithError(origin, redirectResult.message, isBind);
+  const redirectUri = redirectResult.redirectUri;
 
   let discovery;
   try {

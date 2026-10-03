@@ -58,8 +58,15 @@ export async function getPublicOrigin(requestUrl: string): Promise<string> {
   return new URL(requestUrl).origin;
 }
 
-export async function resolveRedirectUri(requestUrl: string): Promise<string> {
-  return `${await getPublicOrigin(requestUrl)}/api/auth/oidc/callback`;
+export const OIDC_REDIRECT_URI_HINT = "OIDC 登录需要先在设置中配置对外服务域名 public_base_url";
+
+export type RedirectUriResult = { ok: true; redirectUri: string } | { ok: false; message: string };
+
+export async function resolveRedirectUri(): Promise<RedirectUriResult> {
+  const s = await getGatewaySettings();
+  const base = (s.public_base_url ?? "").trim().replace(/\/+$/, "");
+  if (!base) return { ok: false, message: OIDC_REDIRECT_URI_HINT };
+  return { ok: true, redirectUri: `${base}/api/auth/oidc/callback` };
 }
 
 export function normalizeOidcIssuerUrl(raw: string): string {

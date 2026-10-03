@@ -24,7 +24,9 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const bind = url.searchParams.get("bind") === "1";
-  const redirectUri = await resolveRedirectUri(request.url);
+  const redirectResult = await resolveRedirectUri();
+  if (!redirectResult.ok) return jsonError(redirectResult.message, 400);
+  const redirectUri = redirectResult.redirectUri;
 
   let discovery;
   try {

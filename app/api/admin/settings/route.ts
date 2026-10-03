@@ -30,7 +30,14 @@ const schema = z.object({
   oidc_auto_register: z.boolean().optional(),
   oidc_button_text: z.string().optional(),
   oidc_group_expire_days: z.number().int().min(0).max(3650).optional(),
-  public_base_url: z.string().optional(),
+  public_base_url: z
+    .string()
+    .max(2000)
+    .refine(
+      (v) => v.trim() === "" || /^https?:\/\/[^\s/]+/i.test(v.trim()),
+      "对外服务域名必须以 http(s):// 开头且包含主机名",
+    )
+    .optional(),
   announcement_content: z.string().max(5000).optional(),
   announcement_display_count: z.number().int().min(1).max(20).optional(),
   access_guide_notice: z.string().max(10000).optional(),
