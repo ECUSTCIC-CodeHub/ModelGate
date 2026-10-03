@@ -74,8 +74,9 @@ export async function GET(request: Request) {
   const whereParts = ["u.deleted_at IS NULL"];
   const whereArgs: Array<string | number> = [];
   if (keyword) {
-    whereParts.push("u.username LIKE ? ESCAPE '|'");
-    whereArgs.push(`%${escapeLike(keyword)}%`);
+    whereParts.push("(u.username LIKE ? ESCAPE '|' OR u.oidc_subject LIKE ? ESCAPE '|')");
+    const pattern = `%${escapeLike(keyword)}%`;
+    whereArgs.push(pattern, pattern);
   }
   if (groupFilterId !== null) {
     whereParts.push("u.group_id = ?");
@@ -107,8 +108,9 @@ export async function GET(request: Request) {
   const totalWhereParts = ["deleted_at IS NULL"];
   const totalWhereArgs: Array<string | number> = [];
   if (keyword) {
-    totalWhereParts.push("username LIKE ? ESCAPE '|'");
-    totalWhereArgs.push(`%${escapeLike(keyword)}%`);
+    totalWhereParts.push("(username LIKE ? ESCAPE '|' OR oidc_subject LIKE ? ESCAPE '|')");
+    const pattern = `%${escapeLike(keyword)}%`;
+    totalWhereArgs.push(pattern, pattern);
   }
   if (groupFilterId !== null) {
     totalWhereParts.push("group_id = ?");

@@ -61,18 +61,24 @@ type IdentityChangeData = {
   field: string;
 };
 
+type StatusChangeData = {
+  user_id: string;
+  new_status: "blocked" | "active";
+};
+
 type WebhookPayload = {
   id: string;
   type: string;
   timestamp: string;
   signature: string;
   app_id?: string;
-  data: RoleChangeData | TagsChangedData | IdentityChangeData;
+  data: RoleChangeData | TagsChangedData | IdentityChangeData | StatusChangeData;
 };
 
 type UserSnapshot = {
   id: number;
   group_id: number | null;
+  enabled: number;
   webhook_role: string;
   webhook_tags: string;
 };
@@ -86,9 +92,11 @@ async function isTrustedAppId(appId: string | undefined): Promise<boolean> {
   return trimmed === (settings.oidc_client_id ?? "").trim();
 }
 
+// 故意不过滤 enabled：禁用用户仍需被后续 Webhook 定位，否则解封事件永远找不到人，
+// 用户会被永久锁在禁用状态（身份源已放行但网关仍拒绝）
 async function findUser(oidcSubject: string): Promise<UserSnapshot | undefined> {
   return gatewayDb.queryOne<UserSnapshot>(
-    "SELECT id, group_id, webhook_role, webhook_tags FROM users WHERE oidc_subject = ? AND enabled = 1 AND deleted_at IS NULL",
+    "SELECT id, group_id, enabled, webhook_role, webhook_tags FROM users WHERE oidc_subject = ? AND deleted_at IS NULL",
     [oidcSubject],
   );
 }
@@ -158,6 +166,23 @@ async function handleTagsChanged(data: TagsChangedData): Promise<string> {
 
   const groupId = await resolveAndUpdate(user.id, user.webhook_role, tags);
   return `已将用户分组更新为 ${groupId ?? "默认"}`;
+}
+
+async function handleStatusChange(data: StatusChangeData): Promise<string> {
+  if (data.new_status !== "blocked" && data.new_status !== "active") {
+    return `未知的用户状态: ${String(data.new_status)}，已忽略`;
+  }
+
+  const user = await findUser(data.user_id);
+  if (!user) return "用户不存在，已忽略";
+
+  const enabled = data.new_status === "active" ? 1 : 0;
+  if (user.enabled === enabled) {
+    return `用户已是${enabled ? "启用" : "禁用"}状态，无需变更`;
+  }
+
+  await gatewayDb.execute("UPDATE users SET enabled = ? WHERE id = ?", [enabled, user.id]);
+  return enabled ? "已启用用户" : "已禁用用户";
 }
 
 export async function POST(request: Request) {
@@ -235,6 +260,9 @@ export async function POST(request: Request) {
         break;
       case "user.identity_change":
         result = `身份变更通知已接收 (field: ${(payload.data as IdentityChangeData).field})`;
+        break;
+      case "user.status_change":
+        result = await handleStatusChange(payload.data as StatusChangeData);
         break;
       default:
         result = `未知事件类型: ${payload.type}，已忽略`;

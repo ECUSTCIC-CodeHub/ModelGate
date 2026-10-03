@@ -893,13 +893,23 @@ HMAC-SHA256(webhook_secret, id + "." + type + "." + timestamp + "." + app_id + J
 | user.role_change | 用户角色变更 | user_id, old_role, new_role |
 | user.tags_changed | 用户标签变更 | user_id, action(set/add/remove), tags[] |
 | user.identity_change | 身份信息变更（仅记录） | user_id, field |
+| user.status_change | 用户状态变更（禁用/启用） | user_id, new_status(`blocked`/`active`) |
+
+**`user.status_change` 说明:**
+
+- `new_status=blocked` 将用户 `enabled` 置 0（禁用），`active` 置 1（启用）；其它取值返回提示且**不写库**。
+- 状态已一致时直接返回「无需变更」，不重复写库；重复投递由事件 `id` 去重。
+- 该事件**可以定位到已禁用用户**：网关按 `oidc_subject` 查找用户时不校验 `enabled`，否则用户一旦被禁用就再也收不到解封事件，将永久锁死。软删除（`deleted_at` 非空）的用户仍然找不到，返回「用户不存在，已忽略」。
 
 **分组匹配逻辑:**
 
 系统在用户表维护 `webhook_role` 和 `webhook_tags` 快照，每次事件更新快照后用完整的 `{ role, tags }` 作为 claims 调用各用户组的 Claim 表达式进行匹配。无匹配时回退到默认组。
 
+用户按 `oidc_subject` 定位，**不校验 `enabled`**：禁用用户仍能被后续事件定位并同步角色/标签/状态（解封的前提），仅软删除的用户会被忽略。
+
 - `role_change`: 更新 role 快照，合并已有 tags，重新匹配
 - `tags_changed`: 按 action 更新 tags 快照（`set` 全量替换 / `add` 合并去重 / `remove` 删除），合并已有 role，重新匹配
+- `status_change`: 只切换 `enabled`，不动角色/标签快照，也不重新匹配分组
 
 Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`、`role == "certified" AND tags contains "VIP"`
 
