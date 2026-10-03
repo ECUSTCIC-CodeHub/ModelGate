@@ -6,6 +6,7 @@ import { requireFeature } from "@/lib/core/features";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { resolveGroupFromClaims } from "@/lib/auth/oidc";
 import { getGatewaySettings } from "@/lib/core/settings";
+import { forgetWebhookEvent, isWebhookEventDuplicate } from "@/lib/services/webhook-dedup";
 
 const MAX_TIMESTAMP_DRIFT = 300;
 
@@ -159,19 +160,28 @@ export async function POST(request: Request) {
     return jsonError("签名验证失败", 403);
   }
 
+  if (isWebhookEventDuplicate(payload.id)) {
+    return jsonOk({ message: "重复的事件已处理，已忽略。", event_id: payload.id });
+  }
+
   let result: string;
-  switch (payload.type) {
-    case "user.role_change":
-      result = await handleRoleChange(payload.data as RoleChangeData);
-      break;
-    case "user.tags_changed":
-      result = await handleTagsChanged(payload.data as TagsChangedData);
-      break;
-    case "user.identity_change":
-      result = `身份变更通知已接收 (field: ${(payload.data as IdentityChangeData).field})`;
-      break;
-    default:
-      result = `未知事件类型: ${payload.type}，已忽略`;
+  try {
+    switch (payload.type) {
+      case "user.role_change":
+        result = await handleRoleChange(payload.data as RoleChangeData);
+        break;
+      case "user.tags_changed":
+        result = await handleTagsChanged(payload.data as TagsChangedData);
+        break;
+      case "user.identity_change":
+        result = `身份变更通知已接收 (field: ${(payload.data as IdentityChangeData).field})`;
+        break;
+      default:
+        result = `未知事件类型: ${payload.type}，已忽略`;
+    }
+  } catch {
+    forgetWebhookEvent(payload.id);
+    return jsonError("处理 Webhook 失败", 500);
   }
 
   return jsonOk({ message: result, event_id: payload.id });
