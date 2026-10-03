@@ -74,12 +74,14 @@ export function normalizeAnthropicMessages(messages: unknown, system?: unknown):
       }
       // tool_result 的兄弟文本/图片块不能随工具消息一起丢弃，
       // 按原 role 追加为下一条消息，多轮工具对话中的附加说明才不会静默消失
-      if (textParts.length > 0 || toolCalls.length > 0) {
-        normalized.push({
-          role,
-          content: textParts,
-          tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
-        });
+      if (textParts.length > 0) {
+        normalized.push({ role, content: textParts });
+      }
+      // 工具调用只能挂在 assistant 消息上：带 tool_result 的消息 role 恒为 user，
+      // 沿用原 role 会让下游按 user 处理，Chat 上游仅在 assistant 上输出 tool_calls，
+      // 兄弟 tool_use 会被静默丢弃并留下一条空的 user 消息
+      if (toolCalls.length > 0) {
+        normalized.push({ role: "assistant", content: [], tool_calls: toolCalls });
       }
       continue;
     }

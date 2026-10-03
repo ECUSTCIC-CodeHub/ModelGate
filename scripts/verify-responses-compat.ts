@@ -15,6 +15,7 @@ import {
   toolsFromIntermediateForResponses,
 } from "../lib/gateway/protocol-adapters/tools";
 import { countTextTokens } from "../lib/gateway/tokenizer";
+import { redactUrlCredentials } from "../lib/shared/redact";
 
 let passed = 0;
 let failed = 0;
@@ -928,6 +929,60 @@ test("chat tool_choice=none 转 anthropic 时省略 tools 列表", () => {
 
   const noChoice = chatCompletionsGatewayAdapter.adaptRequestBody(base, anthropicGatewayAdapter, "claude-3-5-sonnet");
   assert.ok(noChoice.tools, "未指定 tool_choice 时应保留下发 tools 列表");
+});
+
+test("URL 脱敏不残留嵌套与连写 URL 的凭据", () => {
+  const cases: Array<[string, string]> = [
+    ["https://user:pass@host/v1", "https://host/v1"],
+    ["https://user:pa@ss@host/v1", "https://host/v1"],
+    ["https://a://b@c", "https://a://c"],
+    ["http://x://u:p@h", "http://x://h"],
+    ["https://https://u:p@h", "https://https://h"],
+    ["https://u:p@h,https://v:q@i", "https://h,https://i"],
+    ["https://u:p@h/v1 https://x:y@z/v2", "https://h/v1 https://z/v2"],
+    ["https://example.com?next=mailto:a@b.com", "https://example.com?next=mailto:a@b.com"],
+    ["https://host/v1/user@example.com", "https://host/v1/user@example.com"],
+    ["mailto:a@b.com", "mailto:a@b.com"],
+  ];
+
+  for (const [input, expected] of cases) {
+    const actual = redactUrlCredentials(input);
+    assert.equal(actual, expected, `输入 ${JSON.stringify(input)}`);
+    assert.equal(redactUrlCredentials(actual), actual, `幂等：${JSON.stringify(input)}`);
+  }
+
+  // 超长无 @ 文本不得触发超线性回溯或栈溢出
+  const long = "https://" + "a".repeat(200_000);
+  const started = Date.now();
+  assert.equal(redactUrlCredentials(long), long);
+  assert.ok(Date.now() - started < 2000, "超长输入脱敏应在 2 秒内完成");
+});
+
+test("tool_result 的兄弟 tool_use 挂到 assistant 消息而不是原 role", () => {
+  const messages = [
+    { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "search", input: { q: "a" } }] },
+    {
+      role: "user",
+      content: [
+        { type: "tool_result", tool_use_id: "t1", content: "result-1" },
+        { type: "tool_use", id: "t2", name: "fetch", input: { url: "x" } },
+      ],
+    },
+  ];
+  const body = { model: "claude-3", messages, max_tokens: 100, stream: false };
+
+  const chat = anthropicGatewayAdapter.adaptRequestBody(body as never, chatCompletionsGatewayAdapter, "gpt-4o");
+  const chatMessages = (chat as { messages: Array<{ role: string; tool_calls?: Array<{ function: { name: string } }> }> }).messages;
+  const names = chatMessages.flatMap((m) => (m.tool_calls ?? []).map((tc) => tc.function.name));
+  assert.deepEqual(names, ["search", "fetch"], "兄弟 tool_use 不能丢失");
+  assert.ok(!chatMessages.some((m) => m.role === "user" && !m.tool_calls), "不应产生空的 user 消息");
+
+  const resp = anthropicGatewayAdapter.adaptRequestBody(body as never, responsesGatewayAdapter, "o1");
+  const input = (resp as { input: Array<{ type: string; name?: string }> }).input;
+  assert.deepEqual(
+    input.filter((item) => item.type === "function_call").map((item) => item.name),
+    ["search", "fetch"],
+  );
 });
 
 test("无参工具补空 object schema 而不是省略 parameters", () => {
