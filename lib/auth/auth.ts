@@ -42,8 +42,10 @@ type TokenPayload = {
   tv: number;
 };
 
+export type SanitizedUser = Omit<DbUser, "password_hash" | "token_version">;
+
 export type AuthContext = {
-  user: Omit<DbUser, "password_hash">;
+  user: SanitizedUser;
   token: string;
   authSource: "web" | "apikey";
 };
@@ -139,12 +141,14 @@ export async function compareWithDummyPassword(password: string) {
   return false;
 }
 
-export function sanitizeUser(user: DbUser): Omit<DbUser, "password_hash"> {
+export function sanitizeUser(user: DbUser): SanitizedUser {
   const rest = { ...user } as Record<string, unknown>;
   delete rest.password_hash;
   delete rest.totp_secret;
   delete rest.totp_enabled;
-  return rest as Omit<DbUser, "password_hash">;
+  // 令牌版本号属内部状态，且剔除后能让「用已脱敏对象签发令牌」在类型层面直接编译失败
+  delete rest.token_version;
+  return rest as SanitizedUser;
 }
 
 async function findEnabledUserById(id: number) {
