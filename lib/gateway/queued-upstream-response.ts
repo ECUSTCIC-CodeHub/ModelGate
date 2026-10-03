@@ -9,6 +9,7 @@ import { resolveTokenUsage, tokenUsageMetadata } from "@/lib/gateway/token-usage
 import { buildErrorResponseBody, isTimeoutError, parseUpstreamError, upstreamFailureStatus } from "@/lib/gateway/upstream-error";
 import type { UpstreamPickResult } from "@/lib/gateway/upstream-routing";
 import { addUsage } from "@/lib/gateway/usage-accounting";
+import { redactUrlCredentials } from "@/lib/shared/redact";
 
 const QUEUE_KEEPALIVE_INTERVAL_MS = 1_000;
 const encoder = new TextEncoder();
@@ -141,7 +142,7 @@ export function createQueuedUpstreamResponse({
               });
 
               const errorBody = route.effective_upstream_protocol === inboundProtocol
-                ? text
+                ? redactUrlCredentials(text)
                 : buildErrorResponseBody(upstreamError.message, upstream.status, inboundProtocol, upstreamError.type, upstreamError.code);
               controller.enqueue(toSseDataBlock(errorBody));
               controller.enqueue(encoder.encode("data: [DONE]\n\n"));
@@ -361,7 +362,7 @@ export function createQueuedUpstreamResponse({
               user_agent: clientUserAgent,
             });
             const errorBody = route.effective_upstream_protocol === inboundProtocol
-              ? rawText
+              ? redactUrlCredentials(rawText)
               : buildErrorResponseBody(upstreamError.message, upstream.status, inboundProtocol, upstreamError.type, upstreamError.code);
             controller.enqueue(encoder.encode(errorBody));
             controller.close();

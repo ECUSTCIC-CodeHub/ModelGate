@@ -760,7 +760,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       user_agent: clientUserAgent,
     });
     const errorBody = route.effective_upstream_protocol === inboundProtocol
-      ? rawText
+      ? redactUrlCredentials(rawText)
       : buildErrorResponseBody(upstreamError.message, upstream.status, inboundProtocol, upstreamError.type, upstreamError.code);
     return withQuotaHeaders(new Response(errorBody, {
       status: upstream.status,

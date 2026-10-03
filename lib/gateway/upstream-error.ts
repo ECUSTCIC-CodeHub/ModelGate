@@ -1,4 +1,5 @@
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
+import { redactUrlCredentials } from "@/lib/shared/redact";
 
 const RETRYABLE_UPSTREAM_STATUS = new Set([401, 429, 500, 502, 503, 504]);
 
@@ -22,10 +23,10 @@ export function parseUpstreamError(text: string, status: number) {
     const code =
       (typeof error?.code === "string" || typeof error?.code === "number" ? error.code : null)
       ?? status;
-    return { message, type, code };
+    return { message: redactUrlCredentials(message), type, code };
   } catch {
     const message = text.trim() || `上游请求失败 (${status})`;
-    return { message, type: "upstream_error", code: status };
+    return { message: redactUrlCredentials(message), type: "upstream_error", code: status };
   }
 }
 

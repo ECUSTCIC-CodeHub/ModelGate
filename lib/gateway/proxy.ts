@@ -198,7 +198,8 @@ export async function testUpstreamModel(target: {
       ok: response.ok,
       status: response.status,
       latency_ms: Date.now() - startedAt,
-      body_preview: redactUrlCredentials(bodyText.slice(0, 500)),
+      // 先脱敏再截断：截断点若落在 userinfo 中间会切掉 @，正则就再也匹配不到残留明文
+      body_preview: redactUrlCredentials(bodyText.slice(0, 2000)).slice(0, 500),
       summary,
     };
   } catch (error) {
