@@ -1,5 +1,5 @@
 import { fetchUpstream } from "@/lib/gateway/upstream-proxy";
-import { redactErrorMessage } from "@/lib/shared/redact";
+import { redactErrorMessage, redactUrlCredentials } from "@/lib/shared/redact";
 
 const PROBE_TIMEOUT_MS = 15_000;
 
@@ -64,7 +64,7 @@ export async function fetchUpstreamModelIds(params: UpstreamModelListParams): Pr
 
   const text = await upstream.text();
   if (!upstream.ok) {
-    return { ok: false, message: `上游返回 ${upstream.status}：${text.slice(0, 200) || "(无响应体)"}` };
+    return { ok: false, message: `上游返回 ${upstream.status}：${redactUrlCredentials(text.slice(0, 200)) || "(无响应体)"}` };
   }
 
   let payload: unknown = null;

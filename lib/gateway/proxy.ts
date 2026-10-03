@@ -4,7 +4,7 @@ import type { RoutedModel } from "@/lib/gateway/router";
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 import { fetchUpstream } from "@/lib/gateway/upstream-proxy";
 import { isTimeoutError, upstreamFailureStatus } from "@/lib/gateway/upstream-error";
-import { redactErrorMessage } from "@/lib/shared/redact";
+import { redactErrorMessage, redactUrlCredentials } from "@/lib/shared/redact";
 
 export function normalizeProviderBaseUrl(baseUrl: string) {
   const normalized = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
@@ -198,7 +198,7 @@ export async function testUpstreamModel(target: {
       ok: response.ok,
       status: response.status,
       latency_ms: Date.now() - startedAt,
-      body_preview: bodyText.slice(0, 500),
+      body_preview: redactUrlCredentials(bodyText.slice(0, 500)),
       summary,
     };
   } catch (error) {
