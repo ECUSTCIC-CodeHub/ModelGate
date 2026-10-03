@@ -13,6 +13,7 @@ import { resolveClientIp } from "@/lib/core/client-ip";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { resolveTriState } from "@/lib/gateway/user-preferences";
 import { parseCustomHeaders } from "@/lib/gateway/custom-headers";
+import { fetchUpstream } from "@/lib/gateway/upstream-proxy";
 import { isFeatureEnabled } from "@/lib/core/features";
 import { findMatchingRedeemBalance } from "@/lib/services/redeem-codes";
 import { checkUserAgentRestrictions, parseUaRestrictions } from "@/lib/gateway/ua-restrictions";
@@ -287,12 +288,17 @@ export async function handleMultipartGatewayRequest(request: Request) {
         upstreamHeaders.set("authorization", `Bearer ${route.channel.api_key.trim()}`);
       }
       upstreamHeaders.set("user-agent", clientUserAgent ?? "OpenAI/JS 6.39.0");
-      upstream = await fetch(upstreamUrl, {
-        method: "POST",
-        headers: upstreamHeaders,
-        body: upstreamFormData,
-        signal: controller.signal,
-      });
+      // 必须走 fetchUpstream：原生 fetch 会忽略渠道的 proxy_url，导致此路径直连上游
+      upstream = await fetchUpstream(
+        upstreamUrl,
+        {
+          method: "POST",
+          headers: upstreamHeaders,
+          body: upstreamFormData,
+          signal: controller.signal,
+        },
+        route.channel.proxy_url,
+      );
     } catch {
       clearTimeout(timeout);
       lease.complete({ ok: false, latencyMs: Date.now() - startedAt });

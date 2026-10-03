@@ -30,10 +30,21 @@ export const CUSTOM_HEADER_VALUE_MAX_LENGTH = 2048;
 // HTTP token 允许的字符集合（RFC 9110）
 const HEADER_NAME_PATTERN = /^[a-zA-Z0-9!#$%&'*+\-.^_`|~]+$/;
 
-// 除可打印 ASCII 与制表符外的控制字符（含 CR/LF/NUL），以及会被 Headers 当作
-// 非法 ByteString 的 Unicode 行分隔符（U+2028/U+2029）与不可打印的 Latin-1 区间。
-// 这些字符若放行，注入时会抛错并被上游兜成 502
-const CONTROL_CHAR_PATTERN = /[\u0000-\u0008\u000a-\u001f\u007f-\u00a0\u2028\u2029]/;
+// 值里的换行会破坏「每行一条」的编辑形态而无法再保存，其它控制字符与 NEL/NBSP
+// 虽能被 Headers 接受但语义可疑，一并拦下。制表符是合法 header 值，放行
+const UNDESIRABLE_VALUE_PATTERN = /[\u0000-\u0008\u000a-\u001f\u007f-\u00a0\u2028\u2029]/;
+
+// 不以字符区间去判断「可用性」：undici 的 Headers.set 对任何非 Latin-1 字符
+// （U+0100 以上，含中日韩文与 emoji）都会抛 ByteString 错误，手写区间必然漏字符。
+// 直接用 Headers 做一次真实往返，它是唯一权威的判据
+function isUsableHeader(name: string, value: string): boolean {
+  try {
+    new Headers().set(name, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export type CustomHeaders = Record<string, string>;
 
@@ -79,10 +90,10 @@ export function validateCustomHeaders(value: unknown): CustomHeadersResult {
     if (trimmedValue.length > CUSTOM_HEADER_VALUE_MAX_LENGTH) {
       return { ok: false, error: `自定义 Header ${name} 的值超过 ${CUSTOM_HEADER_VALUE_MAX_LENGTH} 字符` };
     }
-    // 值里的换行会破坏「每行一条」的编辑形态，使抽屉无法再保存该渠道；
-    // 同时 Headers.set 会直接抛错，故在此拦下并给出明确文案
-    if (CONTROL_CHAR_PATTERN.test(trimmedValue)) {
-      return { ok: false, error: `自定义 Header ${name} 的值不能包含换行或控制字符` };
+    // 值里的换行会破坏「每行一条」的编辑形态而无法再保存，非 Latin-1 字符会让
+    // Headers.set 抛错并被上游兜成 502 且永久不自愈，两者都在保存时拦下
+    if (UNDESIRABLE_VALUE_PATTERN.test(trimmedValue) || !isUsableHeader(name, trimmedValue)) {
+      return { ok: false, error: `自定义 Header ${name} 的值包含换行、控制字符或非 Latin-1 字符` };
     }
     headers[name] = trimmedValue;
   }

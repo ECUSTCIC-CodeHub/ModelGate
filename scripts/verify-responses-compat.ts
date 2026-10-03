@@ -1051,11 +1051,20 @@ test("自定义 Header 托管字段覆盖且脏数据逐键过滤", () => {
   assert.equal(managed.get("accept"), "application/json");
   assert.equal(new Headers({ accept: "text/evil", Accept: "application/json" }).get("accept"), "text/evil, application/json");
 
-  for (const value of ["ok\nX-Injected: pwned", "ok\r\nX", "ok\u0000evil", "ok\u007fevil", "a\u2028b", "a\u2029b", "a\u0085b", "a\u00a0b"]) {
-    assert.equal(validateCustomHeaders({ "X-Test": value }).ok, false, `控制字符应被拒绝: ${JSON.stringify(value)}`);
+  // 因此探测路径必须借 Headers 做大小写归一，任何大小写写法都要被覆盖
+  for (const rawName of ["accept", "Accept", "ACCEPT", "aCcEpT"]) {
+    const headers = new Headers(parseCustomHeaders(JSON.stringify({ [rawName]: "text/evil" })));
+    headers.set("accept", "application/json");
+    assert.equal(headers.get("accept"), "application/json", `${rawName} 应被托管值覆盖`);
   }
-  // 合法值不能被过度收紧
-  for (const value of ["ok\tvalue", "https://api.example.com/v1?x=1", "中文值", "ok-✅", "a,b;c", "100%"]) {
+
+  // 任何非 Latin-1 字符都会让 Headers.set 抛 ByteString 错误，进而使整渠道请求 502，
+  // 故中日韩文与 emoji 也必须被拒绝，不能当作合法值
+  for (const value of ["ok\nX-Injected: pwned", "ok\r\nX", "ok\u0000evil", "ok\u007fevil", "a\u2028b", "a\u2029b", "a\u0085b", "a\u00a0b", "中文值", "ok-✅", "ＡＢＣ", "テスト", "a\u0100b"]) {
+    assert.equal(validateCustomHeaders({ "X-Test": value }).ok, false, `非法值应被拒绝: ${JSON.stringify(value)}`);
+  }
+  // 合法值不能被过度收紧：Latin-1 以内的可见字符与制表符都可以用
+  for (const value of ["ok\tvalue", "https://api.example.com/v1?x=1", "a,b;c", "100%", "café", "a\u00ffb", "a\u00a1b"]) {
     assert.equal(validateCustomHeaders({ "X-Test": value }).ok, true, `合法值应放行: ${JSON.stringify(value)}`);
   }
 

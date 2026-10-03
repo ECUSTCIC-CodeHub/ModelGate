@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS models (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   deleted_at DATETIME,
   expires_at DATETIME DEFAULT NULL,
+  system_prompt TEXT DEFAULT NULL,
   FOREIGN KEY (channel_id) REFERENCES channels(id)
 );
 

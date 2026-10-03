@@ -44,23 +44,23 @@ export async function fetchUpstreamModelIds(params: UpstreamModelListParams): Pr
   const baseUrl = params.baseUrl.trim().replace(/\/+$/, "");
   const apiKey = params.apiKey?.trim() ?? "";
   const userAgent = params.userAgent?.trim() ?? "";
-  // 自定义 Header 先落位，其后的托管字段覆盖同名键
   const customHeaders = params.customHeaders ?? {};
+  // 用户自定义 Header 先落位，托管字段随后覆盖。
+  // 必须借 Headers 做大小写归一：普通对象里 "Accept" 与 "accept" 是两个键，
+  // 交给 Headers 时会合并成 "text/evil, application/json" 而不是覆盖，
+  // 故不能依赖对象字面量的书写大小写，也不该把 accept 加黑名单（会误伤合法用途）
+  const headers = new Headers(customHeaders);
+  headers.set("authorization", `Bearer ${apiKey}`);
+  headers.set("x-api-key", apiKey);
+  headers.set("accept", "application/json");
+  if (userAgent) headers.set("user-agent", userAgent);
 
   let upstream: Response;
   try {
     upstream = await fetchUpstream(
       `${baseUrl}/models`,
       {
-        headers: {
-          ...customHeaders,
-          // 托管键必须全小写：自定义键保留原样大小写，JS 对象里 "Accept" 与 "accept"
-          // 是两个不同的键，交给 Headers 合并时会变成 "text/evil, application/json" 而不是覆盖
-          authorization: `Bearer ${apiKey}`,
-          "x-api-key": apiKey,
-          accept: "application/json",
-          ...(userAgent ? { "user-agent": userAgent } : {}),
-        },
+        headers,
         signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
       },
       params.proxyUrl,
