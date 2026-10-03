@@ -190,12 +190,13 @@ export async function POST(request: Request) {
     typeof payload.type !== "string" ||
     typeof payload.timestamp !== "string" ||
     (payload.app_id !== undefined && typeof payload.app_id !== "string") ||
+    payload.data === undefined ||
     !payload.id ||
     !payload.signature ||
     !payload.type ||
     !payload.timestamp
   ) {
-    return jsonError("缺少 id、signature、type 或 timestamp 字段", 400);
+    return jsonError("缺少 id、signature、type、timestamp 或 data 字段", 400);
   }
 
   const ts = Math.floor(new Date(payload.timestamp).getTime() / 1000);
