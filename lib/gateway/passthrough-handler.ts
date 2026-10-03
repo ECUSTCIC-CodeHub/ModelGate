@@ -82,11 +82,12 @@ export async function handlePassthroughRequest(request: Request, upstreamPath: s
     return jsonError("请求体过大", 413);
   }
 
-  const rawBytes = await readBodyCapped(request, MAX_BODY_BYTES);
-  if (rawBytes === null) {
+  const rawResult = await readBodyCapped(request, MAX_BODY_BYTES);
+  if (!rawResult.ok) {
     logRejected(413, "请求体过大", null);
     return jsonError("请求体过大", 413);
   }
+  const rawBytes = rawResult.bytes;
   let alias: string | null = null;
   if (rawBytes.byteLength > 0) {
     try {
