@@ -10,6 +10,7 @@ import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
 import { toLocalDatetime, validateTimeRestrictions, normalizeTimeRestrictions } from "@/lib/gateway/channel-time";
 import { disableExpiredChannels } from "@/lib/gateway/channel-expiry";
 import { disableExpiredModels } from "@/lib/gateway/model-expiry";
+import { maskApiKey } from "@/lib/shared/redact";
 
 const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
 
@@ -103,7 +104,7 @@ export async function GET(request: Request) {
     const canManagePrivacy = createdBy == null || isOwner;
     return {
       ...channel,
-      api_key: canView ? channel.api_key : null,
+      api_key: canView ? maskApiKey(channel.api_key as string | null) : null,
       can_view_api_key: canView,
       can_manage_api_key_privacy: canManagePrivacy,
       models: grouped.get(channel.id) ?? [],
@@ -225,7 +226,7 @@ export async function POST(request: Request) {
       data: createdRow
         ? {
             ...createdRow,
-            api_key: canViewCreated ? createdRow.api_key : null,
+            api_key: canViewCreated ? maskApiKey(createdRow.api_key) : null,
             can_view_api_key: canViewCreated,
             can_manage_api_key_privacy: canManageCreated,
           }

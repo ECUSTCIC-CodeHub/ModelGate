@@ -110,7 +110,7 @@ export default function AdminChannelsPage() {
         onSubmit={admin.submitModel}
         onFormChange={admin.updateModelForm}
         onChannelChange={admin.updateModelChannel}
-        onProbeModels={() => void admin.probeUpstreamModels(admin.selectedChannel?.base_url ?? "", admin.selectedChannel?.api_key ?? "", admin.selectedChannel?.user_agent ?? "", admin.selectedChannel?.proxy_url ?? "", admin.selectedChannel?.models ?? [])}
+        onProbeModels={() => void admin.probeUpstreamModels(admin.selectedChannel?.base_url ?? "", admin.selectedChannel?.api_key ?? "", admin.selectedChannel?.user_agent ?? "", admin.selectedChannel?.proxy_url ?? "", admin.selectedChannel?.models ?? [], admin.selectedChannel?.id)}
         onAddModelDraft={admin.addChannelModelDraft}
         onRemoveModelDraft={admin.removeChannelModelDraft}
         onUpdateModelDraft={admin.updateChannelModelDraft}

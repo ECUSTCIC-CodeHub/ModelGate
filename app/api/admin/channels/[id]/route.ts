@@ -10,6 +10,7 @@ import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
 import { toLocalDatetime, validateTimeRestrictions, normalizeTimeRestrictions } from "@/lib/gateway/channel-time";
 import { disableExpiredChannels } from "@/lib/gateway/channel-expiry";
 import { disableExpiredModels } from "@/lib/gateway/model-expiry";
+import { maskApiKey, resolveSubmittedApiKey } from "@/lib/shared/redact";
 
 const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
 
@@ -148,8 +149,11 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     enabled: nextEnabled,
   };
 
-  if (!canManageKey && parsed.data.api_key !== undefined) {
-    (merged as { api_key?: string | null }).api_key = (existing as { api_key?: string | null }).api_key ?? null;
+  const existingApiKey = (existing as { api_key?: string | null }).api_key ?? "";
+  if (parsed.data.api_key !== undefined) {
+    (merged as { api_key?: string | null }).api_key = canManageKey
+      ? resolveSubmittedApiKey(parsed.data.api_key, existingApiKey)
+      : existingApiKey;
   }
 
   await gatewayDb.transaction(async (tx) => {
@@ -214,7 +218,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     data: updatedRow
       ? {
           ...updatedRow,
-          api_key: canViewUpdated ? updatedRow.api_key : null,
+          api_key: canViewUpdated ? maskApiKey(updatedRow.api_key) : null,
           can_view_api_key: canViewUpdated,
           can_manage_api_key_privacy: canManageUpdated,
         }

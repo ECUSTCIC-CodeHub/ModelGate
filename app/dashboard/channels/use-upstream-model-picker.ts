@@ -32,7 +32,14 @@ export function useUpstreamModelPicker({
   const [upstreamPickerQuery, setUpstreamPickerQuery] = useState("");
   const [upstreamModelOptions, setUpstreamModelOptions] = useState<UpstreamModelOption[]>([]);
 
-  async function probeUpstreamModels(baseUrl: string, apiKey: string | null, userAgent = "", proxyUrl = "", existingModels: ModelRow[] = []) {
+  async function probeUpstreamModels(
+    baseUrl: string,
+    apiKey: string | null,
+    userAgent = "",
+    proxyUrl = "",
+    existingModels: ModelRow[] = [],
+    channelId?: number,
+  ) {
     if (!baseUrl.trim()) {
       toast({ variant: "error", description: "请先填写 Base URL 与 API Key。" });
       return;
@@ -42,6 +49,7 @@ export function useUpstreamModelPicker({
       const response = await authedFetch("/api/admin/channels/probe-models", {
         method: "POST",
         body: JSON.stringify({
+          ...(channelId === undefined ? {} : { channel_id: channelId }),
           base_url: baseUrl.trim(),
           api_key: (apiKey ?? "").trim(),
           user_agent: userAgent.trim(),
