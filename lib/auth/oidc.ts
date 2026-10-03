@@ -72,27 +72,33 @@ function canForceJwksRefresh(jwksUri: string): boolean {
   if (Date.now() - last < JWKS_FORCED_REFRESH_MIN_INTERVAL_MS) return false;
   // 键为 jwks_uri，来自管理员配置的单一 issuer，正常是单元素集合；
   // 仍设上限以防御未来引入多 issuer / 运行期切换配置
-  if (jwksForcedRefreshAt.size >= JWKS_CACHE_MAX_ENTRIES) {
-    const cutoff = Date.now() - JWKS_FORCED_REFRESH_MIN_INTERVAL_MS;
-    for (const [k, at] of jwksForcedRefreshAt) {
-      if (at <= cutoff) jwksForcedRefreshAt.delete(k);
-    }
-    if (jwksForcedRefreshAt.size >= JWKS_CACHE_MAX_ENTRIES) jwksForcedRefreshAt.clear();
-  }
+  // 时间戳在限流窗口内即为「有效」，窗口外的记录已无用，故按窗口判定失效
+  evictToLimit(jwksForcedRefreshAt, (at) => Date.now() - at >= JWKS_FORCED_REFRESH_MIN_INTERVAL_MS, jwksUri);
   jwksForcedRefreshAt.set(jwksUri, Date.now());
   return true;
 }
 
 // jwksCache 同样按 uri 增长，统一设上限
 function setBoundedJwksCache(jwksUri: string, keys: OidcJwk[]) {
-  if (jwksCache.size >= JWKS_CACHE_MAX_ENTRIES && !jwksCache.has(jwksUri)) {
-    const now = Date.now();
-    for (const [k, v] of jwksCache) {
-      if (v.expiresAt <= now) jwksCache.delete(k);
-    }
-    if (jwksCache.size >= JWKS_CACHE_MAX_ENTRIES) jwksCache.clear();
-  }
+  evictToLimit(jwksCache, (v) => v.expiresAt <= Date.now(), jwksUri);
   jwksCache.set(jwksUri, { keys, expiresAt: Date.now() + DISCOVERY_TTL_MS });
+}
+
+// 超限时先淘汰失效项，仍超则逐出最早插入项（Map 保持插入序）。
+// 不整体 clear()：那会连管理员自己 issuer 的缓存一起清掉，使其下一次请求
+// 必须重新拉取；逐出最早项可保证常用项留存
+function evictToLimit<K, V>(map: Map<K, V>, isStale: (value: V) => boolean, keep: K) {
+  if (map.size < JWKS_CACHE_MAX_ENTRIES || map.has(keep)) return;
+  // 目标留出 1 个空位给即将写入的新项。
+  // 两个阶段分开：先扫完全表清失效项，不足再按插入序逐出，不能在第一阶段提前返回
+  const target = JWKS_CACHE_MAX_ENTRIES - 1;
+  for (const [k, v] of [...map]) {
+    if (isStale(v)) map.delete(k);
+  }
+  for (const k of [...map.keys()]) {
+    if (map.size <= target) return;
+    map.delete(k);
+  }
 }
 const OIDC_ID_TOKEN_ALGORITHMS: Algorithm[] = ["RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512"];
 
