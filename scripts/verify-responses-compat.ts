@@ -1135,6 +1135,22 @@ test("models.dev 目录的搜索过滤", () => {
   assert.equal(filterModelsDevProviders(providers, "  ").length, 2);
 });
 
+test("日志清理的天数在 SQL 拼接前被强制归一", () => {
+  // pruneOldLogs 把 days 插值进 SQL，不能只依赖调用方的 zod 校验
+  const safeDays = (days: unknown): number => {
+    const normalized = Math.trunc(Number(days));
+    if (!Number.isFinite(normalized) || normalized <= 0) return 0;
+    return Math.min(normalized, 3650);
+  };
+  for (const bad of ["1; DROP TABLE logs", "1' OR '1'='1", "1) OR (1=1", -5, 0, NaN, Infinity, null, undefined, {}]) {
+    assert.equal(safeDays(bad), 0, `非法 days 应归零: ${String(bad)}`);
+  }
+  assert.equal(safeDays(30), 30);
+  assert.equal(safeDays(30.9), 30);
+  assert.equal(safeDays(3650), 3650);
+  assert.equal(safeDays(1e9), 3650);
+});
+
 test("无参工具补空 object schema 而不是省略 parameters", () => {
   const tools = [{ type: "function" as const, name: "ping", description: "ping" }];
   const expected = { type: "object", properties: {} };

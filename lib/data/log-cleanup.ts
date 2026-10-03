@@ -32,10 +32,20 @@ function sleep(ms: number) {
   return new Promise<void>((resolve) => { setTimeout(resolve, ms); });
 }
 
+// days 会被插值进 SQL，这里强制归一为整数：
+// 调用方（API 的 zod 校验）已经保证范围，但该函数不应依赖调用方，避免任何绕过路径
+function safeDays(days: number): number {
+  const normalized = Math.trunc(Number(days));
+  if (!Number.isFinite(normalized) || normalized <= 0) return 0;
+  return Math.min(normalized, MAX_RETENTION_DAYS);
+}
+
 export async function pruneOldLogs(db: DatabaseAdapter, days: number): Promise<number> {
+  const safe = safeDays(days);
+  if (safe <= 0) return 0;
   const cutoffExpr = db.driver === "mysql"
-    ? `(NOW() - INTERVAL ${days} DAY)`
-    : `datetime('now', '-${days} days')`;
+    ? `(NOW() - INTERVAL ${safe} DAY)`
+    : `datetime('now', '-${safe} days')`;
   const sql = `DELETE FROM logs WHERE id IN (SELECT id FROM (SELECT id FROM logs WHERE created_at < ${cutoffExpr} ORDER BY id ASC LIMIT ${BATCH_SIZE}) AS t)`;
   let deleted = 0;
   for (;;) {
@@ -48,9 +58,11 @@ export async function pruneOldLogs(db: DatabaseAdapter, days: number): Promise<n
 }
 
 export async function pruneOldEmailLogs(db: DatabaseAdapter, days: number): Promise<number> {
+  const safe = safeDays(days);
+  if (safe <= 0) return 0;
   const cutoffExpr = db.driver === "mysql"
-    ? `(NOW() - INTERVAL ${days} DAY)`
-    : `strftime('%Y-%m-%d %H:%M:%S', 'now', '-${days} days', 'localtime')`;
+    ? `(NOW() - INTERVAL ${safe} DAY)`
+    : `strftime('%Y-%m-%d %H:%M:%S', 'now', '-${safe} days', 'localtime')`;
   const sql = `DELETE FROM email_send_log WHERE id IN (SELECT id FROM (SELECT id FROM email_send_log WHERE created_at < ${cutoffExpr} ORDER BY id ASC LIMIT ${BATCH_SIZE}) AS t)`;
   let deleted = 0;
   for (;;) {
