@@ -228,7 +228,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | 字段 | 类型 | 规则 |
 |:---|:---|:---|
 | username | string | 仅英文字母和数字，3-32 位 |
-| password | string | 8-72 位 |
+| password | string | 8-72 字节（UTF-8，一个汉字约 3 字节） |
 
 ---
 
@@ -297,7 +297,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 ```json
 {
   "current_password": "旧密码",
-  "new_password": "新密码，8-72 位"
+  "new_password": "新密码，8-72 字节"
 }
 ```
 
@@ -306,7 +306,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 { "ok": true, "message": "密码修改成功，其他已登录会话需要重新登录。" }
 ```
 
-> 复用登录限流：每个 IP + 用户名组合每分钟最多 5 次尝试，超出返回 429。
+> 复用登录限流：每个 IP + 用户名组合每分钟最多 5 次尝试，超出返回 429。该计数器与登录接口共用，因此同一分钟内登录失败次数也会计入。
 > 改密成功后该用户此前签发的全部令牌立即失效。
 
 ---
@@ -1016,7 +1016,7 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
 | 字段 | 类型 | 必填 | 默认值 | 说明 |
 |:---|:---|:---|:---|:---|
 | username | string | 是 | | 仅英文字母和数字，3-32 位 |
-| password | string | 是 | | 8-72 位 |
+| password | string | 是 | | 8-72 字节（UTF-8，一个汉字约 3 字节） |
 | email | string | 否 | null | 邮箱，用于 OIDC 账号关联 |
 | role | string | 否 | user | `admin` / `user` |
 | group_id | int/null | 否 | 默认组 | 用户组 ID |
@@ -1070,7 +1070,7 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
 
 `group_locked` 含义见 POST 创建接口字段表；开启后该用户的身份组不受 OIDC 同步与过期回收影响。
 
-> `new_password` 为 8-72 位；提交后该用户的全部令牌立即失效。
+> `new_password` 为 8-72 字节（UTF-8 编码，一个汉字约 3 字节）；提交后该用户的全部令牌立即失效。
 
 > 精简版忽略 `quota_period`、`period_quota_tokens`、`period_quota_requests`；`reset_usage: "period"` 返回 404，`reset_usage: "all"` 仅重置总量用量。
 
@@ -2421,7 +2421,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 ```json
 {
   "current_password": "旧密码",
-  "new_password": "新密码，8-72 位"
+  "new_password": "新密码，8-72 字节"
 }
 ```
 
@@ -2430,7 +2430,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 { "ok": true, "message": "密码修改成功，其他已登录会话需要重新登录。" }
 ```
 
-> 复用登录限流：每个 IP + 用户名组合每分钟最多 5 次尝试，超出返回 429。
+> 复用登录限流：每个 IP + 用户名组合每分钟最多 5 次尝试，超出返回 429。该计数器与登录接口共用，因此同一分钟内登录失败次数也会计入。
 > 改密成功后该用户此前签发的全部令牌立即失效。
 
 ### GET /api/dashboard/personal-settings
