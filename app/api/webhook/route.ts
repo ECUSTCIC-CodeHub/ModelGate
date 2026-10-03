@@ -137,6 +137,9 @@ function parseTags(raw: string): string[] {
 async function handleRoleChange(data: RoleChangeData): Promise<string> {
   const user = await findUser(data.user_id);
   if (!user) return "用户不存在，已忽略";
+  // 禁用用户的角色/标签变更不再改写分组：状态由身份源掌握，等解封事件恢复。
+  // （不改写也拿不到权限，因为鉴权强制 enabled = 1，此处仅收敛语义）
+  if (user.enabled !== 1) return "用户已被禁用，已忽略本次角色变更";
 
   const tags = parseTags(user.webhook_tags);
   const groupId = await resolveAndUpdate(user.id, data.new_role, tags);
@@ -146,6 +149,7 @@ async function handleRoleChange(data: RoleChangeData): Promise<string> {
 async function handleTagsChanged(data: TagsChangedData): Promise<string> {
   const user = await findUser(data.user_id);
   if (!user) return "用户不存在，已忽略";
+  if (user.enabled !== 1) return "用户已被禁用，已忽略本次标签变更";
 
   let tags: string[];
   const current = parseTags(user.webhook_tags);

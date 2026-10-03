@@ -905,11 +905,11 @@ HMAC-SHA256(webhook_secret, id + "." + type + "." + timestamp + "." + app_id + J
 
 系统在用户表维护 `webhook_role` 和 `webhook_tags` 快照，每次事件更新快照后用完整的 `{ role, tags }` 作为 claims 调用各用户组的 Claim 表达式进行匹配。无匹配时回退到默认组。
 
-用户按 `oidc_subject` 定位，**不校验 `enabled`**：禁用用户仍能被后续事件定位并同步角色/标签/状态（解封的前提），仅软删除的用户会被忽略。
+用户按 `oidc_subject` 定位，**不校验 `enabled`**：禁用用户仍能被后续事件定位并同步状态（解封的前提），仅软删除的用户会被忽略。
 
-- `role_change`: 更新 role 快照，合并已有 tags，重新匹配
-- `tags_changed`: 按 action 更新 tags 快照（`set` 全量替换 / `add` 合并去重 / `remove` 删除），合并已有 role，重新匹配
-- `status_change`: 只切换 `enabled`，不动角色/标签快照，也不重新匹配分组
+- `role_change`: 更新 role 快照，合并已有 tags，重新匹配。**用户已禁用时跳过**（不改写分组，等解封后同步）
+- `tags_changed`: 按 action 更新 tags 快照（`set` 全量替换 / `add` 合并去重 / `remove` 删除），合并已有 role，重新匹配。**用户已禁用时同样跳过**
+- `status_change`: 只切换 `enabled`，不动角色/标签快照，也不重新匹配分组。**这是禁用用户唯一的出口**，故不受上述跳过规则限制
 
 Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`、`role == "certified" AND tags contains "VIP"`
 

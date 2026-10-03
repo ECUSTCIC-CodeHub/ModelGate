@@ -62,7 +62,40 @@ type TransactionContextLike = {
   execute(sql: string, params?: unknown[]): Promise<{ changes: number; lastInsertRowid: number }>;
 };
 
+// 失败日志限频：数据库故障时每个请求都会失败，逐条打印会淹没日志并放大 IO。
+// 同一时间窗内只输出首条，并附上被折叠的条数，保证既可见又不刷屏
+const USAGE_ERROR_LOG_INTERVAL_MS = 10_000;
+let lastUsageErrorLoggedAt = 0;
+let suppressedUsageErrors = 0;
+
+function logUsageFailure(message: string, error: unknown) {
+  const now = Date.now();
+  if (now - lastUsageErrorLoggedAt < USAGE_ERROR_LOG_INTERVAL_MS) {
+    suppressedUsageErrors += 1;
+    return;
+  }
+  const suppressed = suppressedUsageErrors;
+  suppressedUsageErrors = 0;
+  lastUsageErrorLoggedAt = now;
+  const suffix = suppressed > 0 ? `（另有 ${suppressed} 次同类失败被折叠）` : "";
+  console.error(`${message}${suffix}`, error instanceof Error ? error.message : error);
+}
+
 export async function addUsage(userId: number, keyId: number, tokens: number, requests = 1, tokenMultiplier = 1, requestMultiplier = 1, channelId?: number, modelId?: number, modelAlias?: string | null, redeemBalanceId?: number | null) {
+  try {
+    await addUsageOrThrow(userId, keyId, tokens, requests, tokenMultiplier, requestMultiplier, channelId, modelId, modelAlias, redeemBalanceId);
+  } catch (error) {
+    // 所有调用点都是 fire-and-forget（不 await、不 catch），累加失败原本会变成
+    // unhandled rejection 并被静默吞掉：响应正常返回、日志正常写入，但配额没有扣减，
+    // 偏差无法排查。这里兜底记录，至少让问题可见
+    logUsageFailure(
+      `[usage] 用量累加失败 user=${userId} key=${keyId} channel=${channelId ?? "-"} model=${modelAlias ?? "-"}:`,
+      error,
+    );
+  }
+}
+
+async function addUsageOrThrow(userId: number, keyId: number, tokens: number, requests = 1, tokenMultiplier = 1, requestMultiplier = 1, channelId?: number, modelId?: number, modelAlias?: string | null, redeemBalanceId?: number | null) {
   const billedTokens = cleanFloat(Math.max(0, tokens * tokenMultiplier));
   const billedRequests = cleanFloat(Math.max(0, requests * requestMultiplier));
   const settings = await getGatewaySettings();
