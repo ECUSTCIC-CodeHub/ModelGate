@@ -23,6 +23,7 @@ import { resolveTriState } from "@/lib/gateway/user-preferences";
 import { buildErrorResponseBody, parseUpstreamError } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
 import { findMatchingRedeemBalance } from "@/lib/services/redeem-codes";
+import { redactUrlCredentials } from "@/lib/shared/redact";
 import { requestUpstreamWithFallback } from "@/lib/gateway/upstream-routing";
 import {
   applyCopilotCompatibilityToChatStream,
@@ -410,8 +411,8 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     user: auth.user,
   });
   const buildFailureMessage = (stage: string, message: string, upstreamUrl?: string | null) => {
-    const parts = [`阶段=${stage}`, message];
-    if (upstreamUrl) parts.push(`upstream=${upstreamUrl}`);
+    const parts = [`阶段=${stage}`, redactUrlCredentials(message)];
+    if (upstreamUrl) parts.push(`upstream=${redactUrlCredentials(upstreamUrl)}`);
     return parts.join(" | ");
   };
   if (!picked.ok) {

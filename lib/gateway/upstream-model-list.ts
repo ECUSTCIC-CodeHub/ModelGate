@@ -1,4 +1,5 @@
 import { fetchUpstream } from "@/lib/gateway/upstream-proxy";
+import { redactErrorMessage } from "@/lib/shared/redact";
 
 const PROBE_TIMEOUT_MS = 15_000;
 
@@ -58,8 +59,7 @@ export async function fetchUpstreamModelIds(params: UpstreamModelListParams): Pr
       params.proxyUrl,
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : "未知错误";
-    return { ok: false, message: `请求上游失败：${message}` };
+    return { ok: false, message: `请求上游失败：${redactErrorMessage(error)}` };
   }
 
   const text = await upstream.text();
