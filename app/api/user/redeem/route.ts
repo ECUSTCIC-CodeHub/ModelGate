@@ -5,6 +5,7 @@ import { requireRedeemCodeFeature } from "@/lib/core/features";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { ensureUser } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
+import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { gatewayDb } from "@/lib/core/db";
 import { redeemCodeForUser, listUserBalances } from "@/lib/services/redeem-codes";
 import { parseAllowedChannelIds } from "@/lib/gateway/channel-access";
@@ -48,8 +49,9 @@ export async function POST(request: Request) {
   const guard = await ensureUser(request);
   if ("error" in guard) return guard.error;
 
-  const body = await request.json().catch(() => null);
-  const parsed = redeemSchema.safeParse(body);
+  const body = await readJsonBodyCapped(request);
+  if (!body.ok) return jsonError("请求体过大", 413);
+  const parsed = redeemSchema.safeParse(body.data);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
   const result = await redeemCodeForUser(guard.auth.user.id, parsed.data.code);

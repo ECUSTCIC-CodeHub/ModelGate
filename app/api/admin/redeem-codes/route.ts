@@ -5,6 +5,7 @@ import { requireRedeemCodeFeature } from "@/lib/core/features";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
+import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { listExistingChannelIds } from "@/lib/gateway/channel-access";
 import { listExistingModelAliases } from "@/lib/gateway/model-access";
 import { parseExpiresInput, EXPIRES_FUTURE_HINT, generateRedeemCodes, listCodes, getCodeByCode, setRedeemCodesEnabled, deleteRedeemCodes } from "@/lib/services/redeem-codes";
@@ -44,7 +45,9 @@ export async function POST(request: Request) {
   const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
-  const body = await request.json().catch(() => null);
+  const bodyResult = await readJsonBodyCapped(request);
+  if (!bodyResult.ok) return jsonError("请求体过大", 413);
+  const body = bodyResult.data;
   const parsed = generateSchema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
@@ -92,6 +95,12 @@ export async function POST(request: Request) {
   }, 201);
 }
 
+type RedeemCodesBody = {
+  enabled?: unknown;
+  codes?: unknown;
+  code?: unknown;
+};
+
 function normalizeCodes(body: unknown): string[] {
   if (!body || typeof body !== "object") return [];
   const raw = (body as Record<string, unknown>).codes;
@@ -107,7 +116,9 @@ export async function PUT(request: Request) {
   const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
-  const body = await request.json().catch(() => null);
+  const bodyResult = await readJsonBodyCapped(request);
+  if (!bodyResult.ok) return jsonError("请求体过大", 413);
+  const body = bodyResult.data as RedeemCodesBody | null;
   const enabled = body?.enabled;
   if (typeof enabled !== "boolean") return jsonError("请求参数不正确", 400);
 
@@ -134,7 +145,9 @@ export async function DELETE(request: Request) {
   const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
-  const body = await request.json().catch(() => null);
+  const bodyResult = await readJsonBodyCapped(request);
+  if (!bodyResult.ok) return jsonError("请求体过大", 413);
+  const body = bodyResult.data as RedeemCodesBody | null;
   const codes = normalizeCodes(body);
   const singleCode = typeof body?.code === "string" ? body.code.trim().toUpperCase() : "";
   if (codes.length === 0 && !singleCode) return jsonError("请求参数不正确", 400);

@@ -5,6 +5,7 @@ import { requireRedeemCodeFeature } from "@/lib/core/features";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
+import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { gatewayDb } from "@/lib/core/db";
 import { parseExpiresInput, getCodeById, getCodeDetail, listRedemptions, updateRedeemCode } from "@/lib/services/redeem-codes";
 
@@ -53,8 +54,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const codeId = Number(id);
   if (!Number.isFinite(codeId) || codeId <= 0) return jsonError("参数不正确", 400);
 
-  const body = await request.json().catch(() => null);
-  const parsed = patchSchema.safeParse(body);
+  const body = await readJsonBodyCapped(request);
+  if (!body.ok) return jsonError("请求体过大", 413);
+  const parsed = patchSchema.safeParse(body.data);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
   // 额度与有效期属「只增不减」字段，落库前统一成无时区后缀的 UTC 裸字符串。

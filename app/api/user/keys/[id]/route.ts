@@ -4,6 +4,7 @@ import { z } from "zod";
 import { gatewayDb } from "@/lib/core/db";
 import { ensureUser } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
+import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { softDeleteKey } from "@/lib/services/soft-delete-service";
 
 const updateSchema = z.object({
@@ -16,8 +17,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   if ("error" in guard) return guard.error;
 
   const { id } = await context.params;
-  const body = await request.json().catch(() => null);
-  const parsed = updateSchema.safeParse(body);
+  const body = await readJsonBodyCapped(request);
+  if (!body.ok) return jsonError("请求体过大", 413);
+  const parsed = updateSchema.safeParse(body.data);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
   const existing = await gatewayDb

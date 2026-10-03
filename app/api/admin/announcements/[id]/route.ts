@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireFeature } from "@/lib/core/features";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
+import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { gatewayDb } from "@/lib/core/db";
 import { notifyAnnouncementAsync } from "@/lib/core/email";
 
@@ -25,8 +26,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const id = Number(idStr);
   if (!Number.isFinite(id) || id <= 0) return jsonError("公告 ID 不正确", 400);
 
-  const body = await request.json().catch(() => null);
-  const parsed = updateSchema.safeParse(body);
+  const body = await readJsonBodyCapped(request);
+  if (!body.ok) return jsonError("请求体过大", 413);
+  const parsed = updateSchema.safeParse(body.data);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
   const existing = await gatewayDb.queryOne<{ id: number }>(

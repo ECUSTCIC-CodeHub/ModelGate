@@ -4,6 +4,7 @@ import { z } from "zod";
 import { gatewayDb } from "@/lib/core/db";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
+import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { fetchUpstreamModelIds } from "@/lib/gateway/upstream-model-list";
 import { diffChannelModels, type CleanupCandidate } from "@/lib/services/model-cleanup";
 import { softDeleteModels } from "@/lib/services/soft-delete-service";
@@ -31,8 +32,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   );
   if (!channel) return jsonError("渠道不存在", 404);
 
-  const body = await request.json().catch(() => null);
-  const parsed = bodySchema.safeParse(body ?? {});
+  const body = await readJsonBodyCapped(request);
+  if (!body.ok) return jsonError("请求体过大", 413);
+  const parsed = bodySchema.safeParse(body.data ?? {});
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
   if (parsed.data.dry_run) {

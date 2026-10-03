@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
+import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { deleteSender, updateSender, type EmailSenderInput } from "@/lib/core/email";
 
 const senderSchema = z.object({
@@ -46,8 +47,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const id = Number(idStr);
   if (!Number.isFinite(id) || id <= 0) return jsonError("发件账号 ID 不正确", 400);
 
-  const body = await request.json().catch(() => null);
-  const parsed = senderSchema.safeParse(body);
+  const body = await readJsonBodyCapped(request);
+  if (!body.ok) return jsonError("请求体过大", 413);
+  const parsed = senderSchema.safeParse(body.data);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
   const input: EmailSenderInput = {

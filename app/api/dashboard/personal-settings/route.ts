@@ -4,6 +4,7 @@ import { z } from "zod";
 import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { ensureWebUser } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
+import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { getGatewaySettings } from "@/lib/core/settings";
 
 export async function GET(request: Request) {
@@ -39,8 +40,9 @@ export async function PUT(request: Request) {
   const guard = await ensureWebUser(request);
   if ("error" in guard) return guard.error;
 
-  const body = await request.json().catch(() => null);
-  const parsed = schema.safeParse(body);
+  const body = await readJsonBodyCapped(request);
+  if (!body.ok) return jsonError("请求体过大", 413);
+  const parsed = schema.safeParse(body.data);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
   const sets: string[] = [];

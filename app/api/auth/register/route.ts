@@ -8,6 +8,7 @@ import { checkLoginRateLimit } from "@/lib/auth/login-ratelimit";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { USERNAME_SCHEMA } from "@/lib/auth/username";
 import { friendlyCredentialPayloadError } from "@/lib/auth/validation";
+import { readJsonBodyCapped } from "@/lib/core/request-body";
 
 const schema = z.object({
   username: USERNAME_SCHEMA,
@@ -15,8 +16,9 @@ const schema = z.object({
 });
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null);
-  const parsed = schema.safeParse(body);
+  const body = await readJsonBodyCapped(request);
+  if (!body.ok) return jsonError("请求体过大", 413);
+  const parsed = schema.safeParse(body.data);
   if (!parsed.success) return jsonError(friendlyCredentialPayloadError(parsed.error), 400);
 
   const rateCheck = checkLoginRateLimit(request, parsed.data.username);

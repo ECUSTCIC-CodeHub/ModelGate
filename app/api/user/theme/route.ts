@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { ensureWebUser } from "@/lib/auth/guards";
 import { jsonOk, jsonError } from "@/lib/core/http";
+import { readJsonBodyCapped } from "@/lib/core/request-body";
 
 const PREFS_COOKIE_NAME = "modelgate-prefs";
 
@@ -38,8 +39,9 @@ export async function PUT(request: Request) {
   const guard = await ensureWebUser(request);
   if ("error" in guard) return guard.error;
 
-  const body = await request.json().catch(() => null);
-  const parsed = schema.safeParse(body);
+  const body = await readJsonBodyCapped(request);
+  if (!body.ok) return jsonError("请求体过大", 413);
+  const parsed = schema.safeParse(body.data);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
   const { appearance, mode } = parsed.data;

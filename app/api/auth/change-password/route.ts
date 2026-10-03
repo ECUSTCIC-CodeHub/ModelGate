@@ -8,6 +8,7 @@ import { jsonError, jsonOk } from "@/lib/core/http";
 import { friendlyCredentialPayloadError } from "@/lib/auth/validation";
 import { getAuthStatus } from "@/lib/auth/auth-status";
 import { checkLoginRateLimit } from "@/lib/auth/login-ratelimit";
+import { readJsonBodyCapped } from "@/lib/core/request-body";
 
 const schema = z.object({
   current_password: z.string().min(1),
@@ -27,8 +28,9 @@ export async function POST(request: Request) {
     return jsonError("尝试过于频繁，请稍后再试", 429);
   }
 
-  const body = await request.json().catch(() => null);
-  const parsed = schema.safeParse(body);
+  const body = await readJsonBodyCapped(request);
+  if (!body.ok) return jsonError("请求体过大", 413);
+  const parsed = schema.safeParse(body.data);
   if (!parsed.success) return jsonError(friendlyCredentialPayloadError(parsed.error), 400);
 
   const user = (await gatewayDb

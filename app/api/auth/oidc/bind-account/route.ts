@@ -20,6 +20,7 @@ import { USERNAME_SCHEMA } from "@/lib/auth/username";
 import { randomBytes } from "node:crypto";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { toMysqlDatetime } from "@/lib/core/db/datetime";
+import { readJsonBodyCapped } from "@/lib/core/request-body";
 
 const linkSchema = z.object({
   mode: z.literal("link"),
@@ -57,9 +58,10 @@ export async function POST(request: Request) {
   const pending = verifyOidcPendingToken(pendingToken);
   if (!pending) return jsonError("绑定信息已过期，请重新登录", 401);
 
-  const body = await request.json().catch(() => null);
-  const linkParsed = linkSchema.safeParse(body);
-  const createParsed = createSchema.safeParse(body);
+  const body = await readJsonBodyCapped(request);
+  if (!body.ok) return jsonError("请求体过大", 413);
+  const linkParsed = linkSchema.safeParse(body.data);
+  const createParsed = createSchema.safeParse(body.data);
 
   if (linkParsed.success) {
     const settings = await getGatewaySettings();

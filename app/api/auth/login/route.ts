@@ -6,6 +6,7 @@ import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { checkLoginRateLimit } from "@/lib/auth/login-ratelimit";
 import { getGatewaySettings } from "@/lib/core/settings";
+import { readJsonBodyCapped } from "@/lib/core/request-body";
 
 const schema = z.object({
   username: z.string().min(1),
@@ -18,8 +19,9 @@ export async function POST(request: Request) {
     return jsonError("账号密码登录已关闭", 403);
   }
 
-  const body = await request.json().catch(() => null);
-  const parsed = schema.safeParse(body);
+  const body = await readJsonBodyCapped(request);
+  if (!body.ok) return jsonError("请求体过大", 413);
+  const parsed = schema.safeParse(body.data);
 
   const rateCheck = checkLoginRateLimit(request, parsed.success ? parsed.data.username : undefined);
   if (!rateCheck.ok) {

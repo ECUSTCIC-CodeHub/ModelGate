@@ -15,6 +15,7 @@ import { buildArbitraryUpstreamUrl } from "@/lib/gateway/proxy";
 import { fetchUpstream } from "@/lib/gateway/upstream-proxy";
 import { isTimeoutError, upstreamFailureStatus } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
+import { readBodyCapped } from "@/lib/core/request-body";
 
 const HOP_BY_HOP = new Set([
   "connection",
@@ -310,37 +311,6 @@ async function forwardToChannel(route: RoutedModel, request: Request, upstreamPa
   } finally {
     clearTimeout(timeout);
   }
-}
-
-// 按硬上限分块读取请求体原始字节，超过上限返回 null（防止 content-length 被伪造导致内存放大）。
-async function readBodyCapped(request: Request, maxBytes: number): Promise<Uint8Array | null> {
-  const body = request.body;
-  if (!body) return new Uint8Array(0);
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value) continue;
-      total += value.byteLength;
-      if (total > maxBytes) {
-        await reader.cancel().catch(() => {});
-        return null;
-      }
-      chunks.push(value);
-    }
-  } catch {
-    return null;
-  }
-  const merged = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return merged;
 }
 
 // 透传 query 前剔除网关自有鉴权参数，避免将它们转发给上游。

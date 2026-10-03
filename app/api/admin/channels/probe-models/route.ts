@@ -7,6 +7,7 @@ import { jsonError, jsonOk } from "@/lib/core/http";
 import { fetchUpstreamModelIds } from "@/lib/gateway/upstream-model-list";
 import { isValidProxyUrl } from "@/lib/gateway/upstream-proxy";
 import { resolveSubmittedApiKey } from "@/lib/shared/redact";
+import { readJsonBodyCapped } from "@/lib/core/request-body";
 
 const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
 
@@ -29,8 +30,9 @@ export async function POST(request: Request) {
   const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
-  const body = await request.json().catch(() => null);
-  const parsed = bodySchema.safeParse(body);
+  const body = await readJsonBodyCapped(request);
+  if (!body.ok) return jsonError("请求体过大", 413);
+  const parsed = bodySchema.safeParse(body.data);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
   let baseUrl = parsed.data.base_url ?? "";

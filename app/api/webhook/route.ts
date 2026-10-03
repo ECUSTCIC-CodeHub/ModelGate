@@ -7,6 +7,7 @@ import { jsonError, jsonOk } from "@/lib/core/http";
 import { resolveGroupFromClaims } from "@/lib/auth/oidc";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { forgetWebhookEvent, isWebhookEventDuplicate } from "@/lib/services/webhook-dedup";
+import { API_BODY_LIMIT_BYTES, readBodyCapped } from "@/lib/core/request-body";
 
 const MAX_TIMESTAMP_DRIFT = 300;
 
@@ -170,11 +171,12 @@ export async function POST(request: Request) {
     return jsonError("Webhook 未配置密钥", 503);
   }
 
-  const rawBody = await request.text();
+  const rawBytes = await readBodyCapped(request, API_BODY_LIMIT_BYTES);
+  if (rawBytes === null) return jsonError("请求体过大", 413);
 
   let payload: WebhookPayload;
   try {
-    payload = JSON.parse(rawBody);
+    payload = JSON.parse(new TextDecoder().decode(rawBytes));
   } catch {
     return jsonError("请求体格式错误", 400);
   }

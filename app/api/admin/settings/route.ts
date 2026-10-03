@@ -4,6 +4,7 @@ import { z } from "zod";
 import { filterSettingsInputForEdition, maskSettingsForEdition } from "@/lib/core/features";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
+import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { getGatewaySettings, setGatewaySettings } from "@/lib/core/settings";
 import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
 import { parseModelBrandGroups } from "@/lib/core/settings";
@@ -80,8 +81,9 @@ export async function PUT(request: Request) {
   const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
-  const body = await request.json().catch(() => null);
-  const parsed = schema.safeParse(body);
+  const body = await readJsonBodyCapped(request);
+  if (!body.ok) return jsonError("请求体过大", 413);
+  const parsed = schema.safeParse(body.data);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
   if (parsed.data.ua_restrictions !== undefined) {

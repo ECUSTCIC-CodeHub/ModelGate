@@ -10,6 +10,7 @@ import { listExistingModelAliases, parseAllowedModelAliases, stringifyAllowedMod
 import { softDeleteUser } from "@/lib/services/soft-delete-service";
 import { USERNAME_SCHEMA } from "@/lib/auth/username";
 import { friendlyCredentialPayloadError } from "@/lib/auth/validation";
+import { readJsonBodyCapped } from "@/lib/core/request-body";
 
 const updateSchema = z.object({
   username: USERNAME_SCHEMA.optional(),
@@ -43,8 +44,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   if ("error" in guard) return guard.error;
 
   const { id } = await context.params;
-  const body = await request.json().catch(() => null);
-  const parsed = updateSchema.safeParse(body);
+  const body = await readJsonBodyCapped(request);
+  if (!body.ok) return jsonError("请求体过大", 413);
+  const parsed = updateSchema.safeParse(body.data);
   if (!parsed.success) return jsonError(friendlyCredentialPayloadError(parsed.error), 400);
   if (parsed.data.reset_usage === "period") {
     const unavailable = requireFeature("periodQuota");
