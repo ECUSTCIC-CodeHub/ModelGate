@@ -6,6 +6,7 @@ import {
 } from "@/lib/gateway/protocol-adapters/streaming/common";
 import { parseAnthropicSseEvent } from "@/lib/gateway/protocol-adapters/streaming/anthropic-events";
 import { usageFromAnthropic } from "@/lib/gateway/protocol-adapters/usage";
+import { finishReasonFromAnthropic } from "@/lib/gateway/protocol-adapters/intermediate";
 import { createSseFrameReader } from "@/lib/shared/sse-frames";
 
 export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Array>): IntermediateStreamResult {
@@ -108,7 +109,7 @@ export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Arra
             if (event.event === "message_delta") {
               const delta = asRecord(payload?.delta);
               finishReason = typeof delta?.stop_reason === "string"
-                ? (delta.stop_reason === "tool_use" ? "tool_calls" : "stop")
+                ? finishReasonFromAnthropic(delta.stop_reason, false)
                 : finishReason;
               const nextUsage = usageFromAnthropic(payload?.usage);
               completionTokens = nextUsage?.completion_tokens ?? completionTokens;

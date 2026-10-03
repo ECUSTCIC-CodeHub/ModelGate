@@ -101,11 +101,15 @@ export function parseToolArguments(raw: string | undefined) {
 }
 
 export function finishReasonToAnthropic(value: string | null, hasTools: boolean) {
+  // 截断优先于工具调用：stop_reason 只能取一个值，因长度上限被截断时
+  // 即使已产生工具调用也应以 max_tokens 告知调用方
+  if (value === "length") return "max_tokens";
   if (value === "tool_calls" || hasTools) return "tool_use";
   return "end_turn";
 }
 
 export function finishReasonFromAnthropic(value: string | null, hasTools: boolean) {
+  if (value === "max_tokens") return "length";
   if (value === "tool_use" || hasTools) return "tool_calls";
   return "stop";
 }

@@ -12,6 +12,16 @@ import {
 } from "@/lib/gateway/protocol-adapters/streaming/responses-events";
 import { createSseFrameReader } from "@/lib/shared/sse-frames";
 
+// response.incomplete 表示上游因长度上限或内容过滤提前终止，
+// 其 reason 在 incomplete_details 里，需要换算回中间协议的 stop_reason
+function incompleteFinishReason(response: JsonRecord | null) {
+  if (response?.status !== "incomplete") return "stop";
+  const reason = asRecord(response.incomplete_details)?.reason;
+  if (reason === "max_output_tokens") return "length";
+  if (reason === "content_filter") return "content_filter";
+  return "stop";
+}
+
 type ResponsesToolState = {
   index: number;
   itemId: string;
@@ -343,13 +353,13 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
               continue;
             }
 
-            if (event.event === "response.completed") {
+            if (event.event === "response.completed" || event.event === "response.incomplete") {
               emitStart(controller);
               emitMissingResponseOutput(controller, response);
               if (usage) controller.enqueue({ type: "usage", usage });
               if (!finished) {
                 finished = true;
-                controller.enqueue({ type: "finish", reason: finishReason ?? "stop" });
+                controller.enqueue({ type: "finish", reason: finishReason ?? incompleteFinishReason(response) });
               }
             }
           }

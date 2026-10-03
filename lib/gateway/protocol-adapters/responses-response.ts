@@ -13,6 +13,23 @@ import { usageFromResponses } from "@/lib/gateway/protocol-adapters/usage";
 
 const RESPONSE_KEYS = ["id", "object", "created_at", "created", "status", "error", "incomplete_details", "model", "output", "output_text", "usage"];
 
+// Responses 用 status=incomplete + incomplete_details.reason 表达截断，
+// 中间协议只有 stop_reason，故两侧都需要这层换算，否则长度截断会被报成正常结束。
+function responsesStopReasonFromBody(body: JsonRecord, hasToolCalls: boolean) {
+  if (body.status === "incomplete") {
+    const reason = asRecord(body.incomplete_details)?.reason;
+    if (reason === "max_output_tokens") return "length";
+    if (reason === "content_filter") return "content_filter";
+  }
+  return hasToolCalls ? "tool_calls" : "stop";
+}
+
+function responsesIncompleteReason(stopReason: string | null) {
+  if (stopReason === "length") return "max_output_tokens";
+  if (stopReason === "content_filter") return "content_filter";
+  return null;
+}
+
 export function extractResponsesMessage(output: unknown, fallbackOutputText?: unknown) {
   const items = asArray(output).map((item) => asRecord(item)).filter((item): item is JsonRecord => Boolean(item));
   const messageItems = items.filter((item) => item.type === "message" && (item.role === undefined || item.role === "assistant"));
@@ -71,7 +88,7 @@ export function responsesResponseToIntermediate(body: JsonRecord): IntermediateR
     role: "assistant",
     content,
     tool_calls: extracted.toolCalls,
-    stop_reason: extracted.toolCalls.length > 0 ? "tool_calls" : "stop",
+    stop_reason: responsesStopReasonFromBody(body, extracted.toolCalls.length > 0),
     usage,
     extra: omitKeys(body, RESPONSE_KEYS),
   };
@@ -84,15 +101,16 @@ export function responsesResponseFromIntermediate(response: IntermediateResponse
     .filter((part) => part.type === "text")
     .map((part) => part.text)
     .join("");
+  const incompleteReason = responsesIncompleteReason(response.stop_reason);
 
   return {
     ...response.extra,
     id: response.id,
     object: "response",
     created_at: response.created,
-    status: "completed",
+    status: incompleteReason ? "incomplete" : "completed",
     error: null,
-    incomplete_details: null,
+    incomplete_details: incompleteReason ? { reason: incompleteReason } : null,
     model: response.model,
     output: [
       ...(reasoningText ? [{

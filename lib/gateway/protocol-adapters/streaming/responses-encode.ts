@@ -47,11 +47,11 @@ export function encodeResponsesStream(events: ReadableStream<IntermediateStreamE
           }
 
           if (value.type === "finish") {
-            writer.writeDone(controller);
+            writer.writeDone(controller, value.reason);
           }
         }
 
-        writer.writeDone(controller);
+        writer.writeDone(controller, null);
         controller.close();
       } catch (error) {
         controller.error(error);

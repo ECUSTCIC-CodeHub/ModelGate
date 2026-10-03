@@ -128,7 +128,7 @@ export class ResponsesStreamWriter {
     });
   }
 
-  writeDone(controller: ReadableStreamDefaultController<Uint8Array>) {
+  writeDone(controller: ReadableStreamDefaultController<Uint8Array>, reason: string | null) {
     if (this.finished) return;
     this.finished = true;
     this.ensureStarted(controller);
@@ -143,13 +143,19 @@ export class ResponsesStreamWriter {
       ...(this.textStarted || this.tools.size === 0 ? [this.textOutputItem()] : []),
       ...this.sortedTools().map((tool) => this.toolOutputItem(tool)),
     ];
-    this.emit(controller, "response.completed", {
-      type: "response.completed",
+    // 因长度上限终止时，Responses 协议要求 status=incomplete 而不是 completed
+    const incompleteReason = reason === "length"
+      ? "max_output_tokens"
+      : reason === "content_filter" ? "content_filter" : null;
+    const status = incompleteReason ? "incomplete" : "completed";
+    this.emit(controller, `response.${status}`, {
+      type: `response.${status}`,
       response: {
-        ...this.responseBase("completed"),
+        ...this.responseBase(status),
         output,
         output_text: this.text,
         usage: responseUsage(this.usage),
+        ...(incompleteReason ? { incomplete_details: { reason: incompleteReason } } : {}),
       },
     });
   }
@@ -158,7 +164,7 @@ export class ResponsesStreamWriter {
     controller.enqueue(this.encoder.encode(toSseBlock(event, payload)));
   }
 
-  private responseBase(status: "in_progress" | "completed") {
+  private responseBase(status: "in_progress" | "completed" | "incomplete") {
     return {
       id: this.responseId,
       object: "response",

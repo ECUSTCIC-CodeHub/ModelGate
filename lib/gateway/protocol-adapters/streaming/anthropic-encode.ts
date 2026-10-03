@@ -1,5 +1,5 @@
 import type { JsonRecord } from "@/lib/gateway/normalized-message";
-import type { ResponseAdapterOptions } from "@/lib/gateway/protocol-adapters/intermediate";
+import { finishReasonToAnthropic, type ResponseAdapterOptions } from "@/lib/gateway/protocol-adapters/intermediate";
 import {
   toSseBlock,
   type IntermediateStreamEvent,
@@ -77,7 +77,7 @@ export function encodeAnthropicMessagesStream(events: ReadableStream<Intermediat
     emit(controller, "message_delta", {
       type: "message_delta",
       delta: {
-        stop_reason: reason === "tool_calls" ? "tool_use" : "end_turn",
+        stop_reason: finishReasonToAnthropic(reason, false),
         stop_sequence: null,
       },
       usage: {
