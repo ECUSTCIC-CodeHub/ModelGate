@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { TableCell, TableRow } from "@/components/ui/table";
 import {
@@ -32,6 +33,7 @@ export function ModelListRow({
   onEdit,
   onToggle,
   onRemove,
+  selection,
 }: {
   model: ModelWithChannel;
   index: number;
@@ -40,11 +42,21 @@ export function ModelListRow({
   onEdit: () => void;
   onToggle: () => void;
   onRemove: () => void;
+  selection?: { checked: boolean; onToggle: () => void };
 }) {
   const [confirmToggle, setConfirmToggle] = useState(false);
 
   return (
     <TableRow className="group">
+      {selection ? (
+        <TableCell className="w-10">
+          <Checkbox
+            checked={selection.checked}
+            onCheckedChange={selection.onToggle}
+            aria-label={`选择模型 ${model.alias}`}
+          />
+        </TableCell>
+      ) : null}
       <TableCell className="text-[var(--color-foreground-muted)]">{index + 1}</TableCell>
       <TableCell className="max-w-48 truncate font-mono text-sm">{model.alias}</TableCell>
       <TableCell className="max-w-48 truncate text-sm text-[var(--color-foreground-muted)]">{model.real_model}</TableCell>

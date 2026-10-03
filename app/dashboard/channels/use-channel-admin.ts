@@ -68,6 +68,22 @@ function parseCustomHeadersInput(value: string): Record<string, string> | null {
   return headers;
 }
 
+// 保留入参顺序的受限并发映射
+async function runWithConcurrencyLimit<T, R>(items: T[], limit: number, task: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(Math.max(1, limit), items.length) }, async () => {
+    while (true) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= items.length) return;
+      results[index] = await task(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 export function useChannelAdmin() {
   const { toast } = useToast();
   const { channels, error, loadChannels } = useChannelRecords();
@@ -647,6 +663,44 @@ export function useChannelAdmin() {
     toast({ variant: "error", description: getApiMessage(data, "删除模型失败。") });
   }
 
+  // 批量操作逐条调用既有单条接口：模型更新/删除都带渠道启用级联与配额副作用，
+  // 走同一入口可避免在此重复实现一套规则；并发受限以免打满连接池
+  async function bulkSetModelEnabled(ids: number[], enabled: boolean) {
+    if (ids.length === 0) return;
+    const results = await runWithConcurrencyLimit(ids, 5, async (id) => {
+      const response = await authedFetch(`/api/admin/models/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ enabled }),
+      });
+      return response.ok;
+    });
+    const okCount = results.filter(Boolean).length;
+    const failed = results.length - okCount;
+    if (okCount > 0) await loadChannels();
+    toast({
+      variant: failed > 0 ? "error" : "success",
+      description:
+        failed > 0
+          ? `已${enabled ? "启用" : "禁用"} ${okCount} 个模型，${failed} 个失败。`
+          : `已${enabled ? "启用" : "禁用"} ${okCount} 个模型。`,
+    });
+  }
+
+  async function bulkRemoveModels(ids: number[]) {
+    if (ids.length === 0) return;
+    const results = await runWithConcurrencyLimit(ids, 5, async (id) => {
+      const response = await authedFetch(`/api/admin/models/${id}`, { method: "DELETE" });
+      return response.ok;
+    });
+    const okCount = results.filter(Boolean).length;
+    const failed = results.length - okCount;
+    if (okCount > 0) await loadChannels();
+    toast({
+      variant: failed > 0 ? "error" : "success",
+      description: failed > 0 ? `已删除 ${okCount} 个模型，${failed} 个失败。` : `已删除 ${okCount} 个模型。`,
+    });
+  }
+
   const allModels: ModelWithChannel[] = channels.flatMap((channel) =>
     (channel.models ?? []).map((model) => ({
       ...model,
@@ -665,6 +719,8 @@ export function useChannelAdmin() {
     activeDraftProtocols,
     addChannelModelDraft,
     allModels,
+    bulkRemoveModels,
+    bulkSetModelEnabled,
     importChannelModelDrafts,
     channelDrawerOpen,
     channelEditingId,

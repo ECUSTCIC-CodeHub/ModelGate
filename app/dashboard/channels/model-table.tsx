@@ -3,12 +3,14 @@
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/shared/utils";
 import { EmptyState } from "@/components/dashboard/empty-state";
+import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronRight, Copy, Eraser, EyeOff, LayoutGrid, List, Loader2, Plus, Search, Table2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronRight, Copy, Eraser, EyeOff, LayoutGrid, List, ListChecks, Loader2, Plus, Search, Table2 } from "lucide-react";
 import { parseSupportedProtocols, shortProtocolLabel } from "./channel-model";
 import type { ModelRow, ModelWithChannel } from "./channel-model";
 import { ModelCard } from "./model-card";
@@ -81,6 +83,8 @@ export function ModelTable({
   onEdit,
   onToggle,
   onRemove,
+  onBulkSetEnabled,
+  onBulkRemove,
 }: {
   models: ModelWithChannel[];
   channelsCount: number;
@@ -93,6 +97,8 @@ export function ModelTable({
   onEdit: (row: ModelRow) => void;
   onToggle: (row: ModelRow) => void;
   onRemove: (id: number) => void;
+  onBulkSetEnabled: (ids: number[], enabled: boolean) => Promise<void>;
+  onBulkRemove: (ids: number[]) => Promise<void>;
 }) {
   const [search, setSearch] = useState("");
 
@@ -140,13 +146,38 @@ export function ModelTable({
   }
 
   const [hideDisabled, setHideDisabled] = useState(false);
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  function toggleSelected(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function bulkSetEnabled(enabled: boolean) {
+    await onBulkSetEnabled([...selectedIds], enabled);
+    setSelectedIds(new Set());
+  }
+
+  async function confirmBulkDelete() {
+    await onBulkRemove([...selectedIds]);
+    setSelectedIds(new Set());
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return models.filter((m) => {
       if (hideDisabled && m.enabled === 0) return false;
       if (!q) return true;
-      return m.alias.toLowerCase().includes(q) || m.real_model.toLowerCase().includes(q);
+      return (
+        m.alias.toLowerCase().includes(q) ||
+        m.real_model.toLowerCase().includes(q) ||
+        (m.channel_name ?? "").toLowerCase().includes(q)
+      );
     });
   }, [models, search, hideDisabled]);
 
@@ -234,7 +265,7 @@ export function ModelTable({
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-foreground-muted)]" />
           <Input
             className="pl-9"
-            placeholder="搜索别名 / 真实模型"
+            placeholder="搜索别名 / 真实模型 / 渠道名"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -296,8 +327,80 @@ export function ModelTable({
           <EyeOff className="h-4 w-4" />
           隐藏禁用模型
         </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn("h-8 gap-1.5 rounded-sm px-2.5 text-xs", bulkMode && "bg-[var(--color-surface-hover)] text-[var(--color-foreground)]")}
+          onClick={() => {
+            setBulkMode((v) => !v);
+            setSelectedIds(new Set());
+          }}
+          aria-pressed={bulkMode}
+        >
+          <ListChecks className="h-4 w-4" />
+          批量管理
+        </Button>
         <Button disabled={channelsCount === 0} onClick={onCreate}>新增模型映射</Button>
       </div>
+
+      {bulkMode && filtered.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => setSelectedIds(new Set(filtered.map((m) => m.id)))}
+          >
+            全选当前结果（{filtered.length}）
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            disabled={selectedIds.size === 0}
+            onClick={() => setSelectedIds(new Set())}
+          >
+            取消选择
+          </Button>
+          <span className="text-xs text-[var(--color-foreground-muted)]">已选 {selectedIds.size} 个</span>
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              disabled={selectedIds.size === 0}
+              onClick={() => void bulkSetEnabled(false)}
+            >
+              批量禁用
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              disabled={selectedIds.size === 0}
+              onClick={() => void bulkSetEnabled(true)}
+            >
+              批量启用
+            </Button>
+            <ConfirmDialog
+              trigger={
+                <Button variant="destructive" size="sm" className="h-8 text-xs" disabled={selectedIds.size === 0}>
+                  批量删除
+                </Button>
+              }
+              title={`删除选中的 ${selectedIds.size} 个模型映射？`}
+              description="删除后这些别名将不再可用，此操作不可撤销。"
+              onConfirm={() => void confirmBulkDelete()}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {bulkMode ? (
+        <p className="text-xs text-[var(--color-foreground-muted)]">
+          批量操作按当前筛选结果执行；先在下方列表中勾选，再用上方按钮批量启用、禁用或删除。
+        </p>
+      ) : null}
 
       {filtered.length === 0 ? (
         <p className="py-8 text-center text-sm text-[var(--color-foreground-muted)]">
@@ -323,6 +426,23 @@ export function ModelTable({
                     <span className="truncate text-sm font-medium text-[var(--color-foreground)]">{group.channelName}</span>
                     <span className="shrink-0 text-xs text-[var(--color-foreground-muted)]">{group.models.length} 个模型</span>
                   </button>
+                  {bulkMode ? (
+                    <Checkbox
+                      className="shrink-0"
+                      checked={group.models.every((m) => selectedIds.has(m.id))}
+                      onCheckedChange={(checked) =>
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev);
+                          for (const m of group.models) {
+                            if (checked === true) next.add(m.id);
+                            else next.delete(m.id);
+                          }
+                          return next;
+                        })
+                      }
+                      aria-label={`全选渠道 ${group.channelName} 下的模型`}
+                    />
+                  ) : null}
                   <Button
                     type="button"
                     variant="ghost"
@@ -369,6 +489,7 @@ export function ModelTable({
                             <TableHead className="w-12">序号</TableHead>
                             <TableHead>别名</TableHead>
                             <TableHead>真实模型</TableHead>
+                            <TableHead className="w-10">{bulkMode ? <Checkbox checked={group.models.every((m) => selectedIds.has(m.id))} onCheckedChange={(checked) => setSelectedIds((prev) => { const next = new Set(prev); for (const m of group.models) { if (checked === true) next.add(m.id); else next.delete(m.id); } return next; })} aria-label={`全选渠道 ${group.channelName} 下的模型`} /> : null}</TableHead>
                             <TableHead>所属渠道</TableHead>
                             <TableHead>协议</TableHead>
                             <TableHead>状态</TableHead>
@@ -393,6 +514,11 @@ export function ModelTable({
                               onEdit={() => onEdit(model)}
                               onToggle={() => onToggle(model)}
                               onRemove={() => onRemove(model.id)}
+                              selection={
+                                bulkMode
+                                  ? { checked: selectedIds.has(model.id), onToggle: () => toggleSelected(model.id) }
+                                  : undefined
+                              }
                             />
                           ))}
                         </TableBody>
@@ -409,6 +535,7 @@ export function ModelTable({
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">{bulkMode ? <Checkbox checked={sorted.length > 0 && sorted.every((m) => selectedIds.has(m.id))} onCheckedChange={(checked) => setSelectedIds((prev) => { const next = new Set(prev); for (const m of sorted) { if (checked === true) next.add(m.id); else next.delete(m.id); } return next; })} aria-label="全选当前排序结果" /> : null}</TableHead>
                 <TableHead className="w-12">序号</TableHead>
                 <SortableHead label="别名" field="alias" currentField={sortField} order={sortOrder} onSort={handleSort} />
                 <SortableHead label="真实模型" field="real_model" currentField={sortField} order={sortOrder} onSort={handleSort} />
@@ -436,6 +563,11 @@ export function ModelTable({
                   onEdit={() => onEdit(model)}
                   onToggle={() => onToggle(model)}
                   onRemove={() => onRemove(model.id)}
+                  selection={
+                    bulkMode
+                      ? { checked: selectedIds.has(model.id), onToggle: () => toggleSelected(model.id) }
+                      : undefined
+                  }
                 />
               ))}
             </TableBody>
@@ -461,6 +593,23 @@ export function ModelTable({
                     <span className="truncate text-sm font-medium text-[var(--color-foreground)]">{group.channelName}</span>
                     <span className="shrink-0 text-xs text-[var(--color-foreground-muted)]">{group.models.length} 个模型</span>
                   </button>
+                  {bulkMode ? (
+                    <Checkbox
+                      className="shrink-0"
+                      checked={group.models.every((m) => selectedIds.has(m.id))}
+                      onCheckedChange={(checked) =>
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev);
+                          for (const m of group.models) {
+                            if (checked === true) next.add(m.id);
+                            else next.delete(m.id);
+                          }
+                          return next;
+                        })
+                      }
+                      aria-label={`全选渠道 ${group.channelName} 下的模型`}
+                    />
+                  ) : null}
                   <Button
                     type="button"
                     variant="ghost"
@@ -509,6 +658,11 @@ export function ModelTable({
                         onEdit={() => onEdit(model)}
                         onToggle={() => onToggle(model)}
                         onRemove={() => onRemove(model.id)}
+                        selection={
+                          bulkMode
+                            ? { checked: selectedIds.has(model.id), onToggle: () => toggleSelected(model.id) }
+                            : undefined
+                        }
                       />
                     ))}
                   </div>

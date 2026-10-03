@@ -67,6 +67,8 @@ export default function AdminChannelsPage() {
                   onEdit={admin.openEditModel}
                   onToggle={admin.toggleModel}
                   onRemove={admin.removeModel}
+                  onBulkSetEnabled={admin.bulkSetModelEnabled}
+                  onBulkRemove={admin.bulkRemoveModels}
                 />
               </TabsContent>
             </Tabs>

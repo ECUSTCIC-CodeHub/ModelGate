@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import {
   AlertDialog,
@@ -29,6 +30,7 @@ export function ModelCard({
   onEdit,
   onToggle,
   onRemove,
+  selection,
 }: {
   model: ModelWithChannel;
   testing: boolean;
@@ -36,12 +38,21 @@ export function ModelCard({
   onEdit: () => void;
   onToggle: () => void;
   onRemove: () => void;
+  selection?: { checked: boolean; onToggle: () => void };
 }) {
   const [confirmToggle, setConfirmToggle] = useState(false);
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 transition-shadow hover:shadow-[var(--shadow-md)]">
       <div className="flex items-start justify-between gap-2">
+        {selection ? (
+          <Checkbox
+            className="mt-0.5"
+            checked={selection.checked}
+            onCheckedChange={selection.onToggle}
+            aria-label={`选择模型 ${model.alias}`}
+          />
+        ) : null}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-[var(--color-foreground)]">{model.alias}</p>
           <p className="truncate font-mono text-xs text-[var(--color-foreground-muted)]">{model.real_model}</p>
