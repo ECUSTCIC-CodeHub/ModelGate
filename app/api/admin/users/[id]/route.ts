@@ -180,7 +180,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
          SET username = ?, email = ?, role = ?, group_id = ?, enabled = ?, group_locked = ?, rpm = ?, qps = ?, tpm = ?,
              quota_tokens = ?, quota_requests = ?,
              quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?,
-             allowed_model_aliases = ?, note = ?, password_hash = ?
+             allowed_model_aliases = ?, note = ?, password_hash = ?,
+             token_version = token_version + 1
          WHERE id = ?`,
         [
           merged.username,

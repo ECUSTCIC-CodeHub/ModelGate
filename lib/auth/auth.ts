@@ -39,6 +39,7 @@ type TokenPayload = {
   role: "admin" | "user";
   username: string;
   type: TokenType;
+  tv: number;
 };
 
 export type AuthContext = {
@@ -47,26 +48,39 @@ export type AuthContext = {
   authSource: "web" | "apikey";
 };
 
-export function signAccessToken(user: Pick<DbUser, "id" | "role" | "username">) {
+type TokenUser = Pick<DbUser, "id" | "role" | "username" | "token_version">;
+
+function tokenVersionOf(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 0;
+}
+
+function tokenVersionMatches(payload: TokenPayload, user: Pick<DbUser, "token_version">) {
+  return tokenVersionOf(payload.tv) === tokenVersionOf(user.token_version);
+}
+
+export function signAccessToken(user: TokenUser) {
   return jwt.sign(
     {
       sub: String(user.id),
       role: user.role,
       username: user.username,
       type: "access",
+      tv: tokenVersionOf(user.token_version),
     } satisfies TokenPayload,
     getAccessSecret(),
     { expiresIn: getAccessExpiresSeconds() },
   );
 }
 
-export function signRefreshToken(user: Pick<DbUser, "id" | "role" | "username">) {
+export function signRefreshToken(user: TokenUser) {
   return jwt.sign(
     {
       sub: String(user.id),
       role: user.role,
       username: user.username,
       type: "refresh",
+      tv: tokenVersionOf(user.token_version),
     } satisfies TokenPayload,
     getRefreshSecret(),
     { expiresIn: getRefreshExpiresSeconds() },
@@ -158,6 +172,7 @@ export async function getAuthContextFromAccessToken(token: string): Promise<Auth
   if (payload.type !== "access") return null;
   const user = await findEnabledUserById(Number(payload.sub));
   if (!user) return null;
+  if (!tokenVersionMatches(payload, user)) return null;
   return { user: sanitizeUser(user), token, authSource: "web" };
 }
 
@@ -184,14 +199,21 @@ export async function requireWebAuthWithRefresh(request: Request): Promise<AuthC
   const auth = await requireWebAuth(request);
   if (auth) return auth;
 
+  const refreshToken = getRefreshTokenFromRequest(request);
+  if (!refreshToken) return null;
+  const user = await resolveRefreshTokenUser(refreshToken);
+  if (!user) return null;
+  return { user: sanitizeUser(user), token: refreshToken, authSource: "web" };
+}
+
+export async function resolveRefreshTokenUser(token: string): Promise<DbUser | null> {
   try {
-    const refreshToken = getRefreshTokenFromRequest(request);
-    if (!refreshToken) return null;
-    const payload = verifyRefreshToken(refreshToken);
+    const payload = verifyRefreshToken(token);
     if (payload.type !== "refresh") return null;
     const user = await findEnabledUserById(Number(payload.sub));
     if (!user) return null;
-    return { user: sanitizeUser(user), token: refreshToken, authSource: "web" };
+    if (!tokenVersionMatches(payload, user)) return null;
+    return user;
   } catch {
     return null;
   }
@@ -202,7 +224,7 @@ export function requireRole(auth: AuthContext, role: "admin" | "user") {
   return auth.user.role === "admin";
 }
 
-export function issueAuthTokens(user: Pick<DbUser, "id" | "username" | "role">) {
+export function issueAuthTokens(user: TokenUser) {
   return {
     access_token: signAccessToken(user),
     refresh_token: signRefreshToken(user),
@@ -249,13 +271,6 @@ export async function getServerProfileFromCookieStore(cookieStore: { get: (name:
     }
   } catch {}
 
-  try {
-    if (!refreshToken) return null;
-    const payload = verifyRefreshToken(refreshToken);
-    if (payload.type !== "refresh") return null;
-    const user = await findEnabledUserById(Number(payload.sub));
-    return user ? sanitizeUser(user) : null;
-  } catch {
-    return null;
-  }
+  const refreshUser = refreshToken ? await resolveRefreshTokenUser(refreshToken) : null;
+  return refreshUser ? sanitizeUser(refreshUser) : null;
 }

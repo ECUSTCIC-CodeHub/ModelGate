@@ -93,6 +93,7 @@ export type DbUser = {
   oidc_subject: string | null;
   oidc_group_synced_at: string | null;
   group_locked: number;
+  token_version: number;
   email: string | null;
   pref_model_fallback: number;
   pref_vision_fallback: number;

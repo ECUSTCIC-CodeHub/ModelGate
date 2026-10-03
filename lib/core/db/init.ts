@@ -277,6 +277,7 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("users", "oidc_subject", "oidc_subject TEXT");
   await db.ensureColumn("users", "oidc_group_synced_at", "oidc_group_synced_at DATETIME");
   await db.ensureColumn("users", "group_locked", "group_locked INTEGER DEFAULT 0");
+  await db.ensureColumn("users", "token_version", "token_version INTEGER DEFAULT 0");
   await db.ensureColumn("groups", "oidc_claim_value", "oidc_claim_value TEXT");
   await db.ensureColumn("groups", "oidc_claim_expr", "oidc_claim_expr TEXT");
   await db.ensureColumn("groups", "oidc_claim_priority", "oidc_claim_priority INTEGER DEFAULT 0");
