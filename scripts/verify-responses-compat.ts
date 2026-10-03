@@ -250,7 +250,7 @@ test("responses developer role is converted to chat_completions system role", ()
   assert.ok(!JSON.stringify(result).includes('"role":"developer"'));
 });
 
-test("responses thinking content is not sent as chat_completions content part", () => {
+test("responses 历史转 chat 不注入 thinking 内容块与非标准 reasoning 字段", () => {
   const result = responsesGatewayAdapter.adaptRequestBody(
     {
       model: "gpt-4o",
@@ -284,10 +284,10 @@ test("responses thinking content is not sent as chat_completions content part", 
 
   assert.equal(messages[0]?.role, "assistant");
   assert.equal(messages[0]?.content, "hello");
-  assert.equal(messages[0]?.reasoning, "think");
-  assert.equal(messages[0]?.reasoning_content, "think");
   assert.equal(messages[1]?.role, "user");
   assert.ok(!JSON.stringify(result).includes('"type":"thinking"'));
+  assert.ok(!("reasoning" in (messages[0] ?? {})), "请求方向不应注入非标准 reasoning 字段");
+  assert.ok(!("reasoning_content" in (messages[0] ?? {})), "请求方向不应注入非标准 reasoning_content 字段");
 });
 
 test("responses reasoning is attached to chat_completions assistant tool call history", () => {
@@ -325,10 +325,10 @@ test("responses reasoning is attached to chat_completions assistant tool call hi
 
   assert.equal(messages[0]?.role, "assistant");
   assert.equal(messages[0]?.content, "");
-  assert.equal(messages[0]?.reasoning_content, "think before tool");
   assert.equal(messages[0]?.tool_calls?.[0]?.function?.name, "search");
   assert.equal(messages[1]?.role, "tool");
   assert.ok(!JSON.stringify(result).includes('"type":"thinking"'));
+  assert.ok(!("reasoning_content" in (messages[0] ?? {})), "请求方向不应注入非标准 reasoning_content 字段");
 });
 
 test("responses reasoning between function call and output keeps chat tool adjacency", () => {
@@ -365,10 +365,40 @@ test("responses reasoning between function call and output keeps chat tool adjac
   }>;
 
   assert.equal(messages[0]?.role, "assistant");
-  assert.equal(messages[0]?.reasoning_content, "wait for search");
   assert.equal(messages[0]?.tool_calls?.[0]?.id, "call_1");
   assert.equal(messages[1]?.role, "tool");
   assert.equal(messages[1]?.tool_call_id, "call_1");
+  assert.ok(!("reasoning_content" in (messages[0] ?? {})), "请求方向不应注入非标准 reasoning_content 字段");
+});
+
+test("anthropic thinking 历史转 chat 时不回带 thinking 块与 reasoning 字段", () => {
+  const result = anthropicGatewayAdapter.adaptRequestBody(
+    {
+      model: "claude-3-5-sonnet",
+      max_tokens: 1024,
+      messages: [
+        { role: "user", content: "hi" },
+        {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "internal reasoning", signature: "sig" },
+            { type: "text", text: "answer" },
+          ],
+        },
+        { role: "user", content: "next" },
+      ],
+    },
+    chatCompletionsGatewayAdapter,
+    "gpt-4o",
+  );
+  const messages = result.messages as Array<Record<string, unknown>>;
+  const assistant = messages.find((m) => m.role === "assistant");
+
+  assert.ok(assistant, "应保留 assistant 历史消息");
+  assert.equal(assistant.content, "answer");
+  assert.ok(!JSON.stringify(result).includes('"type":"thinking"'), "不应出现 thinking 内容块");
+  assert.ok(!("reasoning" in assistant), "不应注入 reasoning");
+  assert.ok(!("reasoning_content" in assistant), "不应注入 reasoning_content");
 });
 
 test("responses consecutive function calls are grouped before chat tool outputs", () => {

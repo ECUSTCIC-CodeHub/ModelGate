@@ -1,5 +1,4 @@
 import {
-  extractThinkingText,
   normalizeChatMessages,
   normalizedPartsToChatContent,
   type JsonRecord,
@@ -137,14 +136,6 @@ function normalizeResponsesInstructions(messages: NormalizedMessage[], instructi
 function normalizeChatMessageRole(role: string) {
   if (role === "developer") return "system";
   return role;
-}
-
-function chatReasoningFields(role: string, reasoningText: string): JsonRecord {
-  if (role !== "assistant" || !reasoningText) return {};
-  return {
-    reasoning: reasoningText,
-    reasoning_content: reasoningText,
-  };
 }
 
 function isAssistantThinkingOnly(message: NormalizedMessage) {
@@ -345,15 +336,12 @@ export function chatCompletionsRequestFromIntermediate(request: IntermediateRequ
     : sourceMessages;
   const messages = messagesForChat.map((message) => {
     const role = normalizeChatMessageRole(message.role);
-    const reasoningText = extractThinkingText(message.content);
-    const preserveThinking = request.sourceProtocol === "anthropic_messages" && message.role === "assistant";
     if (message.role === "assistant" && message.tool_calls && message.tool_calls.length > 0) {
       return {
         role: "assistant",
-        content: normalizedPartsToChatContent(message.content, {
-          preserveThinking,
-        }),
-        ...chatReasoningFields("assistant", reasoningText),
+        // 请求方向永不回带 thinking 块与非标准 reasoning 字段：严格 Chat 上游会以 400 拒绝，
+        // 只有响应方向在客户端显式请求推理时才保留
+        content: normalizedPartsToChatContent(message.content, { preserveThinking: false }),
         tool_calls: message.tool_calls.map((toolCall) => ({
           id: toolCall.id,
           type: "function",
@@ -375,10 +363,7 @@ export function chatCompletionsRequestFromIntermediate(request: IntermediateRequ
 
     return {
       role,
-      content: normalizedPartsToChatContent(message.content, {
-        preserveThinking,
-      }),
-      ...chatReasoningFields(message.role, reasoningText),
+      content: normalizedPartsToChatContent(message.content, { preserveThinking: false }),
     };
   });
 
