@@ -138,8 +138,14 @@ export function anthropicRequestFromIntermediate(request: IntermediateRequest): 
       next.stop_sequences = Array.isArray(stop) ? stop : [stop];
     }
   }
-  if (request.tools !== undefined) next.tools = toolsFromIntermediateForAnthropic(request.tools);
-  if (request.tool_choice !== undefined) next.tool_choice = toolChoiceFromIntermediateForAnthropic(request.tool_choice);
+  // Anthropic 缺省 tool_choice 为 auto，仅省略该字段模型仍可自行调用工具；
+  // tool_choice=none 时连同 tools 列表一起省略，才能等效禁用工具调用、保持客户端意图
+  const toolsDisabled = request.tool_choice === "none";
+  if (request.tools !== undefined && !toolsDisabled) next.tools = toolsFromIntermediateForAnthropic(request.tools);
+  if (request.tool_choice !== undefined) {
+    const toolChoice = toolChoiceFromIntermediateForAnthropic(request.tool_choice);
+    if (toolChoice !== undefined) next.tool_choice = toolChoice;
+  }
   if (request.metadata !== undefined) { next.metadata = request.metadata; next.store = true; }
 
   return next;

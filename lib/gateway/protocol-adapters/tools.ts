@@ -206,6 +206,7 @@ export function toolChoiceFromIntermediateForAnthropic(toolChoice: IntermediateT
   if (!toolChoice) return undefined;
   if (toolChoice === "auto") return { type: "auto" };
   if (toolChoice === "required") return { type: "any" };
-  if (toolChoice === "none") return { type: "none" };
+  // Anthropic 没有 none 这一取值，下发它会直接被拒；由调用方一并省略 tools 列表来等效禁用
+  if (toolChoice === "none") return undefined;
   return { type: "tool", name: toolChoice.name };
 }

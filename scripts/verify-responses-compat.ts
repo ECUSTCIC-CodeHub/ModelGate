@@ -896,6 +896,34 @@ test("responses -> anthropic 流可从 completed 快照补发工具调用", asyn
   assert.ok(output.includes("input_json_delta"), "应补发工具参数增量");
 });
 
+test("chat tool_choice=none 转 anthropic 时省略 tools 列表", () => {
+  const base = {
+    model: "gpt-4o",
+    messages: [{ role: "user", content: "hi" }],
+    tools: [{ type: "function", function: { name: "search", description: "s", parameters: { type: "object", properties: {} } } }],
+    stream: false,
+  };
+
+  const none = chatCompletionsGatewayAdapter.adaptRequestBody(
+    { ...base, tool_choice: "none" },
+    anthropicGatewayAdapter,
+    "claude-3-5-sonnet",
+  );
+  assert.equal(none.tools, undefined, "none 应省略 tools 列表");
+  assert.equal(none.tool_choice, undefined, "none 不应下发 Anthropic 没有的 tool_choice 取值");
+
+  const auto = chatCompletionsGatewayAdapter.adaptRequestBody(
+    { ...base, tool_choice: "auto" },
+    anthropicGatewayAdapter,
+    "claude-3-5-sonnet",
+  );
+  assert.ok(auto.tools, "auto 应保留下发 tools 列表");
+  assert.deepEqual(auto.tool_choice, { type: "auto" });
+
+  const noChoice = chatCompletionsGatewayAdapter.adaptRequestBody(base, anthropicGatewayAdapter, "claude-3-5-sonnet");
+  assert.ok(noChoice.tools, "未指定 tool_choice 时应保留下发 tools 列表");
+});
+
 test("responses -> chat_completions stream can emit completed snapshot tool call", async () => {
   const upstream = makeUpstreamResponsesStream([
     'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_test","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[]}}\n\n',
