@@ -111,6 +111,7 @@ export function useChannelAdmin() {
   });
 
   const modelsDev = useModelsDevPrefill({
+    channelModels,
     setChannelModels,
     defaultModelIsPublic,
   });

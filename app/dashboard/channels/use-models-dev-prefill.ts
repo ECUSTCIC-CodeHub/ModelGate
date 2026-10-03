@@ -14,11 +14,13 @@ import {
 import { initialModelDraft, type ChannelModelDraft, type Protocol } from "./channel-model";
 
 type UseModelsDevPrefillArgs = {
+  channelModels: ChannelModelDraft[];
   setChannelModels: Dispatch<SetStateAction<ChannelModelDraft[]>>;
   defaultModelIsPublic: boolean;
 };
 
 export function useModelsDevPrefill({
+  channelModels,
   setChannelModels,
   defaultModelIsPublic,
 }: UseModelsDevPrefillArgs) {
@@ -66,14 +68,12 @@ export function useModelsDevPrefill({
       return;
     }
 
-    // 去重与构造放在 setter 之外，才能拿到「实际新增数」用于提示；
-    // 否则全部被去重挡掉时会提示已加入 N 个，用户以为成功实则什么都没发生
-    let addedCount = 0;
-    setChannelModels((prev) => {
-      const filledFromPrev = prev.filter((model) => model.alias.trim() || model.real_model.trim());
-      const existing = new Set(filledFromPrev.map((model) => model.real_model.trim()).filter(Boolean));
+    // 去重与构造在 setter 之外完成，才能拿到「实际新增数」用于提示。
+    // 不在 setter 内累加：updater 可能被 React 多次调用（StrictMode）或延后执行，
+    // 用外部变量承接其结果不可靠，提示会出现与实际不符
+    function buildAdditions(filled: ChannelModelDraft[]): ChannelModelDraft[] {
+      const existing = new Set(filled.map((model) => model.real_model.trim()).filter(Boolean));
       const additions: ChannelModelDraft[] = [];
-
       for (const { provider, modelId } of selection) {
         if (existing.has(modelId)) continue;
         existing.add(modelId);
@@ -91,14 +91,24 @@ export function useModelsDevPrefill({
           supported_protocols: [protocol],
         });
       }
+      return additions;
+    }
 
-      addedCount = additions.length;
-      if (additions.length === 0) return prev;
-      const merged = [...filledFromPrev, ...additions];
-      return merged.length > 0
-        ? merged
-        : [{ ...initialModelDraft, is_public: defaultModelIsPublic, upstream_protocol: fallbackProtocols[0] ?? "chat_completions" }];
-    });
+    const currentFilled = channelModels.filter((model) => model.alias.trim() || model.real_model.trim());
+    const plannedAdditions = buildAdditions(currentFilled);
+    const addedCount = plannedAdditions.length;
+
+    if (addedCount > 0) {
+      setChannelModels((prev) => {
+        const filledFromPrev = prev.filter((model) => model.alias.trim() || model.real_model.trim());
+        const additions = buildAdditions(filledFromPrev);
+        if (additions.length === 0) return prev;
+        const merged = [...filledFromPrev, ...additions];
+        return merged.length > 0
+          ? merged
+          : [{ ...initialModelDraft, is_public: defaultModelIsPublic, upstream_protocol: fallbackProtocols[0] ?? "chat_completions" }];
+      });
+    }
 
     setPickerOpen(false);
     if (addedCount === 0) {
