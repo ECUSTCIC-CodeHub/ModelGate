@@ -40,6 +40,38 @@ const jwksCache = new Map<string, { keys: OidcJwk[]; expiresAt: number }>();
 // 无共享 Promise 则每个请求各发一次 JWKS 请求（实测 20 并发 -> 20 次）
 const jwksInFlight = new Map<string, Promise<OidcJwk[]>>();
 const DISCOVERY_TTL_MS = 5 * 60 * 1000;
+// 强制刷新的负缓存：任意私钥 + 随机 kid 的无效 token 都能触发强制刷新
+// （串行约 1 请求/token，in-flight 去重只对同瞬并发有效）。同一 kid 刷新后
+// 仍找不到时，短时间内不再重复刷新，把这个放大系数压到与 kid 数量无关
+const jwksRefreshBackoff = new Map<string, number>();
+const JWKS_REFRESH_BACKOFF_MS = 30_000;
+const JWKS_REFRESH_BACKOFF_MAX_ENTRIES = 1000;
+
+// 随机 kid 会让退避表无界增长：写入前先清过期项，仍超上限则整体清空
+// （清空只弱化退避、不影响正确性）
+function markJwksRefreshBackoff(key: string) {
+  const now = Date.now();
+  if (jwksRefreshBackoff.size >= JWKS_REFRESH_BACKOFF_MAX_ENTRIES) {
+    for (const [k, until] of jwksRefreshBackoff) {
+      if (until <= now) jwksRefreshBackoff.delete(k);
+    }
+    if (jwksRefreshBackoff.size >= JWKS_REFRESH_BACKOFF_MAX_ENTRIES) jwksRefreshBackoff.clear();
+  }
+  jwksRefreshBackoff.set(key, now + JWKS_REFRESH_BACKOFF_MS);
+}
+
+// 按 kid 退避挡不住「每次换一个随机 kid」的伪造请求（实测 50 个不同 kid
+// 仍产生 50 次刷新），故再按 URI 限流：窗口内只允许一次强制刷新。
+// 真实轮换后第一次刷新即可拿到新密钥，故不影响正常登录
+const jwksForcedRefreshAt = new Map<string, number>();
+const JWKS_FORCED_REFRESH_MIN_INTERVAL_MS = 10_000;
+
+function canForceJwksRefresh(jwksUri: string): boolean {
+  const last = jwksForcedRefreshAt.get(jwksUri) ?? 0;
+  if (Date.now() - last < JWKS_FORCED_REFRESH_MIN_INTERVAL_MS) return false;
+  jwksForcedRefreshAt.set(jwksUri, Date.now());
+  return true;
+}
 const OIDC_ID_TOKEN_ALGORITHMS: Algorithm[] = ["RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512"];
 
 export async function getOidcConfig() {
@@ -260,15 +292,27 @@ async function resolveJwkForHeader(
   } catch (error) {
     if (!header.kid) throw error;
 
+    // 该 kid 刚刷新过且仍找不到，说明它是伪造的：退避期内不再发请求
+    const backoffKey = `${jwksUri}\u0000${header.kid}`;
+    if ((jwksRefreshBackoff.get(backoffKey) ?? 0) > Date.now()) throw error;
+    // 同一 URI 的强制刷新限流，挡住「每次换一个随机 kid」的伪造请求
+    if (!canForceJwksRefresh(jwksUri)) throw error;
+
     let refreshed: OidcJwk[];
     try {
       refreshed = await fetchJwks(jwksUri, true);
     } catch (refreshError) {
-      const reason = refreshError instanceof Error ? refreshError.message : String(refreshError);
+      markJwksRefreshBackoff(backoffKey);
       const original = error instanceof Error ? error.message : String(error);
-      throw new Error(`${original}（JWKS 刷新失败：${reason}）`);
+      const reason = refreshError instanceof Error ? refreshError.message : String(refreshError);
+      throw new Error(`${original}（JWKS 刷新失败：${reason}）`, { cause: refreshError });
     }
-    return selectJwk(refreshed, header, alg);
+    try {
+      return selectJwk(refreshed, header, alg);
+    } catch (retryError) {
+      markJwksRefreshBackoff(backoffKey);
+      throw retryError;
+    }
   }
 }
 
