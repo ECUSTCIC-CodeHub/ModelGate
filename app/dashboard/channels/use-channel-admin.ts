@@ -23,6 +23,7 @@ import {
 import { useChannelRecords } from "./use-channel-records";
 import { useModelCleanup } from "./use-model-cleanup";
 import { useUpstreamModelPicker } from "./use-upstream-model-picker";
+import { useModelsDevPrefill } from "./use-models-dev-prefill";
 
 function expiresAtToInputValue(value: unknown): string {
   // 后端返回 UTC（带 Z 的 ISO 或裸 UTC 串），datetime-local 控件需要浏览器本地墙上时间。
@@ -106,6 +107,11 @@ export function useChannelAdmin() {
     channelModels,
     setChannelModels,
     getDefaultProtocols: () => channelForm.supported_protocols,
+    defaultModelIsPublic,
+  });
+
+  const modelsDev = useModelsDevPrefill({
+    setChannelModels,
     defaultModelIsPublic,
   });
 
@@ -739,6 +745,12 @@ export function useChannelAdmin() {
     modelDrawerOpen,
     modelEditingId,
     modelForm,
+    modelsDevApplyPrefill: modelsDev.applyPrefill,
+    modelsDevLoading: modelsDev.loading,
+    modelsDevOpenPicker: modelsDev.openPicker,
+    modelsDevPickerOpen: modelsDev.pickerOpen,
+    modelsDevProviders: modelsDev.providers,
+    modelsDevSetPickerOpen: modelsDev.setPickerOpen,
     openCreateChannel,
     openCreateModel,
     openEditChannel,

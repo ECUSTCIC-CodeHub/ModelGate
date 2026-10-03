@@ -41,6 +41,8 @@ export function ChannelDrawer({
   form,
   modelDrafts,
   probingModels,
+  onOpenModelsDev,
+  modelsDevLoading = false,
   periodQuotaEnabled,
   canViewApiKey = true,
   canManagePrivacy = true,
@@ -61,6 +63,8 @@ export function ChannelDrawer({
   form: ChannelForm;
   modelDrafts: ChannelModelDraft[];
   probingModels: boolean;
+  onOpenModelsDev?: () => void;
+  modelsDevLoading?: boolean;
   periodQuotaEnabled: boolean;
   canViewApiKey?: boolean;
   canManagePrivacy?: boolean;
@@ -306,6 +310,8 @@ export function ChannelDrawer({
               onRemoveDraft={onRemoveModelDraft}
               onUpdateDraft={onUpdateModelDraft}
               onImportDrafts={onImportModelDrafts}
+              onOpenModelsDev={onOpenModelsDev}
+              modelsDevLoading={modelsDevLoading}
               showAdvancedFields={false}
             />
           ) : null}

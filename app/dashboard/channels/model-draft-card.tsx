@@ -27,6 +27,8 @@ export function ModelDraftCard({
   onRemoveDraft,
   onUpdateDraft,
   onImportDrafts,
+  onOpenModelsDev,
+  modelsDevLoading = false,
   showAdvancedFields = true,
 }: {
   title: string;
@@ -40,6 +42,8 @@ export function ModelDraftCard({
   onRemoveDraft: (index: number) => void;
   onUpdateDraft: (index: number, patch: Partial<ChannelModelDraft>) => void;
   onImportDrafts: (names: string[], protocols: Protocol[]) => void;
+  onOpenModelsDev?: () => void;
+  modelsDevLoading?: boolean;
   showAdvancedFields?: boolean;
 }) {
   const [importOpen, setImportOpen] = useState(false);
@@ -73,6 +77,11 @@ export function ModelDraftCard({
             {probing ? "拉取中…" : "从上游拉取"}
           </Button>
           <Button type="button" variant="outline" size="sm" onClick={() => setImportOpen((prev) => !prev)}>批量导入</Button>
+          {onOpenModelsDev ? (
+            <Button type="button" variant="outline" size="sm" disabled={modelsDevLoading} onClick={onOpenModelsDev}>
+              {modelsDevLoading ? "拉取中…" : "从 models.dev 预填充"}
+            </Button>
+          ) : null}
           <Button type="button" variant="outline" size="sm" onClick={() => onAddDraft(protocols)}>添加模型</Button>
         </div>
       </div>

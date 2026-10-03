@@ -10,6 +10,7 @@ import { ChannelDrawer } from "./channel-drawer";
 import { ChannelTable } from "./channel-table";
 import { ModelDrawer } from "./model-drawer";
 import { ModelTable } from "./model-table";
+import { ModelsDevPicker } from "./models-dev-picker";
 import { StaleModelDialog } from "./stale-model-dialog";
 import { UpstreamModelPicker } from "./upstream-model-picker";
 import { useChannelAdmin } from "./use-channel-admin";
@@ -96,6 +97,15 @@ export default function AdminChannelsPage() {
         onRemoveModelDraft={admin.removeChannelModelDraft}
         onUpdateModelDraft={admin.updateChannelModelDraft}
         onImportModelDrafts={admin.importChannelModelDrafts}
+        onOpenModelsDev={() => void admin.modelsDevOpenPicker()}
+        modelsDevLoading={admin.modelsDevLoading}
+      />
+
+      <ModelsDevPicker
+        open={admin.modelsDevPickerOpen}
+        providers={admin.modelsDevProviders}
+        onOpenChange={admin.modelsDevSetPickerOpen}
+        onConfirm={(selection) => admin.modelsDevApplyPrefill(selection, admin.channelForm.supported_protocols)}
       />
 
       <ModelDrawer

@@ -18,6 +18,12 @@ import { countTextTokens } from "../lib/gateway/tokenizer";
 import { redactUrlCredentials } from "../lib/shared/redact";
 import { injectModelSystemPrompt } from "../lib/gateway/model-system-prompt";
 import { parseCustomHeaders, validateCustomHeaders } from "../lib/gateway/custom-headers";
+import {
+  parseModelsDevCatalog,
+  protocolForModel,
+  protocolsFromNpm,
+  filterModelsDevProviders,
+} from "../app/dashboard/channels/models-dev-catalog";
 
 let passed = 0;
 let failed = 0;
@@ -1067,6 +1073,57 @@ test("自定义 Header 托管字段覆盖且脏数据逐键过滤", () => {
   for (const raw of [123, null, "", "{not json", "[1,2]", '"abc"', "42"]) {
     assert.deepEqual(parseCustomHeaders(raw), {}, `坏输入应退回空对象: ${JSON.stringify(raw)}`);
   }
+});
+
+test("models.dev 目录的协议推导", () => {
+  assert.deepEqual(protocolsFromNpm("@ai-sdk/anthropic"), ["anthropic_messages"]);
+  assert.deepEqual(protocolsFromNpm("@ai-sdk/openai"), ["chat_completions", "responses"]);
+  assert.deepEqual(protocolsFromNpm("@ai-sdk/google"), ["chat_completions"]);
+  assert.deepEqual(protocolsFromNpm(undefined), ["chat_completions"]);
+
+  assert.equal(protocolForModel({ id: "text-embedding-3-small" }, ["chat_completions"]), "embeddings");
+  assert.equal(protocolForModel({ id: "dall-e-3", modalities: { output: ["image"] } }, ["chat_completions"]), "other");
+  assert.equal(protocolForModel({ id: "gpt-4o", modalities: { output: ["text"] } }, ["chat_completions"]), "chat_completions");
+  assert.equal(protocolForModel({ id: "claude-3" }, ["anthropic_messages"]), "anthropic_messages");
+  // embedding 优先于模态判断
+  assert.equal(protocolForModel({ id: "text-embedding-3", modalities: { output: ["image"] } }, ["chat_completions"]), "embeddings");
+
+  const providers = parseModelsDevCatalog({
+    openai: {
+      npm: "@ai-sdk/openai",
+      models: {
+        "gpt-4o": { id: "gpt-4o", name: "GPT-4o", modalities: { output: ["text"] } },
+        "gpt-image-1": { id: "gpt-image-1", name: "gpt-image-1", modalities: { output: ["image"] } },
+      },
+    },
+    broken: { npm: "@ai-sdk/openai", models: "nope" },
+  });
+  assert.equal(providers.length, 1);
+  // 输出模态必须被带出，否则图片模型会被误判为 chat_completions
+  assert.deepEqual(providers[0].models.find((m) => m.id === "gpt-image-1")?.outputModalities, ["image"]);
+  assert.equal(
+    protocolForModel(
+      { id: "gpt-image-1", modalities: { output: providers[0].models.find((m) => m.id === "gpt-image-1")?.outputModalities } },
+      providers[0].protocols,
+    ),
+    "other",
+  );
+
+  for (const raw of [null, [], "abc", 7, {}]) {
+    assert.deepEqual(parseModelsDevCatalog(raw), [], `脏输入应返回空数组: ${JSON.stringify(raw)}`);
+  }
+});
+
+test("models.dev 目录的搜索过滤", () => {
+  const providers = parseModelsDevCatalog({
+    anthropic: { npm: "@ai-sdk/anthropic", models: { "claude-opus": { id: "claude-opus" } } },
+    openai: { npm: "@ai-sdk/openai", models: { "gpt-4o": { id: "gpt-4o" }, "o3": { id: "o3" } } },
+  });
+  assert.deepEqual(filterModelsDevProviders(providers, "gpt-4o").map((p) => p.providerId), ["openai"]);
+  assert.equal(filterModelsDevProviders(providers, "gpt-4o")[0]?.models.length, 1);
+  assert.deepEqual(filterModelsDevProviders(providers, "CLAUDE").map((p) => p.providerId), ["anthropic"]);
+  assert.deepEqual(filterModelsDevProviders(providers, "zzz"), []);
+  assert.equal(filterModelsDevProviders(providers, "  ").length, 2);
 });
 
 test("无参工具补空 object schema 而不是省略 parameters", () => {
