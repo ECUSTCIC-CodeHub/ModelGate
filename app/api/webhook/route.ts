@@ -177,12 +177,16 @@ export async function POST(request: Request) {
   }
   const rawBytes = rawResult.bytes;
 
-  let payload: WebhookPayload;
+  let parsedBody: unknown;
   try {
-    payload = JSON.parse(new TextDecoder().decode(rawBytes));
+    parsedBody = JSON.parse(new TextDecoder().decode(rawBytes));
   } catch {
     return jsonError("请求体格式错误", 400);
   }
+  if (typeof parsedBody !== "object" || parsedBody === null) {
+    return jsonError("请求体格式错误", 400);
+  }
+  const payload = parsedBody as WebhookPayload;
 
   if (
     typeof payload.id !== "string" ||
@@ -190,7 +194,8 @@ export async function POST(request: Request) {
     typeof payload.type !== "string" ||
     typeof payload.timestamp !== "string" ||
     (payload.app_id !== undefined && typeof payload.app_id !== "string") ||
-    payload.data === undefined ||
+    typeof payload.data !== "object" ||
+    payload.data === null ||
     !payload.id ||
     !payload.signature ||
     !payload.type ||
