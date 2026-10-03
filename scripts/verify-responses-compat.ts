@@ -943,6 +943,9 @@ test("URL 脱敏不残留嵌套与连写 URL 的凭据", () => {
     ["https://example.com?next=mailto:a@b.com", "https://example.com?next=mailto:a@b.com"],
     ["https://host/v1/user@example.com", "https://host/v1/user@example.com"],
     ["mailto:a@b.com", "mailto:a@b.com"],
+    // zod 的 url() 放行任意长 scheme，长度上限会让这类 base_url 的凭据落进日志
+    [`${"x".repeat(64)}://user:pass@host`, `${"x".repeat(64)}://host`],
+    [`${"x".repeat(256)}://user:pass@host/path`, `${"x".repeat(256)}://host/path`],
   ];
 
   for (const [input, expected] of cases) {
@@ -983,6 +986,20 @@ test("tool_result 的兄弟 tool_use 挂到 assistant 消息而不是原 role", 
     input.filter((item) => item.type === "function_call").map((item) => item.name),
     ["search", "fetch"],
   );
+});
+
+test("无 tool_result 的 tool_use 同样挂到 assistant 消息", () => {
+  const body = {
+    model: "claude-3",
+    messages: [{ role: "user", content: [{ type: "tool_use", id: "t1", name: "search", input: { q: "a" } }] }],
+    max_tokens: 100,
+    stream: false,
+  };
+
+  const chat = anthropicGatewayAdapter.adaptRequestBody(body as never, chatCompletionsGatewayAdapter, "gpt-4o");
+  const chatMessages = (chat as { messages: Array<{ role: string; content: unknown; tool_calls?: Array<{ function: { name: string } }> }> }).messages;
+  assert.ok(!chatMessages.some((m) => m.role === "user" && !m.tool_calls), "user 消息不应携带 tool_calls");
+  assert.deepEqual(chatMessages.flatMap((m) => (m.tool_calls ?? []).map((tc) => tc.function.name)), ["search"]);
 });
 
 test("无参工具补空 object schema 而不是省略 parameters", () => {

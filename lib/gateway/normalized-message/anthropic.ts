@@ -86,11 +86,15 @@ export function normalizeAnthropicMessages(messages: unknown, system?: unknown):
       continue;
     }
 
-    normalized.push({
-      role,
-      content: textParts,
-      tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
-    });
+    // 工具调用只能挂在 assistant 消息上：Chat 构建器仅在 assistant 上输出 tool_calls，
+    // 留在 user 消息里会被静默丢弃并留下一条空 user 消息
+    if (toolCalls.length > 0) {
+      if (textParts.length > 0) normalized.push({ role, content: textParts });
+      normalized.push({ role: "assistant", content: [], tool_calls: toolCalls });
+      continue;
+    }
+
+    normalized.push({ role, content: textParts });
   }
 
   return normalized;
