@@ -144,6 +144,20 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 
 路径鉴权仅用于不支持请求头鉴权的 Ollama 客户端；常规客户端仍建议使用请求头。
 
+### Token 失效
+
+用户修改密码或被管理员重置密码时，该用户已签发的全部访问令牌与刷新令牌立即失效，后续使用返回 401，需要重新登录。未改密的用户不受影响。
+
+### 请求体大小限制
+
+非网关接口（`/api/auth/*`、`/api/admin/*`、`/api/user/*`、`/api/dashboard/*`、`/api/webhook` 等）请求体上限为 4MB，超限返回 413：
+
+```json
+{ "error": "请求体过大" }
+```
+
+网关端点（`/api/v1/*`、`/api/ollama/*`、`/api/messages`）不受该限制约束，由各自的协议适配器处理。
+
 ---
 
 ## 认证接口
@@ -174,6 +188,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 ```
 
 > 登录限流：每个 IP + 用户名组合每分钟最多 5 次尝试，超出返回 429。
+>
+> 用户名不存在时同样会执行一次等价的密码比较，因此无法通过响应耗时区分用户名是否存在。
 
 ---
 
@@ -205,7 +221,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | 字段 | 类型 | 规则 |
 |:---|:---|:---|
 | username | string | 仅英文字母和数字，3-32 位 |
-| password | string | 最少 8 位 |
+| password | string | 8-72 位 |
 
 ---
 
@@ -266,7 +282,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 
 ### POST /api/auth/change-password
 
-修改当前用户密码。仅在密码登录开启时可用；仅 OIDC 登录时返回 400。
+修改当前用户密码。仅在密码登录开启时可用；仅 OIDC 登录时返回 400。与 `PUT /api/dashboard/profile/password` 等价。
 
 **认证:** 用户
 
@@ -274,14 +290,17 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 ```json
 {
   "current_password": "旧密码",
-  "new_password": "新密码至少8位"
+  "new_password": "新密码，8-72 位"
 }
 ```
 
 **响应 (200):**
 ```json
-{ "ok": true, "message": "密码修改成功。" }
+{ "ok": true, "message": "密码修改成功，其他已登录会话需要重新登录。" }
 ```
+
+> 复用登录限流：每个 IP + 用户名组合每分钟最多 5 次尝试，超出返回 429。
+> 改密成功后该用户此前签发的全部令牌立即失效。
 
 ---
 
@@ -313,6 +332,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 
 **响应:** 302 重定向到 OIDC 提供商授权地址。
 
+> 必须在系统设置中配置 `public_base_url`，`redirect_uri` 固定为该值加 `/api/auth/oidc/callback`，不再根据请求 Host 推导。未配置时返回 400 与「OIDC 登录需要先在设置中配置对外服务域名 public_base_url」。
+
 > 精简版返回 404。
 
 ### GET /api/auth/oidc/callback
@@ -326,6 +347,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 **响应:** 登录成功后 302 重定向到 `/dashboard`（或 authorize 传入的 `next`），需要绑定或注册时按配置重定向到对应页面。
 
 > 回调会通过 OIDC Discovery 的 `jwks_uri` 验证 ID Token 签名，并校验 issuer、audience、nonce 与过期时间。
+
+> `redirect_uri` 同样取自 `public_base_url`；未配置时重定向回登录页并提示配置缺失。
 
 > 精简版返回 404。
 
@@ -466,7 +489,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | oidc_auto_register | boolean | 是否允许 OIDC 首次登录自动创建用户 |
 | oidc_button_text | string | 登录页 OIDC 按钮文案 |
 | oidc_group_expire_days | int | OIDC 身份组有效期（天，0-3650，默认 30）；通过 Claim 匹配到的身份组在该有效期内未重新登录确认则自动过期并回退默认组，设为 0 关闭自动过期 |
-| public_base_url | string | 对外服务域名 |
+| public_base_url | string | 对外服务域名（须为 `http(s)://` 绝对地址）；启用 OIDC 登录前必须配置，用于生成固定的 `redirect_uri` |
 | announcement_content | string | 系统公告内容（支持 Markdown，最长 5000 字符）；已弃用，公告内容现通过公告管理接口维护 |
 | announcement_display_count | number | 首页公告展示条数（1-20，默认 3） |
 | access_guide_notice | string | 接入指南通知内容（支持 Markdown，最长 10000 字符） |
@@ -815,6 +838,16 @@ HMAC-SHA256(webhook_secret, id + "." + type + "." + timestamp + JSON(data))
 
 其中 `JSON(data)` 为 `data` 字段的紧凑 JSON 序列化。`timestamp` 允许 5 分钟偏差（防重放）。
 
+若载荷携带非空 `app_id`，验签会先按上述不含 `app_id` 的字符串计算，失败后再按含 `app_id` 的变体计算：
+
+```
+HMAC-SHA256(webhook_secret, id + "." + type + "." + timestamp + "." + app_id + JSON(data))
+```
+
+`app_id` 非空且与当前 OIDC 客户端 ID（`oidc_client_id`）不一致时，事件被忽略并返回「app_id 与当前 OIDC 客户端不匹配，已忽略」；`app_id` 为空时不做该校验。
+
+**幂等去重:** 验签通过后按事件 ID 去重。同一 `id` 在 15 分钟窗口内重复投递直接返回 200 与「重复的事件已处理，已忽略。」，不再重复应用状态变更。该去重为进程内存实现，多实例部署下仅保证单实例内幂等；处理失败时会释放去重标记，发送方以同一 `id` 重试仍可生效。
+
 **请求体:**
 ```json
 {
@@ -865,12 +898,25 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
 }
 ```
 
+重复事件同样返回 200：
+
+```json
+{
+  "message": "重复的事件已处理，已忽略。",
+  "event_id": "361e4176-1ee8-4c34-a209-b90f7110b1be"
+}
+```
+
+`app_id` 与当前 OIDC 客户端 ID 不一致时返回 200，`message` 为「app_id 与当前 OIDC 客户端不匹配，已忽略」。
+
 **错误响应:**
 
 | 状态码 | 说明 |
 |:---|:---|
 | 400 | 请求体格式错误或缺少必要字段 |
 | 403 | 签名验证失败或时间戳过期 |
+| 413 | 请求体超过 4MB |
+| 500 | 事件处理失败（此时会释放去重标记，可用同一 `id` 重试） |
 | 503 | Webhook 密钥未配置 |
 
 ---
@@ -963,7 +1009,7 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
 | 字段 | 类型 | 必填 | 默认值 | 说明 |
 |:---|:---|:---|:---|:---|
 | username | string | 是 | | 仅英文字母和数字，3-32 位 |
-| password | string | 是 | | 最少 8 位 |
+| password | string | 是 | | 8-72 位 |
 | email | string | 否 | null | 邮箱，用于 OIDC 账号关联 |
 | role | string | 否 | user | `admin` / `user` |
 | group_id | int/null | 否 | 默认组 | 用户组 ID |
@@ -1016,6 +1062,8 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
 | `"period"` | 仅重置周期用量 |
 
 `group_locked` 含义见 POST 创建接口字段表；开启后该用户的身份组不受 OIDC 同步与过期回收影响。
+
+> `new_password` 为 8-72 位；提交后该用户的全部令牌立即失效。
 
 > 精简版忽略 `quota_period`、`period_quota_tokens`、`period_quota_requests`；`reset_usage: "period"` 返回 404，`reset_usage: "all"` 仅重置总量用量。
 
@@ -1290,7 +1338,9 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 **认证:** 管理员
 
-> 渠道 `api_key` 默认对所有管理员可见。当渠道开启 `api_key_private`（仅添加人可见）后，`api_key` 仅对添加人（`created_by` 对应的管理员）可见：非添加人调用时 `api_key` 返回 `null` 且 `can_view_api_key: false`，添加人调用时返回真实值且 `can_view_api_key: true`。响应还包含 `can_manage_api_key_privacy`，表示当前管理员是否有权切换该渠道的「仅添加人可见」开关（无添加人渠道任意管理员可切换，有添加人渠道仅添加人可切换）。
+> 渠道 `api_key` 默认对所有管理员可见。当渠道开启 `api_key_private`（仅添加人可见）后，`api_key` 仅对添加人（`created_by` 对应的管理员）可见：非添加人调用时 `api_key` 返回 `null` 且 `can_view_api_key: false`，添加人调用时返回脱敏值且 `can_view_api_key: true`。响应还包含 `can_manage_api_key_privacy`，表示当前管理员是否有权切换该渠道的「仅添加人可见」开关（无添加人渠道任意管理员可切换，有添加人渠道仅添加人可切换）。
+
+> `api_key` 一律以脱敏形式返回（`****` 加末四位；密钥长度不超过 8 位时全部为 `****`；未配置时为空字符串），不再返回明文。
 
 **响应 (200):**
 ```json
@@ -1300,7 +1350,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
       "id": 1,
       "name": "openai-main",
       "base_url": "https://api.openai.com/v1",
-      "api_key": "sk-...",
+      "api_key": "****abcd",
       "supported_protocols": "[\"chat_completions\"]",
       "user_agent": "OpenAI/JS 6.39.0",
       "enabled": 1,
@@ -1420,7 +1470,9 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 **认证:** 管理员
 
-> `api_key_private` 控制渠道「仅添加人可见」：由添加人或无添加人渠道的任意管理员切换；无添加人渠道被首次开启时，操作者自动成为添加人（`created_by`）。开启后仅添加人可查看与修改 `api_key`，非添加人提交的 `api_key` 会被忽略并保留原值；非添加人提交的 `api_key_private` 变更也会被忽略。响应中 `api_key` 遵循「仅添加人可见」规则，并附带 `can_view_api_key`、`can_manage_api_key_privacy`。
+> `api_key_private` 控制渠道「仅添加人可见」：由添加人或无添加人渠道的任意管理员切换；无添加人渠道被首次开启时，操作者自动成为添加人（`created_by`）。开启后仅添加人可查看与修改 `api_key`，非添加人提交的 `api_key` 会被忽略并保留原值；非添加人提交的 `api_key_private` 变更也会被忽略。响应中 `api_key` 遵循「仅添加人可见」规则（可见时返回脱敏值），并附带 `can_view_api_key`、`can_manage_api_key_privacy`。
+
+> `api_key` 省略、传空字符串或回传列表返回的脱敏值时，均视为未修改并保留服务端原密钥；只有提交新的明文值才会覆盖。
 
 
 **请求体:** 与 POST 相同，所有字段均为可选。`force_include_usage` 变更对后续新请求立即生效，不影响已建立的连接。`proxy_url` 传空字符串可清空代理配置。
@@ -1470,6 +1522,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 **请求体:**
 ```json
 {
+  "channel_id": 1,
   "base_url": "https://api.openai.com/v1",
   "api_key": "sk-xxx",
   "user_agent": "OpenAI/JS 6.39.0"
@@ -1478,10 +1531,13 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 | 字段 | 类型 | 必填 | 默认值 | 说明 |
 |:---|:---|:---|:---|:---|
-| base_url | string | 是 | | 上游 API 地址 |
-| api_key | string | 是 | | 上游 API Key |
+| channel_id | number | 否 | | 已保存渠道的 ID。传入时未显式提供的字段沿用该渠道已存配置，`api_key` 可回传列表返回的脱敏值 |
+| base_url | string | 否 | | 上游 API 地址；`channel_id` 与 `base_url` 至少提供一个 |
+| api_key | string | 否 | "" | 上游 API Key；传空或回传脱敏值时沿用渠道已存密钥 |
 | user_agent | string | 否 | "" | 探测模型列表时使用的 User-Agent |
 | proxy_url | string | 否 | "" | 探测模型列表时使用的 HTTP(S) 代理地址，留空表示直连 |
+
+> 推荐在编辑已有渠道时只传 `channel_id`，避免把明文密钥回传到接口。`channel_id` 不存在返回 404。
 
 **响应 (200):**
 ```json
@@ -2349,6 +2405,22 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 修改密码（等同于 `/api/auth/change-password`）。仅在密码登录开启时可用；仅 OIDC 登录时返回 400。
 
 **认证:** 用户
+
+**请求体:**
+```json
+{
+  "current_password": "旧密码",
+  "new_password": "新密码，8-72 位"
+}
+```
+
+**响应 (200):**
+```json
+{ "ok": true, "message": "密码修改成功，其他已登录会话需要重新登录。" }
+```
+
+> 复用登录限流：每个 IP + 用户名组合每分钟最多 5 次尝试，超出返回 429。
+> 改密成功后该用户此前签发的全部令牌立即失效。
 
 ### GET /api/dashboard/personal-settings
 
