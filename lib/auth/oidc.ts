@@ -81,14 +81,16 @@ function canForceJwksRefresh(jwksUri: string): boolean {
 
 // jwksCache 同样按 uri 增长，统一设上限
 function setBoundedJwksCache(jwksUri: string, keys: OidcJwk[]) {
-  evictToLimit(jwksCache, (v, now) => v.expiresAt <= now, jwksUri);
-  jwksCache.set(jwksUri, { keys, expiresAt: Date.now() + DISCOVERY_TTL_MS });
+  const now = Date.now();
+  evictToLimit(jwksCache, (v, at) => v.expiresAt <= at, jwksUri, now);
+  jwksCache.set(jwksUri, { keys, expiresAt: now + DISCOVERY_TTL_MS });
 }
 
 // 超限时先淘汰失效项，仍超则逐出最早插入项（Map 保持插入序）。
 // 不整体 clear()：那会连管理员自己 issuer 的缓存一起清掉，使其下一次请求
-// 必须重新拉取；逐出最早项可保证常用项留存
-function evictToLimit<K, V>(map: Map<K, V>, isStale: (value: V, now: number) => boolean, keep: K, now = Date.now()) {
+// 必须重新拉取；逐出最早项可保证常用项留存。
+// now 由调用方传入，使「谁读了时钟」在调用点可见，且同批次淘汰共用同一时间基准
+function evictToLimit<K, V>(map: Map<K, V>, isStale: (value: V, now: number) => boolean, keep: K, now: number) {
   if (map.size < JWKS_CACHE_MAX_ENTRIES || map.has(keep)) return;
   // 目标留出 1 个空位给即将写入的新项。
   // 两个阶段分开：先扫完全表清失效项，不足再按插入序逐出，不能在第一阶段提前返回
