@@ -126,8 +126,7 @@ function parseTags(raw: string): string[] {
   }
 }
 
-async function handleRoleChange(data: RoleChangeData, appId: string | undefined): Promise<string> {
-  if (!(await isTrustedAppId(appId))) return APP_ID_MISMATCH_MESSAGE;
+async function handleRoleChange(data: RoleChangeData): Promise<string> {
   const user = await findUser(data.user_id);
   if (!user) return "用户不存在，已忽略";
 
@@ -136,8 +135,7 @@ async function handleRoleChange(data: RoleChangeData, appId: string | undefined)
   return `已将用户分组更新为 ${groupId ?? "默认"}`;
 }
 
-async function handleTagsChanged(data: TagsChangedData, appId: string | undefined): Promise<string> {
-  if (!(await isTrustedAppId(appId))) return APP_ID_MISMATCH_MESSAGE;
+async function handleTagsChanged(data: TagsChangedData): Promise<string> {
   const user = await findUser(data.user_id);
   if (!user) return "用户不存在，已忽略";
 
@@ -171,8 +169,13 @@ export async function POST(request: Request) {
     return jsonError("Webhook 未配置密钥", 503);
   }
 
-  const rawBytes = await readBodyCapped(request, API_BODY_LIMIT_BYTES);
-  if (rawBytes === null) return jsonError("请求体过大", 413);
+  const rawResult = await readBodyCapped(request, API_BODY_LIMIT_BYTES);
+  if (!rawResult.ok) {
+    return rawResult.reason === "too_large"
+      ? jsonError("请求体过大", 413)
+      : jsonError("请求体读取失败", 400);
+  }
+  const rawBytes = rawResult.bytes;
 
   let payload: WebhookPayload;
   try {
@@ -181,8 +184,18 @@ export async function POST(request: Request) {
     return jsonError("请求体格式错误", 400);
   }
 
-  if (!payload.signature || !payload.type || !payload.timestamp) {
-    return jsonError("缺少 signature、type 或 timestamp 字段", 400);
+  if (
+    typeof payload.id !== "string" ||
+    typeof payload.signature !== "string" ||
+    typeof payload.type !== "string" ||
+    typeof payload.timestamp !== "string" ||
+    (payload.app_id !== undefined && typeof payload.app_id !== "string") ||
+    !payload.id ||
+    !payload.signature ||
+    !payload.type ||
+    !payload.timestamp
+  ) {
+    return jsonError("缺少 id、signature、type 或 timestamp 字段", 400);
   }
 
   const ts = Math.floor(new Date(payload.timestamp).getTime() / 1000);
@@ -195,6 +208,12 @@ export async function POST(request: Request) {
     return jsonError("签名验证失败", 403);
   }
 
+  // app_id 校验必须早于去重：来源不匹配时事件被忽略，若先占用去重标记，
+  // 配置修好后用同一 id 重试会被当成重复投递而不再生效。
+  if (!(await isTrustedAppId(payload.app_id))) {
+    return jsonOk({ message: APP_ID_MISMATCH_MESSAGE, event_id: payload.id });
+  }
+
   if (isWebhookEventDuplicate(payload.id)) {
     return jsonOk({ message: "重复的事件已处理，已忽略。", event_id: payload.id });
   }
@@ -203,10 +222,10 @@ export async function POST(request: Request) {
   try {
     switch (payload.type) {
       case "user.role_change":
-        result = await handleRoleChange(payload.data as RoleChangeData, payload.app_id);
+        result = await handleRoleChange(payload.data as RoleChangeData);
         break;
       case "user.tags_changed":
-        result = await handleTagsChanged(payload.data as TagsChangedData, payload.app_id);
+        result = await handleTagsChanged(payload.data as TagsChangedData);
         break;
       case "user.identity_change":
         result = `身份变更通知已接收 (field: ${(payload.data as IdentityChangeData).field})`;
