@@ -4,11 +4,12 @@ import type {
   StreamUsage,
 } from "@/lib/gateway/protocol-adapters/streaming/common";
 import { parseChatChunkEvent } from "@/lib/gateway/protocol-adapters/streaming/chat-completions-events";
+import { createSseFrameReader } from "@/lib/shared/sse-frames";
 
 export function decodeChatCompletionsStream(upstream: ReadableStream<Uint8Array>): IntermediateStreamResult {
   const reader = upstream.getReader();
   const decoder = new TextDecoder();
-  let buffer = "";
+  const frameReader = createSseFrameReader();
   let completionText = "";
   let reasoningText = "";
   let firstTokenAt: number | null = null;
@@ -27,21 +28,11 @@ export function decodeChatCompletionsStream(upstream: ReadableStream<Uint8Array>
           if (done) break;
           if (!value) continue;
 
-          buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
-          while (true) {
-            const idx = buffer.indexOf("\n\n");
-            if (idx === -1) break;
-            const rawEvent = buffer.slice(0, idx);
-            buffer = buffer.slice(idx + 2);
-            const dataLines = rawEvent
-              .split("\n")
-              .filter((line) => line.startsWith("data:"))
-              .map((line) => line.slice(5).trimStart());
-            if (dataLines.length === 0) continue;
-            const data = dataLines.join("\n");
-            if (data === "[DONE]") continue;
+          for (const frame of frameReader.push(decoder.decode(value, { stream: true }))) {
+            if (!frame.hasData) continue;
+            if (frame.data === "[DONE]") continue;
 
-            const parsed = parseChatChunkEvent(data);
+            const parsed = parseChatChunkEvent(frame.data);
             if (!started) {
               started = true;
               controller.enqueue({ type: "start", id: parsed.id, model: parsed.model, created: parsed.created });

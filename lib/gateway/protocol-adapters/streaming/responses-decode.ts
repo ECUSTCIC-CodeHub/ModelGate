@@ -10,6 +10,7 @@ import {
   parseResponsesSseEvent,
   usageFromResponses,
 } from "@/lib/gateway/protocol-adapters/streaming/responses-events";
+import { createSseFrameReader } from "@/lib/shared/sse-frames";
 
 type ResponsesToolState = {
   index: number;
@@ -22,7 +23,7 @@ type ResponsesToolState = {
 export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): IntermediateStreamResult {
   const reader = upstream.getReader();
   const decoder = new TextDecoder();
-  let buffer = "";
+  const frameReader = createSseFrameReader();
   let responseId = `resp_${crypto.randomUUID().replace(/-/g, "")}`;
   let model: string | null = null;
   let created = Math.floor(Date.now() / 1000);
@@ -227,28 +228,11 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
           if (done) break;
           if (!value) continue;
 
-          buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
-          while (true) {
-            const idx = buffer.indexOf("\n\n");
-            if (idx === -1) break;
-            const rawEvent = buffer.slice(0, idx);
-            buffer = buffer.slice(idx + 2);
+          for (const frame of frameReader.push(decoder.decode(value, { stream: true }))) {
+            if (!frame.hasData) continue;
+            if (frame.data === "[DONE]") continue;
 
-            let eventName = "";
-            const dataLines: string[] = [];
-            for (const line of rawEvent.split("\n")) {
-              if (line.startsWith("event:")) {
-                eventName = line.slice(6).trim();
-              } else if (line.startsWith("data:")) {
-                dataLines.push(line.slice(5).trimStart());
-              }
-            }
-
-            if (dataLines.length === 0) continue;
-            const data = dataLines.join("\n");
-            if (data === "[DONE]") continue;
-
-            const event = parseResponsesSseEvent(eventName, data);
+            const event = parseResponsesSseEvent(frame.event, frame.data);
             const payload = asRecord(event.data);
             const response = responseFromPayload(payload);
             updateResponseMetadata(response);

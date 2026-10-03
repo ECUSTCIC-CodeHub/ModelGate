@@ -1,3 +1,5 @@
+import { createSseFrameReader } from "@/lib/shared/sse-frames";
+
 export type ToolCallState = {
   index: number;
   id: string;
@@ -108,9 +110,9 @@ export function createPassthroughStream(
 ): StreamTransformResult {
   const reader = upstream.getReader();
   const decoder = new TextDecoder();
+  const frameReader = createSseFrameReader();
   let completionText = "";
   let reasoningText = "";
-  let buffer = "";
   let firstTokenAt: number | null = null;
   let usage: StreamUsage | null = null;
   const markFirstToken = () => {
@@ -126,26 +128,12 @@ export function createPassthroughStream(
           if (!value) continue;
 
           controller.enqueue(value);
-          const decoded = decoder.decode(value, { stream: true });
-          buffer += decoded.replace(/\r\n/g, "\n");
-
-          while (true) {
-            const idx = buffer.indexOf("\n\n");
-            if (idx === -1) break;
-            const rawEvent = buffer.slice(0, idx);
-            buffer = buffer.slice(idx + 2);
-            let eventName = "";
-            const dataLines: string[] = [];
-            for (const line of rawEvent.split("\n")) {
-              if (line.startsWith("event:")) eventName = line.slice(6).trim();
-              if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
-            }
-            if (dataLines.length === 0) continue;
-            const data = dataLines.join("\n");
-            if (data === "[DONE]") continue;
+          for (const frame of frameReader.push(decoder.decode(value, { stream: true }))) {
+            if (!frame.hasData) continue;
+            if (frame.data === "[DONE]") continue;
 
             try {
-              const tracked = trackEvent(eventName, data);
+              const tracked = trackEvent(frame.event, frame.data);
               if (tracked?.usage) {
                 usage = mergeUsage(usage, tracked.usage);
               }

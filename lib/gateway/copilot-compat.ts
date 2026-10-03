@@ -1,5 +1,6 @@
 import { asArray, asRecord, type JsonRecord } from "@/lib/gateway/normalized-message";
 import type { StreamTransformResult } from "@/lib/gateway/protocol-adapters/streaming";
+import { createSseFrameReader, parseSseFrame, type SseFrame } from "@/lib/shared/sse-frames";
 
 type ToolNamePolicy = {
   allowedNames: Set<string>;
@@ -498,24 +499,20 @@ function normalizeCopilotChatChunk(
 }
 
 function normalizeSseEvent(
-  rawEvent: string,
+  frame: SseFrame,
   states: Map<number, StreamChoiceState>,
   policy: ToolNamePolicy,
 ) {
-  const dataLines = rawEvent
-    .split("\n")
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.slice(5).trimStart());
-  if (dataLines.length === 0) return `${rawEvent}\n\n`;
+  if (!frame.hasData) return `${frame.raw}\n\n`;
 
-  const data = dataLines.join("\n");
+  const data = frame.data;
   if (data === "[DONE]") return "data: [DONE]\n\n";
 
   try {
     const parsed = JSON.parse(data) as JsonRecord;
     return `data: ${JSON.stringify(normalizeCopilotChatChunk(parsed, states, policy))}\n\n`;
   } catch {
-    return `${rawEvent}\n\n`;
+    return `${frame.raw}\n\n`;
   }
 }
 
@@ -528,7 +525,7 @@ export function applyCopilotCompatibilityToChatStream(
   const encoder = new TextEncoder();
   const states = new Map<number, StreamChoiceState>();
   const policy = createToolNamePolicy(requestBody);
-  let buffer = "";
+  const frameReader = createSseFrameReader();
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -538,18 +535,14 @@ export function applyCopilotCompatibilityToChatStream(
           if (done) break;
           if (!value) continue;
 
-          buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
-          while (true) {
-            const index = buffer.indexOf("\n\n");
-            if (index === -1) break;
-            const rawEvent = buffer.slice(0, index);
-            buffer = buffer.slice(index + 2);
-            controller.enqueue(encoder.encode(normalizeSseEvent(rawEvent, states, policy)));
+          for (const frame of frameReader.push(decoder.decode(value, { stream: true }))) {
+            controller.enqueue(encoder.encode(normalizeSseEvent(frame, states, policy)));
           }
         }
 
-        if (buffer.trim()) {
-          controller.enqueue(encoder.encode(normalizeSseEvent(buffer, states, policy)));
+        const leftover = frameReader.pending();
+        if (leftover.trim()) {
+          controller.enqueue(encoder.encode(normalizeSseEvent(parseSseFrame(leftover), states, policy)));
         }
         controller.close();
       } catch (error) {

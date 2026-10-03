@@ -6,11 +6,12 @@ import {
 } from "@/lib/gateway/protocol-adapters/streaming/common";
 import { parseAnthropicSseEvent } from "@/lib/gateway/protocol-adapters/streaming/anthropic-events";
 import { usageFromAnthropic } from "@/lib/gateway/protocol-adapters/usage";
+import { createSseFrameReader } from "@/lib/shared/sse-frames";
 
 export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Array>): IntermediateStreamResult {
   const reader = upstream.getReader();
   const decoder = new TextDecoder();
-  let buffer = "";
+  const frameReader = createSseFrameReader();
   let completionText = "";
   let reasoningText = "";
   let firstTokenAt: number | null = null;
@@ -43,22 +44,10 @@ export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Arra
           if (done) break;
           if (!value) continue;
 
-          buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
-          while (true) {
-            const idx = buffer.indexOf("\n\n");
-            if (idx === -1) break;
-            const rawEvent = buffer.slice(0, idx);
-            buffer = buffer.slice(idx + 2);
-            const lines = rawEvent.split("\n");
-            let eventName = "";
-            const dataLines: string[] = [];
-            for (const line of lines) {
-              if (line.startsWith("event:")) eventName = line.slice(6).trim();
-              if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
-            }
-            if (dataLines.length === 0) continue;
+          for (const frame of frameReader.push(decoder.decode(value, { stream: true }))) {
+            if (!frame.hasData) continue;
 
-            const event = parseAnthropicSseEvent(eventName, dataLines.join("\n"));
+            const event = parseAnthropicSseEvent(frame.event, frame.data);
             const payload = asRecord(event.data);
 
             if (event.event === "message_start") {
