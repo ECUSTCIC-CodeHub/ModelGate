@@ -54,10 +54,12 @@ export async function fetchUpstreamModelIds(params: UpstreamModelListParams): Pr
       {
         headers: {
           ...customHeaders,
-          Authorization: `Bearer ${apiKey}`,
+          // 托管键必须全小写：自定义键保留原样大小写，JS 对象里 "Accept" 与 "accept"
+          // 是两个不同的键，交给 Headers 合并时会变成 "text/evil, application/json" 而不是覆盖
+          authorization: `Bearer ${apiKey}`,
           "x-api-key": apiKey,
-          Accept: "application/json",
-          ...(userAgent ? { "User-Agent": userAgent } : {}),
+          accept: "application/json",
+          ...(userAgent ? { "user-agent": userAgent } : {}),
         },
         signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
       },

@@ -17,6 +17,7 @@ import {
 import { countTextTokens } from "../lib/gateway/tokenizer";
 import { redactUrlCredentials } from "../lib/shared/redact";
 import { injectModelSystemPrompt } from "../lib/gateway/model-system-prompt";
+import { parseCustomHeaders, validateCustomHeaders } from "../lib/gateway/custom-headers";
 
 let passed = 0;
 let failed = 0;
@@ -1034,6 +1035,30 @@ test("模型级系统提示词按协议注入且不修改原始请求", () => {
   const snapshot = JSON.stringify(original);
   injectModelSystemPrompt(original, "chat_completions", "SYS");
   assert.equal(JSON.stringify(original), snapshot, "不得原地修改原始请求");
+});
+
+test("自定义 Header 托管字段覆盖且脏数据逐键过滤", () => {
+  // 托管键必须全小写：JS 对象里 "Accept" 与自定义的 "accept" 是两个键，
+  // 交给 Headers 会合并成 "text/evil, application/json" 而不是覆盖
+  const custom = parseCustomHeaders(JSON.stringify({ accept: "text/evil" }));
+  const managed = new Headers({ ...custom, accept: "application/json" });
+  assert.equal(managed.get("accept"), "application/json");
+  assert.equal(new Headers({ accept: "text/evil", Accept: "application/json" }).get("accept"), "text/evil, application/json");
+
+  for (const value of ["ok\nX-Injected: pwned", "ok\r\nX", "ok\u0000evil", "ok\u007fevil"]) {
+    assert.equal(validateCustomHeaders({ "X-Test": value }).ok, false, `控制字符应被拒绝: ${JSON.stringify(value)}`);
+  }
+  assert.equal(validateCustomHeaders({ "X-Test": "ok\tvalue" }).ok, true, "制表符应放行");
+
+  // 脏数据里混入黑名单键时，其余合法项仍应生效
+  const dirty = parseCustomHeaders(
+    JSON.stringify({ "x-good": "keep", authorization: "Bearer leak", "x-bad": "a\nb" }),
+  );
+  assert.deepEqual(dirty, { "x-good": "keep" });
+
+  for (const raw of [123, null, "", "{not json", "[1,2]", '"abc"', "42"]) {
+    assert.deepEqual(parseCustomHeaders(raw), {}, `坏输入应退回空对象: ${JSON.stringify(raw)}`);
+  }
 });
 
 test("无参工具补空 object schema 而不是省略 parameters", () => {

@@ -30,6 +30,9 @@ export const CUSTOM_HEADER_VALUE_MAX_LENGTH = 2048;
 // HTTP token 允许的字符集合（RFC 9110）
 const HEADER_NAME_PATTERN = /^[a-zA-Z0-9!#$%&'*+\-.^_`|~]+$/;
 
+// 除可打印 ASCII 与制表符外的控制字符（含 CR/LF/NUL）
+const CONTROL_CHAR_PATTERN = /[\u0000-\u0008\u000a-\u001f\u007f]/;
+
 export type CustomHeaders = Record<string, string>;
 
 export type CustomHeadersResult =
@@ -74,22 +77,36 @@ export function validateCustomHeaders(value: unknown): CustomHeadersResult {
     if (trimmedValue.length > CUSTOM_HEADER_VALUE_MAX_LENGTH) {
       return { ok: false, error: `自定义 Header ${name} 的值超过 ${CUSTOM_HEADER_VALUE_MAX_LENGTH} 字符` };
     }
+    // 值里的换行会破坏「每行一条」的编辑形态，使抽屉无法再保存该渠道；
+    // 同时 Headers.set 会直接抛错，故在此拦下并给出明确文案
+    if (CONTROL_CHAR_PATTERN.test(trimmedValue)) {
+      return { ok: false, error: `自定义 Header ${name} 的值不能包含换行或控制字符` };
+    }
     headers[name] = trimmedValue;
   }
 
   return { ok: true, headers };
 }
 
-// 存储为 JSON 字符串，读回时容错：历史数据或手工改坏的值都退回空对象而不是抛错
+// 存储为 JSON 字符串，读回时容错：历史数据或手工改坏的值都不抛错。
+// 逐键过滤而不是整份丢弃：脏数据里混入一个黑名单键时，其余合法项仍应继续生效
 export function parseCustomHeaders(raw: unknown): CustomHeaders {
   if (typeof raw !== "string" || raw.trim() === "") return {};
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    const result = validateCustomHeaders(parsed);
-    return result.ok ? result.headers : {};
+    parsed = JSON.parse(raw);
   } catch {
     return {};
   }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+
+  const headers: CustomHeaders = {};
+  for (const [rawName, rawValue] of Object.entries(parsed as Record<string, unknown>)) {
+    if (typeof rawValue !== "string") continue;
+    const result = validateCustomHeaders({ [rawName]: rawValue });
+    if (result.ok) Object.assign(headers, result.headers);
+  }
+  return headers;
 }
 
 export function stringifyCustomHeaders(headers: CustomHeaders): string {

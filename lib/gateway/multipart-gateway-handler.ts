@@ -12,6 +12,7 @@ import { selectModelRoute, findUaDenyMatchForAlias, resolveModelFallbackAlias } 
 import { resolveClientIp } from "@/lib/core/client-ip";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { resolveTriState } from "@/lib/gateway/user-preferences";
+import { parseCustomHeaders } from "@/lib/gateway/custom-headers";
 import { isFeatureEnabled } from "@/lib/core/features";
 import { findMatchingRedeemBalance } from "@/lib/services/redeem-codes";
 import { checkUserAgentRestrictions, parseUaRestrictions } from "@/lib/gateway/ua-restrictions";
@@ -277,14 +278,18 @@ export async function handleMultipartGatewayRequest(request: Request) {
 
     let upstream: Response;
     try {
+      // 自定义 Header 先落位，其后的托管字段（含 multipart 自动生成的 Content-Type）覆盖同名键；
+      // 该入口此前漏注入，配置了自定义 Header 的渠道在此路径会静默失效
+      const upstreamHeaders = new Headers(
+        parseCustomHeaders(route.channel.custom_headers),
+      );
+      if (route.channel.api_key?.trim()) {
+        upstreamHeaders.set("authorization", `Bearer ${route.channel.api_key.trim()}`);
+      }
+      upstreamHeaders.set("user-agent", clientUserAgent ?? "OpenAI/JS 6.39.0");
       upstream = await fetch(upstreamUrl, {
         method: "POST",
-        headers: {
-          ...(route.channel.api_key?.trim()
-            ? { authorization: `Bearer ${route.channel.api_key.trim()}` }
-            : {}),
-          "user-agent": clientUserAgent ?? "OpenAI/JS 6.39.0",
-        },
+        headers: upstreamHeaders,
         body: upstreamFormData,
         signal: controller.signal,
       });
