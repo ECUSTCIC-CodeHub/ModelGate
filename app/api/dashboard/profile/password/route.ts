@@ -1,18 +1,18 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { MAX_PASSWORD_LENGTH, comparePassword, hashPassword } from "@/lib/auth/auth";
+import { comparePassword, hashPassword } from "@/lib/auth/auth";
 import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { ensureWebUser } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
-import { friendlyCredentialPayloadError } from "@/lib/auth/validation";
+import { friendlyCredentialPayloadError, passwordSchema } from "@/lib/auth/validation";
 import { getAuthStatus } from "@/lib/auth/auth-status";
 import { checkLoginRateLimit } from "@/lib/auth/login-ratelimit";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 
 const schema = z.object({
   current_password: z.string().min(1),
-  new_password: z.string().min(8).max(MAX_PASSWORD_LENGTH),
+  new_password: passwordSchema(),
 });
 
 export async function PUT(request: Request) {

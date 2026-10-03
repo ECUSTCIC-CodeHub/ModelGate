@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { MAX_PASSWORD_LENGTH, hashPassword } from "@/lib/auth/auth";
+import { hashPassword } from "@/lib/auth/auth";
 import { gatewayDb } from "@/lib/core/db";
 import { modelGateFeatures, requireFeature } from "@/lib/core/features";
 import { ensureAdmin } from "@/lib/auth/guards";
@@ -9,7 +9,7 @@ import { jsonError, jsonOk } from "@/lib/core/http";
 import { listExistingModelAliases, parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
 import { softDeleteUser } from "@/lib/services/soft-delete-service";
 import { USERNAME_SCHEMA } from "@/lib/auth/username";
-import { friendlyCredentialPayloadError } from "@/lib/auth/validation";
+import { friendlyCredentialPayloadError, passwordSchema } from "@/lib/auth/validation";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 
 const updateSchema = z.object({
@@ -28,7 +28,7 @@ const updateSchema = z.object({
   period_quota_requests: z.number().int().min(-1).nullable().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
   note: z.string().max(500).nullable().optional(),
-  new_password: z.string().min(8).max(MAX_PASSWORD_LENGTH).optional(),
+  new_password: passwordSchema().optional(),
   reset_usage: z.enum(["all", "total", "period"]).optional(),
   group_locked: z.boolean().optional(),
 });

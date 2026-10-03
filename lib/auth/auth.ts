@@ -124,8 +124,6 @@ export function verifyOidcPendingToken(token: string): OidcPendingPayload | null
   }
 }
 
-export const MAX_PASSWORD_LENGTH = 72;
-
 const DUMMY_PASSWORD_HASH = "$2b$10$V8LDGEnmRI3Z/xWT9oKMj.Q2OLhfCWWqfUAIXAKpiyD2HEFfz/EKu";
 
 export async function hashPassword(password: string) {
