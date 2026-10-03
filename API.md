@@ -55,7 +55,7 @@ MySQL 模式下启动时自动建表和初始化默认数据。两种驱动共�
 
 ### 日志保留
 
-网关每次请求都会写入 `logs` 表，按保留天数自动清理旧日志，避免表无限膨胀。保留天数在「系统设置 → 日志保留」中配置（设置键 `log_retention_days`），默认 0 表示不清理；设为正数按天数自动清理（合法范围 0-3650）。
+网关每次请求都会写入 `logs` 表，按保留天数自动清理旧日志，避免表无限膨胀。保留天数在「系统设置 → 日志保留」中配置（设置键 `log_retention_days`），默认 0 表示不清理；设为正数按天数自动清理（合法范围 0-3650）。是否启用**定时**自动清理由独立开关 `log_auto_cleanup_enabled` 控制（默认关闭）：关闭时即使设置了保留天数也不会自动删除，只能通过「立即清理」手动触发。开启该开关时若保留天数为 0，设置接口返回 400「开启定时清理前需先设置保留天数」；校验的是**合并后**的值，因此同一次请求里同时提交 `log_retention_days=7` 与 `log_auto_cleanup_enabled=true` 是合法的。
 
 公告邮件发送会在 `email_send_log` 表逐封记录发送成败（用于失败补发），该表复用同一个 `log_retention_days` 保留策略自动清理，避免长期运行实例数据库膨胀。注意：超过保留期的失败记录会被自动删除，之后无法再经「重发失败邮件」补发，因此请将日志保留天数设置得不小于预计处理失败邮件的间隔。清理任务与 `logs` 表共用同一调度（启动 1 分钟后首清、每 6 小时一次、分批删除）。
 
@@ -462,6 +462,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "cors_enabled": false,
   "ua_restrictions": "[]",
   "log_retention_days": 0,
+  "log_auto_cleanup_enabled": 0,
   "request_size_limit_enabled": true,
   "theme_color": "#00518f",
   "feedback_url": "https://cnb.cool/{repo}/-/issues/new/choose",
@@ -512,6 +513,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | repo_name | string | CNB 仓库路径（最长 200 字符），如 `ecustcic/ModelGate`；当 `feedback_url` 为空时，自动生成 `https://cnb.cool/<repo_name>/-/issues/new/choose` |
 | ua_restrictions | string | 全站 User-Agent 限制规则 JSON 数组，留空或 `[]` 表示不限制（完整版功能，最长 20000 字符） |
 | log_retention_days | number | 请求日志（`logs`）与邮件发送日志（`email_send_log`）的保留天数，0 表示不清理（0-3650）；超过保留期的失败邮件记录会被自动删除，无法再经「重发失败邮件」补发 |
+| log_auto_cleanup_enabled | boolean | 是否启用**定时**自动清理，默认 `false`。关闭时保留天数不生效，只能用「立即清理」手动触发。设为 `true` 时合并后的保留天数必须大于 0，否则返回 400 |
 | request_size_limit_enabled | boolean | 是否限制网关推理接口的请求体大小，默认 true。开启时上限 50MB，超限返回 413；关闭后不限制。该键默认不落库，首次保存后才写入 |
 | model_status_light_1_hours | int | 模型列表成功率状态灯配置项 1 的统计时长（小时，1-168，默认 1） |
 | model_status_light_2_hours | int | 模型列表成功率状态灯配置项 2 的统计时长（小时，1-168，默认 2） |
@@ -1563,6 +1565,53 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 ```json
 { "data": ["gpt-4-turbo", "gpt-3.5-turbo"] }
 ```
+
+### POST /api/admin/logs/cleanup
+
+立即按保留天数手动清理日志，不等待定时任务。删除 `logs` 与 `email_send_log` 两张表中超过保留期的记录。
+
+**认证:** 管理员
+
+> 与定时任务的差别：本接口**不受** `log_auto_cleanup_enabled` 开关限制，用于「设了天数但只想手动清理」的场景。
+>
+> 删除采用与定时任务相同的分批策略（每批 5000 条、批次间让出 400ms），避免长事务阻塞网关。
+>
+> 超过保留期的失败邮件记录被删除后无法再经「重发失败邮件」补发。
+
+**请求体:**
+
+留空使用设置中的保留天数：
+
+```json
+{}
+```
+
+显式指定天数：
+
+```json
+{ "days": 30 }
+```
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|:---|:---|:---|:---|:---|
+| days | int | 否 | 设置中的 `log_retention_days` | 保留天数，合法范围 **1-3650**。**显式传 0 会被拒绝**（0 的语义是「不清理」，误传会删空整表）。省略时回落到设置值；若设置值也为 0 或超出范围，返回 400 并提示需显式传值 |
+
+**响应示例:**
+
+```json
+{
+  "message": "已清理 1234 条日志。",
+  "data": { "deleted": 1234, "days": 30 }
+}
+```
+
+`days` 回显本次实际生效的天数，`deleted` 为 `logs` 表删除行数（不含 `email_send_log`）。
+
+**错误响应:**
+
+- `400`：`days` 不在 1-3650 范围内，或未指定且系统设置的保留天数无效。
+- `413`：请求体过大。
+- `500`：清理过程中数据库报错（不中断网关运行，可重试）。
 
 ### POST /api/admin/channels/:id/prune-models
 

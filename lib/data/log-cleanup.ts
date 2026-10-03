@@ -15,12 +15,17 @@ function clampRetention(raw: number): number {
   return Math.min(Math.trunc(raw), MAX_RETENTION_DAYS);
 }
 
-async function readRetentionDays(db: DatabaseAdapter): Promise<number> {
-  const row = await db.queryOne<{ value: string }>(
-    "SELECT value FROM settings WHERE `key` = ?",
-    ["log_retention_days"],
+async function readCleanupSettings(db: DatabaseAdapter): Promise<{ days: number; enabled: boolean }> {
+  const rows = await db.query<{ key: string; value: string }>(
+    "SELECT `key`, value FROM settings WHERE `key` IN (?, ?)",
+    ["log_retention_days", "log_auto_cleanup_enabled"],
   );
-  return clampRetention(Number(row?.value ?? DEFAULT_RETENTION_DAYS));
+  const map = new Map(rows.map((row) => [row.key, row.value]));
+  return {
+    days: clampRetention(Number(map.get("log_retention_days") ?? DEFAULT_RETENTION_DAYS)),
+    // 未配置时默认关闭自动清理，与设置页默认值一致
+    enabled: map.get("log_auto_cleanup_enabled") === "1",
+  };
 }
 
 function sleep(ms: number) {
@@ -64,8 +69,8 @@ export function startLogRetentionJob(db: DatabaseAdapter) {
     if (running) return;
     running = true;
     try {
-      const days = await readRetentionDays(db);
-      if (days > 0) {
+      const { days, enabled } = await readCleanupSettings(db);
+      if (enabled && days > 0) {
         await pruneOldLogs(db, days);
         await pruneOldEmailLogs(db, days);
       }

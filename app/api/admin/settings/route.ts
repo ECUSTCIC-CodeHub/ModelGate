@@ -50,6 +50,7 @@ const schema = z.object({
   public_security_filing_number: z.string().max(200).optional(),
   ua_restrictions: z.string().max(20000).optional(),
   log_retention_days: z.number().int().min(0).max(3650).optional(),
+  log_auto_cleanup_enabled: z.boolean().optional(),
   theme_color: z.string().regex(/^(|#[0-9a-fA-F]{6})$/, "主题色格式不正确").optional(),
   logo_url: z.string().max(2000).optional(),
   logo_square_url: z.string().max(2000).optional(),
@@ -112,6 +113,16 @@ export async function PUT(request: Request) {
     const normalized = parseModelBrandGroups(parsed.data.model_brand_groups);
     if (normalized.length !== rawGroups.length) {
       return jsonError("品牌组的品牌名与前缀规则不能为空", 400);
+    }
+  }
+
+  // 交叉校验合并后的值：同一次请求里同时设 retention=7 与 enabled=true 应当合法
+  if (parsed.data.log_retention_days !== undefined || parsed.data.log_auto_cleanup_enabled !== undefined) {
+    const current = await getGatewaySettings();
+    const nextDays = parsed.data.log_retention_days ?? current.log_retention_days;
+    const nextEnabled = parsed.data.log_auto_cleanup_enabled ?? current.log_auto_cleanup_enabled === 1;
+    if (nextEnabled && nextDays <= 0) {
+      return jsonError("开启定时清理前需先设置保留天数", 400);
     }
   }
 

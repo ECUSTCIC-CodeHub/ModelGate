@@ -80,6 +80,7 @@ export default function AdminSettingsPage() {
   const [repoName, setRepoName] = useState("");
   const [uaRestrictions, setUaRestrictions] = useState("");
   const [logRetentionDays, setLogRetentionDays] = useState(0);
+  const [logAutoCleanupEnabled, setLogAutoCleanupEnabled] = useState(false);
   const [requestSizeLimitEnabled, setRequestSizeLimitEnabled] = useState(true);
   const [statusLight1Hours, setStatusLight1Hours] = useState(1);
   const [statusLight2Hours, setStatusLight2Hours] = useState(2);
@@ -135,6 +136,7 @@ export default function AdminSettingsPage() {
     if (uaRestrictionsFeatureEnabled) setUaRestrictions(stringValue(settings.ua_restrictions));
     const retentionRaw = Number(settings.log_retention_days);
     setLogRetentionDays(Number.isFinite(retentionRaw) && retentionRaw >= 0 ? Math.min(Math.trunc(retentionRaw), 3650) : 0);
+    setLogAutoCleanupEnabled(settings.log_auto_cleanup_enabled === 1);
     setRequestSizeLimitEnabled(settings.request_size_limit_enabled !== 0);
     setCorsEnabled(settings.cors_enabled === 1);
     setIcpFilingNumber(stringValue(settings.icp_filing_number));
@@ -218,6 +220,7 @@ export default function AdminSettingsPage() {
         ...(webhookFeatureEnabled ? { webhook_secret: webhookSecret } : {}),
         ...(uaRestrictionsFeatureEnabled ? { ua_restrictions: uaRestrictions } : {}),
         log_retention_days: logRetentionDays,
+        log_auto_cleanup_enabled: logAutoCleanupEnabled,
         request_size_limit_enabled: requestSizeLimitEnabled,
         cors_enabled: corsEnabled,
         icp_filing_number: icpFilingNumber,
@@ -446,7 +449,12 @@ export default function AdminSettingsPage() {
               setRedeemCodeEnabled={setRedeemCodeEnabled}
             />
           ) : null}
-          <LogRetentionSettingsCard days={logRetentionDays} setDays={setLogRetentionDays} />
+          <LogRetentionSettingsCard
+            days={logRetentionDays}
+            setDays={setLogRetentionDays}
+            autoCleanupEnabled={logAutoCleanupEnabled}
+            setAutoCleanupEnabled={setLogAutoCleanupEnabled}
+          />
           <RequestSizeLimitSettingsCard
             enabled={requestSizeLimitEnabled}
             setEnabled={setRequestSizeLimitEnabled}

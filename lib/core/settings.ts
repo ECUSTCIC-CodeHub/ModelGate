@@ -34,6 +34,7 @@ export type GatewaySettings = {
   quota_fallback_alias: string;
   ua_restrictions: string;
   log_retention_days: number;
+  log_auto_cleanup_enabled: number;
   oidc_enabled: number;
   oidc_issuer_url: string;
   oidc_client_id: string;
@@ -146,6 +147,7 @@ const GATEWAY_KEYS = [
   "quota_fallback_alias",
   "ua_restrictions",
   "log_retention_days",
+  "log_auto_cleanup_enabled",
   ...OIDC_KEYS,
   "announcement_content",
   "announcement_display_count",
@@ -193,6 +195,7 @@ async function readGatewaySettingsFromDb(): Promise<GatewaySettings> {
     quota_fallback_alias: map.get("quota_fallback_alias") ?? "",
     ua_restrictions: map.get("ua_restrictions") ?? "",
     log_retention_days: retentionDays(map.get("log_retention_days")),
+    log_auto_cleanup_enabled: map.get("log_auto_cleanup_enabled") === "1" ? 1 : 0,
     upstream_retry_max_attempts: positiveInt(
       map.get("upstream_retry_max_attempts"),
       DEFAULTS.upstream_retry_max_attempts,
@@ -272,6 +275,7 @@ export async function setGatewaySettings(input: {
   quota_fallback_alias?: string;
   ua_restrictions?: string;
   log_retention_days?: number;
+  log_auto_cleanup_enabled?: boolean;
   oidc_enabled?: boolean;
   oidc_issuer_url?: string;
   oidc_client_id?: string;
@@ -323,6 +327,7 @@ export async function setGatewaySettings(input: {
   };
 
   if (input.log_retention_days !== undefined) values.log_retention_days = String(Math.max(0, Math.min(3650, Math.trunc(input.log_retention_days))));
+  if (input.log_auto_cleanup_enabled !== undefined) values.log_auto_cleanup_enabled = input.log_auto_cleanup_enabled ? "1" : "0";
   if (input.oidc_enabled !== undefined) values.oidc_enabled = input.oidc_enabled ? "1" : "0";
   if (input.oidc_issuer_url !== undefined) values.oidc_issuer_url = input.oidc_issuer_url.trim();
   if (input.oidc_client_id !== undefined) values.oidc_client_id = input.oidc_client_id.trim();
