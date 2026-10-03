@@ -11,3 +11,15 @@ export async function resolveChannelOwnerId(createdBy: number | null): Promise<n
   );
   return owner?.id ?? null;
 }
+
+// 列表场景一次性解析，避免逐渠道查询
+export async function resolveChannelOwnerIds(createdBys: Array<number | null>): Promise<Set<number>> {
+  const candidates = [...new Set(createdBys.filter((id): id is number => id !== null))];
+  if (candidates.length === 0) return new Set();
+  const placeholders = candidates.map(() => "?").join(", ");
+  const rows = await gatewayDb.query<{ id: number }>(
+    `SELECT id FROM users WHERE id IN (${placeholders}) AND role = 'admin' AND enabled = 1 AND deleted_at IS NULL`,
+    candidates,
+  );
+  return new Set(rows.map((row) => row.id));
+}

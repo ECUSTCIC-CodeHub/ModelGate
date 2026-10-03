@@ -11,6 +11,7 @@ import { toLocalDatetime, validateTimeRestrictions, normalizeTimeRestrictions } 
 import { disableExpiredChannels } from "@/lib/gateway/channel-expiry";
 import { disableExpiredModels } from "@/lib/gateway/model-expiry";
 import { maskApiKey } from "@/lib/shared/redact";
+import { resolveChannelOwnerId, resolveChannelOwnerIds } from "@/lib/services/channel-ownership";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 
 const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
@@ -97,12 +98,17 @@ export async function GET(request: Request) {
   }
 
   const currentUserId = guard.auth.user.id;
+  const ownerIds = await resolveChannelOwnerIds(
+    channels.map((channel) => (channel as { created_by?: number | null }).created_by ?? null),
+  );
   const rows = channels.map((channel) => {
     const createdBy = (channel as { created_by?: number | null }).created_by ?? null;
     const isPrivate = (channel as { api_key_private?: number | null }).api_key_private === 1;
-    const isOwner = createdBy != null && createdBy === currentUserId;
-    const canView = !isPrivate || isOwner;
-    const canManagePrivacy = createdBy == null || isOwner;
+    // 与 [id] 的写入判定保持同一口径：添加人失效的渠道视为无主，任意管理员可接管
+    const ownerId = createdBy !== null && ownerIds.has(createdBy) ? createdBy : null;
+    const isOwner = ownerId !== null && ownerId === currentUserId;
+    const canView = !isPrivate || ownerId === null || isOwner;
+    const canManagePrivacy = ownerId === null || isOwner;
     return {
       ...channel,
       api_key: canView ? maskApiKey(channel.api_key as string | null) : null,
@@ -219,9 +225,10 @@ export async function POST(request: Request) {
 
   const row = await gatewayDb.queryOne("SELECT * FROM channels WHERE id = ? AND deleted_at IS NULL", [channelId]);
   const createdRow = row as { created_by?: number | null; api_key?: string | null; api_key_private?: number | null } | undefined;
-  const createdIsOwner = createdRow?.created_by != null && createdRow.created_by === guard.auth.user.id;
-  const canViewCreated = createdRow?.api_key_private !== 1 || createdIsOwner;
-  const canManageCreated = createdRow?.created_by == null || createdIsOwner;
+  const createdOwnerId = await resolveChannelOwnerId(createdRow?.created_by ?? null);
+  const createdIsOwner = createdOwnerId !== null && createdOwnerId === guard.auth.user.id;
+  const canViewCreated = createdRow?.api_key_private !== 1 || createdOwnerId === null || createdIsOwner;
+  const canManageCreated = createdOwnerId === null || createdIsOwner;
   return jsonOk(
     {
       message: "渠道创建成功。",

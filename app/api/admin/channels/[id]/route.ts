@@ -100,18 +100,20 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const canManagePrivacy = ownerId === null || ownerId === userId;
 
   let nextPrivate = existingPrivate;
-  let nextCreatedBy = ownerId;
+  // ownerId 用于判权限，落库的 created_by 默认保持原值：
+  // 添加人失效不等于要抹掉归属，公共渠道更不该因此被清空 created_by
+  let nextCreatedBy = existingCreatedBy;
   if (parsed.data.api_key_private !== undefined) {
     const desired = parsed.data.api_key_private ? 1 : 0;
     if (desired !== existingPrivate && canManagePrivacy) {
       nextPrivate = desired;
-      if (desired === 1 && nextCreatedBy == null) nextCreatedBy = userId;
+      if (desired === 1 && ownerId == null) nextCreatedBy = userId;
     }
   }
   // 无主的私有渠道由本次修改者接管，避免继续处于无人可维护的状态
-  if (nextPrivate === 1 && nextCreatedBy === null) nextCreatedBy = userId;
+  if (nextPrivate === 1 && ownerId === null) nextCreatedBy = userId;
 
-  const canManageKey = nextPrivate === 0 || nextCreatedBy === userId;
+  const canManageKey = nextPrivate === 0 || ownerId === userId;
 
   // 「仅添加人可见」的渠道若允许他人改上游地址与代理，非添加人可把地址指向自己的服务器，
   // 再由渠道测试或真实流量取出密钥，从而使该开关失效，故这里一并收紧。
@@ -231,9 +233,11 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
   const row = await gatewayDb.queryOne("SELECT * FROM channels WHERE id = ? AND deleted_at IS NULL", [id]);
   const updatedRow = row as { created_by?: number | null; api_key?: string | null; api_key_private?: number | null } | undefined;
-  const updatedIsOwner = updatedRow?.created_by != null && updatedRow.created_by === userId;
-  const canViewUpdated = updatedRow?.api_key_private !== 1 || updatedIsOwner;
-  const canManageUpdated = updatedRow?.created_by == null || updatedIsOwner;
+  // 与本次写入判定同一口径：添加人失效的渠道视为无主，不能对调用方报成「他人私有」
+  const updatedOwnerId = await resolveChannelOwnerId(updatedRow?.created_by ?? null);
+  const updatedIsOwner = updatedOwnerId !== null && updatedOwnerId === userId;
+  const canViewUpdated = updatedRow?.api_key_private !== 1 || updatedOwnerId === null || updatedIsOwner;
+  const canManageUpdated = updatedOwnerId === null || updatedIsOwner;
   return jsonOk({
     data: updatedRow
       ? {
