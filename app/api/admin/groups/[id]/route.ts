@@ -228,7 +228,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
   const { id } = await context.params;
 
   const group = await gatewayDb
-    .queryOne<{ id: number; is_default: number }>("SELECT id, is_default FROM `groups` WHERE id = ? AND deleted_at IS NULL", [id]);
+    .queryOne<{ id: number; is_default: number; name: string }>("SELECT id, is_default, name FROM `groups` WHERE id = ? AND deleted_at IS NULL", [id]);
 
   if (!group) return jsonError("用户组不存在", 404);
   if (group.is_default === 1) return jsonError("不能删除默认用户组", 400);
@@ -240,8 +240,14 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     return jsonError(`该组下仍有 ${userCount.count} 个用户，请先移除或转移用户`, 400);
   }
 
+  // groups.name 有 UNIQUE 约束，且约束不认 deleted_at：软删除后名称仍被占用，
+  // 但查重 SQL 只看 deleted_at IS NULL，会告诉调用方「名称可用」，
+  // 于是重建同名组必然失败（默认组重建失败还会导致启动报错）。
+  // 故软删除时把名称改写为带 id 后缀，释放原名称。
+  // 后缀中的 deletedby 是不含下划线的哨兵串，供 ensureDefaultGroup 幂等判断
+  const releasedName = `${group.name}_deletedby_${group.id}`;
   await gatewayDb
-    .execute("UPDATE `groups` SET enabled = 0, deleted_at = CURRENT_TIMESTAMP WHERE id = ?", [id]);
+    .execute("UPDATE `groups` SET enabled = 0, deleted_at = CURRENT_TIMESTAMP, name = ? WHERE id = ?", [releasedName, id]);
 
   return jsonOk({ ok: true, message: "用户组删除成功。" });
 }

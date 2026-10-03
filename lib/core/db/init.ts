@@ -548,6 +548,21 @@ async function ensureDefaultGroup(db: DatabaseAdapter) {
   );
   if (defaultGroup) return;
 
+  // groups.name 有 UNIQUE 约束且不认 deleted_at：历史脏数据里被软删除的组
+  // 仍占用原名，下面的 INSERT OR IGNORE 会静默不插入，默认组永远建不出来。
+  // 故先把这类占位名称释放掉，让本次修复对已存在的库也能自愈。
+  //
+  // 幂等判断用不含下划线的哨兵串 deletedby：LIKE 的 `_` 是单字符通配符，
+  // 而 `\_` 转义只在 MySQL 默认生效（SQLite 无 ESCAPE 子句时反斜杠是普通字符），
+  // 用 `%\_deleted\_%` 会因两库语义不同而在 SQLite 上恒不匹配、每次启动重复追加后缀
+  const releaseSuffix = "_deletedby_";
+  await db.execute(
+    db.driver === "mysql"
+      ? `UPDATE \`groups\` SET name = CONCAT(name, ?, id) WHERE deleted_at IS NOT NULL AND name NOT LIKE ?`
+      : `UPDATE \`groups\` SET name = name || ? || id WHERE deleted_at IS NOT NULL AND name NOT LIKE ?`,
+    [releaseSuffix, "%deletedby%"],
+  );
+
   if (db.driver === "mysql") {
     await db.exec(`
     INSERT IGNORE INTO \`groups\` (name, description, is_default, qps, rpm, tpm)
