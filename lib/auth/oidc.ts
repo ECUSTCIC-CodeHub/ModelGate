@@ -36,6 +36,9 @@ type OidcJwk = JsonWebKey & {
 
 const discoveryCache = new Map<string, { data: OidcDiscovery; expiresAt: number }>();
 const jwksCache = new Map<string, { keys: OidcJwk[]; expiresAt: number }>();
+// in-flight 去重：kid 未命中的强制刷新会在并发登录时被同时触发，
+// 无共享 Promise 则每个请求各发一次 JWKS 请求（实测 20 并发 -> 20 次）
+const jwksInFlight = new Map<string, Promise<OidcJwk[]>>();
 const DISCOVERY_TTL_MS = 5 * 60 * 1000;
 const OIDC_ID_TOKEN_ALGORITHMS: Algorithm[] = ["RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512"];
 
@@ -190,15 +193,29 @@ async function fetchJwks(jwksUri: string, forceRefresh = false): Promise<OidcJwk
   const cached = jwksCache.get(jwksUri);
   if (!forceRefresh && cached && cached.expiresAt > now) return cached.keys;
 
-  const response = await fetch(jwksUri, { signal: AbortSignal.timeout(10_000) });
-  if (!response.ok) throw new Error(`OIDC JWKS fetch failed: ${response.status}`);
-  const data = await response.json() as { keys?: OidcJwk[] };
-  if (!Array.isArray(data.keys) || data.keys.length === 0) {
-    throw new Error("OIDC JWKS response missing keys");
-  }
+  // 同一 uri 的并发拉取共享一个 Promise：轮换瞬间多个登录会同时走到这里，
+  // 若各自发请求会对 IdP 造成 N 倍瞬时负载
+  const existing = jwksInFlight.get(jwksUri);
+  if (existing) return existing;
 
-  jwksCache.set(jwksUri, { keys: data.keys, expiresAt: now + DISCOVERY_TTL_MS });
-  return data.keys;
+  const pending = (async () => {
+    const response = await fetch(jwksUri, { signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) throw new Error(`OIDC JWKS fetch failed: ${response.status}`);
+    const data = await response.json() as { keys?: OidcJwk[] };
+    if (!Array.isArray(data.keys) || data.keys.length === 0) {
+      throw new Error("OIDC JWKS response missing keys");
+    }
+
+    jwksCache.set(jwksUri, { keys: data.keys, expiresAt: Date.now() + DISCOVERY_TTL_MS });
+    return data.keys;
+  })();
+
+  jwksInFlight.set(jwksUri, pending);
+  try {
+    return await pending;
+  } finally {
+    jwksInFlight.delete(jwksUri);
+  }
 }
 
 function isAllowedIdTokenAlgorithm(alg: unknown): alg is Algorithm {
@@ -226,6 +243,35 @@ function selectJwk(keys: OidcJwk[], header: jwt.JwtHeader, alg: Algorithm) {
   return signingKeys[0];
 }
 
+// kid 未命中时刷新一次重试。
+// 刷新失败不单独抛出：那会把「找不到签名密钥」误报成网络故障。
+// 注意刷新失败时缓存未被污染（写缓存在 fetch 成功之后），故重试用的仍是同一份
+// keys，判定结果不会改变；此处只为让错误同时带上两个原因，便于排查
+// 无 kid 时 selectJwk 不会因 kid 抛「not found」，刷新拿到的是同一份列表、
+// 结果必然相同，故不触发刷新
+async function resolveJwkForHeader(
+  header: jwt.JwtHeader,
+  alg: Algorithm,
+  cachedKeys: OidcJwk[],
+  jwksUri: string,
+): Promise<OidcJwk> {
+  try {
+    return selectJwk(cachedKeys, header, alg);
+  } catch (error) {
+    if (!header.kid) throw error;
+
+    let refreshed: OidcJwk[];
+    try {
+      refreshed = await fetchJwks(jwksUri, true);
+    } catch (refreshError) {
+      const reason = refreshError instanceof Error ? refreshError.message : String(refreshError);
+      const original = error instanceof Error ? error.message : String(error);
+      throw new Error(`${original}（JWKS 刷新失败：${reason}）`);
+    }
+    return selectJwk(refreshed, header, alg);
+  }
+}
+
 async function verifyIdTokenSignature(idToken: string, jwksUri: string): Promise<Record<string, unknown>> {
   if (!jwksUri) throw new Error("OIDC discovery missing jwks_uri");
   const header = decodeJwtHeader(idToken);
@@ -235,15 +281,8 @@ async function verifyIdTokenSignature(idToken: string, jwksUri: string): Promise
 
   // kid 未命中缓存时强制刷新一次：轮换签名密钥后旧密钥立即失效，
   // 若不刷新，缓存 TTL（5 分钟）内所有登录都会报「找不到签名密钥」而失败
-  let keys = await fetchJwks(jwksUri);
-  let jwk: OidcJwk;
-  try {
-    jwk = selectJwk(keys, header, header.alg);
-  } catch (error) {
-    if (!header.kid) throw error;
-    keys = await fetchJwks(jwksUri, true);
-    jwk = selectJwk(keys, header, header.alg);
-  }
+  const keys = await fetchJwks(jwksUri);
+  const jwk = await resolveJwkForHeader(header, header.alg, keys, jwksUri);
   const publicKey = createPublicKey({ key: jwk, format: "jwk" });
   const claims = jwt.verify(idToken, publicKey, { algorithms: [header.alg] });
   if (!claims || typeof claims !== "object" || typeof claims === "string") {
