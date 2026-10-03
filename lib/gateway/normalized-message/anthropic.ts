@@ -72,6 +72,15 @@ export function normalizeAnthropicMessages(messages: unknown, system?: unknown):
           content: result.output ? [{ type: "text", text: result.output }] : [],
         });
       }
+      // tool_result 的兄弟文本/图片块不能随工具消息一起丢弃，
+      // 按原 role 追加为下一条消息，多轮工具对话中的附加说明才不会静默消失
+      if (textParts.length > 0 || toolCalls.length > 0) {
+        normalized.push({
+          role,
+          content: textParts,
+          tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+        });
+      }
       continue;
     }
 
