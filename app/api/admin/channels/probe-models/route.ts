@@ -7,6 +7,7 @@ import { jsonError, jsonOk } from "@/lib/core/http";
 import { fetchUpstreamModelIds } from "@/lib/gateway/upstream-model-list";
 import { isValidProxyUrl } from "@/lib/gateway/upstream-proxy";
 import { isMaskedApiKey, resolveSubmittedApiKey } from "@/lib/shared/redact";
+import { resolveChannelOwnerId } from "@/lib/services/channel-ownership";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 
 const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
@@ -51,8 +52,9 @@ export async function POST(request: Request) {
 
     // 与 PUT /api/admin/channels/:id 相同的边界：非添加人不得借本接口把「仅添加人可见」的密钥
     // 发往自己指定的地址（含 proxy_url 取值），因此这里必须先判定密钥可用性再取库内明文。
-    const isOwner = channel.created_by !== null && channel.created_by === guard.auth.user.id;
-    const canUseStoredKey = channel.api_key_private !== 1 || isOwner;
+    const ownerId = await resolveChannelOwnerId(channel.created_by);
+    const canUseStoredKey =
+      channel.api_key_private !== 1 || ownerId === null || ownerId === guard.auth.user.id;
     const submittedKey = parsed.data.api_key;
     const hasExplicitKey =
       typeof submittedKey === "string" && submittedKey.trim() !== "" && !isMaskedApiKey(submittedKey, channel.api_key);

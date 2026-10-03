@@ -12,6 +12,7 @@ import { disableExpiredChannels } from "@/lib/gateway/channel-expiry";
 import { disableExpiredModels } from "@/lib/gateway/model-expiry";
 import { maskApiKey, resolveSubmittedApiKey } from "@/lib/shared/redact";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
+import { resolveChannelOwnerId } from "@/lib/services/channel-ownership";
 
 const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
 
@@ -94,11 +95,12 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
   const userId = guard.auth.user.id;
   const existingCreatedBy = (existing as { created_by?: number | null }).created_by ?? null;
+  const ownerId = await resolveChannelOwnerId(existingCreatedBy);
   const existingPrivate = (existing as { api_key_private?: number | null }).api_key_private === 1 ? 1 : 0;
-  const canManagePrivacy = existingCreatedBy == null || existingCreatedBy === userId;
+  const canManagePrivacy = ownerId === null || ownerId === userId;
 
   let nextPrivate = existingPrivate;
-  let nextCreatedBy = existingCreatedBy;
+  let nextCreatedBy = ownerId;
   if (parsed.data.api_key_private !== undefined) {
     const desired = parsed.data.api_key_private ? 1 : 0;
     if (desired !== existingPrivate && canManagePrivacy) {
@@ -106,6 +108,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       if (desired === 1 && nextCreatedBy == null) nextCreatedBy = userId;
     }
   }
+  // 无主的私有渠道由本次修改者接管，避免继续处于无人可维护的状态
+  if (nextPrivate === 1 && nextCreatedBy === null) nextCreatedBy = userId;
 
   const canManageKey = nextPrivate === 0 || nextCreatedBy === userId;
 
