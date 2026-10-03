@@ -30,8 +30,10 @@ export const CUSTOM_HEADER_VALUE_MAX_LENGTH = 2048;
 // HTTP token 允许的字符集合（RFC 9110）
 const HEADER_NAME_PATTERN = /^[a-zA-Z0-9!#$%&'*+\-.^_`|~]+$/;
 
-// 除可打印 ASCII 与制表符外的控制字符（含 CR/LF/NUL）
-const CONTROL_CHAR_PATTERN = /[\u0000-\u0008\u000a-\u001f\u007f]/;
+// 除可打印 ASCII 与制表符外的控制字符（含 CR/LF/NUL），以及会被 Headers 当作
+// 非法 ByteString 的 Unicode 行分隔符（U+2028/U+2029）与不可打印的 Latin-1 区间。
+// 这些字符若放行，注入时会抛错并被上游兜成 502
+const CONTROL_CHAR_PATTERN = /[\u0000-\u0008\u000a-\u001f\u007f-\u00a0\u2028\u2029]/;
 
 export type CustomHeaders = Record<string, string>;
 
@@ -103,6 +105,8 @@ export function parseCustomHeaders(raw: unknown): CustomHeaders {
   const headers: CustomHeaders = {};
   for (const [rawName, rawValue] of Object.entries(parsed as Record<string, unknown>)) {
     if (typeof rawValue !== "string") continue;
+    // 逐键调用会绕过整份校验的条数上限，这里显式再兜一次
+    if (Object.keys(headers).length >= CUSTOM_HEADER_MAX_ENTRIES) break;
     const result = validateCustomHeaders({ [rawName]: rawValue });
     if (result.ok) Object.assign(headers, result.headers);
   }

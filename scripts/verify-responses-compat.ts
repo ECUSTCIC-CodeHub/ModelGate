@@ -1045,16 +1045,24 @@ test("自定义 Header 托管字段覆盖且脏数据逐键过滤", () => {
   assert.equal(managed.get("accept"), "application/json");
   assert.equal(new Headers({ accept: "text/evil", Accept: "application/json" }).get("accept"), "text/evil, application/json");
 
-  for (const value of ["ok\nX-Injected: pwned", "ok\r\nX", "ok\u0000evil", "ok\u007fevil"]) {
+  for (const value of ["ok\nX-Injected: pwned", "ok\r\nX", "ok\u0000evil", "ok\u007fevil", "a\u2028b", "a\u2029b", "a\u0085b", "a\u00a0b"]) {
     assert.equal(validateCustomHeaders({ "X-Test": value }).ok, false, `控制字符应被拒绝: ${JSON.stringify(value)}`);
   }
-  assert.equal(validateCustomHeaders({ "X-Test": "ok\tvalue" }).ok, true, "制表符应放行");
+  // 合法值不能被过度收紧
+  for (const value of ["ok\tvalue", "https://api.example.com/v1?x=1", "中文值", "ok-✅", "a,b;c", "100%"]) {
+    assert.equal(validateCustomHeaders({ "X-Test": value }).ok, true, `合法值应放行: ${JSON.stringify(value)}`);
+  }
 
   // 脏数据里混入黑名单键时，其余合法项仍应生效
   const dirty = parseCustomHeaders(
     JSON.stringify({ "x-good": "keep", authorization: "Bearer leak", "x-bad": "a\nb" }),
   );
   assert.deepEqual(dirty, { "x-good": "keep" });
+
+  // 逐键路径同样要受 20 条上限约束
+  const many: Record<string, string> = {};
+  for (let i = 0; i < 30; i++) many[`x-h-${i}`] = `v${i}`;
+  assert.equal(Object.keys(parseCustomHeaders(JSON.stringify(many))).length, 20);
 
   for (const raw of [123, null, "", "{not json", "[1,2]", '"abc"', "42"]) {
     assert.deepEqual(parseCustomHeaders(raw), {}, `坏输入应退回空对象: ${JSON.stringify(raw)}`);
