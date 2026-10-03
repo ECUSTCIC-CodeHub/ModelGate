@@ -343,6 +343,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 
 > 必须在系统设置中配置 `public_base_url`，`redirect_uri` 固定为该值加 `/api/auth/oidc/callback`，不再根据请求 Host 推导。未配置时返回 400 与「OIDC 登录需要先在设置中配置对外服务域名 public_base_url」。
 
+> ID token 的签名密钥（JWKS）缓存 5 分钟。若提供商轮换了签名密钥导致 `kid` 未命中缓存，会**强制刷新一次 JWKS 后重试**，避免轮换后 5 分钟内所有人无法登录。签名校验本身不放宽：签名不匹配或 `kid` 刷新后仍不存在时照常拒绝登录。
+
 > 精简版返回 404。
 
 ### GET /api/auth/oidc/callback

@@ -185,10 +185,10 @@ export async function exchangeCode(
   return (await response.json()) as OidcTokenResponse;
 }
 
-async function fetchJwks(jwksUri: string): Promise<OidcJwk[]> {
+async function fetchJwks(jwksUri: string, forceRefresh = false): Promise<OidcJwk[]> {
   const now = Date.now();
   const cached = jwksCache.get(jwksUri);
-  if (cached && cached.expiresAt > now) return cached.keys;
+  if (!forceRefresh && cached && cached.expiresAt > now) return cached.keys;
 
   const response = await fetch(jwksUri, { signal: AbortSignal.timeout(10_000) });
   if (!response.ok) throw new Error(`OIDC JWKS fetch failed: ${response.status}`);
@@ -233,8 +233,17 @@ async function verifyIdTokenSignature(idToken: string, jwksUri: string): Promise
     throw new Error("ID token algorithm is not supported");
   }
 
-  const keys = await fetchJwks(jwksUri);
-  const jwk = selectJwk(keys, header, header.alg);
+  // kid 未命中缓存时强制刷新一次：轮换签名密钥后旧密钥立即失效，
+  // 若不刷新，缓存 TTL（5 分钟）内所有登录都会报「找不到签名密钥」而失败
+  let keys = await fetchJwks(jwksUri);
+  let jwk: OidcJwk;
+  try {
+    jwk = selectJwk(keys, header, header.alg);
+  } catch (error) {
+    if (!header.kid) throw error;
+    keys = await fetchJwks(jwksUri, true);
+    jwk = selectJwk(keys, header, header.alg);
+  }
   const publicKey = createPublicKey({ key: jwk, format: "jwk" });
   const claims = jwt.verify(idToken, publicKey, { algorithms: [header.alg] });
   if (!claims || typeof claims !== "object" || typeof claims === "string") {
