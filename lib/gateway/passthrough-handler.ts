@@ -17,6 +17,7 @@ import { isTimeoutError, upstreamFailureStatus } from "@/lib/gateway/upstream-er
 import { addUsage } from "@/lib/gateway/usage-accounting";
 import { readBodyCapped } from "@/lib/core/request-body";
 import { exceedsBodyLimit, resolveBodyLimitBytes } from "@/lib/gateway/body-limit";
+import { applyCustomHeaders, parseCustomHeaders } from "@/lib/gateway/custom-headers";
 
 const HOP_BY_HOP = new Set([
   "connection",
@@ -281,6 +282,8 @@ async function forwardToChannel(route: RoutedModel, request: Request, upstreamPa
     if (lower === "content-length" || lower === "cookie" || lower === "host") continue;
     headers.set(key, value);
   }
+  // 顺序固定为：客户端透传 -> 自定义 Header 覆盖同名值 -> 托管鉴权头最后设置
+  applyCustomHeaders(headers, parseCustomHeaders(channel.custom_headers), true);
   const apiKey = channel.api_key?.trim();
   if (apiKey) {
     headers.set("authorization", `Bearer ${apiKey}`);

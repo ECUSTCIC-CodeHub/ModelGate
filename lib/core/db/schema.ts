@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS channels (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   deleted_at DATETIME,
   expires_at DATETIME DEFAULT NULL,
-  time_restrictions TEXT DEFAULT NULL
+  time_restrictions TEXT DEFAULT NULL,
+  custom_headers TEXT DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS models (

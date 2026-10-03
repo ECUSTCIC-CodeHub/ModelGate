@@ -1,5 +1,6 @@
 import { fetchUpstream } from "@/lib/gateway/upstream-proxy";
 import { redactErrorMessage, redactUrlCredentials } from "@/lib/shared/redact";
+import type { CustomHeaders } from "@/lib/gateway/custom-headers";
 
 const PROBE_TIMEOUT_MS = 15_000;
 
@@ -8,6 +9,7 @@ export type UpstreamModelListParams = {
   apiKey?: string | null;
   userAgent?: string | null;
   proxyUrl?: string | null;
+  customHeaders?: CustomHeaders | null;
 };
 
 export type UpstreamModelListResult =
@@ -42,6 +44,8 @@ export async function fetchUpstreamModelIds(params: UpstreamModelListParams): Pr
   const baseUrl = params.baseUrl.trim().replace(/\/+$/, "");
   const apiKey = params.apiKey?.trim() ?? "";
   const userAgent = params.userAgent?.trim() ?? "";
+  // 自定义 Header 先落位，其后的托管字段覆盖同名键
+  const customHeaders = params.customHeaders ?? {};
 
   let upstream: Response;
   try {
@@ -49,6 +53,7 @@ export async function fetchUpstreamModelIds(params: UpstreamModelListParams): Pr
       `${baseUrl}/models`,
       {
         headers: {
+          ...customHeaders,
           Authorization: `Bearer ${apiKey}`,
           "x-api-key": apiKey,
           Accept: "application/json",

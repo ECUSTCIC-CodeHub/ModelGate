@@ -10,6 +10,7 @@ import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
 import { toLocalDatetime, validateTimeRestrictions, normalizeTimeRestrictions } from "@/lib/gateway/channel-time";
 import { disableExpiredChannels } from "@/lib/gateway/channel-expiry";
 import { disableExpiredModels } from "@/lib/gateway/model-expiry";
+import { stringifyCustomHeaders, validateCustomHeaders } from "@/lib/gateway/custom-headers";
 import { maskApiKey, resolveSubmittedApiKey } from "@/lib/shared/redact";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { resolveChannelOwnerId } from "@/lib/services/channel-ownership";
@@ -37,6 +38,7 @@ const updateSchema = z.object({
   ua_restrictions: z.string().max(20000).optional(),
   expires_at: z.string().max(32).nullable().optional(),
   time_restrictions: z.string().max(20000).optional(),
+  custom_headers: z.record(z.string(), z.string()).nullable().optional(),
 });
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -146,6 +148,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     }
   }
 
+  const customHeadersResult = validateCustomHeaders(parsed.data.custom_headers);
+  if (!customHeadersResult.ok) return jsonError(customHeadersResult.error, 400);
+
   const merged = {
     ...existing,
     ...parsed.data,
@@ -165,6 +170,11 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       parsed.data.ua_restrictions === undefined
         ? (existing as { ua_restrictions?: string | null }).ua_restrictions ?? ""
         : parsed.data.ua_restrictions.trim(),
+    // 字段缺席保持原值，传 {} 或 null 整份清空（与其它可清空字段一致）
+    custom_headers:
+      parsed.data.custom_headers === undefined
+        ? (existing as { custom_headers?: string | null }).custom_headers ?? ""
+        : stringifyCustomHeaders(customHeadersResult.headers),
     expires_at: nextExpiresAt,
     time_restrictions:
       timeRestrictions === null
@@ -185,7 +195,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       .execute(
         `UPDATE channels
          SET name = ?, base_url = ?, api_key = ?, supported_protocols = ?, user_agent = ?, proxy_url = ?, enabled = ?, weight = ?, max_concurrency = ?, timeout = ?,
-             quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, force_include_usage = ?, ua_restrictions = ?, expires_at = ?, time_restrictions = ?, api_key_private = ?, created_by = ?
+             quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, force_include_usage = ?, ua_restrictions = ?, expires_at = ?, time_restrictions = ?, custom_headers = ?, api_key_private = ?, created_by = ?
          WHERE id = ?`,
         [
           (merged as { name: string }).name,
@@ -211,6 +221,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           (merged as { ua_restrictions: string }).ua_restrictions,
           (merged as { expires_at: string | null }).expires_at ?? null,
           (merged as { time_restrictions: string }).time_restrictions,
+          (merged as { custom_headers: string }).custom_headers,
           nextPrivate,
           nextCreatedBy,
           id,

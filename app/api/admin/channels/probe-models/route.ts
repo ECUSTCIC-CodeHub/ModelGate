@@ -5,6 +5,7 @@ import { ensureAdmin } from "@/lib/auth/guards";
 import { gatewayDb } from "@/lib/core/db";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { fetchUpstreamModelIds } from "@/lib/gateway/upstream-model-list";
+import { validateCustomHeaders } from "@/lib/gateway/custom-headers";
 import { isValidProxyUrl } from "@/lib/gateway/upstream-proxy";
 import { isMaskedApiKey, resolveSubmittedApiKey } from "@/lib/shared/redact";
 import { resolveChannelOwnerId } from "@/lib/services/channel-ownership";
@@ -18,6 +19,8 @@ const bodySchema = z.object({
   api_key: z.string().max(500).optional(),
   user_agent: z.string().max(500).optional(),
   proxy_url: proxyUrlSchema,
+  // 无状态探测：只接受请求体传入的 custom_headers，不读取渠道已存配置
+  custom_headers: z.record(z.string(), z.string()).nullable().optional(),
 });
 
 type StoredChannel = {
@@ -72,11 +75,15 @@ export async function POST(request: Request) {
 
   if (!baseUrl) return jsonError("请求参数不正确", 400);
 
+  const customHeadersResult = validateCustomHeaders(parsed.data.custom_headers);
+  if (!customHeadersResult.ok) return jsonError(customHeadersResult.error, 400);
+
   const result = await fetchUpstreamModelIds({
     baseUrl,
     apiKey,
     userAgent,
     proxyUrl,
+    customHeaders: customHeadersResult.headers,
   });
   if (!result.ok) return jsonError(result.message, 502);
 

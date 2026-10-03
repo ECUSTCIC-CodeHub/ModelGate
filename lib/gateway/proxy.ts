@@ -5,6 +5,7 @@ import type { GatewayProtocol } from "@/lib/gateway/protocols";
 import { fetchUpstream } from "@/lib/gateway/upstream-proxy";
 import { isTimeoutError, upstreamFailureStatus } from "@/lib/gateway/upstream-error";
 import { redactErrorMessage, redactUrlCredentials } from "@/lib/shared/redact";
+import { parseCustomHeaders } from "@/lib/gateway/custom-headers";
 
 export function normalizeProviderBaseUrl(baseUrl: string) {
   const normalized = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
@@ -57,8 +58,14 @@ function buildUpstreamHeaders(
   const userAgent = resolveUpstreamUserAgent(protocol, route.channel.user_agent, inboundHeaders);
   const apiKey = route.channel.api_key?.trim() ?? "";
 
+  // 自定义 Header 先落位：其后的托管字段（content-type、user-agent、鉴权头等）
+  // 直接覆盖同名键，保证托管字段永远胜出
+  const custom = parseCustomHeaders(route.channel.custom_headers);
+  const customHeaders: Record<string, string> = { ...custom };
+
   if (protocol === "anthropic_messages") {
     const headers: Record<string, string> = {
+      ...customHeaders,
       "content-type": "application/json",
       "user-agent": userAgent,
       "anthropic-version": inboundHeaders?.get("anthropic-version") || "2023-06-01",
@@ -73,6 +80,7 @@ function buildUpstreamHeaders(
   }
 
   return {
+    ...customHeaders,
     "content-type": "application/json",
     "user-agent": userAgent,
     ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
@@ -111,7 +119,7 @@ export async function fetchUpstreamRequest(
 }
 
 export async function testUpstreamModel(target: {
-  channel: Pick<DbChannel, "base_url" | "api_key" | "timeout" | "user_agent" | "proxy_url">;
+  channel: Pick<DbChannel, "base_url" | "api_key" | "timeout" | "user_agent" | "proxy_url" | "custom_headers">;
   model: Pick<DbModel, "real_model" | "upstream_protocol">;
 }) {
   if (target.model.upstream_protocol === "other") {
@@ -129,6 +137,8 @@ export async function testUpstreamModel(target: {
 
   try {
     const protocol = target.model.upstream_protocol as GatewayProtocol;
+    // 自定义 Header 先落位，其后的托管字段覆盖同名键
+    const customHeaders = parseCustomHeaders(target.channel.custom_headers);
     const response = await fetchUpstream(
       buildUpstreamUrl(target.channel.base_url, protocol),
       {
@@ -136,6 +146,7 @@ export async function testUpstreamModel(target: {
         headers:
           protocol === "anthropic_messages"
             ? {
+                ...customHeaders,
                 "content-type": "application/json",
                 "user-agent": resolveUpstreamUserAgent(protocol, target.channel.user_agent),
                 ...(target.channel.api_key?.trim()
@@ -147,6 +158,7 @@ export async function testUpstreamModel(target: {
                 "anthropic-version": "2023-06-01",
               }
             : {
+                ...customHeaders,
                 "content-type": "application/json",
                 "user-agent": resolveUpstreamUserAgent(protocol, target.channel.user_agent),
                 ...(target.channel.api_key?.trim()

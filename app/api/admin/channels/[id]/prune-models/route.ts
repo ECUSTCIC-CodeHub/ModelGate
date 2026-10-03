@@ -7,6 +7,7 @@ import { jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { fetchUpstreamModelIds } from "@/lib/gateway/upstream-model-list";
 import { diffChannelModels, type CleanupCandidate } from "@/lib/services/model-cleanup";
+import { parseCustomHeaders } from "@/lib/gateway/custom-headers";
 import { softDeleteModels } from "@/lib/services/soft-delete-service";
 
 const bodySchema = z.object({
@@ -26,8 +27,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     api_key: string | null;
     user_agent: string | null;
     proxy_url: string | null;
+    custom_headers: string | null;
   }>(
-    "SELECT id, name, base_url, api_key, user_agent, proxy_url FROM channels WHERE id = ? AND deleted_at IS NULL",
+    "SELECT id, name, base_url, api_key, user_agent, proxy_url, custom_headers FROM channels WHERE id = ? AND deleted_at IS NULL",
     [id],
   );
   if (!channel) return jsonError("渠道不存在", 404);
@@ -43,6 +45,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       apiKey: channel.api_key,
       userAgent: channel.user_agent,
       proxyUrl: channel.proxy_url,
+      customHeaders: parseCustomHeaders(channel.custom_headers),
     });
     if (!upstream.ok) return jsonError(upstream.message, 502);
 

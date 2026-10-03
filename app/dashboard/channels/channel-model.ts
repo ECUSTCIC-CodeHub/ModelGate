@@ -105,6 +105,7 @@ export type Channel = {
   ua_restrictions: string;
   expires_at: string | null;
   time_restrictions: string;
+  custom_headers: string;
   created_by?: number | null;
   created_by_username?: string | null;
   api_key_private?: number | null;
@@ -150,6 +151,7 @@ export type ChannelForm = {
   ua_restrictions: string;
   expires_at: string;
   time_restrictions: string;
+  custom_headers: string;
 };
 
 export type ModelForm = {
@@ -229,6 +231,7 @@ export const initialChannelForm: ChannelForm = {
   ua_restrictions: "",
   expires_at: "",
   time_restrictions: "",
+  custom_headers: "",
 };
 
 export const initialModelDraft: ChannelModelDraft = {

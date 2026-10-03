@@ -207,6 +207,20 @@ export function ChannelDrawer({
               </p>
             </div>
             <div className="space-y-2 md:col-span-2">
+              <Label>自定义 Header</Label>
+              <textarea
+                className="min-h-20 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-foreground)] outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-ring)] disabled:opacity-50"
+                placeholder={"每行一条，例如：\nX-Org-Id: team-a"}
+                value={form.custom_headers}
+                disabled={addressLocked}
+                onChange={(e) => onFormChange({ custom_headers: e.target.value })}
+              />
+              <p className="text-xs text-[var(--color-foreground-muted)]">
+                附加到该渠道所有上游请求（含模型测试与模型列表探测），透传路径下会覆盖客户端的同名 Header。
+                最多 20 对；Authorization、Content-Type、Host、Cookie 等由网关托管的 Header 不允许配置。
+              </p>
+            </div>
+            <div className="space-y-2 md:col-span-2">
               <Label className="flex items-center gap-2">
                 <Checkbox
                   checked={form.force_include_usage}

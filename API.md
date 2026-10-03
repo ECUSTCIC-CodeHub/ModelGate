@@ -1445,6 +1445,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | user_agent | string | 否 | "" | 渠道级上游 User-Agent，留空时透传客户端 UA 或使用协议默认值 |
 | proxy_url | string | 否 | "" | 渠道级上游 HTTP(S) 代理地址，留空表示直连；支持 `http://` / `https://`，可在 URL 中携带代理认证信息 |
 | ua_restrictions | string | 否 | "" | 渠道级 User-Agent 限制规则 JSON 数组，留空表示不限制（完整版功能，最长 20000 字符） |
+| custom_headers | object\|null | 否 | null | 渠道级自定义 Header，键值对对象；会附加到该渠道的**所有**上游请求（真实转发、模型测试、模型列表探测）。最多 20 对，名称最长 128 字符且须为 HTTP token 字符，值最长 2048 字符，名称与值的首尾空白会被修剪。`Authorization`、`X-Api-Key`、`Api-Key`、`Host`、`Content-Length`、`Transfer-Encoding`、`Connection`、`Upgrade`、`Proxy-Authorization`、`Proxy-Authenticate`、`Via`、`TE`、`Trailer`、`Cookie`、`Content-Type`、`User-Agent`、`Anthropic-Version`、`Anthropic-Beta`、`Accept-Encoding` 不允许配置（大小写不敏感）。标准转发路径下网关托管字段（`Content-Type`、`User-Agent`、鉴权头等）始终覆盖同名自定义值；`other` 透传路径下自定义 Header 会覆盖客户端的同名透传值，但 `Authorization` / `X-Api-Key` 仍由网关最后设置 |
 | expires_at | string\|null | 否 | null | 过期时间（本地 datetime，如 `2026-08-01T00:00`），null 或留空表示永不过期；到达该时间后渠道在路由中自动不可用，管理员对任意渠道执行操作后，已过期渠道会被彻底禁用并级联禁用其模型 |
 | time_restrictions | string | 否 | "" | 限制时段 JSON 数组，每个元素含 `days`（1-7，周一至周日）、`start`、`end`（HH:MM）；配置后渠道仅在该时段内可用（服务器本地时区），留空表示不限制；`start` 不可等于 `end`，`end` 早于 `start` 表示跨午夜 |
 | weight | int | 否 | 1 | 路由权重 |
@@ -1488,7 +1489,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 > 无添加人渠道指 `created_by` 为空，或其指向的用户已被删除、停用或不再是管理员（渠道不会因此被永久冻结，任意管理员可接管）。无添加人的私有渠道由本次修改者接管为新的添加人。公共渠道的 `created_by` 不会因为添加人失效而被清空，归属信息保留。开启 `api_key_private` 后，非添加人不能修改该渠道的 `base_url` 与 `proxy_url`（否则可把地址指向自己的服务器再借密钥读取接口取出密钥），违反时返回 403。
 
 
-**请求体:** 与 POST 相同，所有字段均为可选。`force_include_usage` 变更对后续新请求立即生效，不影响已建立的连接。`proxy_url` 传空字符串可清空代理配置。
+**请求体:** 与 POST 相同，所有字段均为可选。`force_include_usage` 变更对后续新请求立即生效，不影响已建立的连接。`proxy_url` 传空字符串可清空代理配置。`custom_headers` 字段缺席时保持原值，传 `{}` 或 `null` 整份清空（与其它可清空字段一致）。
 
 **模型同步:**
 
@@ -1549,6 +1550,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | api_key | string | 否 | "" | 上游 API Key；传空或回传脱敏值时沿用渠道已存密钥 |
 | user_agent | string | 否 | "" | 探测模型列表时使用的 User-Agent |
 | proxy_url | string | 否 | "" | 探测模型列表时使用的 HTTP(S) 代理地址，留空表示直连 |
+| custom_headers | object\|null | 否 | null | 本次探测使用的自定义 Header，键值对对象，校验规则同渠道创建/更新。**无状态探测**：只使用请求体传入的值，不读取渠道已存配置，传 `channel_id` 也不例外 |
 
 > 推荐在编辑已有渠道时只传 `channel_id`，避免把明文密钥回传到接口。`channel_id` 不存在返回 404。
 

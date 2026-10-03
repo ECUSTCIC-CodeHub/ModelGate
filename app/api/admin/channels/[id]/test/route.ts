@@ -20,8 +20,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         user_agent: string;
         proxy_url: string;
         timeout: number;
+        custom_headers: string | null;
       }>(
-        "SELECT id, name, base_url, api_key, user_agent, proxy_url, timeout FROM channels WHERE id = ?",
+        "SELECT id, name, base_url, api_key, user_agent, proxy_url, timeout, custom_headers FROM channels WHERE id = ?",
         [id],
       );
 

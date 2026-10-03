@@ -24,6 +24,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         user_agent: string;
         proxy_url: string;
         timeout: number;
+        custom_headers: string | null;
       }>(
         `SELECT
          m.id AS model_id,
@@ -36,7 +37,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
          c.api_key,
          c.user_agent,
          c.proxy_url,
-         c.timeout
+         c.timeout,
+         c.custom_headers
        FROM models m
        JOIN channels c ON c.id = m.channel_id
        WHERE m.id = ? AND m.deleted_at IS NULL`,
@@ -52,6 +54,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       user_agent: row.user_agent,
       proxy_url: row.proxy_url,
       timeout: row.timeout,
+      custom_headers: row.custom_headers,
     },
     model: {
       real_model: row.real_model,

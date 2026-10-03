@@ -26,6 +26,7 @@ export type DbChannel = {
   ua_restrictions: string;
   expires_at: string | null;
   time_restrictions: string;
+  custom_headers: string | null;
 };
 
 export type ModelQuotaMode = "follow_group" | "bypass_group" | "independent" | "dual";

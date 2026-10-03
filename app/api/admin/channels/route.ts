@@ -13,8 +13,13 @@ import { disableExpiredModels } from "@/lib/gateway/model-expiry";
 import { maskApiKey } from "@/lib/shared/redact";
 import { resolveChannelOwnerId, resolveChannelOwnerIds } from "@/lib/services/channel-ownership";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
+import { stringifyCustomHeaders, validateCustomHeaders } from "@/lib/gateway/custom-headers";
 
 const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
+
+// 请求体传 object、响应回 JSON 字符串（类型不对称的既有契约）；
+// 这里只做「是否可解析成键值对」的粗校验，细则交给 validateCustomHeaders，以便复用同一套中文文案
+const customHeadersSchema = z.record(z.string(), z.string()).nullable().optional();
 
 const createSchema = z.object({
   name: z.string().min(1),
@@ -37,6 +42,7 @@ const createSchema = z.object({
   ua_restrictions: z.string().max(20000).optional(),
   expires_at: z.string().max(32).nullable().optional(),
   time_restrictions: z.string().max(20000).optional(),
+  custom_headers: customHeadersSchema,
   models: z
     .array(
       z.object({
@@ -157,12 +163,15 @@ export async function POST(request: Request) {
     }
   }
 
+  const customHeadersResult = validateCustomHeaders(parsed.data.custom_headers);
+  if (!customHeadersResult.ok) return jsonError(customHeadersResult.error, 400);
+
   const channelId = await gatewayDb.transaction(async (tx) => {
     const channelEnabled = parsed.data.enabled === false ? 0 : 1;
     const result = await tx
       .execute(
-        `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, force_include_usage, ua_restrictions, expires_at, time_restrictions, created_by, api_key_private)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, force_include_usage, ua_restrictions, expires_at, time_restrictions, custom_headers, created_by, api_key_private)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           parsed.data.name,
           parsed.data.base_url,
@@ -183,6 +192,7 @@ export async function POST(request: Request) {
           parsed.data.ua_restrictions?.trim() ?? "",
           expiresAt,
           timeRestrictions,
+          stringifyCustomHeaders(customHeadersResult.headers),
           guard.auth.user.id,
           parsed.data.api_key_private === true ? 1 : 0,
         ],

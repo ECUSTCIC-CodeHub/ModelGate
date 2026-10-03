@@ -39,6 +39,35 @@ function expiresAtFromInputValue(value: string): string {
   return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
 
+// 表单里按「每行 Name: Value」编辑，落库是 JSON 字符串
+function formatCustomHeadersInput(raw: unknown): string {
+  if (typeof raw !== "string" || raw.trim() === "") return "";
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "";
+    return Object.entries(parsed as Record<string, unknown>)
+      .filter(([, value]) => typeof value === "string")
+      .map(([name, value]) => `${name}: ${value as string}`)
+      .join("\n");
+  } catch {
+    return "";
+  }
+}
+
+// 解析失败返回 {} 会让用户以为保存成功却清空了配置，故返回 null 由调用方拦下；
+// 保留原始对象的键序以便与后端一致地报出首个非法项
+function parseCustomHeadersInput(value: string): Record<string, string> | null {
+  const headers: Record<string, string> = {};
+  for (const line of value.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const separatorAt = trimmed.indexOf(":");
+    if (separatorAt <= 0) return null;
+    headers[trimmed.slice(0, separatorAt).trim()] = trimmed.slice(separatorAt + 1).trim();
+  }
+  return headers;
+}
+
 export function useChannelAdmin() {
   const { toast } = useToast();
   const { channels, error, loadChannels } = useChannelRecords();
@@ -125,6 +154,7 @@ export function useChannelAdmin() {
       ua_restrictions: row.ua_restrictions ?? "",
       expires_at: expiresAtToInputValue(row.expires_at),
       time_restrictions: row.time_restrictions ?? "",
+      custom_headers: formatCustomHeadersInput(row.custom_headers),
     });
     setChannelModels([baseDraft(supportedProtocols)]);
     setChannelDrawerOpen(true);
@@ -214,6 +244,12 @@ export function useChannelAdmin() {
   async function submitChannel(event: FormEvent) {
     event.preventDefault();
 
+    const customHeaders = parseCustomHeadersInput(channelForm.custom_headers);
+    if (customHeaders === null) {
+      toast({ variant: "error", description: "自定义 Header 需按「名称: 值」每行一条填写。" });
+      return;
+    }
+
     if (channelEditingId === null) {
       const draftModels = channelModels
         .map((item) => ({
@@ -249,6 +285,7 @@ export function useChannelAdmin() {
           ua_restrictions: channelForm.ua_restrictions,
           expires_at: expiresAtFromInputValue(channelForm.expires_at),
           time_restrictions: channelForm.time_restrictions,
+          custom_headers: customHeaders,
           ...buildQuotaPayload(channelForm),
           models: draftModels,
         }),
@@ -278,6 +315,7 @@ export function useChannelAdmin() {
       ua_restrictions: channelForm.ua_restrictions,
       expires_at: expiresAtFromInputValue(channelForm.expires_at),
       time_restrictions: channelForm.time_restrictions,
+      custom_headers: customHeaders,
       ...buildQuotaPayload(channelForm),
     };
     if (channelEditingCanViewApiKey) updateBody.api_key = channelForm.api_key;
