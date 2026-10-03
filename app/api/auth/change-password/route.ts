@@ -1,16 +1,17 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { comparePassword, hashPassword } from "@/lib/auth/auth";
+import { MAX_PASSWORD_LENGTH, comparePassword, hashPassword } from "@/lib/auth/auth";
 import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { ensureWebUser } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { friendlyCredentialPayloadError } from "@/lib/auth/validation";
 import { getAuthStatus } from "@/lib/auth/auth-status";
+import { checkLoginRateLimit } from "@/lib/auth/login-ratelimit";
 
 const schema = z.object({
   current_password: z.string().min(1),
-  new_password: z.string().min(8),
+  new_password: z.string().min(8).max(MAX_PASSWORD_LENGTH),
 });
 
 export async function POST(request: Request) {
@@ -19,6 +20,11 @@ export async function POST(request: Request) {
 
   if (!(await getAuthStatus()).password_login_enabled) {
     return jsonError("当前仅支持 OIDC 登录，不能修改本地密码。", 400);
+  }
+
+  const rateCheck = checkLoginRateLimit(request, guard.auth.user.username);
+  if (!rateCheck.ok) {
+    return jsonError("尝试过于频繁，请稍后再试", 429);
   }
 
   const body = await request.json().catch(() => null);

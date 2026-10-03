@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { hashPassword } from "@/lib/auth/auth";
+import { MAX_PASSWORD_LENGTH, hashPassword } from "@/lib/auth/auth";
 import { gatewayDb } from "@/lib/core/db";
 import { modelGateFeatures, requireFeature } from "@/lib/core/features";
 import { ensureAdmin } from "@/lib/auth/guards";
@@ -9,6 +9,7 @@ import { jsonError, jsonOk } from "@/lib/core/http";
 import { listExistingModelAliases, parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
 import { softDeleteUser } from "@/lib/services/soft-delete-service";
 import { USERNAME_SCHEMA } from "@/lib/auth/username";
+import { friendlyCredentialPayloadError } from "@/lib/auth/validation";
 
 const updateSchema = z.object({
   username: USERNAME_SCHEMA.optional(),
@@ -26,7 +27,7 @@ const updateSchema = z.object({
   period_quota_requests: z.number().int().min(-1).nullable().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
   note: z.string().max(500).nullable().optional(),
-  new_password: z.string().min(8).optional(),
+  new_password: z.string().min(8).max(MAX_PASSWORD_LENGTH).optional(),
   reset_usage: z.enum(["all", "total", "period"]).optional(),
   group_locked: z.boolean().optional(),
 });
@@ -44,7 +45,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const { id } = await context.params;
   const body = await request.json().catch(() => null);
   const parsed = updateSchema.safeParse(body);
-  if (!parsed.success) return jsonError("请求参数不正确", 400);
+  if (!parsed.success) return jsonError(friendlyCredentialPayloadError(parsed.error), 400);
   if (parsed.data.reset_usage === "period") {
     const unavailable = requireFeature("periodQuota");
     if (unavailable) return unavailable;

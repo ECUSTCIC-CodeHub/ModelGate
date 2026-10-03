@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { hashPassword } from "@/lib/auth/auth";
+import { MAX_PASSWORD_LENGTH, hashPassword } from "@/lib/auth/auth";
 import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
@@ -13,7 +13,7 @@ import { friendlyCredentialPayloadError } from "@/lib/auth/validation";
 
 const createSchema = z.object({
   username: USERNAME_SCHEMA,
-  password: z.string().min(8),
+  password: z.string().min(8).max(MAX_PASSWORD_LENGTH),
   email: z.string().email().nullable().optional(),
   role: z.enum(["admin", "user"]).optional(),
   group_id: z.number().int().positive().nullable().optional(),

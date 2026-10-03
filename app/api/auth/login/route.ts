@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { applyAuthCookies, comparePassword, issueAuthTokens, sanitizeUser } from "@/lib/auth/auth";
+import { applyAuthCookies, comparePassword, compareWithDummyPassword, issueAuthTokens, sanitizeUser } from "@/lib/auth/auth";
 import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { checkLoginRateLimit } from "@/lib/auth/login-ratelimit";
@@ -30,10 +30,10 @@ export async function POST(request: Request) {
 
   const user = await gatewayDb.queryOne<DbUser>("SELECT * FROM users WHERE username = ? AND deleted_at IS NULL", [parsed.data.username]);
 
-  if (!user || user.enabled !== 1) return jsonError("用户名或密码错误", 401);
-
-  const ok = await comparePassword(parsed.data.password, user.password_hash);
-  if (!ok) return jsonError("用户名或密码错误", 401);
+  const passwordOk = user
+    ? await comparePassword(parsed.data.password, user.password_hash)
+    : await compareWithDummyPassword(parsed.data.password);
+  if (!user || user.enabled !== 1 || !passwordOk) return jsonError("用户名或密码错误", 401);
 
   const payload = {
     message: "登录成功。",

@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { gatewayDb, type DbUser } from "@/lib/core/db";
-import { applyAuthCookies, hashPassword, issueAuthTokens, sanitizeUser } from "@/lib/auth/auth";
+import { applyAuthCookies, MAX_PASSWORD_LENGTH, hashPassword, issueAuthTokens, sanitizeUser } from "@/lib/auth/auth";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { checkLoginRateLimit } from "@/lib/auth/login-ratelimit";
 import { getGatewaySettings } from "@/lib/core/settings";
@@ -11,7 +11,7 @@ import { friendlyCredentialPayloadError } from "@/lib/auth/validation";
 
 const schema = z.object({
   username: USERNAME_SCHEMA,
-  password: z.string().min(8),
+  password: z.string().min(8).max(MAX_PASSWORD_LENGTH),
 });
 
 export async function POST(request: Request) {

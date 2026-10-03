@@ -122,12 +122,21 @@ export function verifyOidcPendingToken(token: string): OidcPendingPayload | null
   }
 }
 
+export const MAX_PASSWORD_LENGTH = 72;
+
+const DUMMY_PASSWORD_HASH = "$2b$10$V8LDGEnmRI3Z/xWT9oKMj.Q2OLhfCWWqfUAIXAKpiyD2HEFfz/EKu";
+
 export async function hashPassword(password: string) {
   return bcrypt.hash(password, 10);
 }
 
 export async function comparePassword(password: string, hash: string) {
   return bcrypt.compare(password, hash);
+}
+
+export async function compareWithDummyPassword(password: string) {
+  await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
+  return false;
 }
 
 export function sanitizeUser(user: DbUser): Omit<DbUser, "password_hash"> {
