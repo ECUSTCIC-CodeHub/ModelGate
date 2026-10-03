@@ -107,13 +107,15 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     const desired = parsed.data.api_key_private ? 1 : 0;
     if (desired !== existingPrivate && canManagePrivacy) {
       nextPrivate = desired;
-      if (desired === 1 && ownerId == null) nextCreatedBy = userId;
     }
   }
-  // 无主的私有渠道由本次修改者接管，避免继续处于无人可维护的状态
-  if (nextPrivate === 1 && ownerId === null) nextCreatedBy = userId;
+  // 只有「原本就是私有」的渠道无主时才由本次修改者接管：
+  // 公共渠道即使添加人失效也保留原归属，否则列表里的添加人用户名会凭空消失
+  if (existingPrivate === 1 && nextPrivate === 1 && ownerId === null) nextCreatedBy = userId;
 
-  const canManageKey = nextPrivate === 0 || ownerId === userId;
+  // 必须按落库后的 nextCreatedBy 判定：接管当场 ownerId 仍为 null，
+  // 用它判定会把刚完成接管的修改者自己挡在地址修改之外（后端已解冻、接口仍冻结）
+  const canManageKey = nextPrivate === 0 || nextCreatedBy === userId;
 
   // 「仅添加人可见」的渠道若允许他人改上游地址与代理，非添加人可把地址指向自己的服务器，
   // 再由渠道测试或真实流量取出密钥，从而使该开关失效，故这里一并收紧。
