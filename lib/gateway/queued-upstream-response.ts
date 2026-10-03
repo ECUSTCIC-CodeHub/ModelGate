@@ -6,7 +6,7 @@ import type { GatewayProtocol } from "@/lib/gateway/protocols";
 import type { StreamTransformResult } from "@/lib/gateway/protocol-adapters/streaming";
 import type { RoutedModel } from "@/lib/gateway/router";
 import { resolveTokenUsage, tokenUsageMetadata } from "@/lib/gateway/token-usage";
-import { buildErrorResponseBody, isTimeoutError, parseUpstreamError, upstreamFailureStatus } from "@/lib/gateway/upstream-error";
+import { buildErrorResponseBody, countsAsChannelFailure, isTimeoutError, parseUpstreamError, upstreamFailureStatus } from "@/lib/gateway/upstream-error";
 import type { UpstreamPickResult } from "@/lib/gateway/upstream-routing";
 import { addUsage } from "@/lib/gateway/usage-accounting";
 import { redactUrlCredentials } from "@/lib/shared/redact";
@@ -207,7 +207,7 @@ export function createQueuedUpstreamResponse({
               finalized = true;
               const totalLatencyMs = Date.now() - startedAt;
               const success = upstream.status < 400;
-              lease.complete({ ok: success, latencyMs: totalLatencyMs });
+              lease.complete({ ok: !countsAsChannelFailure(upstream.status), latencyMs: totalLatencyMs });
               const tokenUsage = resolveTokenUsage({
                 usage: success ? transformed.usage() : null,
                 localPromptTokens,

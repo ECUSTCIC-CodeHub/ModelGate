@@ -7,6 +7,14 @@ export function shouldRetryUpstreamStatus(status: number) {
   return RETRYABLE_UPSTREAM_STATUS.has(status);
 }
 
+// 计入熔断的上游状态：只有「渠道侧确实有问题」才算，业务 4xx（400/404/422 等）
+// 是调用方请求本身的问题，多用户连续触发会把健康渠道误熔断。
+// 4xx 里 401/403/429 反映凭据失效或被限流，仍属渠道侧问题，故保留
+export function countsAsChannelFailure(status: number): boolean {
+  if (status >= 500) return true;
+  return status === 401 || status === 403 || status === 429;
+}
+
 export function parseUpstreamError(text: string, status: number) {
   try {
     const parsed = JSON.parse(text) as Record<string, unknown>;

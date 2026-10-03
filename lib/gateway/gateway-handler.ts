@@ -23,7 +23,7 @@ import { resolveClientIp } from "@/lib/core/client-ip";
 import { requestContainsImage } from "@/lib/gateway/normalized-message/detect-image";
 import { resolveTokenUsage, tokenUsageMetadata } from "@/lib/gateway/token-usage";
 import { resolveTriState } from "@/lib/gateway/user-preferences";
-import { buildErrorResponseBody, parseUpstreamError } from "@/lib/gateway/upstream-error";
+import { buildErrorResponseBody, countsAsChannelFailure, parseUpstreamError } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
 import { findMatchingRedeemBalance } from "@/lib/services/redeem-codes";
 import { redactUrlCredentials } from "@/lib/shared/redact";
@@ -632,7 +632,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
           ? Number(((tokenUsage.outputTpsTokens * 1000) / Math.max(1, Date.now() - startedAt)).toFixed(2))
           : null;
 
-      lease.complete({ ok: upstream.status < 400, latencyMs: Date.now() - startedAt });
+      lease.complete({ ok: !countsAsChannelFailure(upstream.status), latencyMs: Date.now() - startedAt });
       addUsage(auth.user.id, auth.key.id, Math.max(1, tokenUsage.totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id, route.model.alias, redeemBalanceId);
       insertChatLog({
         user_id: auth.user.id,
@@ -673,7 +673,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       finalized = true;
       const totalLatencyMs = Date.now() - startedAt;
       const success = upstream.status < 400;
-      lease.complete({ ok: success, latencyMs: totalLatencyMs });
+      lease.complete({ ok: !countsAsChannelFailure(upstream.status), latencyMs: totalLatencyMs });
       const tokenUsage = resolveTokenUsage({
         usage: success ? transformed.usage() : null,
         localPromptTokens,
