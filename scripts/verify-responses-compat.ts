@@ -9,6 +9,12 @@ import { chatCompletionsGatewayAdapter } from "../lib/gateway/protocol-adapters/
 import { responsesGatewayAdapter } from "../lib/gateway/protocol-adapters/responses";
 import { responsesResponseToIntermediate } from "../lib/gateway/protocol-adapters/responses-response";
 import { createTransformedStream } from "../lib/gateway/protocol-adapters/streaming";
+import {
+  toolsFromIntermediateForAnthropic,
+  toolsFromIntermediateForChat,
+  toolsFromIntermediateForResponses,
+} from "../lib/gateway/protocol-adapters/tools";
+import { countTextTokens } from "../lib/gateway/tokenizer";
 
 let passed = 0;
 let failed = 0;
@@ -922,6 +928,29 @@ test("chat tool_choice=none 转 anthropic 时省略 tools 列表", () => {
 
   const noChoice = chatCompletionsGatewayAdapter.adaptRequestBody(base, anthropicGatewayAdapter, "claude-3-5-sonnet");
   assert.ok(noChoice.tools, "未指定 tool_choice 时应保留下发 tools 列表");
+});
+
+test("无参工具补空 object schema 而不是省略 parameters", () => {
+  const tools = [{ type: "function" as const, name: "ping", description: "ping" }];
+  const expected = { type: "object", properties: {} };
+
+  assert.deepEqual(toolsFromIntermediateForChat(tools)?.[0]?.function.parameters, expected);
+  assert.deepEqual(toolsFromIntermediateForResponses(tools)?.[0]?.parameters, expected);
+  assert.deepEqual(toolsFromIntermediateForAnthropic(tools)?.[0]?.input_schema, expected);
+
+  const withSchema = [{ type: "function" as const, name: "echo", parameters: { type: "object", properties: { q: { type: "string" } } } }];
+  assert.deepEqual(toolsFromIntermediateForChat(withSchema)?.[0]?.function.parameters, withSchema[0].parameters);
+});
+
+test("o 系模型使用 o200k_base 词表", () => {
+  const text = "The quick brown fox jumps over the lazy dog. 你好，世界！这是一段用于测试的中文文本。";
+  const o200k = countTextTokens(text, "gpt-4o");
+  const cl100k = countTextTokens(text, "gpt-4-turbo");
+
+  assert.ok(o200k < cl100k, `o200k 词表应比 cl100k 更省 token，实际 ${o200k} vs ${cl100k}`);
+  for (const model of ["o1", "o1-mini", "o3-mini", "o4", "o4-mini"]) {
+    assert.equal(countTextTokens(text, model), o200k, `${model} 应使用 o200k_base`);
+  }
 });
 
 test("responses -> chat_completions stream can emit completed snapshot tool call", async () => {

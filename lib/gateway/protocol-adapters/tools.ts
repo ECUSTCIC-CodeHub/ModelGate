@@ -121,6 +121,11 @@ export function anthropicToolsToIntermediate(tools: unknown): IntermediateTool[]
   return converted.length > 0 ? converted : undefined;
 }
 
+// 部分严格上游拒绝 parameters 缺失或为 null（无参工具很常见），统一补空 object schema
+function toolParameters(schema: unknown) {
+  return asRecord(schema) ?? schema ?? { type: "object", properties: {} };
+}
+
 export function toolsFromIntermediateForChat(tools: IntermediateTool[] | undefined) {
   if (!tools || tools.length === 0) return undefined;
   return tools.map((tool) => ({
@@ -128,7 +133,7 @@ export function toolsFromIntermediateForChat(tools: IntermediateTool[] | undefin
     function: {
       name: tool.name,
       description: tool.description,
-      parameters: asRecord(tool.parameters) ?? tool.parameters,
+      parameters: toolParameters(tool.parameters),
       strict: tool.strict,
     },
   }));
@@ -140,7 +145,7 @@ export function toolsFromIntermediateForResponses(tools: IntermediateTool[] | un
     type: "function",
     name: tool.name,
     description: tool.description,
-    parameters: asRecord(tool.parameters) ?? tool.parameters,
+    parameters: toolParameters(tool.parameters),
     strict: tool.strict,
   }));
 }
@@ -150,7 +155,7 @@ export function toolsFromIntermediateForAnthropic(tools: IntermediateTool[] | un
   return tools.map((tool) => ({
     name: tool.name,
     description: tool.description,
-    input_schema: asRecord(tool.parameters) ?? tool.parameters ?? { type: "object", properties: {} },
+    input_schema: toolParameters(tool.parameters),
   }));
 }
 
