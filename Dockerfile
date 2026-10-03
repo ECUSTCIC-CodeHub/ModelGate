@@ -1,4 +1,4 @@
-FROM node:20-alpine AS deps
+FROM node:22-alpine AS deps
 
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -19,7 +19,7 @@ COPY . .
 RUN npm run build
 RUN rm -rf .next/standalone/data
 
-FROM node:20-alpine AS run
+FROM node:22-alpine AS run
 
 ARG MODELGATE_EDITION=full
 WORKDIR /app
