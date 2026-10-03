@@ -9,6 +9,7 @@ import { GATEWAY_PROTOCOLS, type GatewayProtocol, parseSupportedProtocols, strin
 import type { ModelQuotaMode } from "@/lib/core/db/types";
 import { softDeleteModel } from "@/lib/services/soft-delete-service";
 import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
+import { MODEL_SYSTEM_PROMPT_MAX_LENGTH } from "@/lib/gateway/model-system-prompt";
 import { toLocalDatetime } from "@/lib/gateway/channel-time";
 import { disableExpiredModels } from "@/lib/gateway/model-expiry";
 
@@ -35,6 +36,7 @@ const updateSchema = z.object({
   period_quota_tokens: z.number().int().min(0).nullable().optional(),
   period_quota_requests: z.number().int().min(0).nullable().optional(),
   ua_restrictions: z.string().max(20000).optional(),
+  system_prompt: z.string().max(MODEL_SYSTEM_PROMPT_MAX_LENGTH).nullable().optional(),
   expires_at: z.string().max(32).nullable().optional(),
 });
 
@@ -93,6 +95,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         period_quota_requests: number | null;
         ua_restrictions: string;
         expires_at: string | null;
+        system_prompt: string | null;
       }>("SELECT * FROM models WHERE id = ? AND deleted_at IS NULL", [id]);
   if (!existing) return jsonError("模型不存在", 404);
 
@@ -155,6 +158,11 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           ? 1
           : 0,
     ua_restrictions: parsed.data.ua_restrictions === undefined ? existing.ua_restrictions ?? "" : parsed.data.ua_restrictions.trim(),
+    // 传 null 或空串清空；字段缺席保持原值
+    system_prompt:
+      parsed.data.system_prompt === undefined
+        ? existing.system_prompt ?? ""
+        : (parsed.data.system_prompt ?? "").trim(),
     enabled: targetEnabled,
     expires_at: nextExpiresAt,
   };
@@ -164,7 +172,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       .execute(
         `UPDATE models
          SET alias = ?, real_model = ?, channel_id = ?, upstream_protocol = ?, supported_protocols = ?, copilot_compatibility = ?, supports_vision = ?, is_public = ?, enabled = ?, weight = ?, token_multiplier = ?, request_multiplier = ?, max_concurrency = ?,
-             quota_mode = ?, quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, ua_restrictions = ?, expires_at = ?
+             quota_mode = ?, quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, ua_restrictions = ?, expires_at = ?, system_prompt = ?
          WHERE id = ?`,
         [merged.alias, merged.real_model, merged.channel_id, merged.upstream_protocol, targetSupportedProtocols, parsed.data.copilot_compatibility === true ? 1 : parsed.data.copilot_compatibility === false ? 0 : existing.copilot_compatibility ?? 0, merged.supports_vision ?? 0, merged.is_public, merged.enabled, merged.weight, merged.token_multiplier, merged.request_multiplier, merged.max_concurrency,
           merged.quota_mode ?? existing.quota_mode ?? "follow_group",
@@ -175,6 +183,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           merged.period_quota_requests ?? existing.period_quota_requests ?? null,
           merged.ua_restrictions ?? existing.ua_restrictions ?? "",
           merged.expires_at ?? null,
+          merged.system_prompt || null,
           id],
       );
     await disableExpiredModels(tx);

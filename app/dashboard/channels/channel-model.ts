@@ -82,6 +82,7 @@ export type ModelRow = {
   period_quota_requests: number | null;
   ua_restrictions: string;
   expires_at: string | null;
+  system_prompt: string | null;
 };
 
 export type Channel = {
@@ -177,6 +178,7 @@ export type ModelForm = {
   enabled: boolean;
   ua_restrictions: string;
   expires_at: string;
+  system_prompt: string;
 };
 
 export type UpstreamModelOption = {
@@ -273,4 +275,5 @@ export const initialModelForm: ModelForm = {
   enabled: true,
   ua_restrictions: "",
   expires_at: "",
+  system_prompt: "",
 };

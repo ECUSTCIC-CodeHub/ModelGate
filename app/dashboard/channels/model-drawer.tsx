@@ -342,6 +342,20 @@ export function ModelDrawer({
                 </p>
               </div>
               <div className="space-y-2 md:col-span-2">
+                <Label>系统提示词</Label>
+                <textarea
+                  className="min-h-24 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-foreground)] outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-ring)]"
+                  placeholder="留空则不注入"
+                  value={form.system_prompt}
+                  onChange={(e) => onFormChange({ system_prompt: e.target.value })}
+                />
+                <p className="text-xs text-[var(--color-foreground-muted)]">
+                  转发前按上游协议前置合并到系统提示词，保留客户端已有的内容；每次重试按当前模型重新注入。
+                  Chat Completions 合并到首条 system 消息，Responses 合并到 instructions，Anthropic Messages 合并到顶层 system；
+                  Embeddings、Images 与 Other 转发无 system 概念，不注入。
+                </p>
+              </div>
+              <div className="space-y-2 md:col-span-2">
                 <Label>过期时间</Label>
                 <div className="flex items-center gap-2">
                   <Input

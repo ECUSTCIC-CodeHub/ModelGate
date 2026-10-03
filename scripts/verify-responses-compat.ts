@@ -16,6 +16,7 @@ import {
 } from "../lib/gateway/protocol-adapters/tools";
 import { countTextTokens } from "../lib/gateway/tokenizer";
 import { redactUrlCredentials } from "../lib/shared/redact";
+import { injectModelSystemPrompt } from "../lib/gateway/model-system-prompt";
 
 let passed = 0;
 let failed = 0;
@@ -1000,6 +1001,39 @@ test("无 tool_result 的 tool_use 同样挂到 assistant 消息", () => {
   const chatMessages = (chat as { messages: Array<{ role: string; content: unknown; tool_calls?: Array<{ function: { name: string } }> }> }).messages;
   assert.ok(!chatMessages.some((m) => m.role === "user" && !m.tool_calls), "user 消息不应携带 tool_calls");
   assert.deepEqual(chatMessages.flatMap((m) => (m.tool_calls ?? []).map((tc) => tc.function.name)), ["search"]);
+});
+
+test("模型级系统提示词按协议注入且不修改原始请求", () => {
+  const chat = injectModelSystemPrompt(
+    { messages: [{ role: "system", content: "orig" }, { role: "user", content: "hi" }] },
+    "chat_completions",
+    "SYS",
+  );
+  assert.equal((chat.messages as Array<{ content: string }>)[0].content, "SYS\n\norig");
+
+  const responses = injectModelSystemPrompt({ instructions: "orig" }, "responses", "SYS");
+  assert.equal(responses.instructions, "SYS\n\norig");
+
+  // 上游 injectResponsesSystem 会把非字符串 instructions 判空后覆盖，这里必须原样保留
+  const arrayInstructions = { instructions: [{ type: "message" }] };
+  assert.deepEqual(injectModelSystemPrompt(arrayInstructions, "responses", "SYS"), arrayInstructions);
+
+  const anthropicBody = { system: [{ type: "text", text: "orig", cache_control: { type: "ephemeral" } }] };
+  const anthropic = injectModelSystemPrompt(anthropicBody, "anthropic_messages", "SYS");
+  assert.deepEqual(anthropic.system, [
+    { type: "text", text: "SYS" },
+    { type: "text", text: "orig", cache_control: { type: "ephemeral" } },
+  ]);
+
+  for (const protocol of ["embeddings", "other", "images"] as const) {
+    const body = { messages: [{ role: "user", content: "hi" }] };
+    assert.deepEqual(injectModelSystemPrompt(body, protocol, "SYS"), body, `${protocol} 不应注入`);
+  }
+
+  const original = { messages: [{ role: "system", content: "orig" }] };
+  const snapshot = JSON.stringify(original);
+  injectModelSystemPrompt(original, "chat_completions", "SYS");
+  assert.equal(JSON.stringify(original), snapshot, "不得原地修改原始请求");
 });
 
 test("无参工具补空 object schema 而不是省略 parameters", () => {

@@ -447,6 +447,7 @@ export function useChannelAdmin() {
       enabled: row.enabled === 1,
       ua_restrictions: row.ua_restrictions ?? "",
       expires_at: expiresAtToInputValue(row.expires_at),
+      system_prompt: row.system_prompt ?? "",
     });
     setModelDrawerOpen(true);
   }

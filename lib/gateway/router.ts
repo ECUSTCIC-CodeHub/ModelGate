@@ -41,6 +41,7 @@ type CandidateRow = {
   model_created_at: string;
   model_deleted_at: string | null;
   model_ua_restrictions: string;
+  model_system_prompt: string | null;
   model_expires_at: string | null;
   channel_id_2: number;
   name: string;
@@ -103,6 +104,7 @@ const LIST_MODEL_ROUTES_SQL = `SELECT
       m.created_at as model_created_at,
       m.deleted_at as model_deleted_at,
       m.ua_restrictions as model_ua_restrictions,
+      m.system_prompt as model_system_prompt,
       m.expires_at as model_expires_at,
       c.id as channel_id_2,
       c.name,
@@ -183,6 +185,7 @@ function mapRowToRoute(row: CandidateRow, inboundProtocol?: GatewayProtocol): Ro
       deleted_at: row.model_deleted_at,
       ua_restrictions: row.model_ua_restrictions ?? "",
       expires_at: row.model_expires_at ?? null,
+      system_prompt: row.model_system_prompt ?? null,
     },
     channel: {
       id: row.channel_id_2,

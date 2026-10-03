@@ -16,6 +16,7 @@ import { selectModelRoute, findUaDenyMatchForAlias, findVisionFallbackRoute, fin
 import { getGatewaySettings } from "@/lib/core/settings";
 import { exceedsBodyLimit, resolveBodyLimitBytes } from "@/lib/gateway/body-limit";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
+import { injectModelSystemPrompt } from "@/lib/gateway/model-system-prompt";
 import { checkUserAgentRestrictions, parseUaRestrictions, type UaRestrictionMatch } from "@/lib/gateway/ua-restrictions";
 import { isFeatureEnabled } from "@/lib/core/features";
 import { resolveClientIp } from "@/lib/core/client-ip";
@@ -356,9 +357,16 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       route.model.real_model,
       route.channel.force_include_usage !== 0,
     );
-    return shouldApplyCopilotCompatibility(route)
+    const withCompatibility = shouldApplyCopilotCompatibility(route)
       ? normalizeCopilotChatCompletionRequest(adapted)
       : adapted;
+    // 按上游协议注入模型级系统提示词：每次重试都按当前路由的模型配置重新计算，
+    // 不修改原始 body，切换到别的模型时会用新配置而不是残留上一轮的注入内容
+    return injectModelSystemPrompt(
+      withCompatibility,
+      route.effective_upstream_protocol,
+      route.model.system_prompt ?? "",
+    );
   };
   const shouldApplyCopilotCompatibility = (route: RoutedModel) =>
     inboundProtocol === "chat_completions" && route.model.copilot_compatibility === 1;

@@ -1697,6 +1697,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | request_multiplier | float | 否 | 1 | 请求计费倍率：实际扣量 = 请求次数 x 倍率 |
 | quota_mode | enum | 否 | follow_group | `follow_group`：跟随用户组限制；`bypass_group`：跳过用户组配额和速率限制；`independent`：跳过用户组限制，使用模型自身配额；`dual`：受用户组配额和速率限制，同时受模型自身配额限制 |
 | ua_restrictions | string | 否 | "" | 模型级 User-Agent 限制规则 JSON 数组，留空表示不限制（完整版功能，最长 20000 字符） |
+| system_prompt | string\|null | 否 | null | 模型级前置系统提示词，最长 20000 字符，留空或 `null` 表示不注入。转发前按上游协议**前置合并**并保留客户端已有内容：`chat_completions` 合并到首条 `system` 消息（无则头部插入；若该消息 `content` 为数组形态则另插一条，不破坏原有结构）；`responses` 合并到 `instructions`（`prompt + "\n\n" + existing`，**仅当 `instructions` 为字符串或缺席时生效**，数组/对象形态保持原样不注入）；`anthropic_messages` 合并到顶层 `system`（字符串直接前置拼接，blocks 形态前插一个纯文本块并保留原块 `cache_control` 等标注）；`embeddings`、`images` 与 `other` 无 system 概念，不注入。每次上游重试都按当前路由的模型配置重新计算，不修改客户端原始请求，因此重试切到其它模型时不会残留上一次的注入内容。注入内容计入上游 prompt tokens，本地 token 预估基于客户端原始请求、不含注入内容 |
 | expires_at | string\|null | 否 | null | 过期时间（本地 datetime，如 `2026-08-01T00:00`），null 或留空表示永不过期；到达该时间后该模型在路由中自动不可用，管理员对任意渠道或模型执行操作后，已过期模型会被自动禁用 |
 | quota_tokens | int\|null | 否 | null | 模型总 Token 配额（仅 `independent` / `dual` 模式生效），null 表示不限制 |
 | quota_requests | int\|null | 否 | null | 模型总请求配额（仅 `independent` / `dual` 模式生效），null 表示不限制 |
