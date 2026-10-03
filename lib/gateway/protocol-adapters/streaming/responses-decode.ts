@@ -10,7 +10,7 @@ import {
   parseResponsesSseEvent,
   usageFromResponses,
 } from "@/lib/gateway/protocol-adapters/streaming/responses-events";
-import { createSseFrameReader } from "@/lib/shared/sse-frames";
+import { createSseFrameReader, isDoneSentinel } from "@/lib/shared/sse-frames";
 import { upstreamErrorText } from "@/lib/gateway/protocol-adapters/intermediate";
 
 // response.incomplete 表示上游因长度上限或内容过滤提前终止，
@@ -241,7 +241,7 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
 
           for (const frame of frameReader.push(decoder.decode(value, { stream: true }))) {
             if (!frame.hasData) continue;
-            if (frame.data === "[DONE]") continue;
+            if (isDoneSentinel(frame.data)) continue;
 
             const event = parseResponsesSseEvent(frame.event, frame.data);
             const payload = asRecord(event.data);

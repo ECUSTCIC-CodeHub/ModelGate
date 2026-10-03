@@ -1,4 +1,4 @@
-import { createSseFrameReader } from "@/lib/shared/sse-frames";
+import { createSseFrameReader, isDoneSentinel } from "@/lib/shared/sse-frames";
 
 export type ToolCallState = {
   index: number;
@@ -138,7 +138,7 @@ export function createPassthroughStream(
           controller.enqueue(value);
           for (const frame of frameReader.push(decoder.decode(value, { stream: true }))) {
             if (!frame.hasData) continue;
-            if (frame.data === "[DONE]") continue;
+            if (isDoneSentinel(frame.data)) continue;
 
             try {
               const tracked = trackEvent(frame.event, frame.data);

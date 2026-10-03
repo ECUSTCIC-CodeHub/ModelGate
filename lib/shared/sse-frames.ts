@@ -14,6 +14,13 @@ function stripOneLeadingSpace(value: string): string {
   return value.startsWith(" ") ? value.slice(1) : value;
 }
 
+// [DONE] 是非 JSON 哨兵，JSON 载荷对多余空格有容忍度、哨兵没有：
+// 部分 OpenAI 兼容上游会写成 `data:  [DONE]`（两个空格），只剥一个空格后会失配，
+// 解码器随即把它当 JSON 解析并抛错，导致流异常中断。这里单独对哨兵做 trim 比较。
+export function isDoneSentinel(data: string): boolean {
+  return data === "[DONE]" || data.trim() === "[DONE]";
+}
+
 // 按 SSE 规范只剥离一个前导空格：`data:   x` 的值是 `  x`，
 // 原先的 trimStart 会把纯文本多行 data 的缩进一并吃掉。
 export function parseSseFrame(raw: string): SseFrame {

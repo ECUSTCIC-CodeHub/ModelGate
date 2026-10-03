@@ -401,6 +401,23 @@ test("anthropic thinking 历史转 chat 时不回带 thinking 块与 reasoning �
   assert.ok(!("reasoning_content" in assistant), "不应注入 reasoning_content");
 });
 
+test("多前导空格的 [DONE] 哨兵不再被当成 JSON 解析", async () => {
+  const encoder = new TextEncoder();
+  const upstream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode('data: {"id":"x","choices":[{"delta":{"content":"hi"}}]}\n\n'));
+      controller.enqueue(encoder.encode("data:  [DONE]\n\n"));
+      controller.close();
+    },
+  });
+
+  const result = createTransformedStream(upstream, chatCompletionsGatewayAdapter, anthropicGatewayAdapter);
+  const output = await collectStream(result.stream);
+
+  assert.ok(output.includes("hi"), "正常内容应已输出");
+  assert.ok(!output.includes("上游流式返回错误"), `[DONE] 不应被当成错误，实际: ${output}`);
+});
+
 test("responses consecutive function calls are grouped before chat tool outputs", () => {
   const result = responsesGatewayAdapter.adaptRequestBody(
     {

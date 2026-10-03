@@ -1,6 +1,6 @@
 import { asArray, asRecord, type JsonRecord } from "@/lib/gateway/normalized-message";
 import type { StreamTransformResult } from "@/lib/gateway/protocol-adapters/streaming";
-import { createSseFrameReader, parseSseFrame, type SseFrame } from "@/lib/shared/sse-frames";
+import { createSseFrameReader, isDoneSentinel, parseSseFrame, type SseFrame } from "@/lib/shared/sse-frames";
 
 type ToolNamePolicy = {
   allowedNames: Set<string>;
@@ -506,7 +506,7 @@ function normalizeSseEvent(
   if (!frame.hasData) return `${frame.raw}\n\n`;
 
   const data = frame.data;
-  if (data === "[DONE]") return "data: [DONE]\n\n";
+  if (isDoneSentinel(data)) return "data: [DONE]\n\n";
 
   try {
     const parsed = JSON.parse(data) as JsonRecord;

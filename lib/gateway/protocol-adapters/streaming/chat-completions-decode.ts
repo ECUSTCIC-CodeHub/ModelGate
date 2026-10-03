@@ -4,7 +4,7 @@ import type {
   StreamUsage,
 } from "@/lib/gateway/protocol-adapters/streaming/common";
 import { parseChatChunkEvent } from "@/lib/gateway/protocol-adapters/streaming/chat-completions-events";
-import { createSseFrameReader } from "@/lib/shared/sse-frames";
+import { createSseFrameReader, isDoneSentinel } from "@/lib/shared/sse-frames";
 
 export function decodeChatCompletionsStream(upstream: ReadableStream<Uint8Array>): IntermediateStreamResult {
   const reader = upstream.getReader();
@@ -30,7 +30,7 @@ export function decodeChatCompletionsStream(upstream: ReadableStream<Uint8Array>
 
           for (const frame of frameReader.push(decoder.decode(value, { stream: true }))) {
             if (!frame.hasData) continue;
-            if (frame.data === "[DONE]") continue;
+            if (isDoneSentinel(frame.data)) continue;
 
             const parsed = parseChatChunkEvent(frame.data);
 

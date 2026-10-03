@@ -2,7 +2,7 @@ import { durationNs } from "@/lib/gateway/ollama-adapter/response";
 import { statesToToolCalls, updateToolCallState } from "@/lib/gateway/ollama-adapter/tool-calls";
 import type { JsonRecord, ToolCallState, Usage } from "@/lib/gateway/ollama-adapter/types";
 import { asArray, asRecord } from "@/lib/gateway/ollama-adapter/utils";
-import { createSseFrameReader, parseSseFrame, type SseFrame } from "@/lib/shared/sse-frames";
+import { createSseFrameReader, isDoneSentinel, parseSseFrame, type SseFrame } from "@/lib/shared/sse-frames";
 
 function parseChatChunk(data: string) {
   const parsed = JSON.parse(data) as JsonRecord;
@@ -84,7 +84,7 @@ export function createChatCompletionToOllamaStream(upstream: ReadableStream<Uint
   const processEvent = (frame: SseFrame, controller: ReadableStreamDefaultController<Uint8Array>) => {
     if (!frame.hasData) return;
     const data = frame.data;
-    if (data === "[DONE]") {
+    if (isDoneSentinel(data)) {
       emitDone(controller);
       return;
     }
