@@ -1,4 +1,4 @@
-import { normalizeProxyUrl, withUpstreamProxy } from "@/lib/gateway/upstream-proxy";
+import { fetchUpstream } from "@/lib/gateway/upstream-proxy";
 
 const PROBE_TIMEOUT_MS = 15_000;
 
@@ -41,24 +41,21 @@ export async function fetchUpstreamModelIds(params: UpstreamModelListParams): Pr
   const baseUrl = params.baseUrl.trim().replace(/\/+$/, "");
   const apiKey = params.apiKey?.trim() ?? "";
   const userAgent = params.userAgent?.trim() ?? "";
-  const proxyUrl = normalizeProxyUrl(params.proxyUrl);
 
   let upstream: Response;
   try {
-    upstream = await fetch(
+    upstream = await fetchUpstream(
       `${baseUrl}/models`,
-      withUpstreamProxy(
-        {
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "x-api-key": apiKey,
-            Accept: "application/json",
-            ...(userAgent ? { "User-Agent": userAgent } : {}),
-          },
-          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "x-api-key": apiKey,
+          Accept: "application/json",
+          ...(userAgent ? { "User-Agent": userAgent } : {}),
         },
-        proxyUrl,
-      ),
+        signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+      },
+      params.proxyUrl,
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "未知错误";

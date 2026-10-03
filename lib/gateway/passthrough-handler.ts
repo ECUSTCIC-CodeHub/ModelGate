@@ -12,10 +12,9 @@ import { checkUserAgentRestrictions, parseUaRestrictions } from "@/lib/gateway/u
 import { resolveClientIp } from "@/lib/core/client-ip";
 import { normalizeUserAgent } from "@/lib/gateway/queued-upstream-response";
 import { buildArbitraryUpstreamUrl } from "@/lib/gateway/proxy";
-import { withUpstreamProxy } from "@/lib/gateway/upstream-proxy";
+import { fetchUpstream } from "@/lib/gateway/upstream-proxy";
 import { isTimeoutError, upstreamFailureStatus } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
-import { Agent, type Dispatcher } from "undici";
 
 const HOP_BY_HOP = new Set([
   "connection",
@@ -296,22 +295,18 @@ async function forwardToChannel(route: RoutedModel, request: Request, upstreamPa
     fetchInit.body = bodyBytes as unknown as BodyInit;
   }
 
-  const proxyUrl = channel.proxy_url?.trim();
+  const proxyUrl = channel.proxy_url;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Math.max(1, channel.timeout) * 1000);
   try {
-    const initWithSignal: RequestInit & { signal?: AbortSignal } = {
-      ...fetchInit,
-      signal: controller.signal,
-    };
-    if (proxyUrl) {
-      return await fetch(upstreamUrl, withUpstreamProxy(initWithSignal, proxyUrl));
-    }
-    const initWithDispatcher: RequestInit & { dispatcher: Dispatcher } = {
-      ...initWithSignal,
-      dispatcher: new Agent(),
-    };
-    return await fetch(upstreamUrl, initWithDispatcher);
+    return await fetchUpstream(
+      upstreamUrl,
+      {
+        ...fetchInit,
+        signal: controller.signal,
+      },
+      proxyUrl,
+    );
   } finally {
     clearTimeout(timeout);
   }

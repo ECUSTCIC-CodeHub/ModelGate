@@ -2,9 +2,8 @@ import { jsonError } from "@/lib/core/http";
 import type { DbChannel, DbModel } from "@/lib/core/db";
 import type { RoutedModel } from "@/lib/gateway/router";
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
-import { withUpstreamProxy } from "@/lib/gateway/upstream-proxy";
+import { fetchUpstream } from "@/lib/gateway/upstream-proxy";
 import { isTimeoutError, upstreamFailureStatus } from "@/lib/gateway/upstream-error";
-import { Agent, type Dispatcher } from "undici";
 
 export function normalizeProviderBaseUrl(baseUrl: string) {
   const normalized = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
@@ -95,24 +94,16 @@ export async function fetchUpstreamRequest(
   const { controller, timeout } = createTimeoutController(route.channel.timeout);
 
   try {
-    const proxyUrl = route.channel.proxy_url?.trim();
-    const fetchInit: RequestInit = {
-      method: "POST",
-      headers: buildUpstreamHeaders(route, protocol, inboundHeaders),
-      body: JSON.stringify(requestBody),
-      signal: controller.signal,
-    };
-
-    if (proxyUrl) {
-      const proxyInit = withUpstreamProxy(fetchInit, proxyUrl);
-      return await fetch(buildUpstreamUrl(route.channel.base_url, protocol), proxyInit);
-    }
-
-    const initWithDispatcher: RequestInit & { dispatcher: Dispatcher } = {
-      ...fetchInit,
-      dispatcher: new Agent(),
-    };
-    return await fetch(buildUpstreamUrl(route.channel.base_url, protocol), initWithDispatcher);
+    return await fetchUpstream(
+      buildUpstreamUrl(route.channel.base_url, protocol),
+      {
+        method: "POST",
+        headers: buildUpstreamHeaders(route, protocol, inboundHeaders),
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      },
+      route.channel.proxy_url,
+    );
   } finally {
     clearTimeout(timeout);
   }
@@ -137,69 +128,67 @@ export async function testUpstreamModel(target: {
 
   try {
     const protocol = target.model.upstream_protocol as GatewayProtocol;
-    const response = await fetch(
+    const response = await fetchUpstream(
       buildUpstreamUrl(target.channel.base_url, protocol),
-      withUpstreamProxy(
-        {
-          method: "POST",
-          headers:
-            protocol === "anthropic_messages"
-              ? {
-                  "content-type": "application/json",
-                  "user-agent": resolveUpstreamUserAgent(protocol, target.channel.user_agent),
-                  ...(target.channel.api_key?.trim()
-                    ? {
-                        "x-api-key": target.channel.api_key.trim(),
-                        authorization: `Bearer ${target.channel.api_key.trim()}`,
-                      }
-                    : {}),
-                  "anthropic-version": "2023-06-01",
-                }
-              : {
-                  "content-type": "application/json",
-                  "user-agent": resolveUpstreamUserAgent(protocol, target.channel.user_agent),
-                  ...(target.channel.api_key?.trim()
-                    ? { authorization: `Bearer ${target.channel.api_key.trim()}` }
-                    : {}),
-                },
-          body: JSON.stringify(
-            protocol === "responses"
+      {
+        method: "POST",
+        headers:
+          protocol === "anthropic_messages"
+            ? {
+                "content-type": "application/json",
+                "user-agent": resolveUpstreamUserAgent(protocol, target.channel.user_agent),
+                ...(target.channel.api_key?.trim()
+                  ? {
+                      "x-api-key": target.channel.api_key.trim(),
+                      authorization: `Bearer ${target.channel.api_key.trim()}`,
+                    }
+                  : {}),
+                "anthropic-version": "2023-06-01",
+              }
+            : {
+                "content-type": "application/json",
+                "user-agent": resolveUpstreamUserAgent(protocol, target.channel.user_agent),
+                ...(target.channel.api_key?.trim()
+                  ? { authorization: `Bearer ${target.channel.api_key.trim()}` }
+                  : {}),
+              },
+        body: JSON.stringify(
+          protocol === "responses"
+            ? {
+                model: target.model.real_model,
+                input: "ping",
+                max_output_tokens: 1,
+                stream: false,
+              }
+            : protocol === "embeddings"
               ? {
                   model: target.model.real_model,
                   input: "ping",
-                  max_output_tokens: 1,
+                }
+            : protocol === "images"
+              ? {
+                  model: target.model.real_model,
+                  prompt: "ping",
+                  n: 1,
+                  size: "1024x1024",
+                }
+            : protocol === "anthropic_messages"
+              ? {
+                  model: target.model.real_model,
+                  max_tokens: 1,
+                  messages: [{ role: "user", content: "ping" }],
                   stream: false,
                 }
-              : protocol === "embeddings"
-                ? {
-                    model: target.model.real_model,
-                    input: "ping",
-                  }
-              : protocol === "images"
-                ? {
-                    model: target.model.real_model,
-                    prompt: "ping",
-                    n: 1,
-                    size: "1024x1024",
-                  }
-              : protocol === "anthropic_messages"
-                ? {
-                    model: target.model.real_model,
-                    max_tokens: 1,
-                    messages: [{ role: "user", content: "ping" }],
-                    stream: false,
-                  }
-                : {
-                    model: target.model.real_model,
-                    messages: [{ role: "user", content: "ping" }],
-                    max_tokens: 1,
-                    stream: false,
-                  },
-          ),
-          signal: controller.signal,
-        },
-        target.channel.proxy_url,
-      ),
+              : {
+                  model: target.model.real_model,
+                  messages: [{ role: "user", content: "ping" }],
+                  max_tokens: 1,
+                  stream: false,
+                },
+        ),
+        signal: controller.signal,
+      },
+      target.channel.proxy_url,
     );
 
     const bodyText = await response.text();
