@@ -863,6 +863,101 @@ test("responses -> chat_completions stream can emit completed snapshot tool call
   assert.ok(output.includes("\"finish_reason\":\"tool_calls\""), "should finish with tool_calls");
 });
 
+// --- 上游流式错误事件与长度截断 ---
+
+console.log("\n上游流式错误事件与长度截断");
+
+test("responses 上游 response.failed 透出真实原因而不是静默截断", async () => {
+  const upstream = makeUpstreamResponsesStream([
+    'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_test","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[]}}\n\n',
+    'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"hel"}\n\n',
+    'event: response.failed\ndata: {"type":"response.failed","response":{"id":"resp_test","status":"failed","error":{"code":"server_error","message":"上游限流"}}}\n\n',
+  ]);
+
+  const adapter = makeAdapter("responses");
+  const result = createTransformedStream(upstream, adapter, adapter);
+  const output = await collectStream(result.stream);
+
+  assert.ok(output.includes("response.failed"), "应输出 response.failed 事件");
+  assert.ok(output.includes("上游限流"), "应带上游真实错误信息");
+});
+
+test("chat_completions 上游 error 块透出真实原因", async () => {
+  const encoder = new TextEncoder();
+  const upstream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode('data: {"id":"x","choices":[{"delta":{"content":"hi"}}]}\n\n'));
+      controller.enqueue(encoder.encode('data: {"error":{"message":"配额不足","code":"quota"}}\n\n'));
+      controller.close();
+    },
+  });
+
+  const result = createTransformedStream(upstream, chatCompletionsGatewayAdapter, anthropicGatewayAdapter);
+  const output = await collectStream(result.stream);
+
+  assert.ok(output.includes("上游流式返回错误"), `应输出流式错误，实际: ${output}`);
+  assert.ok(output.includes("配额不足"), "应带上游真实错误信息");
+});
+
+test("anthropic 上游 error 事件透出真实原因", async () => {
+  const encoder = new TextEncoder();
+  const upstream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode('event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","model":"claude","usage":{"input_tokens":1,"output_tokens":0}}}\n\n'));
+      controller.enqueue(encoder.encode('event: error\ndata: {"type":"error","error":{"type":"overloaded_error","message":"上游过载"}}\n\n'));
+      controller.close();
+    },
+  });
+
+  const result = createTransformedStream(upstream, anthropicGatewayAdapter, chatCompletionsGatewayAdapter);
+  const output = await collectStream(result.stream);
+
+  assert.ok(output.includes("上游流式返回错误"), `应输出流式错误，实际: ${output}`);
+  assert.ok(output.includes("上游过载"), "应带上游真实错误信息");
+});
+
+test("长度截断在 anthropic / chat / responses 之间正确换算", async () => {
+  const encoder = new TextEncoder();
+  const anthropicUpstream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode('event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","model":"claude","usage":{"input_tokens":1,"output_tokens":0}}}\n\n'));
+      controller.enqueue(encoder.encode('event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"max_tokens"},"usage":{"output_tokens":5}}\n\n'));
+      controller.enqueue(encoder.encode('event: message_stop\ndata: {"type":"message_stop"}\n\n'));
+      controller.close();
+    },
+  });
+
+  const toChat = createTransformedStream(anthropicUpstream, anthropicGatewayAdapter, chatCompletionsGatewayAdapter);
+  const chatOut = await collectStream(toChat.stream);
+  assert.ok(chatOut.includes("\"finish_reason\":\"length\""), `Anthropic max_tokens 应转成 Chat length，实际: ${chatOut}`);
+
+  const anthropicUpstream2 = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode('event: message_start\ndata: {"type":"message_start","message":{"id":"msg_2","model":"claude","usage":{"input_tokens":1,"output_tokens":0}}}\n\n'));
+      controller.enqueue(encoder.encode('event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"max_tokens"},"usage":{"output_tokens":5}}\n\n'));
+      controller.enqueue(encoder.encode('event: message_stop\ndata: {"type":"message_stop"}\n\n'));
+      controller.close();
+    },
+  });
+
+  const toResponses = createTransformedStream(anthropicUpstream2, anthropicGatewayAdapter, responsesGatewayAdapter);
+  const responsesOut = await collectStream(toResponses.stream);
+  assert.ok(responsesOut.includes("response.incomplete"), `Anthropic max_tokens 应转成 Responses incomplete，实际: ${responsesOut}`);
+  assert.ok(responsesOut.includes("max_output_tokens"), "应带 incomplete_details.reason");
+});
+
+test("Responses incomplete 解析回 length", async () => {
+  const upstream = makeUpstreamResponsesStream([
+    'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_test","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[]}}\n\n',
+    'event: response.incomplete\ndata: {"type":"response.incomplete","response":{"id":"resp_test","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[]}}\n\n',
+  ]);
+
+  const result = createTransformedStream(upstream, responsesGatewayAdapter, chatCompletionsGatewayAdapter);
+  const output = await collectStream(result.stream);
+
+  assert.ok(output.includes("\"finish_reason\":\"length\""), `Responses incomplete 应转成 Chat length，实际: ${output}`);
+});
+
 // --- Summary ---
 
 void Promise.all(pending).then(() => {

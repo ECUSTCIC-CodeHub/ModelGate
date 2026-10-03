@@ -1,5 +1,6 @@
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 import type { JsonRecord, NormalizedContentPart, NormalizedMessage } from "@/lib/gateway/normalized-message";
+import { asRecord } from "@/lib/gateway/normalized-message";
 
 export type IntermediateTool = {
   type: "function";
@@ -98,6 +99,18 @@ export function parseToolArguments(raw: string | undefined) {
   } catch {
     return { raw: raw ?? "" };
   }
+}
+
+// 流式错误事件的载荷结构各协议不一（字符串、{message}、{code}），
+// 统一提取可读信息，避免把上游限流、内容策略拒绝误报成流被截断
+export function upstreamErrorText(value: unknown): string {
+  const record = asRecord(value);
+  if (record) {
+    if (typeof record.message === "string" && record.message) return record.message;
+    if (typeof record.code === "string" && record.code) return record.code;
+  }
+  if (typeof value === "string" && value) return value;
+  return "未知错误";
 }
 
 export function finishReasonToAnthropic(value: string | null, hasTools: boolean) {

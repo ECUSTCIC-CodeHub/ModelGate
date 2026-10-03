@@ -1,4 +1,4 @@
-import type { IntermediateStreamEvent } from "@/lib/gateway/protocol-adapters/streaming/common";
+import { errorMessageFrom, type IntermediateStreamEvent } from "@/lib/gateway/protocol-adapters/streaming/common";
 import { ResponsesStreamWriter } from "@/lib/gateway/protocol-adapters/streaming/responses-encode-writer";
 
 export function encodeResponsesStream(events: ReadableStream<IntermediateStreamEvent>) {
@@ -54,7 +54,8 @@ export function encodeResponsesStream(events: ReadableStream<IntermediateStreamE
         writer.writeDone(controller, null);
         controller.close();
       } catch (error) {
-        controller.error(error);
+        writer.writeFailed(controller, errorMessageFrom(error));
+        controller.close();
       }
     },
   });

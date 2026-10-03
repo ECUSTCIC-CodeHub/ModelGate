@@ -46,6 +46,14 @@ export function toSseBlock(event: string | null, data: unknown) {
   return `${lines.join("\n")}\n\n`;
 }
 
+// HTTP 状态码在流开始时已经发出，流中途的上游错误只能靠协议内错误事件告知调用方，
+// 否则客户端只会看到连接中断，拿不到真实原因
+export function errorMessageFrom(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error) return error;
+  return "上游流式请求失败";
+}
+
 export type StreamTransformResult = {
   stream: ReadableStream<Uint8Array>;
   completionText: () => string;

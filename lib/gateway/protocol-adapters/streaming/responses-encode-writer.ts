@@ -18,6 +18,7 @@ export class ResponsesStreamWriter {
   private usage: StreamUsage | null = null;
   private started = false;
   private finished = false;
+  private failed = false;
   private nextOutputIndex = 0;
   private reasoningStarted = false;
   private reasoningDone = false;
@@ -160,11 +161,38 @@ export class ResponsesStreamWriter {
     });
   }
 
+  writeFailed(controller: ReadableStreamDefaultController<Uint8Array>, message: string) {
+    if (this.failed) return;
+    this.failed = true;
+    this.finished = true;
+    this.ensureStarted(controller);
+    this.doneReasoning(controller);
+    this.doneText(controller);
+    for (const tool of this.sortedTools()) {
+      this.doneTool(controller, tool);
+    }
+    const output = [
+      ...(this.reasoningStarted ? [this.reasoningOutputItem()] : []),
+      ...(this.textStarted || this.tools.size === 0 ? [this.textOutputItem()] : []),
+      ...this.sortedTools().map((tool) => this.toolOutputItem(tool)),
+    ];
+    this.emit(controller, "response.failed", {
+      type: "response.failed",
+      response: {
+        ...this.responseBase("failed"),
+        output,
+        output_text: this.text,
+        usage: responseUsage(this.usage),
+        error: { code: "upstream_error", message },
+      },
+    });
+  }
+
   private emit(controller: ReadableStreamDefaultController<Uint8Array>, event: string, payload: unknown) {
     controller.enqueue(this.encoder.encode(toSseBlock(event, payload)));
   }
 
-  private responseBase(status: "in_progress" | "completed" | "incomplete") {
+  private responseBase(status: "in_progress" | "completed" | "incomplete" | "failed") {
     return {
       id: this.responseId,
       object: "response",

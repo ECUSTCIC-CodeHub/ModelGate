@@ -1,6 +1,7 @@
 import type { JsonRecord } from "@/lib/gateway/normalized-message";
 import type { ResponseAdapterOptions } from "@/lib/gateway/protocol-adapters/intermediate";
 import {
+  errorMessageFrom,
   toSseBlock,
   type IntermediateStreamEvent,
   type StreamUsage,
@@ -204,7 +205,10 @@ export function encodeChatCompletionsStream(events: ReadableStream<IntermediateS
         emitDone(controller, "stop");
         controller.close();
       } catch (error) {
-        controller.error(error);
+        controller.enqueue(encoder.encode(toSseBlock(null, {
+          error: { message: errorMessageFrom(error), type: "upstream_error" },
+        })));
+        controller.close();
       }
     },
   });

@@ -33,6 +33,12 @@ export function decodeChatCompletionsStream(upstream: ReadableStream<Uint8Array>
             if (frame.data === "[DONE]") continue;
 
             const parsed = parseChatChunkEvent(frame.data);
+
+            if (parsed.error) {
+              // 上游错误块（限流、内容策略拒绝等）必须终止转发并透出真实信息，
+              // 否则流会在没有 finish 的情况下结束，被下游当成正常截断
+              throw new Error(`上游流式返回错误: ${parsed.error}`);
+            }
             if (!started) {
               started = true;
               controller.enqueue({ type: "start", id: parsed.id, model: parsed.model, created: parsed.created });

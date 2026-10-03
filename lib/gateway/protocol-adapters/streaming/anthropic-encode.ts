@@ -1,6 +1,7 @@
 import type { JsonRecord } from "@/lib/gateway/normalized-message";
 import { finishReasonToAnthropic, type ResponseAdapterOptions } from "@/lib/gateway/protocol-adapters/intermediate";
 import {
+  errorMessageFrom,
   toSseBlock,
   type IntermediateStreamEvent,
 } from "@/lib/gateway/protocol-adapters/streaming/common";
@@ -201,7 +202,11 @@ export function encodeAnthropicMessagesStream(events: ReadableStream<Intermediat
         emitDone(controller, "stop");
         controller.close();
       } catch (error) {
-        controller.error(error);
+        controller.enqueue(encoder.encode(toSseBlock("error", {
+          type: "error",
+          error: { type: "api_error", message: errorMessageFrom(error) },
+        })));
+        controller.close();
       }
     },
   });

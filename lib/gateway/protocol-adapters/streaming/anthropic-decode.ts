@@ -6,7 +6,7 @@ import {
 } from "@/lib/gateway/protocol-adapters/streaming/common";
 import { parseAnthropicSseEvent } from "@/lib/gateway/protocol-adapters/streaming/anthropic-events";
 import { usageFromAnthropic } from "@/lib/gateway/protocol-adapters/usage";
-import { finishReasonFromAnthropic } from "@/lib/gateway/protocol-adapters/intermediate";
+import { finishReasonFromAnthropic, upstreamErrorText } from "@/lib/gateway/protocol-adapters/intermediate";
 import { createSseFrameReader } from "@/lib/shared/sse-frames";
 
 export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Array>): IntermediateStreamResult {
@@ -50,6 +50,11 @@ export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Arra
 
             const event = parseAnthropicSseEvent(frame.event, frame.data);
             const payload = asRecord(event.data);
+
+            if (event.event === "error") {
+              // 上游错误事件必须终止转发并透出真实信息，不能被当噪声忽略后误报为流截断
+              throw new Error(`上游流式返回错误: ${upstreamErrorText(payload?.error)}`);
+            }
 
             if (event.event === "message_start") {
               const message = asRecord(payload?.message);

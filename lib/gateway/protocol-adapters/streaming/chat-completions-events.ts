@@ -1,4 +1,5 @@
 import { asArray, asRecord, type JsonRecord } from "@/lib/gateway/normalized-message";
+import { upstreamErrorText } from "@/lib/gateway/protocol-adapters/intermediate";
 import { usageFromChatCompletions } from "@/lib/gateway/protocol-adapters/usage";
 
 type ChatToolDelta = {
@@ -41,6 +42,7 @@ export function parseChatChunkEvent(data: string) {
     toolCalls,
     finishReason: typeof firstChoice?.finish_reason === "string" ? firstChoice.finish_reason : null,
     usage,
+    error: parsed.error !== undefined ? upstreamErrorText(parsed.error) : null,
   };
 }
 

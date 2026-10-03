@@ -11,6 +11,7 @@ import {
   usageFromResponses,
 } from "@/lib/gateway/protocol-adapters/streaming/responses-events";
 import { createSseFrameReader } from "@/lib/shared/sse-frames";
+import { upstreamErrorText } from "@/lib/gateway/protocol-adapters/intermediate";
 
 // response.incomplete 表示上游因长度上限或内容过滤提前终止，
 // 其 reason 在 incomplete_details 里，需要换算回中间协议的 stop_reason
@@ -246,6 +247,12 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
             const payload = asRecord(event.data);
             const response = responseFromPayload(payload);
             updateResponseMetadata(response);
+
+            if (event.event === "response.failed" || event.event === "error") {
+              // 上游失败事件必须终止转发并透出真实信息，否则流会在没有 finish 的情况下
+              // 结束，被下游当成正常截断
+              throw new Error(`上游流式返回错误: ${upstreamErrorText(response?.error ?? payload?.error)}`);
+            }
 
             if (event.event === "response.created" || event.event === "response.in_progress") {
               emitStart(controller);
