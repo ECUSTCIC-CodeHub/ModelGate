@@ -54,7 +54,8 @@ export async function getOidcConfig() {
 
 export async function getPublicOrigin(requestUrl: string): Promise<string> {
   const s = await getGatewaySettings();
-  if (s.public_base_url) return s.public_base_url;
+  const base = (s.public_base_url ?? "").trim().replace(/\/+$/, "");
+  if (base && isValidPublicBaseUrl(base)) return base;
   return new URL(requestUrl).origin;
 }
 
@@ -62,8 +63,10 @@ export const OIDC_REDIRECT_URI_HINT = "OIDC 登录需要先在设置中配置对
 
 // public_base_url 会被直接拼接成 redirect_uri 回传给 IdP，因此除协议与主机外，
 // 还必须排除 userinfo（凭据会随连接泄漏给 IdP）、query/hash（拼接后地址不成立）与空端口。
+// new URL 会剥掉内嵌的 \t\n\r 并把空 query/hash 归一化，故先用原始串挡掉这些写法。
 export function isValidPublicBaseUrl(value: string): boolean {
-  const authority = value.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, "").split(/[/?#]/)[0];
+  if (/\s/.test(value) || value.includes("?") || value.includes("#")) return false;
+  const authority = value.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, "").split("/")[0];
   if (authority === "" || authority.endsWith(":")) return false;
 
   let url: URL;
