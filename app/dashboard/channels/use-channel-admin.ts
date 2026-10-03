@@ -155,6 +155,7 @@ export function useChannelAdmin() {
       expires_at: expiresAtToInputValue(row.expires_at),
       time_restrictions: row.time_restrictions ?? "",
       custom_headers: formatCustomHeadersInput(row.custom_headers),
+      group_name: row.group_name ?? "",
     });
     setChannelModels([baseDraft(supportedProtocols)]);
     setChannelDrawerOpen(true);
@@ -286,6 +287,7 @@ export function useChannelAdmin() {
           expires_at: expiresAtFromInputValue(channelForm.expires_at),
           time_restrictions: channelForm.time_restrictions,
           custom_headers: customHeaders,
+          group_name: channelForm.group_name.trim(),
           ...buildQuotaPayload(channelForm),
           models: draftModels,
         }),
@@ -316,6 +318,7 @@ export function useChannelAdmin() {
       expires_at: expiresAtFromInputValue(channelForm.expires_at),
       time_restrictions: channelForm.time_restrictions,
       custom_headers: customHeaders,
+      group_name: channelForm.group_name.trim(),
       ...buildQuotaPayload(channelForm),
     };
     if (channelEditingCanViewApiKey) updateBody.api_key = channelForm.api_key;

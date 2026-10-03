@@ -51,6 +51,7 @@ export function ChannelTable({
     () => [
       { key: "index", defaultWidth: 60, minWidth: 40 },
       { key: "name", defaultWidth: 140, minWidth: 80 },
+      { key: "group", defaultWidth: 100, minWidth: 60 },
       { key: "baseUrl", defaultWidth: 140, minWidth: 80 },
       { key: "proxy", defaultWidth: 80, minWidth: 60 },
       { key: "status", defaultWidth: 90, minWidth: 72 },
@@ -91,6 +92,7 @@ export function ChannelTable({
           <TableRow>
             {th("index", "序号")}
             {th("name", "名称")}
+            {th("group", "分组")}
             {th("baseUrl", "Base URL")}
             {th("proxy", "代理")}
             {th("status", "状态")}
@@ -108,6 +110,9 @@ export function ChannelTable({
             <TableRow key={row.id} className="group">
               <TableCell>{channelIndex + 1}</TableCell>
               <TableCell>{row.name}</TableCell>
+              <TableCell>
+                {row.group_name?.trim() ? <Badge variant="outline">{row.group_name}</Badge> : <span className="text-[var(--color-foreground-muted)]">-</span>}
+              </TableCell>
               <TableCell className="max-w-72 truncate">{row.base_url}</TableCell>
               <TableCell>
                 <Badge variant={row.proxy_url?.trim() ? "outline" : "secondary"}>

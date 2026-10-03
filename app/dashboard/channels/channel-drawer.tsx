@@ -206,6 +206,18 @@ export function ChannelDrawer({
                 留空直连；支持 http:// 或 https:// 代理地址。
               </p>
             </div>
+            <div className="space-y-2">
+              <Label>分组</Label>
+              <Input
+                placeholder="留空表示未分组"
+                maxLength={64}
+                value={form.group_name}
+                onChange={(e) => onFormChange({ group_name: e.target.value })}
+              />
+              <p className="text-xs text-[var(--color-foreground-muted)]">
+                仅用于渠道列表组织，不参与请求路由。最长 64 字符，保存时去掉首尾空白。
+              </p>
+            </div>
             <div className="space-y-2 md:col-span-2">
               <Label>自定义 Header</Label>
               <textarea

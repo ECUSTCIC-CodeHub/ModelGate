@@ -69,6 +69,7 @@ type CandidateRow = {
   channel_expires_at: string | null;
   channel_time_restrictions: string;
   channel_custom_headers: string | null;
+  channel_group_name: string | null;
 };
 
 const LIST_ENABLED_ALIASES_SQL = `SELECT DISTINCT m.alias, c.expires_at, c.time_restrictions, m.expires_at AS model_expires_at
@@ -131,7 +132,8 @@ const LIST_MODEL_ROUTES_SQL = `SELECT
       c.ua_restrictions as channel_ua_restrictions,
       c.expires_at as channel_expires_at,
       c.time_restrictions as channel_time_restrictions,
-      c.custom_headers as channel_custom_headers
+      c.custom_headers as channel_custom_headers,
+      c.group_name as channel_group_name
    FROM models m
    JOIN channels c ON c.id = m.channel_id
    WHERE m.alias = ? AND m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL AND c.deleted_at IS NULL`;
@@ -214,6 +216,7 @@ function mapRowToRoute(row: CandidateRow, inboundProtocol?: GatewayProtocol): Ro
       expires_at: row.channel_expires_at ?? null,
       time_restrictions: row.channel_time_restrictions ?? "",
       custom_headers: row.channel_custom_headers ?? null,
+      group_name: row.channel_group_name ?? null,
     },
     effective_upstream_protocol: effectiveUpstreamProtocol,
   };

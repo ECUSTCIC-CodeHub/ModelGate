@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS channels (
   force_include_usage TINYINT(1) DEFAULT 1,
   expires_at DATETIME DEFAULT NULL,
   time_restrictions TEXT DEFAULT NULL,
-  custom_headers TEXT DEFAULT NULL
+  custom_headers TEXT DEFAULT NULL,
+  group_name TEXT DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS models (

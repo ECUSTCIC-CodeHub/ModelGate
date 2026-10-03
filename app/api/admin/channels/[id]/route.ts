@@ -39,6 +39,7 @@ const updateSchema = z.object({
   expires_at: z.string().max(32).nullable().optional(),
   time_restrictions: z.string().max(20000).optional(),
   custom_headers: z.record(z.string(), z.string()).nullable().optional(),
+  group_name: z.string().max(64).nullable().optional(),
 });
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -176,6 +177,11 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         ? (existing as { custom_headers?: string | null }).custom_headers ?? ""
         : stringifyCustomHeaders(customHeadersResult.headers),
     expires_at: nextExpiresAt,
+    // 字段缺席保持原值，传 null 或空串清空
+    group_name:
+      parsed.data.group_name === undefined
+        ? (existing as { group_name?: string | null }).group_name ?? ""
+        : (parsed.data.group_name ?? "").trim(),
     time_restrictions:
       timeRestrictions === null
         ? (existing as { time_restrictions?: string | null }).time_restrictions ?? ""
@@ -195,7 +201,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       .execute(
         `UPDATE channels
          SET name = ?, base_url = ?, api_key = ?, supported_protocols = ?, user_agent = ?, proxy_url = ?, enabled = ?, weight = ?, max_concurrency = ?, timeout = ?,
-             quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, force_include_usage = ?, ua_restrictions = ?, expires_at = ?, time_restrictions = ?, custom_headers = ?, api_key_private = ?, created_by = ?
+             quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, force_include_usage = ?, ua_restrictions = ?, expires_at = ?, time_restrictions = ?, custom_headers = ?, group_name = ?, api_key_private = ?, created_by = ?
          WHERE id = ?`,
         [
           (merged as { name: string }).name,
@@ -222,6 +228,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           (merged as { expires_at: string | null }).expires_at ?? null,
           (merged as { time_restrictions: string }).time_restrictions,
           (merged as { custom_headers: string }).custom_headers,
+          (merged as { group_name: string }).group_name || null,
           nextPrivate,
           nextCreatedBy,
           id,
