@@ -22,17 +22,21 @@ export function resolveSubmittedApiKey(
   return input;
 }
 
-// userinfo 允许出现 @（如 user:pa@ss），所以要去掉的是 authority 段里最后一个 @ 及其之前的内容；
-// query/hash 不参与，否则正文里的 https://x.com?next=mailto:a@b.com 会被误删。
+// 与旧正则 ([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^/?#\s]*@ 语义一致：
+// 从左到右找「方案名 + ://」，再看其后到 / ? # 空白为止的这一段里是否有 @；
+// 有则删掉 :// 之后到最后一个 @ 为止的内容（userinfo 允许含 @，必须删到最后一个），
+// 没有则不匹配，从 :// 之后继续找下一个候选。
 // 用逐字符扫描而非正则：正则在无 @ 的长文本上需反复回溯，耗时随长度超线性增长
 // （实测 20 万字符达 44 秒），而这里的输入来自上游响应体，长度不可控。
 const SCHEME_NAME_PATTERN = /^[a-zA-Z][a-zA-Z0-9+.-]*$/;
 
-function isAuthorityTerminator(char: string): boolean {
+function isUrlTerminator(char: string): boolean {
   return char === "/" || char === "?" || char === "#" || char === " " || char === "\t" || char === "\n" || char === "\r" || char === "\f" || char === "\v";
 }
 
 export function redactUrlCredentials(input: string): string {
+  if (!input.includes("://")) return input;
+
   let result = "";
   let index = 0;
   while (index < input.length) {
@@ -42,7 +46,7 @@ export function redactUrlCredentials(input: string): string {
       break;
     }
 
-    // 方案名紧邻 ://，最多 63 字符，且必须以字母开头
+    // 方案名紧邻 ://，最多 63 字符且必须以字母开头；不满足则跳过这个 ://
     let schemeStart = colonAt;
     while (schemeStart > index && /[a-zA-Z0-9+.-]/.test(input[schemeStart - 1])) schemeStart -= 1;
     const schemeName = input.slice(schemeStart, colonAt);
@@ -53,17 +57,26 @@ export function redactUrlCredentials(input: string): string {
     }
 
     const authorityStart = colonAt + 3;
-    let cursor = authorityStart;
     let lastAt = -1;
-    while (cursor < input.length && !isAuthorityTerminator(input[cursor])) {
+    let cursor = authorityStart;
+    while (cursor < input.length && !isUrlTerminator(input[cursor])) {
       if (input[cursor] === "@") lastAt = cursor;
       cursor += 1;
     }
 
+    if (lastAt === -1) {
+      // 本段没有 @，该方案不构成带凭据的 URL：只输出到 ://，此后从 :// 之后继续找，
+      // 这样 https://a://b@c 里内层的 a:// 才会被当作新候选识别到
+      result += input.slice(index, authorityStart);
+      index = authorityStart;
+      continue;
+    }
+
+    // 与旧正则一致：删除 :// 之后到本段最后一个 @ 为止的内容（userinfo 允许含 @），
+    // 然后从 @ 之后继续扫描——而不是跳到段尾。段内若还嵌着下一个 URL 的 ://，
+    // 跳到段尾会把它的凭据连同连接文本一起原样输出
     result += input.slice(index, authorityStart);
-    // 有 userinfo 时丢弃其整段，只保留 @ 之后的主机部分；否则原样保留 authority
-    result += lastAt === -1 ? input.slice(authorityStart, cursor) : input.slice(lastAt + 1, cursor);
-    index = cursor;
+    index = lastAt + 1;
   }
   return result;
 }
