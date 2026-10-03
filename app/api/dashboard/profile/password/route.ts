@@ -41,7 +41,7 @@ export async function PUT(request: Request) {
 
   const nextHash = await hashPassword(parsed.data.new_password);
   await gatewayDb
-    .execute("UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ?", [nextHash, user.id]);
+    .execute("UPDATE users SET password_hash = ?, token_version = COALESCE(token_version, 0) + 1 WHERE id = ?", [nextHash, user.id]);
 
   return jsonOk({ ok: true, message: "密码修改成功，其他已登录会话需要重新登录。" });
 }
