@@ -46,11 +46,13 @@ export function redactUrlCredentials(input: string): string {
       break;
     }
 
-    // 方案名紧邻 ://，最多 63 字符且必须以字母开头；不满足则跳过这个 ://
+    // 方案名紧邻 ://，须以字母开头；不满足则跳过这个 ://。
+    // 这里刻意不限制长度：zod 的 url() 会放行任意长 scheme 的 URL，
+    // 加了长度上限就会让这类 URL 的凭据原样落进日志
     let schemeStart = colonAt;
     while (schemeStart > index && /[a-zA-Z0-9+.-]/.test(input[schemeStart - 1])) schemeStart -= 1;
     const schemeName = input.slice(schemeStart, colonAt);
-    if (schemeName.length === 0 || schemeName.length > 63 || !SCHEME_NAME_PATTERN.test(schemeName)) {
+    if (schemeName.length === 0 || !SCHEME_NAME_PATTERN.test(schemeName)) {
       result += input.slice(index, colonAt + 3);
       index = colonAt + 3;
       continue;
