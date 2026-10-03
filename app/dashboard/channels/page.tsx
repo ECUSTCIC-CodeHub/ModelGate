@@ -83,6 +83,7 @@ export default function AdminChannelsPage() {
         periodQuotaEnabled={admin.periodQuotaEnabled}
         canViewApiKey={admin.channelEditingCanViewApiKey}
         canManagePrivacy={admin.channelEditingCanManagePrivacy}
+        hasStoredApiKey={admin.channelEditingHasStoredApiKey}
         dismissBlocked={admin.upstreamPickerOpen}
         onOpenChange={admin.setChannelDrawerOpen}
         onSubmit={admin.submitChannel}

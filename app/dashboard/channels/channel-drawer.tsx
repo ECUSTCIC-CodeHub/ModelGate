@@ -1,10 +1,21 @@
 "use client";
 
 import type { FormEvent } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Sheet,
   SheetContent,
@@ -33,6 +44,7 @@ export function ChannelDrawer({
   periodQuotaEnabled,
   canViewApiKey = true,
   canManagePrivacy = true,
+  hasStoredApiKey = false,
   dismissBlocked = false,
   onOpenChange,
   onSubmit,
@@ -52,6 +64,7 @@ export function ChannelDrawer({
   periodQuotaEnabled: boolean;
   canViewApiKey?: boolean;
   canManagePrivacy?: boolean;
+  hasStoredApiKey?: boolean;
   dismissBlocked?: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (event: FormEvent) => void;
@@ -63,6 +76,21 @@ export function ChannelDrawer({
   onUpdateModelDraft: (index: number, patch: Partial<ChannelModelDraft>) => void;
   onImportModelDrafts: (names: string[], protocols: Protocol[]) => void;
 }) {
+  const [confirmClearKeyOpen, setConfirmClearKeyOpen] = useState(false);
+  // 已存密钥在界面上是脱敏值，清空输入框即代表清空密钥，这里必须二次确认
+  const clearingStoredKey = editingId !== null && canViewApiKey && hasStoredApiKey && form.api_key === "";
+  // 与接口一致：非添加人不能修改私有渠道的上游地址与代理
+  const addressLocked = editingId !== null && !canViewApiKey;
+
+  function handleSubmit(event: FormEvent) {
+    if (clearingStoredKey) {
+      event.preventDefault();
+      setConfirmClearKeyOpen(true);
+      return;
+    }
+    onSubmit(event);
+  }
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -76,7 +104,7 @@ export function ChannelDrawer({
           <SheetTitle>{editingId === null ? "新增接口渠道" : `编辑渠道 #${editingId}`}</SheetTitle>
           <SheetDescription>配置渠道名称、Base URL、API Key、超时与默认模型草稿。</SheetDescription>
         </SheetHeader>
-        <form onSubmit={onSubmit} className="mt-4 space-y-4 overflow-y-auto pr-1">
+        <form onSubmit={handleSubmit} className="mt-4 space-y-4 overflow-y-auto pr-1">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label>渠道名称</Label>
@@ -88,7 +116,16 @@ export function ChannelDrawer({
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label>Base URL</Label>
-              <Input value={form.base_url} onChange={(e) => onFormChange({ base_url: e.target.value })} />
+              <Input
+                value={form.base_url}
+                disabled={addressLocked}
+                onChange={(e) => onFormChange({ base_url: e.target.value })}
+              />
+              {addressLocked ? (
+                <p className="text-xs text-[var(--color-foreground-muted)]">
+                  该渠道的 API Key 仅添加人可见，仅添加人可修改上游地址与代理。
+                </p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label>超时(秒)</Label>
@@ -162,6 +199,7 @@ export function ChannelDrawer({
               <Input
                 placeholder="留空直连上游"
                 value={form.proxy_url}
+                disabled={addressLocked}
                 onChange={(e) => onFormChange({ proxy_url: e.target.value })}
               />
               <p className="text-xs text-[var(--color-foreground-muted)]">
@@ -251,6 +289,28 @@ export function ChannelDrawer({
             <Button type="submit">{editingId === null ? "创建" : "保存"}</Button>
           </SheetFooter>
         </form>
+
+        <AlertDialog open={confirmClearKeyOpen} onOpenChange={setConfirmClearKeyOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>清空该渠道的 API Key？</AlertDialogTitle>
+              <AlertDialogDescription>
+                输入框为空将把服务端已保存的密钥清空，清空后该渠道会立即无法访问上游，直到重新填写密钥。
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  setConfirmClearKeyOpen(false);
+                  onSubmit({ preventDefault: () => {} } as FormEvent);
+                }}
+              >
+                确认清空
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </SheetContent>
     </Sheet>
   );

@@ -48,6 +48,7 @@ export function useChannelAdmin() {
   const [channelEditingId, setChannelEditingId] = useState<number | null>(null);
   const [channelEditingCanViewApiKey, setChannelEditingCanViewApiKey] = useState(false);
   const [channelEditingCanManagePrivacy, setChannelEditingCanManagePrivacy] = useState(true);
+  const [channelEditingHasStoredApiKey, setChannelEditingHasStoredApiKey] = useState(false);
   const [channelForm, setChannelForm] = useState<ChannelForm>(initialChannelForm);
   const [defaultModelIsPublic, setDefaultModelIsPublic] = useState(true);
   const [channelModels, setChannelModels] = useState<ChannelModelDraft[]>([baseDraft(channelForm.supported_protocols)]);
@@ -91,6 +92,7 @@ export function useChannelAdmin() {
     setChannelEditingId(null);
     setChannelEditingCanViewApiKey(true);
     setChannelEditingCanManagePrivacy(true);
+    setChannelEditingHasStoredApiKey(false);
     setChannelForm({ ...initialChannelForm });
     setChannelModels([baseDraft(initialChannelForm.supported_protocols)]);
     setChannelDrawerOpen(true);
@@ -101,6 +103,7 @@ export function useChannelAdmin() {
     setChannelEditingId(row.id);
     setChannelEditingCanViewApiKey(row.can_view_api_key === true);
     setChannelEditingCanManagePrivacy(row.can_manage_api_key_privacy === true);
+    setChannelEditingHasStoredApiKey(row.can_view_api_key === true && (row.api_key ?? "") !== "");
     setChannelForm({
       name: row.name,
       base_url: row.base_url,
@@ -622,6 +625,7 @@ export function useChannelAdmin() {
     channelEditingId,
     channelEditingCanViewApiKey,
     channelEditingCanManagePrivacy,
+    channelEditingHasStoredApiKey,
     channelForm,
     channelModels,
     channels,
