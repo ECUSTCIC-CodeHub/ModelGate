@@ -71,6 +71,14 @@ function compareModels(a: ModelWithChannel, b: ModelWithChannel, field: FlatSort
   }
 }
 
+// 三态：全选 / 部分选中 / 未选。缺 indeterminate 时部分选中会显示成未选，表头对用户撒谎
+function selectionState(ids: number[], selectedIds: Set<number>): boolean | "indeterminate" {
+  if (ids.length === 0) return false;
+  const selectedCount = ids.filter((id) => selectedIds.has(id)).length;
+  if (selectedCount === 0) return false;
+  return selectedCount === ids.length ? true : "indeterminate";
+}
+
 export function ModelTable({
   models,
   channelsCount,
@@ -159,12 +167,13 @@ export function ModelTable({
   }
 
   async function bulkSetEnabled(enabled: boolean) {
-    await onBulkSetEnabled([...selectedIds], enabled);
+    if (visibleSelectedIds.length === 0) return;
+    await onBulkSetEnabled(visibleSelectedIds, enabled);
     setSelectedIds(new Set());
   }
 
   async function confirmBulkDelete() {
-    await onBulkRemove([...selectedIds]);
+    await onBulkRemove(visibleSelectedIds);
     setSelectedIds(new Set());
   }
 
@@ -180,6 +189,10 @@ export function ModelTable({
       );
     });
   }, [models, search, hideDisabled]);
+
+  // 提交时与当前筛选结果求交集：搜索、隐藏禁用、切换视图都不会清空 selectedIds，
+  // 若直接提交会有「已选中但不可见」的模型被一并操作（用户以为只处理了眼前这些）
+  const visibleSelectedIds = filtered.filter((model) => selectedIds.has(model.id)).map((model) => model.id);
 
   const groups = useMemo<ChannelGroup[]>(() => {
     const map = new Map<number, ChannelGroup>();
@@ -362,34 +375,38 @@ export function ModelTable({
           >
             取消选择
           </Button>
-          <span className="text-xs text-[var(--color-foreground-muted)]">已选 {selectedIds.size} 个</span>
+          <span className="text-xs text-[var(--color-foreground-muted)]">
+            当前结果已选 {visibleSelectedIds.length} 个
+            {selectedIds.size > visibleSelectedIds.length ? `（另有 ${selectedIds.size - visibleSelectedIds.length} 个被筛选隐藏，不会被操作）` : ""}
+          </span>
           <div className="ml-auto flex items-center gap-2">
+            <ConfirmDialog
+              trigger={
+                <Button variant="outline" size="sm" className="h-8 text-xs" disabled={visibleSelectedIds.length === 0}>
+                  批量禁用
+                </Button>
+              }
+              title={`禁用当前结果中选中的 ${visibleSelectedIds.length} 个模型？`}
+              description="被筛选隐藏的已选项不会被操作；禁用后这些别名将无法被路由命中。"
+              onConfirm={() => void bulkSetEnabled(false)}
+            />
             <Button
               variant="outline"
               size="sm"
               className="h-8 text-xs"
-              disabled={selectedIds.size === 0}
-              onClick={() => void bulkSetEnabled(false)}
-            >
-              批量禁用
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs"
-              disabled={selectedIds.size === 0}
+              disabled={visibleSelectedIds.length === 0}
               onClick={() => void bulkSetEnabled(true)}
             >
               批量启用
             </Button>
             <ConfirmDialog
               trigger={
-                <Button variant="destructive" size="sm" className="h-8 text-xs" disabled={selectedIds.size === 0}>
+                <Button variant="destructive" size="sm" className="h-8 text-xs" disabled={visibleSelectedIds.length === 0}>
                   批量删除
                 </Button>
               }
-              title={`删除选中的 ${selectedIds.size} 个模型映射？`}
-              description="删除后这些别名将不再可用，此操作不可撤销。"
+              title={`删除当前结果中选中的 ${visibleSelectedIds.length} 个模型映射？`}
+              description="被筛选隐藏的已选项不会被操作；删除后这些别名将不再可用，此操作不可撤销。"
               onConfirm={() => void confirmBulkDelete()}
             />
           </div>
@@ -429,7 +446,7 @@ export function ModelTable({
                   {bulkMode ? (
                     <Checkbox
                       className="shrink-0"
-                      checked={group.models.every((m) => selectedIds.has(m.id))}
+                      checked={selectionState(group.models.map((m) => m.id), selectedIds)}
                       onCheckedChange={(checked) =>
                         setSelectedIds((prev) => {
                           const next = new Set(prev);
@@ -489,7 +506,7 @@ export function ModelTable({
                             <TableHead className="w-12">序号</TableHead>
                             <TableHead>别名</TableHead>
                             <TableHead>真实模型</TableHead>
-                            <TableHead className="w-10">{bulkMode ? <Checkbox checked={group.models.every((m) => selectedIds.has(m.id))} onCheckedChange={(checked) => setSelectedIds((prev) => { const next = new Set(prev); for (const m of group.models) { if (checked === true) next.add(m.id); else next.delete(m.id); } return next; })} aria-label={`全选渠道 ${group.channelName} 下的模型`} /> : null}</TableHead>
+                            <TableHead className="w-10">{bulkMode ? <Checkbox checked={selectionState(group.models.map((m) => m.id), selectedIds)} onCheckedChange={(checked) => setSelectedIds((prev) => { const next = new Set(prev); for (const m of group.models) { if (checked === true) next.add(m.id); else next.delete(m.id); } return next; })} aria-label={`全选渠道 ${group.channelName} 下的模型`} /> : null}</TableHead>
                             <TableHead>所属渠道</TableHead>
                             <TableHead>协议</TableHead>
                             <TableHead>状态</TableHead>
@@ -535,7 +552,7 @@ export function ModelTable({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10">{bulkMode ? <Checkbox checked={sorted.length > 0 && sorted.every((m) => selectedIds.has(m.id))} onCheckedChange={(checked) => setSelectedIds((prev) => { const next = new Set(prev); for (const m of sorted) { if (checked === true) next.add(m.id); else next.delete(m.id); } return next; })} aria-label="全选当前排序结果" /> : null}</TableHead>
+                <TableHead className="w-10">{bulkMode ? <Checkbox checked={selectionState(sorted.map((m) => m.id), selectedIds)} onCheckedChange={(checked) => setSelectedIds((prev) => { const next = new Set(prev); for (const m of sorted) { if (checked === true) next.add(m.id); else next.delete(m.id); } return next; })} aria-label="全选当前排序结果" /> : null}</TableHead>
                 <TableHead className="w-12">序号</TableHead>
                 <SortableHead label="别名" field="alias" currentField={sortField} order={sortOrder} onSort={handleSort} />
                 <SortableHead label="真实模型" field="real_model" currentField={sortField} order={sortOrder} onSort={handleSort} />
@@ -596,7 +613,7 @@ export function ModelTable({
                   {bulkMode ? (
                     <Checkbox
                       className="shrink-0"
-                      checked={group.models.every((m) => selectedIds.has(m.id))}
+                      checked={selectionState(group.models.map((m) => m.id), selectedIds)}
                       onCheckedChange={(checked) =>
                         setSelectedIds((prev) => {
                           const next = new Set(prev);
