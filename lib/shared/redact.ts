@@ -18,7 +18,9 @@ export function resolveSubmittedApiKey(input: string | undefined, existing: stri
 }
 
 export function redactUrlCredentials(input: string): string {
-  return input.replace(/([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^/@\s]*@/g, "$1");
+  // userinfo 允许出现 @（如 user:pa@ss），故这里必须允许跨过 @、只禁止跨过路径分隔符，
+  // 否则贪婪回溯只会删到第一个 @，把密码后半段留在明文里。
+  return input.replace(/([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^/\s]*@/g, "$1");
 }
 
 export function redactErrorMessage(error: unknown, fallback = "未知错误"): string {
