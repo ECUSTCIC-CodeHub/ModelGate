@@ -1,6 +1,7 @@
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 import type { JsonRecord, NormalizedContentPart, NormalizedMessage } from "@/lib/gateway/normalized-message";
 import { asRecord } from "@/lib/gateway/normalized-message";
+import { redactUrlCredentials } from "@/lib/shared/redact";
 
 export type IntermediateTool = {
   type: "function";
@@ -106,10 +107,10 @@ export function parseToolArguments(raw: string | undefined) {
 export function upstreamErrorText(value: unknown): string {
   const record = asRecord(value);
   if (record) {
-    if (typeof record.message === "string" && record.message) return record.message;
-    if (typeof record.code === "string" && record.code) return record.code;
+    if (typeof record.message === "string" && record.message) return redactUrlCredentials(record.message);
+    if (typeof record.code === "string" && record.code) return redactUrlCredentials(record.code);
   }
-  if (typeof value === "string" && value) return value;
+  if (typeof value === "string" && value) return redactUrlCredentials(value);
   return "未知错误";
 }
 

@@ -198,8 +198,8 @@ export async function testUpstreamModel(target: {
       ok: response.ok,
       status: response.status,
       latency_ms: Date.now() - startedAt,
-      // 先脱敏再截断：截断点若落在 userinfo 中间会切掉 @，正则就再也匹配不到残留明文
-      body_preview: redactUrlCredentials(bodyText.slice(0, 2000)).slice(0, 500),
+      // 必须先全量脱敏再截断：若先截断，凭据在前段而 @ 落在截断点之后时正则无法匹配，明文会残留
+      body_preview: redactUrlCredentials(bodyText).slice(0, 500),
       summary,
     };
   } catch (error) {
