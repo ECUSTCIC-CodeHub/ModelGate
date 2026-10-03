@@ -292,6 +292,9 @@ export function useChannelAdmin() {
     if (response.ok) {
       toast({ variant: "success", description: getApiMessage(data, "更新渠道成功。") });
       setChannelDrawerOpen(false);
+      // 抽屉关闭后状态不能停留在提交前的值：否则再次提交同一渠道时，
+      // 清空密钥的二次确认会依据过期的"是否已存密钥"漏弹或误弹
+      setChannelEditingHasStoredApiKey(false);
       await loadChannels();
       return;
     }
