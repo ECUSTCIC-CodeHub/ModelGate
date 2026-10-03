@@ -153,7 +153,14 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 非网关接口（`/api/auth/*`、`/api/admin/*`、`/api/user/*`、`/api/dashboard/*`、`/api/webhook` 等）请求体上限为 4MB，超限返回 413：
 
 ```json
-{ "error": "请求体过大" }
+{
+  "error": {
+    "message": "请求体过大",
+    "type": "invalid_request_error",
+    "param": "None",
+    "code": "413"
+  }
+}
 ```
 
 网关端点（`/api/v1/*`、`/api/ollama/*`、`/api/messages`）不受该限制约束，由各自的协议适配器处理。
@@ -1474,6 +1481,8 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 > `api_key` 省略、传空字符串或回传列表返回的脱敏值时，均视为未修改并保留服务端原密钥；只有提交新的明文值才会覆盖。
 
+> 传空字符串表示清空该渠道的密钥。开启 `api_key_private` 后，非添加人不能修改该渠道的 `base_url` 与 `proxy_url`（否则可把地址指向自己的服务器再借密钥读取接口取出密钥），违反时返回 403。
+
 
 **请求体:** 与 POST 相同，所有字段均为可选。`force_include_usage` 变更对后续新请求立即生效，不影响已建立的连接。`proxy_url` 传空字符串可清空代理配置。
 
@@ -1538,6 +1547,8 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | proxy_url | string | 否 | "" | 探测模型列表时使用的 HTTP(S) 代理地址，留空表示直连 |
 
 > 推荐在编辑已有渠道时只传 `channel_id`，避免把明文密钥回传到接口。`channel_id` 不存在返回 404。
+
+> 若该渠道开启了「仅添加人可见」（`api_key_private`）且当前管理员不是添加人，则不会使用渠道已存的密钥：必须显式提交明文 `api_key`，否则返回 403 与「该渠道的 API Key 仅添加人可用，请先填写 API Key 后再探测」。此举用于阻止非添加人借 `base_url`/`proxy_url` 把渠道密钥发往自己指定的地址。
 
 **响应 (200):**
 ```json
