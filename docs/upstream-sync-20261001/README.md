@@ -459,6 +459,21 @@ CREATE INDEX IF NOT EXISTS idx_usage_hourly_user_hour ON usage_hourly(user_id, h
 | 二 | 图片 base64、length 截断、流式 finish/usage、SSE 解析、扩展字段白名单、max_completion_tokens |
 | 三 | 请求体上限 50MB + 开关、系统提示词注入、渠道自定义 Header、渠道分组、模型批量管理、models.dev 预填充、OIDC subject 搜索、webhook 用户状态、日志清理三缺口 |
 
+**批次一/二的逐项落点**（复核时可直接按此定位，均已实测存在）：
+
+| 项 | 落点 |
+|:---|:---|
+| `token_version` | `users` 列 + `auth.ts` 签发/校验比对 + 三处改密路径递增 |
+| 渠道密钥脱敏 | `lib/shared/redact.ts` 的 `maskApiKey` / `redactUrlCredentials` |
+| OIDC 回调绑定 | 回调校验 state 与绑定关系 |
+| webhook 去重 + `app_id` | `webhook-dedup.ts`；**`app_id` 校验必须先于去重**，否则来源不匹配的事件会先占用标记 |
+| 图片 base64 | `normalized-message/content.ts`（data URL ↔ base64 ↔ `media_type` 三向） |
+| length 截断 | `intermediate.ts` 双向映射 + `responses-response.ts` + 流式 `incompleteReason` |
+| `max_completion_tokens` | `chat-completions-request.ts`、`token-estimate.ts`、`protocol-extra.ts` |
+| 请求体上限开关 | `settings.ts` 的 `request_size_limit_enabled` |
+
+**Ollama 令牌掩码（`327cef2`）最终判定为不需要移植**（已实测而非推断）：该上游修复针对「鉴权失败时把 path 中的 token 写进日志」。本项目的 token 是经 `withPathToken()` 塞进合成 header 的，**从不进入日志或错误响应**；`checkApiKeyAuth` 只返回 `reason`（`missing`/`invalid`），全部 6 处调用点均映射为**静态中文文案**，不回显 URL 或 token。故无泄漏面。
+
 **第三档小修的实施结论**（逐项实测，非仅静态判断）：
 
 | 上游提交 | 结论 |
