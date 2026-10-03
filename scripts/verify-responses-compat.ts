@@ -1151,6 +1151,20 @@ test("日志清理的天数在 SQL 拼接前被强制归一", () => {
   assert.equal(safeDays(1e9), 3650);
 });
 
+test("日志清理两表使用同一 UTC 基准", () => {
+  // created_at 按全仓约定存 UTC 裸字符串；email 表曾多带 'localtime'，
+  // 使截止点被推后一个宿主时区偏移（东八区 8 小时），未超期的邮件日志被提前删除
+  const emailCutoff = (days: number) => `strftime('%Y-%m-%d %H:%M:%S', 'now', '-${days} days')`;
+  const logsCutoff = (days: number) => `datetime('now', '-${days} days')`;
+  for (const days of [1, 30, 3650]) {
+    assert.ok(!emailCutoff(days).includes("localtime"), "清理基准不得带 localtime");
+    assert.ok(!logsCutoff(days).includes("localtime"), "清理基准不得带 localtime");
+    // 两者都应表达「当前时刻减去 N 天」，不带任何时区修饰
+    assert.ok(emailCutoff(days).includes(`'-${days} days'`));
+    assert.ok(logsCutoff(days).includes(`'-${days} days'`));
+  }
+});
+
 test("无参工具补空 object schema 而不是省略 parameters", () => {
   const tools = [{ type: "function" as const, name: "ping", description: "ping" }];
   const expected = { type: "object", properties: {} };

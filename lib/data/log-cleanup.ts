@@ -60,9 +60,12 @@ export async function pruneOldLogs(db: DatabaseAdapter, days: number): Promise<n
 export async function pruneOldEmailLogs(db: DatabaseAdapter, days: number): Promise<number> {
   const safe = safeDays(days);
   if (safe <= 0) return 0;
+  // 基准必须与 pruneOldLogs 一致用 UTC：created_at 按全仓约定存 UTC 裸字符串，
+  // 带 'localtime' 会把截止点推后一个宿主时区偏移（东八区 8 小时），
+  // 未超期的邮件日志被提前删除，而 API.md 承诺失败记录可补发，误删即永久丢失
   const cutoffExpr = db.driver === "mysql"
     ? `(NOW() - INTERVAL ${safe} DAY)`
-    : `strftime('%Y-%m-%d %H:%M:%S', 'now', '-${safe} days', 'localtime')`;
+    : `strftime('%Y-%m-%d %H:%M:%S', 'now', '-${safe} days')`;
   const sql = `DELETE FROM email_send_log WHERE id IN (SELECT id FROM (SELECT id FROM email_send_log WHERE created_at < ${cutoffExpr} ORDER BY id ASC LIMIT ${BATCH_SIZE}) AS t)`;
   let deleted = 0;
   for (;;) {

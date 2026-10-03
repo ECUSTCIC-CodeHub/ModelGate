@@ -66,6 +66,9 @@ export function useModelsDevPrefill({
       return;
     }
 
+    // 去重与构造放在 setter 之外，才能拿到「实际新增数」用于提示；
+    // 否则全部被去重挡掉时会提示已加入 N 个，用户以为成功实则什么都没发生
+    let addedCount = 0;
     setChannelModels((prev) => {
       const filledFromPrev = prev.filter((model) => model.alias.trim() || model.real_model.trim());
       const existing = new Set(filledFromPrev.map((model) => model.real_model.trim()).filter(Boolean));
@@ -89,6 +92,7 @@ export function useModelsDevPrefill({
         });
       }
 
+      addedCount = additions.length;
       if (additions.length === 0) return prev;
       const merged = [...filledFromPrev, ...additions];
       return merged.length > 0
@@ -97,7 +101,16 @@ export function useModelsDevPrefill({
     });
 
     setPickerOpen(false);
-    toast({ variant: "success", description: `已从 models.dev 加入 ${selection.length} 个模型草稿。` });
+    if (addedCount === 0) {
+      toast({ variant: "error", description: "所选模型均已在草稿中，未新增。" });
+      return;
+    }
+    toast({
+      variant: "success",
+      description: addedCount === selection.length
+        ? `已从 models.dev 加入 ${addedCount} 个模型草稿。`
+        : `已从 models.dev 加入 ${addedCount} 个模型草稿，${selection.length - addedCount} 个已存在被跳过。`,
+    });
   }
 
   return {

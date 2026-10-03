@@ -27,9 +27,15 @@ export function LogRetentionSettingsCard({
   const [cleaning, setCleaning] = useState(false);
 
   async function runCleanup() {
+    if (days <= 0) return;
     setCleaning(true);
     try {
-      const response = await authedFetch("/api/admin/logs/cleanup", { method: "POST", body: JSON.stringify({}) });
+      // 显式传表单里的天数：接口无参时用「已保存值」，与弹窗承诺的范围可能不一致
+      // （改了天数但没保存时，会出现「提示不能清理却真删了数据」的反直觉行为）
+      const response = await authedFetch("/api/admin/logs/cleanup", {
+        method: "POST",
+        body: JSON.stringify({ days }),
+      });
       const data = await response.json().catch(() => null);
       if (!response.ok) {
         toast({ variant: "error", description: getApiMessage(data, "清理日志失败。") });
@@ -85,7 +91,7 @@ export function LogRetentionSettingsCard({
           <div className="flex items-center gap-3">
             <ConfirmDialog
               trigger={
-                <Button type="button" variant="outline" disabled={cleaning}>
+                <Button type="button" variant="outline" disabled={cleaning || days <= 0}>
                   {cleaning ? "清理中…" : "立即清理"}
                 </Button>
               }
@@ -93,12 +99,12 @@ export function LogRetentionSettingsCard({
               description={
                 days > 0
                   ? `将删除 ${days} 天前的请求日志与邮件发送日志，此操作不可撤销。`
-                  : "当前保留天数为 0。请先设置一个大于 0 的保留天数并保存，否则无法清理。"
+                  : "当前保留天数为 0。请先设置一个大于 0 的保留天数，否则无法清理。"
               }
               onConfirm={() => void runCleanup()}
             />
             <p className="text-xs text-[var(--color-foreground-muted)]">
-              {days > 0 ? `将清理 ${days} 天前的日志。` : "未设置保留天数，无法立即清理。"}
+              {days > 0 ? `将清理 ${days} 天前的日志。` : "保留天数为 0，无法立即清理。"}
             </p>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
-import { toMysqlDatetime, parseStoredUtc } from "@/lib/core/db/datetime";
+import { ensurePeriodReset } from "@/lib/gateway/period-reset";
 
 export type QuotaInfo = {
   remaining_requests: number | null;
@@ -26,31 +26,6 @@ export function appendQuotaHeaders(headers: Record<string, string>, quota: Quota
   if (quota.period_reset_at) {
     headers["X-Period-Quota-Reset"] = quota.period_reset_at;
   }
-}
-
-async function ensurePeriodReset(userId: number, period: number, resetAt: string | null): Promise<{ period_used_tokens: number; period_used_requests: number; period_reset_at: string }> {
-  const now = new Date();
-  const resetDate = parseStoredUtc(resetAt);
-  if (resetDate && resetDate > now) {
-    return gatewayDb.queryOne(
-      "SELECT period_used_tokens, period_used_requests, period_reset_at FROM users WHERE id = ?",
-      [userId],
-    ) as Promise<{ period_used_tokens: number; period_used_requests: number; period_reset_at: string }>;
-  }
-  const nextReset = new Date(now.getTime() + period * 1000);
-  const result = await gatewayDb.execute(
-    `UPDATE users
-       SET period_used_tokens = 0, period_used_requests = 0, period_reset_at = ?
-       WHERE id = ? AND (period_reset_at IS NULL OR period_reset_at <= ?)`,
-    [toMysqlDatetime(nextReset), userId, toMysqlDatetime(now)],
-  );
-  if (result.changes > 0) {
-    return { period_used_tokens: 0, period_used_requests: 0, period_reset_at: toMysqlDatetime(nextReset) };
-  }
-  return gatewayDb.queryOne(
-    "SELECT period_used_tokens, period_used_requests, period_reset_at FROM users WHERE id = ?",
-    [userId],
-  ) as Promise<{ period_used_tokens: number; period_used_requests: number; period_reset_at: string }>;
 }
 
 export async function checkQuota(userId: number, estimatedTokens: number): Promise<{ ok: false; reason: string; quota?: QuotaInfo } | { ok: true; quota: QuotaInfo }> {
@@ -101,7 +76,7 @@ export async function checkQuota(userId: number, estimatedTokens: number): Promi
   }
 
   if (limits.quota_period) {
-    const period = await ensurePeriodReset(userId, limits.quota_period, user.period_reset_at);
+    const period = await ensurePeriodReset("users", userId, limits.quota_period, user.period_reset_at);
     quota.period_reset_at = period.period_reset_at;
 
     if (limits.period_quota_requests !== null) {
