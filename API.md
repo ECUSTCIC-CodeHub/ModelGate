@@ -163,6 +163,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 }
 ```
 
+网关推理接口（`/api/v1/*`、`/api/ollama/*` 与透传入口）的请求体上限为 **50MB**，由设置项 `request_size_limit_enabled` 控制，默认开启；超限同样返回 413。上限数值是代码常量，设置页只提供开关。两者都会先用 `Content-Length` 预检，再在读取时按同一上限分块校验，因此伪造 `Content-Length` 不能绕过限制。关闭该开关后不限制请求体大小；读取设置失败时按「不限制」处理，避免设置库短暂不可用时把全部正常请求拒之门外。
+
 网关端点（`/api/v1/*`、`/api/ollama/*`、`/api/messages`）不受该限制约束，由各自的协议适配器处理。
 
 ---
@@ -460,6 +462,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "cors_enabled": false,
   "ua_restrictions": "[]",
   "log_retention_days": 0,
+  "request_size_limit_enabled": true,
   "theme_color": "#00518f",
   "feedback_url": "https://cnb.cool/{repo}/-/issues/new/choose",
   "repo_name": "ecustcic/ModelGate",
@@ -509,6 +512,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | repo_name | string | CNB 仓库路径（最长 200 字符），如 `ecustcic/ModelGate`；当 `feedback_url` 为空时，自动生成 `https://cnb.cool/<repo_name>/-/issues/new/choose` |
 | ua_restrictions | string | 全站 User-Agent 限制规则 JSON 数组，留空或 `[]` 表示不限制（完整版功能，最长 20000 字符） |
 | log_retention_days | number | 请求日志（`logs`）与邮件发送日志（`email_send_log`）的保留天数，0 表示不清理（0-3650）；超过保留期的失败邮件记录会被自动删除，无法再经「重发失败邮件」补发 |
+| request_size_limit_enabled | boolean | 是否限制网关推理接口的请求体大小，默认 true。开启时上限 50MB，超限返回 413；关闭后不限制。该键默认不落库，首次保存后才写入 |
 | model_status_light_1_hours | int | 模型列表成功率状态灯配置项 1 的统计时长（小时，1-168，默认 1） |
 | model_status_light_2_hours | int | 模型列表成功率状态灯配置项 2 的统计时长（小时，1-168，默认 2） |
 | model_status_light_3_hours | int | 模型列表成功率状态灯配置项 3 的统计时长（小时，1-168，默认 3） |

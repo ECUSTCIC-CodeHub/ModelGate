@@ -47,6 +47,7 @@ export type GatewaySettings = {
   announcement_display_count: number;
   access_guide_notice: string;
   webhook_secret: string;
+  request_size_limit_enabled: number;
   cors_enabled: number;
   icp_filing_number: string;
   public_security_filing_number: string;
@@ -150,6 +151,7 @@ const GATEWAY_KEYS = [
   "announcement_display_count",
   "access_guide_notice",
   "webhook_secret",
+  "request_size_limit_enabled",
   "cors_enabled",
   "icp_filing_number",
   "public_security_filing_number",
@@ -209,6 +211,8 @@ async function readGatewaySettingsFromDb(): Promise<GatewaySettings> {
     announcement_display_count: positiveInt(map.get("announcement_display_count"), 3),
     access_guide_notice: map.get("access_guide_notice") ?? "",
     webhook_secret: map.get("webhook_secret") ?? "",
+    // 上游未给该键加 seed 行，首次读取用代码默认值 true，直到管理员显式保存才落库
+    request_size_limit_enabled: map.get("request_size_limit_enabled") === "0" ? 0 : 1,
     cors_enabled: map.get("cors_enabled") === "1" ? 1 : 0,
     icp_filing_number: map.get("icp_filing_number") ?? "",
     public_security_filing_number: map.get("public_security_filing_number") ?? "",
@@ -281,6 +285,7 @@ export async function setGatewaySettings(input: {
   announcement_display_count?: number;
   access_guide_notice?: string;
   webhook_secret?: string;
+  request_size_limit_enabled?: boolean;
   cors_enabled?: boolean;
   icp_filing_number?: string;
   public_security_filing_number?: string;
@@ -331,6 +336,7 @@ export async function setGatewaySettings(input: {
   if (input.announcement_display_count !== undefined) values.announcement_display_count = String(Math.max(1, Math.trunc(input.announcement_display_count)));
   if (input.access_guide_notice !== undefined) values.access_guide_notice = input.access_guide_notice;
   if (input.webhook_secret !== undefined) values.webhook_secret = input.webhook_secret.trim();
+  if (input.request_size_limit_enabled !== undefined) values.request_size_limit_enabled = input.request_size_limit_enabled ? "1" : "0";
   if (input.cors_enabled !== undefined) values.cors_enabled = input.cors_enabled ? "1" : "0";
   if (input.icp_filing_number !== undefined) values.icp_filing_number = input.icp_filing_number.trim();
   if (input.public_security_filing_number !== undefined) values.public_security_filing_number = input.public_security_filing_number.trim();

@@ -14,6 +14,8 @@ import { createQueuedUpstreamResponse, normalizeUserAgent } from "@/lib/gateway/
 import { checkUserRateLimit } from "@/lib/gateway/ratelimit";
 import { selectModelRoute, findUaDenyMatchForAlias, findVisionFallbackRoute, findQuotaFallbackRoute, resolveModelFallbackAlias, type RoutedModel } from "@/lib/gateway/router";
 import { getGatewaySettings } from "@/lib/core/settings";
+import { exceedsBodyLimit, resolveBodyLimitBytes } from "@/lib/gateway/body-limit";
+import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { checkUserAgentRestrictions, parseUaRestrictions, type UaRestrictionMatch } from "@/lib/gateway/ua-restrictions";
 import { isFeatureEnabled } from "@/lib/core/features";
 import { resolveClientIp } from "@/lib/core/client-ip";
@@ -93,13 +95,19 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     }
   }
 
-  const contentLength = parseInt(request.headers.get("content-length") || "0");
-  if (contentLength > 10 * 1024 * 1024) {
+  const bodyLimit = await resolveBodyLimitBytes();
+  if (exceedsBodyLimit(request.headers.get("content-length"), bodyLimit)) {
     logRejected(413, "请求体过大", null);
     return jsonError("请求体过大", 413);
   }
 
-  const rawBody = await request.json().catch(() => null);
+  // content-length 可被伪造，实际读取必须再按同一上限分块兜底
+  const capped = await readJsonBodyCapped(request, bodyLimit ?? Infinity);
+  if (!capped.ok) {
+    logRejected(413, "请求体过大", null);
+    return jsonError("请求体过大", 413);
+  }
+  const rawBody = capped.data;
   if (!rawBody || typeof rawBody !== "object") {
     logRejected(400, "请求参数不正确", null);
     return jsonError("请求参数不正确", 400);

@@ -44,6 +44,7 @@ const schema = z.object({
   announcement_display_count: z.number().int().min(1).max(20).optional(),
   access_guide_notice: z.string().max(10000).optional(),
   webhook_secret: z.string().max(200).optional(),
+  request_size_limit_enabled: z.boolean().optional(),
   cors_enabled: z.boolean().optional(),
   icp_filing_number: z.string().max(200).optional(),
   public_security_filing_number: z.string().max(200).optional(),

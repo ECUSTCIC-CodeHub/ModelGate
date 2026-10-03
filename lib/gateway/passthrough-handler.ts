@@ -16,6 +16,7 @@ import { fetchUpstream } from "@/lib/gateway/upstream-proxy";
 import { isTimeoutError, upstreamFailureStatus } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
 import { readBodyCapped } from "@/lib/core/request-body";
+import { exceedsBodyLimit, resolveBodyLimitBytes } from "@/lib/gateway/body-limit";
 
 const HOP_BY_HOP = new Set([
   "connection",
@@ -37,8 +38,6 @@ const RESPONSE_STRIP_HEADERS = new Set([
   "content-length",
   "set-cookie",
 ]);
-
-const MAX_BODY_BYTES = 10 * 1024 * 1024;
 
 export async function handlePassthroughRequest(request: Request, upstreamPath: string) {
   const startedAt = Date.now();
@@ -76,13 +75,13 @@ export async function handlePassthroughRequest(request: Request, upstreamPath: s
     });
   };
 
-  const contentLength = parseInt(request.headers.get("content-length") || "0");
-  if (contentLength > MAX_BODY_BYTES) {
+  const bodyLimit = await resolveBodyLimitBytes();
+  if (exceedsBodyLimit(request.headers.get("content-length"), bodyLimit)) {
     logRejected(413, "请求体过大", null);
     return jsonError("请求体过大", 413);
   }
 
-  const rawResult = await readBodyCapped(request, MAX_BODY_BYTES);
+  const rawResult = await readBodyCapped(request, bodyLimit ?? Infinity);
   if (!rawResult.ok) {
     if (rawResult.reason === "read_failed") {
       logRejected(400, "请求体读取失败", null);

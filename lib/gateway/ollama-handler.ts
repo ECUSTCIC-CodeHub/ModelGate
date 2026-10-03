@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { handleGatewayProtocolRequest } from "@/lib/gateway/gateway-handler";
 import { chatCompletionsGatewayAdapter } from "@/lib/gateway/protocol-adapters";
 import { checkApiKeyAuth } from "@/lib/auth/api-key-auth";
+import { exceedsBodyLimit, resolveBodyLimitBytes } from "@/lib/gateway/body-limit";
+import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { listAccessibleModels } from "@/lib/gateway/model-access";
 import {
   adaptChatCompletionToOllama,
@@ -191,15 +193,23 @@ export async function handleOllamaVersionRequest(request: Request) {
 
 export async function handleOllamaChatRequest(request: Request) {
   const startedAt = Date.now();
-  const contentLength = parseInt(request.headers.get("content-length") || "0");
-  if (contentLength > 10 * 1024 * 1024) {
+  const bodyLimit = await resolveBodyLimitBytes();
+  if (exceedsBodyLimit(request.headers.get("content-length"), bodyLimit)) {
     return new Response(JSON.stringify({ error: "请求体过大" }), {
       status: 413,
       headers: { "content-type": "application/json" },
     });
   }
 
-  const rawBody = await request.json().catch(() => null);
+  // content-length 可被伪造，实际读取必须再按同一上限分块兜底
+  const capped = await readJsonBodyCapped(request, bodyLimit ?? Infinity);
+  if (!capped.ok) {
+    return new Response(JSON.stringify({ error: "请求体过大" }), {
+      status: 413,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  const rawBody = capped.data;
   if (!rawBody || typeof rawBody !== "object" || Array.isArray(rawBody)) {
     return new Response(JSON.stringify({ error: "请求参数不正确" }), {
       status: 400,
