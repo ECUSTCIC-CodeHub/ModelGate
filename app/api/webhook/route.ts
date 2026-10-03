@@ -10,15 +10,37 @@ import { forgetWebhookEvent, isWebhookEventDuplicate } from "@/lib/services/webh
 
 const MAX_TIMESTAMP_DRIFT = 300;
 
-function verifySignature(secret: string, id: string, type: string, timestamp: string, data: unknown, expected: string): boolean {
+function computeSignature(
+  secret: string,
+  id: string,
+  type: string,
+  timestamp: string,
+  appId: string | null,
+  data: unknown,
+): string {
   const mac = createHmac("sha256", secret);
   mac.update(id + "." + type + "." + timestamp);
+  if (appId !== null) mac.update("." + appId);
   mac.update(JSON.stringify(data));
-  const computed = "sha256=" + mac.digest("hex");
-  const a = Buffer.from(computed);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return timingSafeEqual(a, a) && false;
-  return timingSafeEqual(a, b);
+  return "sha256=" + mac.digest("hex");
+}
+
+function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
+
+function verifySignature(secret: string, payload: WebhookPayload): boolean {
+  if (safeEqual(computeSignature(secret, payload.id, payload.type, payload.timestamp, null, payload.data), payload.signature)) {
+    return true;
+  }
+  if (!payload.app_id) return false;
+  return safeEqual(
+    computeSignature(secret, payload.id, payload.type, payload.timestamp, payload.app_id, payload.data),
+    payload.signature,
+  );
 }
 
 type RoleChangeData = {
@@ -53,6 +75,15 @@ type UserSnapshot = {
   webhook_role: string;
   webhook_tags: string;
 };
+
+const APP_ID_MISMATCH_MESSAGE = "app_id 与当前 OIDC 客户端不匹配，已忽略";
+
+async function isTrustedAppId(appId: string | undefined): Promise<boolean> {
+  const trimmed = (appId ?? "").trim();
+  if (!trimmed) return true;
+  const settings = await getGatewaySettings();
+  return trimmed === (settings.oidc_client_id ?? "").trim();
+}
 
 async function findUser(oidcSubject: string): Promise<UserSnapshot | undefined> {
   return gatewayDb.queryOne<UserSnapshot>(
@@ -94,7 +125,8 @@ function parseTags(raw: string): string[] {
   }
 }
 
-async function handleRoleChange(data: RoleChangeData): Promise<string> {
+async function handleRoleChange(data: RoleChangeData, appId: string | undefined): Promise<string> {
+  if (!(await isTrustedAppId(appId))) return APP_ID_MISMATCH_MESSAGE;
   const user = await findUser(data.user_id);
   if (!user) return "用户不存在，已忽略";
 
@@ -103,7 +135,8 @@ async function handleRoleChange(data: RoleChangeData): Promise<string> {
   return `已将用户分组更新为 ${groupId ?? "默认"}`;
 }
 
-async function handleTagsChanged(data: TagsChangedData): Promise<string> {
+async function handleTagsChanged(data: TagsChangedData, appId: string | undefined): Promise<string> {
+  if (!(await isTrustedAppId(appId))) return APP_ID_MISMATCH_MESSAGE;
   const user = await findUser(data.user_id);
   if (!user) return "用户不存在，已忽略";
 
@@ -156,7 +189,7 @@ export async function POST(request: Request) {
     return jsonError("请求时间戳过期", 403);
   }
 
-  if (!verifySignature(settings.webhook_secret, payload.id, payload.type, payload.timestamp, payload.data, payload.signature)) {
+  if (!verifySignature(settings.webhook_secret, payload)) {
     return jsonError("签名验证失败", 403);
   }
 
@@ -168,10 +201,10 @@ export async function POST(request: Request) {
   try {
     switch (payload.type) {
       case "user.role_change":
-        result = await handleRoleChange(payload.data as RoleChangeData);
+        result = await handleRoleChange(payload.data as RoleChangeData, payload.app_id);
         break;
       case "user.tags_changed":
-        result = await handleTagsChanged(payload.data as TagsChangedData);
+        result = await handleTagsChanged(payload.data as TagsChangedData, payload.app_id);
         break;
       case "user.identity_change":
         result = `身份变更通知已接收 (field: ${(payload.data as IdentityChangeData).field})`;
