@@ -84,11 +84,19 @@ export function isValidPublicBaseUrl(value: string): boolean {
 
 export type RedirectUriResult = { ok: true; redirectUri: string } | { ok: false; message: string };
 
-export async function resolveRedirectUri(): Promise<RedirectUriResult> {
+export type PublicBaseUrlResult = { ok: true; baseUrl: string } | { ok: false; message: string };
+
+export async function resolvePublicBaseUrl(): Promise<PublicBaseUrlResult> {
   const s = await getGatewaySettings();
   const base = (s.public_base_url ?? "").trim().replace(/\/+$/, "");
   if (!base || !isValidPublicBaseUrl(base)) return { ok: false, message: OIDC_REDIRECT_URI_HINT };
-  return { ok: true, redirectUri: `${base}/api/auth/oidc/callback` };
+  return { ok: true, baseUrl: base };
+}
+
+export async function resolveRedirectUri(): Promise<RedirectUriResult> {
+  const base = await resolvePublicBaseUrl();
+  if (!base.ok) return { ok: false, message: base.message };
+  return { ok: true, redirectUri: `${base.baseUrl}/api/auth/oidc/callback` };
 }
 
 export function normalizeOidcIssuerUrl(raw: string): string {
