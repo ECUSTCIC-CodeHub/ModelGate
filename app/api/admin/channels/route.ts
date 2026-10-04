@@ -12,6 +12,7 @@ import { disableExpiredChannels } from "@/lib/gateway/channel-expiry";
 import { disableExpiredModels } from "@/lib/gateway/model-expiry";
 import { maskApiKey } from "@/lib/shared/redact";
 import { resolveChannelOwnerId, resolveChannelOwnerIds } from "@/lib/services/channel-ownership";
+import type { ModelRow } from "@/app/dashboard/channels/channel-model";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { stringifyCustomHeaders, validateCustomHeaders } from "@/lib/gateway/custom-headers";
 
@@ -65,38 +66,51 @@ const createSchema = z.object({
     .optional(),
 });
 
+// 模型列表要回填编辑抽屉，字段必须覆盖 ModelRow 的全部键。
+// 此前这里是手写列清单，新增列时容易漏掉、且类型断言不会报错，
+// 曾因此漏掉 system_prompt（抽屉显示为空，保存后还会把已存值清成 NULL）。
+// 现用 satisfies 建立编译期约束：ModelRow 新增字段而此处未同步时会直接报错。
+const MODEL_ROW_COLUMNS = [
+  "id",
+  "alias",
+  "real_model",
+  "channel_id",
+  "upstream_protocol",
+  "supported_protocols",
+  "copilot_compatibility",
+  "supports_vision",
+  "is_public",
+  "enabled",
+  "weight",
+  "token_multiplier",
+  "request_multiplier",
+  "max_concurrency",
+  "quota_mode",
+  "quota_tokens",
+  "quota_requests",
+  "quota_period",
+  "period_quota_tokens",
+  "period_quota_requests",
+  "ua_restrictions",
+  "expires_at",
+  "system_prompt",
+] as const satisfies readonly (keyof ModelRow & string)[];
+
+// 反向约束：ModelRow 的每个键都必须出现在列清单中，漏一个即编译失败
+type MissingModelRowColumn = Exclude<keyof ModelRow, (typeof MODEL_ROW_COLUMNS)[number]>;
+const modelRowColumnsComplete: MissingModelRowColumn extends never ? true : never = true;
+void modelRowColumnsComplete;
+
+// created_at 供排序展示使用，不属于 ModelRow
+const MODEL_LIST_COLUMNS = [...MODEL_ROW_COLUMNS, "created_at"].join(", ");
+
 export async function GET(request: Request) {
   const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
   const channels = await gatewayDb.query<Record<string, unknown> & { id: number }>("SELECT c.*, u.username AS created_by_username FROM channels c LEFT JOIN users u ON u.id = c.created_by WHERE c.deleted_at IS NULL ORDER BY c.id DESC");
   const models = await gatewayDb
-    .query<{
-    id: number;
-    alias: string;
-    real_model: string;
-    channel_id: number;
-    upstream_protocol: string;
-    supported_protocols: string | null;
-    copilot_compatibility: number;
-    supports_vision: number;
-    is_public: number;
-    enabled: number;
-    weight: number;
-    token_multiplier: number;
-    request_multiplier: number;
-    max_concurrency: number;
-    quota_mode: string;
-    quota_tokens: number | null;
-    quota_requests: number | null;
-    quota_period: number | null;
-    period_quota_tokens: number | null;
-    period_quota_requests: number | null;
-    ua_restrictions: string;
-    expires_at: string | null;
-    system_prompt: string | null;
-    created_at: string;
-  }>("SELECT id, alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, supports_vision, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, ua_restrictions, expires_at, system_prompt, created_at FROM models WHERE deleted_at IS NULL ORDER BY id DESC");
+    .query<ModelRow & { created_at: string }>(`SELECT ${MODEL_LIST_COLUMNS} FROM models WHERE deleted_at IS NULL ORDER BY id DESC`);
 
   const grouped = new Map<number, typeof models>();
   for (const model of models) {
