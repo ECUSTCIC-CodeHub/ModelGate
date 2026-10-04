@@ -94,8 +94,9 @@ export async function GET(request: Request) {
     period_quota_requests: number | null;
     ua_restrictions: string;
     expires_at: string | null;
+    system_prompt: string | null;
     created_at: string;
-  }>("SELECT id, alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, supports_vision, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, ua_restrictions, expires_at, created_at FROM models WHERE deleted_at IS NULL ORDER BY id DESC");
+  }>("SELECT id, alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, supports_vision, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, ua_restrictions, expires_at, system_prompt, created_at FROM models WHERE deleted_at IS NULL ORDER BY id DESC");
 
   const grouped = new Map<number, typeof models>();
   for (const model of models) {
