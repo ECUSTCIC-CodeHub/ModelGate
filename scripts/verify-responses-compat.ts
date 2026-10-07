@@ -703,6 +703,288 @@ test("anthropic-only fields are filtered for responses upstream", () => {
   }
 });
 
+test("anthropic metadata 透传时不注入 Anthropic 不存在的 store 字段", () => {
+  const body = {
+    model: "claude-3-5-sonnet",
+    max_tokens: 64,
+    metadata: { user_id: "test" },
+    messages: [{ role: "user", content: "hi" }],
+  };
+
+  const same = anthropicGatewayAdapter.adaptRequestBody(body as never, anthropicGatewayAdapter, "claude-3-5-sonnet");
+  assert.deepEqual(same.metadata, { user_id: "test" }, "同协议透传应保留 metadata");
+  assert.ok(!("store" in same), "同协议透传不应注入 store");
+
+  const toChat = anthropicGatewayAdapter.adaptRequestBody(body as never, chatCompletionsGatewayAdapter, "gpt-4o");
+  assert.deepEqual(toChat.metadata, { user_id: "test" }, "跨协议保留 metadata");
+  assert.equal(toChat.store, true, "OpenAI 上游需要 store: true 才接受 metadata");
+});
+
+test("chat/responses 的 store 不下发到 anthropic 上游，metadata 只保留 user_id", () => {
+  const chat = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "claude-3-5-sonnet",
+      messages: [{ role: "user", content: "hi" }],
+      store: true,
+      metadata: { user_id: "test", trace_id: "t1" },
+      stream: false,
+    },
+    anthropicGatewayAdapter,
+    "claude-3-5-sonnet",
+  );
+  assert.ok(!("store" in chat), "store 不应泄漏到 anthropic");
+  assert.deepEqual(chat.metadata, { user_id: "test" }, "anthropic 只接受 metadata.user_id");
+
+  const responses = responsesGatewayAdapter.adaptRequestBody(
+    {
+      model: "claude-3-5-sonnet",
+      input: [{ role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      store: true,
+      metadata: { user_id: "test", trace_id: "t1" },
+      stream: false,
+    },
+    anthropicGatewayAdapter,
+    "claude-3-5-sonnet",
+  );
+  assert.ok(!("store" in responses), "store 不应泄漏到 anthropic");
+  assert.deepEqual(responses.metadata, { user_id: "test" }, "anthropic 只接受 metadata.user_id");
+});
+
+test("metadata 无可下发的 user_id 时不写入 anthropic 上游请求体", () => {
+  const cases: unknown[] = [undefined, null, "trace", 42, [], { trace_id: "t1" }, { user_id: 7 }, { user_id: null }];
+  for (const metadata of cases) {
+    const chat = chatCompletionsGatewayAdapter.adaptRequestBody(
+      {
+        model: "claude-3-5-sonnet",
+        messages: [{ role: "user", content: "hi" }],
+        metadata,
+        stream: false,
+      },
+      anthropicGatewayAdapter,
+      "claude-3-5-sonnet",
+    );
+    assert.ok(!("metadata" in chat), `chat metadata=${JSON.stringify(metadata)} 不应下发`);
+
+    const responses = responsesGatewayAdapter.adaptRequestBody(
+      {
+        model: "claude-3-5-sonnet",
+        input: [{ role: "user", content: [{ type: "input_text", text: "hi" }] }],
+        metadata,
+        stream: false,
+      },
+      anthropicGatewayAdapter,
+      "claude-3-5-sonnet",
+    );
+    assert.ok(!("metadata" in responses), `responses metadata=${JSON.stringify(metadata)} 不应下发`);
+  }
+});
+
+test("anthropic 出口在 metadata 缺 user_id 时用 OpenAI 的 user 兜底", () => {
+  const fromChat = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "claude-sonnet-4-6",
+      messages: [{ role: "user", content: "hi" }],
+      user: "u1",
+      stream: false,
+    },
+    anthropicGatewayAdapter,
+    "claude-sonnet-4-6",
+  );
+  assert.deepEqual(fromChat.metadata, { user_id: "u1" }, "user 应兜底为 metadata.user_id");
+  assert.ok(!("user" in fromChat), "user 不应直接下发到 anthropic");
+
+  const explicitWins = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "claude-sonnet-4-6",
+      messages: [{ role: "user", content: "hi" }],
+      user: "u1",
+      metadata: { user_id: "m1" },
+      stream: false,
+    },
+    anthropicGatewayAdapter,
+    "claude-sonnet-4-6",
+  );
+  assert.deepEqual(explicitWins.metadata, { user_id: "m1" }, "metadata.user_id 优先于 user");
+
+  const fromResponses = responsesGatewayAdapter.adaptRequestBody(
+    {
+      model: "claude-sonnet-4-6",
+      input: [{ role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      user: "u2",
+      stream: false,
+    },
+    anthropicGatewayAdapter,
+    "claude-sonnet-4-6",
+  );
+  assert.deepEqual(fromResponses.metadata, { user_id: "u2" }, "responses 的 user 同样兜底");
+
+  const invalidUserIdFallsBack = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "claude-sonnet-4-6",
+      messages: [{ role: "user", content: "hi" }],
+      user: "u3",
+      metadata: { user_id: 7 },
+      stream: false,
+    },
+    anthropicGatewayAdapter,
+    "claude-sonnet-4-6",
+  );
+  assert.deepEqual(invalidUserIdFallsBack.metadata, { user_id: "u3" }, "user_id 非字符串时回落到 user");
+
+  const emptyUserIdFallsBack = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "claude-sonnet-4-6",
+      messages: [{ role: "user", content: "hi" }],
+      user: "u4",
+      metadata: { user_id: "" },
+      stream: false,
+    },
+    anthropicGatewayAdapter,
+    "claude-sonnet-4-6",
+  );
+  assert.deepEqual(emptyUserIdFallsBack.metadata, { user_id: "u4" }, "空 user_id 视为缺失，回落到 user");
+
+  const nonStringUser = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "claude-sonnet-4-6",
+      messages: [{ role: "user", content: "hi" }],
+      user: 42,
+      stream: false,
+    },
+    anthropicGatewayAdapter,
+    "claude-sonnet-4-6",
+  );
+  assert.ok(!("metadata" in nonStringUser), "非字符串 user 不产生 metadata");
+
+  const emptyUser = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "claude-sonnet-4-6",
+      messages: [{ role: "user", content: "hi" }],
+      user: "",
+      stream: false,
+    },
+    anthropicGatewayAdapter,
+    "claude-sonnet-4-6",
+  );
+  assert.ok(!("metadata" in emptyUser), "空 user 不产生 metadata");
+});
+
+test("OpenAI 出口只接受合法的字符串键值对 metadata，非法时不补 store", () => {
+  const atLimit = Object.fromEntries(Array.from({ length: 16 }, (_, i) => [`k${i}`, "v"]));
+  const cases: unknown[] = [
+    undefined,
+    null,
+    "trace",
+    42,
+    true,
+    [],
+    {},
+    { trace_id: 1 },
+    { trace_id: {} },
+    { trace_id: null },
+    { trace_id: ["t1"] },
+    { trace_id: "t1", retries: 3 },
+    Object.fromEntries(Array.from({ length: 17 }, (_, i) => [`k${i}`, "v"])),
+    { ["k".repeat(65)]: "v" },
+    { k: "v".repeat(513) },
+  ];
+  for (const metadata of cases) {
+    const toChat = responsesGatewayAdapter.adaptRequestBody(
+      {
+        model: "gpt-4o",
+        input: [{ role: "user", content: [{ type: "input_text", text: "hi" }] }],
+        metadata,
+        stream: false,
+      },
+      chatCompletionsGatewayAdapter,
+      "gpt-4o",
+    );
+    assert.ok(!("metadata" in toChat), `responses=>chat metadata=${JSON.stringify(metadata)} 不应下发`);
+    assert.ok(!("store" in toChat), `responses=>chat metadata=${JSON.stringify(metadata)} 不应补 store`);
+
+    const toResponses = chatCompletionsGatewayAdapter.adaptRequestBody(
+      {
+        model: "gpt-4o",
+        messages: [{ role: "user", content: "hi" }],
+        metadata,
+        stream: false,
+      },
+      responsesGatewayAdapter,
+      "gpt-4o",
+    );
+    assert.ok(!("metadata" in toResponses), `chat=>responses metadata=${JSON.stringify(metadata)} 不应下发`);
+    assert.ok(!("store" in toResponses), `chat=>responses metadata=${JSON.stringify(metadata)} 不应补 store`);
+  }
+
+  const valid = responsesGatewayAdapter.adaptRequestBody(
+    {
+      model: "gpt-4o",
+      input: [{ role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      metadata: atLimit,
+      stream: false,
+    },
+    chatCompletionsGatewayAdapter,
+    "gpt-4o",
+  );
+  assert.deepEqual(valid.metadata, atLimit, "边界内的 metadata 原样下发");
+  assert.equal(valid.store, true, "OpenAI 上游需要 store: true 才接受 metadata");
+
+  const lengthLimit = { ["k".repeat(64)]: "v".repeat(512) };
+  const atLengthLimit = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "gpt-4o",
+      messages: [{ role: "user", content: "hi" }],
+      metadata: lengthLimit,
+      stream: false,
+    },
+    responsesGatewayAdapter,
+    "gpt-4o",
+  );
+  assert.deepEqual(atLengthLimit.metadata, lengthLimit, "键 64 字符、值 512 字符仍在边界内");
+
+  const storeDisabled = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "gpt-4o",
+      messages: [{ role: "user", content: "hi" }],
+      metadata: { user_id: "u1" },
+      store: false,
+      stream: false,
+    },
+    responsesGatewayAdapter,
+    "gpt-4o",
+  );
+  assert.ok(!("metadata" in storeDisabled), "客户端显式 store: false 时不下发 metadata");
+  assert.equal(storeDisabled.store, false, "客户端显式 store: false 不被改写");
+
+  const storeDisabledFromResponses = responsesGatewayAdapter.adaptRequestBody(
+    {
+      model: "gpt-4o",
+      input: [{ role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      metadata: { user_id: "u1" },
+      store: false,
+      stream: false,
+    },
+    chatCompletionsGatewayAdapter,
+    "gpt-4o",
+  );
+  assert.ok(!("metadata" in storeDisabledFromResponses), "responses=>chat 显式 store: false 时不下发 metadata");
+  assert.equal(storeDisabledFromResponses.store, false, "客户端显式 store: false 不被改写");
+
+  const storeEnabled = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "gpt-4o",
+      messages: [{ role: "user", content: "hi" }],
+      metadata: null,
+      store: true,
+      stream: false,
+    },
+    responsesGatewayAdapter,
+    "gpt-4o",
+  );
+  assert.ok(!("metadata" in storeEnabled), "非法 metadata 在 store: true 时同样不下发");
+  assert.equal(storeEnabled.store, true, "客户端显式 store: true 不被改写");
+});
+
 test("responses upstream body converts to chat_completions text, reasoning and tools", () => {
   const result = JSON.parse(chatCompletionsGatewayAdapter.adaptResponseBody(
     JSON.stringify({

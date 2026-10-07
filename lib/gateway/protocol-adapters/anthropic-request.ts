@@ -8,6 +8,7 @@ import {
   parseToolArguments,
   type IntermediateRequest,
 } from "@/lib/gateway/protocol-adapters/intermediate";
+import { metadataForAnthropicUpstream } from "@/lib/gateway/protocol-adapters/metadata";
 import {
   CHAT_COMPLETIONS_ONLY_EXTRA_KEYS,
   RESPONSES_ONLY_EXTRA_KEYS,
@@ -146,7 +147,10 @@ export function anthropicRequestFromIntermediate(request: IntermediateRequest): 
     const toolChoice = toolChoiceFromIntermediateForAnthropic(request.tool_choice);
     if (toolChoice !== undefined) next.tool_choice = toolChoice;
   }
-  if (request.metadata !== undefined) { next.metadata = request.metadata; next.store = true; }
+  // Anthropic Messages 的 metadata 是独立合法字段，无需 OpenAI 的 store 开关；
+  // 且只定义 user_id，其余键会被严格上游判为未知输入，user 与它语义一致可作为兜底
+  const metadata = metadataForAnthropicUpstream(request.metadata, request.user);
+  if (metadata !== undefined) next.metadata = metadata;
 
   return next;
 }

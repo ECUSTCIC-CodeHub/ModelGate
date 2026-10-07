@@ -28,6 +28,7 @@ import {
   omitKeys,
   type IntermediateRequest,
 } from "@/lib/gateway/protocol-adapters/intermediate";
+import { metadataForOpenAiUpstream } from "@/lib/gateway/protocol-adapters/metadata";
 import {
   ANTHROPIC_ONLY_EXTRA_KEYS,
   CHAT_COMPLETIONS_ONLY_EXTRA_KEYS,
@@ -162,7 +163,8 @@ export function responsesRequestFromIntermediate(request: IntermediateRequest): 
   if (request.parallel_tool_calls !== undefined) next.parallel_tool_calls = request.parallel_tool_calls;
   if (request.stream_options !== undefined) next.stream_options = request.stream_options;
   if (request.user !== undefined) next.user = request.user;
-  if (request.metadata !== undefined) { next.metadata = request.metadata; next.store = true; }
+  const metadata = metadataForOpenAiUpstream(request.metadata, request.extra.store);
+  if (metadata !== undefined) { next.metadata = metadata; next.store = true; }
   if (request.text !== undefined) next.text = request.text;
   if (request.reasoning_effort !== undefined) next.reasoning_effort = request.reasoning_effort;
   if (request.context_management !== undefined) {
