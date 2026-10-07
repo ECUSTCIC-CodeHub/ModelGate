@@ -3082,7 +3082,8 @@ Anthropic Messages 兼容端点。
 
 **metadata 字段处理:**
 
-- `metadata` 是 Anthropic Messages 的合法字段，网关原样透传，不改写、不丢弃。
+- `metadata` 是 Anthropic Messages 的合法字段，但只定义 `user_id`。由 `/api/v1/chat/completions`、`/api/v1/responses` 跨协议转换发往 `anthropic_messages` 上游时，网关只下发 `user_id`；`user_id` 缺失或非字符串时整体不下发 `metadata`（OpenAI 侧的其余键会被严格上游判为未知输入）。
+- Anthropic 客户端请求发往 `anthropic_messages` 上游时不改写 `metadata`，客户端传入的内容原样转发。
 - 仅跨协议转换发往 `chat_completions` / `responses` 上游时，网关才会在请求含 `metadata` 时补 `store: true`（OpenAI 要求 `metadata` 必须配合 `store` 才被接受）；同协议透传不补也不改写。
 - 网关自身不向 `anthropic_messages` 上游注入 `store`：Anthropic Messages 并无该字段，注入会被严格上游当作未知参数返回 400；同协议透传时客户端显式传入的 `store` 仍会原样转发，网关不做剥离。
 - 反向转换（`chat_completions` / `responses` 请求转 Anthropic 上游）时，网关会剥离 `store` 等 OpenAI 专有字段，避免泄漏到 Anthropic 上游。

@@ -720,32 +720,63 @@ test("anthropic metadata 透传时不注入 Anthropic 不存在的 store 字段"
   assert.equal(toChat.store, true, "OpenAI 上游需要 store: true 才接受 metadata");
 });
 
-test("chat/responses 的 store 与 metadata 不泄漏到 anthropic 上游", () => {
+test("chat/responses 的 store 不下发到 anthropic 上游，metadata 只保留 user_id", () => {
   const chat = chatCompletionsGatewayAdapter.adaptRequestBody(
     {
       model: "claude-3-5-sonnet",
       messages: [{ role: "user", content: "hi" }],
       store: true,
-      metadata: { user_id: "test" },
+      metadata: { user_id: "test", trace_id: "t1" },
       stream: false,
     },
     anthropicGatewayAdapter,
     "claude-3-5-sonnet",
   );
   assert.ok(!("store" in chat), "store 不应泄漏到 anthropic");
+  assert.deepEqual(chat.metadata, { user_id: "test" }, "anthropic 只接受 metadata.user_id");
 
   const responses = responsesGatewayAdapter.adaptRequestBody(
     {
       model: "claude-3-5-sonnet",
       input: [{ role: "user", content: [{ type: "input_text", text: "hi" }] }],
       store: true,
-      metadata: { user_id: "test" },
+      metadata: { user_id: "test", trace_id: "t1" },
       stream: false,
     },
     anthropicGatewayAdapter,
     "claude-3-5-sonnet",
   );
   assert.ok(!("store" in responses), "store 不应泄漏到 anthropic");
+  assert.deepEqual(responses.metadata, { user_id: "test" }, "anthropic 只接受 metadata.user_id");
+});
+
+test("metadata 无可下发的 user_id 时不写入 anthropic 上游请求体", () => {
+  const cases: unknown[] = [undefined, null, "trace", 42, [], { trace_id: "t1" }, { user_id: 7 }, { user_id: null }];
+  for (const metadata of cases) {
+    const chat = chatCompletionsGatewayAdapter.adaptRequestBody(
+      {
+        model: "claude-3-5-sonnet",
+        messages: [{ role: "user", content: "hi" }],
+        metadata,
+        stream: false,
+      },
+      anthropicGatewayAdapter,
+      "claude-3-5-sonnet",
+    );
+    assert.ok(!("metadata" in chat), `chat metadata=${JSON.stringify(metadata)} 不应下发`);
+
+    const responses = responsesGatewayAdapter.adaptRequestBody(
+      {
+        model: "claude-3-5-sonnet",
+        input: [{ role: "user", content: [{ type: "input_text", text: "hi" }] }],
+        metadata,
+        stream: false,
+      },
+      anthropicGatewayAdapter,
+      "claude-3-5-sonnet",
+    );
+    assert.ok(!("metadata" in responses), `responses metadata=${JSON.stringify(metadata)} 不应下发`);
+  }
 });
 
 test("responses upstream body converts to chat_completions text, reasoning and tools", () => {

@@ -75,6 +75,13 @@ const CROSS_PROTOCOL_EXTRA_KEYS = [
   "store",
 ];
 
+function anthropicMetadataFromIntermediate(metadata: unknown) {
+  const userId = typeof metadata === "object" && metadata !== null
+    ? (metadata as JsonRecord).user_id
+    : undefined;
+  return typeof userId === "string" ? { user_id: userId } : undefined;
+}
+
 export function anthropicRequestFromIntermediate(request: IntermediateRequest): JsonRecord {
   const extra = request.sourceProtocol === "responses"
     ? omitKeys(request.extra, [...CROSS_PROTOCOL_EXTRA_KEYS, ...RESPONSES_ONLY_EXTRA_KEYS])
@@ -147,8 +154,9 @@ export function anthropicRequestFromIntermediate(request: IntermediateRequest): 
     if (toolChoice !== undefined) next.tool_choice = toolChoice;
   }
   // Anthropic Messages 的 metadata 是独立合法字段，无需 OpenAI 的 store 开关；
-  // 注入 store 会被严格上游当作未知字段拒绝
-  if (request.metadata !== undefined) next.metadata = request.metadata;
+  // 且只定义 user_id，其余键会被严格上游判为未知输入
+  const metadata = anthropicMetadataFromIntermediate(request.metadata);
+  if (metadata !== undefined) next.metadata = metadata;
 
   return next;
 }
