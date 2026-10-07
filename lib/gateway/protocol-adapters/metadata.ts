@@ -18,3 +18,10 @@ export function metadataForOpenAiUpstream(metadata: unknown, requestedStore?: un
     && [...value].length <= MAX_METADATA_VALUE_LENGTH);
   return withinLimits ? Object.fromEntries(entries) : undefined;
 }
+
+// Anthropic 的 metadata 只定义 user_id，OpenAI 的 user 与它语义一致，可作为兜底
+export function metadataForAnthropicUpstream(metadata: unknown, user: unknown) {
+  const userId = asRecord(metadata)?.user_id;
+  const resolved = typeof userId === "string" && userId ? userId : user;
+  return typeof resolved === "string" && resolved ? { user_id: resolved } : undefined;
+}

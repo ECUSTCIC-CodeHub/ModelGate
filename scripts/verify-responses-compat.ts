@@ -779,6 +779,96 @@ test("metadata 无可下发的 user_id 时不写入 anthropic 上游请求体", 
   }
 });
 
+test("anthropic 出口在 metadata 缺 user_id 时用 OpenAI 的 user 兜底", () => {
+  const fromChat = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "claude-sonnet-4-6",
+      messages: [{ role: "user", content: "hi" }],
+      user: "u1",
+      stream: false,
+    },
+    anthropicGatewayAdapter,
+    "claude-sonnet-4-6",
+  );
+  assert.deepEqual(fromChat.metadata, { user_id: "u1" }, "user 应兜底为 metadata.user_id");
+  assert.ok(!("user" in fromChat), "user 不应直接下发到 anthropic");
+
+  const explicitWins = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "claude-sonnet-4-6",
+      messages: [{ role: "user", content: "hi" }],
+      user: "u1",
+      metadata: { user_id: "m1" },
+      stream: false,
+    },
+    anthropicGatewayAdapter,
+    "claude-sonnet-4-6",
+  );
+  assert.deepEqual(explicitWins.metadata, { user_id: "m1" }, "metadata.user_id 优先于 user");
+
+  const fromResponses = responsesGatewayAdapter.adaptRequestBody(
+    {
+      model: "claude-sonnet-4-6",
+      input: [{ role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      user: "u2",
+      stream: false,
+    },
+    anthropicGatewayAdapter,
+    "claude-sonnet-4-6",
+  );
+  assert.deepEqual(fromResponses.metadata, { user_id: "u2" }, "responses 的 user 同样兜底");
+
+  const invalidUserIdFallsBack = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "claude-sonnet-4-6",
+      messages: [{ role: "user", content: "hi" }],
+      user: "u3",
+      metadata: { user_id: 7 },
+      stream: false,
+    },
+    anthropicGatewayAdapter,
+    "claude-sonnet-4-6",
+  );
+  assert.deepEqual(invalidUserIdFallsBack.metadata, { user_id: "u3" }, "user_id 非字符串时回落到 user");
+
+  const emptyUserIdFallsBack = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "claude-sonnet-4-6",
+      messages: [{ role: "user", content: "hi" }],
+      user: "u4",
+      metadata: { user_id: "" },
+      stream: false,
+    },
+    anthropicGatewayAdapter,
+    "claude-sonnet-4-6",
+  );
+  assert.deepEqual(emptyUserIdFallsBack.metadata, { user_id: "u4" }, "空 user_id 视为缺失，回落到 user");
+
+  const nonStringUser = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "claude-sonnet-4-6",
+      messages: [{ role: "user", content: "hi" }],
+      user: 42,
+      stream: false,
+    },
+    anthropicGatewayAdapter,
+    "claude-sonnet-4-6",
+  );
+  assert.ok(!("metadata" in nonStringUser), "非字符串 user 不产生 metadata");
+
+  const emptyUser = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "claude-sonnet-4-6",
+      messages: [{ role: "user", content: "hi" }],
+      user: "",
+      stream: false,
+    },
+    anthropicGatewayAdapter,
+    "claude-sonnet-4-6",
+  );
+  assert.ok(!("metadata" in emptyUser), "空 user 不产生 metadata");
+});
+
 test("OpenAI 出口只接受合法的字符串键值对 metadata，非法时不补 store", () => {
   const atLimit = Object.fromEntries(Array.from({ length: 16 }, (_, i) => [`k${i}`, "v"]));
   const cases: unknown[] = [
