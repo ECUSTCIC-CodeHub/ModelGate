@@ -703,6 +703,51 @@ test("anthropic-only fields are filtered for responses upstream", () => {
   }
 });
 
+test("anthropic metadata 透传时不注入 Anthropic 不存在的 store 字段", () => {
+  const body = {
+    model: "claude-3-5-sonnet",
+    max_tokens: 64,
+    metadata: { user_id: "test" },
+    messages: [{ role: "user", content: "hi" }],
+  };
+
+  const same = anthropicGatewayAdapter.adaptRequestBody(body as never, anthropicGatewayAdapter, "claude-3-5-sonnet");
+  assert.deepEqual(same.metadata, { user_id: "test" }, "同协议透传应保留 metadata");
+  assert.ok(!("store" in same), "同协议透传不应注入 store");
+
+  const toChat = anthropicGatewayAdapter.adaptRequestBody(body as never, chatCompletionsGatewayAdapter, "gpt-4o");
+  assert.deepEqual(toChat.metadata, { user_id: "test" }, "跨协议保留 metadata");
+  assert.equal(toChat.store, true, "OpenAI 上游需要 store: true 才接受 metadata");
+});
+
+test("chat/responses 的 store 与 metadata 不泄漏到 anthropic 上游", () => {
+  const chat = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "claude-3-5-sonnet",
+      messages: [{ role: "user", content: "hi" }],
+      store: true,
+      metadata: { user_id: "test" },
+      stream: false,
+    },
+    anthropicGatewayAdapter,
+    "claude-3-5-sonnet",
+  );
+  assert.ok(!("store" in chat), "store 不应泄漏到 anthropic");
+
+  const responses = responsesGatewayAdapter.adaptRequestBody(
+    {
+      model: "claude-3-5-sonnet",
+      input: [{ role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      store: true,
+      metadata: { user_id: "test" },
+      stream: false,
+    },
+    anthropicGatewayAdapter,
+    "claude-3-5-sonnet",
+  );
+  assert.ok(!("store" in responses), "store 不应泄漏到 anthropic");
+});
+
 test("responses upstream body converts to chat_completions text, reasoning and tools", () => {
   const result = JSON.parse(chatCompletionsGatewayAdapter.adaptResponseBody(
     JSON.stringify({

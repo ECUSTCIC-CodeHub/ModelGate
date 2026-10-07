@@ -3080,6 +3080,14 @@ Anthropic Messages 兼容端点。
 - 客户端的 `anthropic-beta` 头透传给上游（prompt caching、扩展思考等特性所需）
 - 当实际命中的上游协议为 `responses` 时，流式转换会从 `response.completed` 的最终快照补齐未通过 delta 发出的文本与工具调用，避免 Claude Code 等 Anthropic 客户端收到空回复。
 
+**metadata 字段处理:**
+
+- `metadata` 是 Anthropic Messages 的合法字段，网关原样透传，不改写、不丢弃。
+- 仅当最终发往 `chat_completions` / `responses` 上游时，网关才会在请求含 `metadata` 时补 `store: true`（OpenAI 要求 `metadata` 必须配合 `store` 才被接受）。
+- 发往 `anthropic_messages` 上游（含同协议透传与跨协议转换）时不下发 `store`：Anthropic Messages 并无该字段，注入会被严格上游当作未知参数返回 400。
+- 反向转换（`chat_completions` / `responses` 请求转 Anthropic 上游）时，网关会剥离 `store` 等 OpenAI 专有字段，避免泄漏到 Anthropic 上游。
+- `other` 通用转发不经过协议转换，请求体原样透传，不在上述改写范围内。
+
 ---
 
 ### POST /api/v1/responses

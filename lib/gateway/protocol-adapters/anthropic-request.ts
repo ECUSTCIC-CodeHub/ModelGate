@@ -146,7 +146,9 @@ export function anthropicRequestFromIntermediate(request: IntermediateRequest): 
     const toolChoice = toolChoiceFromIntermediateForAnthropic(request.tool_choice);
     if (toolChoice !== undefined) next.tool_choice = toolChoice;
   }
-  if (request.metadata !== undefined) { next.metadata = request.metadata; next.store = true; }
+  // Anthropic Messages 的 metadata 是独立合法字段，无需 OpenAI 的 store 开关；
+  // 注入 store 会被严格上游当作未知字段拒绝
+  if (request.metadata !== undefined) next.metadata = request.metadata;
 
   return next;
 }
