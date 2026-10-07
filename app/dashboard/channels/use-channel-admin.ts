@@ -7,6 +7,12 @@ import { authedFetch } from "@/lib/auth/client-auth";
 import { modelGateFeatures } from "@/lib/core/features";
 import { getApiMessage } from "@/lib/shared/api-message";
 import {
+  REQUEST_BODY_OMIT_FIELD_NAME_MAX_LENGTH,
+  REQUEST_BODY_OMIT_MAX_ENTRIES,
+  formatRequestBodyOmitInput,
+  parseRequestBodyOmitInput,
+} from "@/lib/gateway/request-body-omit";
+import {
   initialChannelForm,
   initialModelDraft,
   initialModelForm,
@@ -178,6 +184,7 @@ export function useChannelAdmin() {
       expires_at: expiresAtToInputValue(row.expires_at),
       time_restrictions: row.time_restrictions ?? "",
       custom_headers: formatCustomHeadersInput(row.custom_headers),
+      request_body_omit: formatRequestBodyOmitInput(row.request_body_omit),
       group_name: row.group_name ?? "",
     });
     setChannelModels([baseDraft(supportedProtocols)]);
@@ -273,6 +280,14 @@ export function useChannelAdmin() {
       toast({ variant: "error", description: "自定义 Header 需按「名称: 值」每行一条填写。" });
       return;
     }
+    const requestBodyOmit = parseRequestBodyOmitInput(channelForm.request_body_omit);
+    if (requestBodyOmit === null) {
+      toast({
+        variant: "error",
+        description: `剔除字段每行一个顶层字段名（最多 ${REQUEST_BODY_OMIT_MAX_ENTRIES} 项，单个最长 ${REQUEST_BODY_OMIT_FIELD_NAME_MAX_LENGTH} 字符，仅允许字母、数字与下划线）。`,
+      });
+      return;
+    }
 
     if (channelEditingId === null) {
       const draftModels = channelModels
@@ -310,6 +325,7 @@ export function useChannelAdmin() {
           expires_at: expiresAtFromInputValue(channelForm.expires_at),
           time_restrictions: channelForm.time_restrictions,
           custom_headers: customHeaders,
+          request_body_omit: requestBodyOmit,
           group_name: channelForm.group_name.trim(),
           ...buildQuotaPayload(channelForm),
           models: draftModels,
@@ -341,6 +357,7 @@ export function useChannelAdmin() {
       expires_at: expiresAtFromInputValue(channelForm.expires_at),
       time_restrictions: channelForm.time_restrictions,
       custom_headers: customHeaders,
+      request_body_omit: requestBodyOmit,
       group_name: channelForm.group_name.trim(),
       ...buildQuotaPayload(channelForm),
     };

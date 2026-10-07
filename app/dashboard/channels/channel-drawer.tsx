@@ -237,6 +237,20 @@ export function ChannelDrawer({
               </p>
             </div>
             <div className="space-y-2 md:col-span-2">
+              <Label>剔除请求体字段</Label>
+              <textarea
+                className="min-h-16 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-foreground)] outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-ring)] disabled:opacity-50"
+                placeholder={"每行一个顶层字段名，例如：\nmetadata"}
+                value={form.request_body_omit}
+                onChange={(e) => onFormChange({ request_body_omit: e.target.value })}
+              />
+              <p className="text-xs text-[var(--color-foreground-muted)]">
+                发往该渠道上游前从请求体中删除这些顶层字段，适用于部分上游不支持特定字段（如智谱不接受 metadata）的场景。
+                每行一个字段名，仅允许字母、数字与下划线，最多 16 项、单个最长 64 字符；留空则不剔除。
+                model、messages 等承载请求语义的字段不允许剔除。other 通用转发路径不经过该处理。
+              </p>
+            </div>
+            <div className="space-y-2 md:col-span-2">
               <Label className="flex items-center gap-2">
                 <Checkbox
                   checked={form.force_include_usage}
