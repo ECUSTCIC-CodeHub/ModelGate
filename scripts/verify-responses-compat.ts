@@ -779,6 +779,122 @@ test("metadata 无可下发的 user_id 时不写入 anthropic 上游请求体", 
   }
 });
 
+test("OpenAI 出口只接受合法的字符串键值对 metadata，非法时不补 store", () => {
+  const atLimit = Object.fromEntries(Array.from({ length: 16 }, (_, i) => [`k${i}`, "v"]));
+  const cases: unknown[] = [
+    undefined,
+    null,
+    "trace",
+    42,
+    true,
+    [],
+    {},
+    { trace_id: 1 },
+    { trace_id: {} },
+    { trace_id: null },
+    { trace_id: ["t1"] },
+    { trace_id: "t1", retries: 3 },
+    Object.fromEntries(Array.from({ length: 17 }, (_, i) => [`k${i}`, "v"])),
+    { ["k".repeat(65)]: "v" },
+    { k: "v".repeat(513) },
+  ];
+  for (const metadata of cases) {
+    const toChat = responsesGatewayAdapter.adaptRequestBody(
+      {
+        model: "gpt-4o",
+        input: [{ role: "user", content: [{ type: "input_text", text: "hi" }] }],
+        metadata,
+        stream: false,
+      },
+      chatCompletionsGatewayAdapter,
+      "gpt-4o",
+    );
+    assert.ok(!("metadata" in toChat), `responses=>chat metadata=${JSON.stringify(metadata)} 不应下发`);
+    assert.ok(!("store" in toChat), `responses=>chat metadata=${JSON.stringify(metadata)} 不应补 store`);
+
+    const toResponses = chatCompletionsGatewayAdapter.adaptRequestBody(
+      {
+        model: "gpt-4o",
+        messages: [{ role: "user", content: "hi" }],
+        metadata,
+        stream: false,
+      },
+      responsesGatewayAdapter,
+      "gpt-4o",
+    );
+    assert.ok(!("metadata" in toResponses), `chat=>responses metadata=${JSON.stringify(metadata)} 不应下发`);
+    assert.ok(!("store" in toResponses), `chat=>responses metadata=${JSON.stringify(metadata)} 不应补 store`);
+  }
+
+  const valid = responsesGatewayAdapter.adaptRequestBody(
+    {
+      model: "gpt-4o",
+      input: [{ role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      metadata: atLimit,
+      stream: false,
+    },
+    chatCompletionsGatewayAdapter,
+    "gpt-4o",
+  );
+  assert.deepEqual(valid.metadata, atLimit, "边界内的 metadata 原样下发");
+  assert.equal(valid.store, true, "OpenAI 上游需要 store: true 才接受 metadata");
+
+  const lengthLimit = { ["k".repeat(64)]: "v".repeat(512) };
+  const atLengthLimit = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "gpt-4o",
+      messages: [{ role: "user", content: "hi" }],
+      metadata: lengthLimit,
+      stream: false,
+    },
+    responsesGatewayAdapter,
+    "gpt-4o",
+  );
+  assert.deepEqual(atLengthLimit.metadata, lengthLimit, "键 64 字符、值 512 字符仍在边界内");
+
+  const storeDisabled = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "gpt-4o",
+      messages: [{ role: "user", content: "hi" }],
+      metadata: { user_id: "u1" },
+      store: false,
+      stream: false,
+    },
+    responsesGatewayAdapter,
+    "gpt-4o",
+  );
+  assert.ok(!("metadata" in storeDisabled), "客户端显式 store: false 时不下发 metadata");
+  assert.equal(storeDisabled.store, false, "客户端显式 store: false 不被改写");
+
+  const storeDisabledFromResponses = responsesGatewayAdapter.adaptRequestBody(
+    {
+      model: "gpt-4o",
+      input: [{ role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      metadata: { user_id: "u1" },
+      store: false,
+      stream: false,
+    },
+    chatCompletionsGatewayAdapter,
+    "gpt-4o",
+  );
+  assert.ok(!("metadata" in storeDisabledFromResponses), "responses=>chat 显式 store: false 时不下发 metadata");
+  assert.equal(storeDisabledFromResponses.store, false, "客户端显式 store: false 不被改写");
+
+  const storeEnabled = chatCompletionsGatewayAdapter.adaptRequestBody(
+    {
+      model: "gpt-4o",
+      messages: [{ role: "user", content: "hi" }],
+      metadata: null,
+      store: true,
+      stream: false,
+    },
+    responsesGatewayAdapter,
+    "gpt-4o",
+  );
+  assert.ok(!("metadata" in storeEnabled), "非法 metadata 在 store: true 时同样不下发");
+  assert.equal(storeEnabled.store, true, "客户端显式 store: true 不被改写");
+});
+
 test("responses upstream body converts to chat_completions text, reasoning and tools", () => {
   const result = JSON.parse(chatCompletionsGatewayAdapter.adaptResponseBody(
     JSON.stringify({
