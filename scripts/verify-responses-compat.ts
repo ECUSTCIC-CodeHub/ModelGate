@@ -19,6 +19,14 @@ import { redactUrlCredentials } from "../lib/shared/redact";
 import { injectModelSystemPrompt } from "../lib/gateway/model-system-prompt";
 import { parseCustomHeaders, validateCustomHeaders } from "../lib/gateway/custom-headers";
 import {
+  omitRequestBodyFields,
+  parseRequestBodyOmit,
+  stringifyRequestBodyOmit,
+  validateRequestBodyOmit,
+  formatRequestBodyOmitInput,
+  parseRequestBodyOmitInput,
+} from "../lib/gateway/request-body-omit";
+import {
   parseModelsDevCatalog,
   protocolForModel,
   protocolsFromNpm,
@@ -1364,6 +1372,134 @@ test("自定义 Header 托管字段覆盖且脏数据逐键过滤", () => {
   for (const raw of [123, null, "", "{not json", "[1,2]", '"abc"', "42"]) {
     assert.deepEqual(parseCustomHeaders(raw), {}, `坏输入应退回空对象: ${JSON.stringify(raw)}`);
   }
+});
+
+console.log("\nrequest-body-omit");
+
+test("剔除字段校验只接受顶层字段名", () => {
+  assert.deepEqual(validateRequestBodyOmit(["metadata", "store"]), { ok: true, fields: ["metadata", "store"] });
+  // 去重与去空白
+  assert.deepEqual(validateRequestBodyOmit([" metadata ", "metadata"]), { ok: true, fields: ["metadata"] });
+  assert.deepEqual(validateRequestBodyOmit(["", "  "]), { ok: true, fields: [] });
+  assert.deepEqual(validateRequestBodyOmit(undefined), { ok: true, fields: [] });
+  assert.deepEqual(validateRequestBodyOmit(null), { ok: true, fields: [] });
+
+  // 非数组整体拒绝，避免管理员以为已生效
+  for (const raw of ["metadata", 123, true, { metadata: true }]) {
+    assert.equal(validateRequestBodyOmit(raw).ok, false, `应拒绝非数组: ${JSON.stringify(raw)}`);
+  }
+  // 数组内含非字符串同样拒绝
+  for (const raw of [["metadata", 1], [null], [["metadata"]], [{ a: 1 }]]) {
+    assert.equal(validateRequestBodyOmit(raw).ok, false, `应拒绝非字符串项: ${JSON.stringify(raw)}`);
+  }
+  // 路径 / 非法标识符写法应被挡下，避免误以为能剔除嵌套字段
+  for (const name of ["a.b", "a[0]", "a b", "meta-data", "1abc", "用户", "$x", "a\tb"]) {
+    assert.equal(validateRequestBodyOmit([name]).ok, false, `应拒绝非顶层字段名: ${JSON.stringify(name)}`);
+  }
+  // 合法形态不能被过度收紧
+  for (const name of ["metadata", "_x", "a1", "X_Test", "store_options"]) {
+    assert.equal(validateRequestBodyOmit([name]).ok, true, `应放行合法字段名: ${JSON.stringify(name)}`);
+  }
+});
+
+test("承载请求语义的字段不允许剔除", () => {
+  for (const name of ["model", "messages", "input", "contents", "prompt", "system", "stream"]) {
+    assert.equal(validateRequestBodyOmit([name]).ok, false, `应拒绝剔除 ${name}`);
+  }
+  // 混入受保护字段时整份拒绝，而不是静默跳过该项
+  assert.equal(validateRequestBodyOmit(["metadata", "messages"]).ok, false);
+  // 存储值被手改成受保护字段时，整份退回「不剔除」
+  assert.deepEqual(parseRequestBodyOmit('["messages"]'), []);
+  // 运行期兜底：即使绕过校验传入受保护字段，也整份不剔除（与 validate 的「整份拒绝」一致），
+  // 不能出现「配置被判非法、却悄悄执行了其中一半」的行为
+  const body = { model: "glm-5.3", messages: [{ role: "user", content: "hi" }], metadata: { a: "b" } };
+  assert.equal(omitRequestBodyFields(body, ["messages", "model", "metadata"]), body);
+  assert.ok(Object.prototype.hasOwnProperty.call(body, "metadata"));
+  // 不含受保护字段时正常生效
+  const ok = omitRequestBodyFields(body, ["metadata"]);
+  assert.ok(!Object.prototype.hasOwnProperty.call(ok, "metadata"));
+  assert.ok(Object.prototype.hasOwnProperty.call(ok, "messages"));
+});
+
+test("剔除字段有 16 项上限与 64 字符长度上限", () => {
+  const atLimit = Array.from({ length: 16 }, (_, i) => `f${i}`);
+  assert.equal(validateRequestBodyOmit(atLimit).ok, true);
+  assert.equal(validateRequestBodyOmit([...atLimit, "extra"]).ok, false);
+
+  const longName = "a".repeat(64);
+  assert.equal(validateRequestBodyOmit([longName]).ok, true);
+  assert.equal(validateRequestBodyOmit([`${longName}a`]).ok, false);
+});
+
+test("剔除字段落库为 JSON 字符串且脏数据容错", () => {
+  assert.equal(stringifyRequestBodyOmit([]), "");
+  assert.equal(stringifyRequestBodyOmit(["metadata"]), '["metadata"]');
+
+  assert.deepEqual(parseRequestBodyOmit('["metadata","store"]'), ["metadata", "store"]);
+  // 退化为「不剔除」，而不是抛错或部分生效
+  for (const raw of ["", "  ", "not json", "{not json", '{"a":1}', '"metadata"', "42", "null", undefined, null, 123]) {
+    assert.deepEqual(parseRequestBodyOmit(raw), [], `坏输入应退回空数组: ${JSON.stringify(raw)}`);
+  }
+  // 混入非法项时整份退回，与 validate 的语义一致
+  assert.deepEqual(parseRequestBodyOmit('["metadata","a.b"]'), []);
+});
+
+test("管理端表单与存储格式往返无损", () => {
+  // 往返：存储 JSON -> 表单文本 -> 提交数组
+  const roundTrip = (fields: string[]) => parseRequestBodyOmitInput(formatRequestBodyOmitInput(stringifyRequestBodyOmit(fields)));
+  assert.deepEqual(roundTrip(["metadata"]), ["metadata"]);
+  assert.deepEqual(roundTrip(["metadata", "store"]), ["metadata", "store"]);
+  assert.deepEqual(roundTrip([]), []);
+
+  // 表单文本含空行与首尾空白时被规整
+  assert.deepEqual(parseRequestBodyOmitInput("metadata\n\n  store  \n"), ["metadata", "store"]);
+  // 脏数据在表单中显示为空，不丢用户已有配置之外的任何东西
+  for (const raw of [null, 123, "not json", '{"a":1}', undefined]) {
+    assert.equal(formatRequestBodyOmitInput(raw), "", `脏数据应显示为空: ${JSON.stringify(raw)}`);
+  }
+  // 非法项直接返回 null 交给调用方提示，而不是静默丢项后提交
+  assert.equal(parseRequestBodyOmitInput("metadata\na.b"), null);
+  assert.equal(parseRequestBodyOmitInput("messages"), null);
+});
+
+test("剔除只删顶层字段且不改动原对象", () => {
+  const body = {
+    model: "glm-5.3",
+    metadata: { user_id: "u1" },
+    store: true,
+    messages: [{ role: "user", content: "hi", metadata: { keep: true } }],
+  };
+
+  const result = omitRequestBodyFields(body, ["metadata", "store"]);
+  assert.deepEqual(result, { model: "glm-5.3", messages: [{ role: "user", content: "hi", metadata: { keep: true } }] });
+  // 原对象保持不被修改，重试切换到未配置剔除的渠道时不能残留
+  assert.deepEqual(body.metadata, { user_id: "u1" });
+  assert.equal(body.store, true);
+  // 嵌套同名字段不受影响：只支持顶层
+  assert.deepEqual((result.messages as Record<string, unknown>[])[0].metadata, { keep: true });
+});
+
+test("无配置或字段不存在时原样返回同一引用", () => {
+  const body = { model: "glm-5.3", metadata: { a: "b" } };
+  // 未配置剔除
+  assert.equal(omitRequestBodyFields(body, []), body);
+  // 配置了但请求体里没有该字段：不产生无谓拷贝
+  assert.equal(omitRequestBodyFields(body, ["store"]), body);
+  // 命中时才返回新对象
+  assert.notEqual(omitRequestBodyFields(body, ["metadata"]), body);
+});
+
+test("剔除后 metadata 与 user 都不再下发到上游", () => {
+  // anthropic 入口经中间协议转 chat 上游时，user 会被映射为 metadata.user_id，
+  // 剔除 metadata 后该兜底字段也一并消失——这正是智谱渠道需要的效果
+  const outbound: Record<string, unknown> = {
+    model: "glm-5.3",
+    messages: [{ role: "user", content: "hi" }],
+    metadata: { user_id: "u1" },
+  };
+  const stripped = omitRequestBodyFields(outbound, parseRequestBodyOmit('["metadata"]'));
+  assert.ok(!Object.prototype.hasOwnProperty.call(stripped, "metadata"));
+  assert.deepEqual(Object.keys(stripped).sort(), ["messages", "model"]);
 });
 
 test("models.dev 目录的协议推导", () => {

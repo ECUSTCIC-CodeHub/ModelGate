@@ -11,6 +11,7 @@ import { toLocalDatetime, validateTimeRestrictions, normalizeTimeRestrictions } 
 import { disableExpiredChannels } from "@/lib/gateway/channel-expiry";
 import { disableExpiredModels } from "@/lib/gateway/model-expiry";
 import { stringifyCustomHeaders, validateCustomHeaders } from "@/lib/gateway/custom-headers";
+import { stringifyRequestBodyOmit, validateRequestBodyOmit } from "@/lib/gateway/request-body-omit";
 import { maskApiKey, resolveSubmittedApiKey } from "@/lib/shared/redact";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { resolveChannelOwnerId } from "@/lib/services/channel-ownership";
@@ -39,6 +40,7 @@ const updateSchema = z.object({
   expires_at: z.string().max(32).nullable().optional(),
   time_restrictions: z.string().max(20000).optional(),
   custom_headers: z.record(z.string(), z.string()).nullable().optional(),
+  request_body_omit: z.array(z.string()).nullable().optional(),
   group_name: z.string().max(64).nullable().optional(),
 });
 
@@ -151,6 +153,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
   const customHeadersResult = validateCustomHeaders(parsed.data.custom_headers);
   if (!customHeadersResult.ok) return jsonError(customHeadersResult.error, 400);
+  const requestBodyOmitResult = validateRequestBodyOmit(parsed.data.request_body_omit);
+  if (!requestBodyOmitResult.ok) return jsonError(requestBodyOmitResult.error, 400);
 
   const merged = {
     ...existing,
@@ -176,6 +180,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       parsed.data.custom_headers === undefined
         ? (existing as { custom_headers?: string | null }).custom_headers ?? ""
         : stringifyCustomHeaders(customHeadersResult.headers),
+    request_body_omit:
+      parsed.data.request_body_omit === undefined
+        ? (existing as { request_body_omit?: string | null }).request_body_omit ?? ""
+        : stringifyRequestBodyOmit(requestBodyOmitResult.fields),
     expires_at: nextExpiresAt,
     // 字段缺席保持原值，传 null 或空串清空
     group_name:
@@ -201,7 +209,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       .execute(
         `UPDATE channels
          SET name = ?, base_url = ?, api_key = ?, supported_protocols = ?, user_agent = ?, proxy_url = ?, enabled = ?, weight = ?, max_concurrency = ?, timeout = ?,
-             quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, force_include_usage = ?, ua_restrictions = ?, expires_at = ?, time_restrictions = ?, custom_headers = ?, group_name = ?, api_key_private = ?, created_by = ?
+             quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, force_include_usage = ?, ua_restrictions = ?, expires_at = ?, time_restrictions = ?, custom_headers = ?, request_body_omit = ?, group_name = ?, api_key_private = ?, created_by = ?
          WHERE id = ?`,
         [
           (merged as { name: string }).name,
@@ -228,6 +236,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           (merged as { expires_at: string | null }).expires_at ?? null,
           (merged as { time_restrictions: string }).time_restrictions,
           (merged as { custom_headers: string }).custom_headers,
+          (merged as { request_body_omit: string }).request_body_omit,
           (merged as { group_name: string }).group_name || null,
           nextPrivate,
           nextCreatedBy,

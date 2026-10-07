@@ -27,6 +27,7 @@ export type DbChannel = {
   expires_at: string | null;
   time_restrictions: string;
   custom_headers: string | null;
+  request_body_omit: string | null;
   group_name: string | null;
 };
 

@@ -69,6 +69,7 @@ type CandidateRow = {
   channel_expires_at: string | null;
   channel_time_restrictions: string;
   channel_custom_headers: string | null;
+  channel_request_body_omit: string | null;
   channel_group_name: string | null;
 };
 
@@ -133,6 +134,7 @@ const LIST_MODEL_ROUTES_SQL = `SELECT
       c.expires_at as channel_expires_at,
       c.time_restrictions as channel_time_restrictions,
       c.custom_headers as channel_custom_headers,
+      c.request_body_omit as channel_request_body_omit,
       c.group_name as channel_group_name
    FROM models m
    JOIN channels c ON c.id = m.channel_id
@@ -216,6 +218,7 @@ function mapRowToRoute(row: CandidateRow, inboundProtocol?: GatewayProtocol): Ro
       expires_at: row.channel_expires_at ?? null,
       time_restrictions: row.channel_time_restrictions ?? "",
       custom_headers: row.channel_custom_headers ?? null,
+      request_body_omit: row.channel_request_body_omit ?? null,
       group_name: row.channel_group_name ?? null,
     },
     effective_upstream_protocol: effectiveUpstreamProtocol,

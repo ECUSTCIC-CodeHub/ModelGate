@@ -1474,6 +1474,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | period_quota_tokens | int\|null | 否 | null | 每周期 Token 配额上限（仅完整版） |
 | period_quota_requests | int\|null | 否 | null | 每周期请求配额上限（仅完整版） |
 | force_include_usage | bool | 否 | true | 流式请求时向上游发送 `stream_options.include_usage`，设为 false 可兼容不支持该参数的上游（如微软） |
+| request_body_omit | array\|null | 否 | null | 渠道级请求体字段剔除列表，字符串数组，元素为要从上游请求体中删除的**顶层**字段名（如 `["metadata"]`）。发往该渠道上游的所有请求都会先删除这些字段，用于兼容不接受特定字段的上游（如智谱不接受 `metadata`）。最多 16 项，单个字段名最长 64 字符且须为 `[A-Za-z_][A-Za-z0-9_]*` 形态的顶层字段名（不支持 `a.b`、`a[0]` 这类嵌套路径写法）；重复项自动去重，空字符串项被忽略。`model`、`messages`、`input`、`contents`、`prompt`、`system`、`stream` 承载请求语义，不允许剔除。留空或 null 表示不剔除。读取时容错：脏数据或含非法项时整份退回「不剔除」。`other` 通用转发路径请求体原样转发，该配置对其不生效 |
 | models | array | 否 | [] | 初始模型列表 |
 
 `models` 初始模型字段：
@@ -1506,7 +1507,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 > 无添加人渠道指 `created_by` 为空，或其指向的用户已被删除、停用或不再是管理员（渠道不会因此被永久冻结，任意管理员可接管）。无添加人的私有渠道由本次修改者接管为新的添加人。公共渠道的 `created_by` 不会因为添加人失效而被清空，归属信息保留。开启 `api_key_private` 后，非添加人不能修改该渠道的 `base_url` 与 `proxy_url`（否则可把地址指向自己的服务器再借密钥读取接口取出密钥），违反时返回 403。
 
 
-**请求体:** 与 POST 相同，所有字段均为可选。`force_include_usage` 变更对后续新请求立即生效，不影响已建立的连接。`proxy_url` 传空字符串可清空代理配置。`custom_headers` 字段缺席时保持原值，传 `{}` 或 `null` 整份清空（与其它可清空字段一致）。
+**请求体:** 与 POST 相同，所有字段均为可选。`force_include_usage` 变更对后续新请求立即生效，不影响已建立的连接。`proxy_url` 传空字符串可清空代理配置。`custom_headers` 字段缺席时保持原值，传 `{}` 或 `null` 整份清空（与其它可清空字段一致）。`request_body_omit` 字段缺席时保持原值，传 `[]` 或 `null` 清空剔除配置。
 
 **模型同步:**
 
@@ -3091,6 +3092,7 @@ Anthropic Messages 兼容端点。
 - 网关自身不向 `anthropic_messages` 上游注入 `store`：Anthropic Messages 并无该字段，注入会被严格上游当作未知参数返回 400；同协议透传时客户端显式传入的 `store` 仍会原样转发，网关不做剥离。
 - 反向转换（`chat_completions` / `responses` 请求转 Anthropic 上游）时，网关会剥离 `store` 等 OpenAI 专有字段，避免泄漏到 Anthropic 上游。
 - `other` 通用转发不经过协议转换，请求体原样透传，不在上述改写范围内。
+- 渠道配置了 `request_body_omit` 且包含 `metadata` 时，以上所有规则都不再生效：网关在完成协议转换后、发往该渠道上游前统一删除 `metadata`，因此在跨协议出口被 `user` 兜底出来的 `metadata.user_id` 也一并消失，`store` 也不会被注入。该剔除对同协议透传同样生效（同协议路径不校验、不改写 `metadata`，但会按该配置删除字段）。`other` 通用转发路径请求体原样转发、不经过该处理，`request_body_omit` 对其不生效（同上一条）。
 
 ---
 

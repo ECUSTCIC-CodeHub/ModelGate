@@ -318,6 +318,7 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("channels", "expires_at", "expires_at DATETIME DEFAULT NULL");
   await db.ensureColumn("channels", "time_restrictions", "time_restrictions TEXT DEFAULT NULL");
   await db.ensureColumn("channels", "custom_headers", "custom_headers TEXT DEFAULT NULL");
+  await db.ensureColumn("channels", "request_body_omit", "request_body_omit TEXT DEFAULT NULL");
   await db.ensureColumn("channels", "group_name", "group_name TEXT DEFAULT NULL");
   await db.ensureColumn("models", "deleted_at", "deleted_at DATETIME");
   await db.ensureColumn("models", "is_public", "is_public INTEGER DEFAULT 1");

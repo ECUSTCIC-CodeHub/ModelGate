@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS channels (
   expires_at DATETIME DEFAULT NULL,
   time_restrictions TEXT DEFAULT NULL,
   custom_headers TEXT DEFAULT NULL,
+  request_body_omit TEXT DEFAULT NULL,
   group_name TEXT DEFAULT NULL
 );
 

@@ -15,6 +15,7 @@ import { resolveChannelOwnerId, resolveChannelOwnerIds } from "@/lib/services/ch
 import type { ModelRow } from "@/app/dashboard/channels/channel-model";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { stringifyCustomHeaders, validateCustomHeaders } from "@/lib/gateway/custom-headers";
+import { stringifyRequestBodyOmit, validateRequestBodyOmit } from "@/lib/gateway/request-body-omit";
 
 const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
 
@@ -44,6 +45,7 @@ const createSchema = z.object({
   expires_at: z.string().max(32).nullable().optional(),
   time_restrictions: z.string().max(20000).optional(),
   custom_headers: customHeadersSchema,
+  request_body_omit: z.array(z.string()).optional(),
   group_name: z.string().max(64).nullable().optional(),
   models: z
     .array(
@@ -181,13 +183,15 @@ export async function POST(request: Request) {
 
   const customHeadersResult = validateCustomHeaders(parsed.data.custom_headers);
   if (!customHeadersResult.ok) return jsonError(customHeadersResult.error, 400);
+  const requestBodyOmitResult = validateRequestBodyOmit(parsed.data.request_body_omit);
+  if (!requestBodyOmitResult.ok) return jsonError(requestBodyOmitResult.error, 400);
 
   const channelId = await gatewayDb.transaction(async (tx) => {
     const channelEnabled = parsed.data.enabled === false ? 0 : 1;
     const result = await tx
       .execute(
-        `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, force_include_usage, ua_restrictions, expires_at, time_restrictions, custom_headers, group_name, created_by, api_key_private)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, force_include_usage, ua_restrictions, expires_at, time_restrictions, custom_headers, request_body_omit, group_name, created_by, api_key_private)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           parsed.data.name,
           parsed.data.base_url,
@@ -209,6 +213,7 @@ export async function POST(request: Request) {
           expiresAt,
           timeRestrictions,
           stringifyCustomHeaders(customHeadersResult.headers),
+          stringifyRequestBodyOmit(requestBodyOmitResult.fields),
           parsed.data.group_name?.trim() || null,
           guard.auth.user.id,
           parsed.data.api_key_private === true ? 1 : 0,
