@@ -87,6 +87,10 @@ export default function AdminChannelsPage() {
         canViewApiKey={admin.channelEditingCanViewApiKey}
         canManagePrivacy={admin.channelEditingCanManagePrivacy}
         hasStoredApiKey={admin.channelEditingHasStoredApiKey}
+        storedApiKeyMask={admin.channelEditingStoredApiKeyMask}
+        revealingApiKey={admin.revealingApiKey}
+        onRevealApiKey={() => void admin.revealChannelApiKey()}
+        onClearStoredApiKey={() => void admin.clearChannelApiKey()}
         dismissBlocked={admin.upstreamPickerOpen}
         onOpenChange={admin.setChannelDrawerOpen}
         onSubmit={admin.submitChannel}

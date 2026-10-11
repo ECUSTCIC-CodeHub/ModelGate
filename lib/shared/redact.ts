@@ -11,6 +11,12 @@ export function isMaskedApiKey(value: string, existing: string | null | undefine
   return value === maskApiKey(existing ?? "");
 }
 
+// 任何以脱敏前缀开头的提交值都不可能是真实密钥：前端不再回填脱敏值，
+// 命中即说明客户端把展示值当成明文回传，落库会直接毁掉上游凭据，故一律拒绝
+export function looksLikeMaskedApiKey(value: string): boolean {
+  return value.startsWith(MASKED_SECRET);
+}
+
 export function resolveSubmittedApiKey(
   input: string | undefined,
   existing: string | null,

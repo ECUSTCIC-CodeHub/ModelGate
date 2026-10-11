@@ -101,6 +101,8 @@ export function useChannelAdmin() {
   const [channelEditingCanViewApiKey, setChannelEditingCanViewApiKey] = useState(false);
   const [channelEditingCanManagePrivacy, setChannelEditingCanManagePrivacy] = useState(true);
   const [channelEditingHasStoredApiKey, setChannelEditingHasStoredApiKey] = useState(false);
+  const [channelEditingStoredApiKeyMask, setChannelEditingStoredApiKeyMask] = useState("");
+  const [revealingApiKey, setRevealingApiKey] = useState(false);
   const [channelForm, setChannelForm] = useState<ChannelForm>(initialChannelForm);
   const [defaultModelIsPublic, setDefaultModelIsPublic] = useState(true);
   const [channelModels, setChannelModels] = useState<ChannelModelDraft[]>([baseDraft(channelForm.supported_protocols)]);
@@ -151,6 +153,7 @@ export function useChannelAdmin() {
     setChannelEditingCanViewApiKey(true);
     setChannelEditingCanManagePrivacy(true);
     setChannelEditingHasStoredApiKey(false);
+    setChannelEditingStoredApiKeyMask("");
     setChannelForm({ ...initialChannelForm });
     setChannelModels([baseDraft(initialChannelForm.supported_protocols)]);
     setChannelDrawerOpen(true);
@@ -158,14 +161,18 @@ export function useChannelAdmin() {
 
   function openEditChannel(row: Channel) {
     const supportedProtocols = parseSupportedProtocols(row.supported_protocols);
+    const canViewKey = row.can_view_api_key === true;
     setChannelEditingId(row.id);
-    setChannelEditingCanViewApiKey(row.can_view_api_key === true);
+    setChannelEditingCanViewApiKey(canViewKey);
     setChannelEditingCanManagePrivacy(row.can_manage_api_key_privacy === true);
-    setChannelEditingHasStoredApiKey(row.can_view_api_key === true && (row.api_key ?? "") !== "");
+    const storedMask = row.api_key ?? "";
+    setChannelEditingHasStoredApiKey(canViewKey && storedMask !== "");
+    setChannelEditingStoredApiKeyMask(canViewKey ? storedMask : "");
     setChannelForm({
       name: row.name,
       base_url: row.base_url,
-      api_key: row.can_view_api_key ? (row.api_key ?? "") : "",
+      // 明文不回填输入框：回填脱敏值会被当成"未修改"以外的输入提交，进而覆盖真实密钥
+      api_key: "",
       api_key_private: row.api_key_private === 1,
       user_agent: row.user_agent ?? "",
       proxy_url: row.proxy_url ?? "",
@@ -193,6 +200,28 @@ export function useChannelAdmin() {
 
   function updateChannelForm(patch: Partial<ChannelForm>) {
     setChannelForm((prev) => ({ ...prev, ...patch }));
+  }
+
+  // 明文只在用户显式点击时单次取回并填入输入框，不随列表下发
+  async function revealChannelApiKey() {
+    if (channelEditingId === null || revealingApiKey) return;
+    setRevealingApiKey(true);
+    try {
+      const response = await authedFetch(`/api/admin/channels/${channelEditingId}/api-key`);
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        toast({ variant: "error", description: getApiMessage(data, "读取 API Key 失败。") });
+        return;
+      }
+      const plain = typeof data?.data?.api_key === "string" ? data.data.api_key : "";
+      if (plain === "") {
+        toast({ variant: "info", description: "该渠道未保存 API Key。" });
+        return;
+      }
+      setChannelForm((prev) => ({ ...prev, api_key: plain }));
+    } finally {
+      setRevealingApiKey(false);
+    }
   }
 
   function updateSupportedProtocols(protocols: Protocol[]) {
@@ -361,7 +390,8 @@ export function useChannelAdmin() {
       group_name: channelForm.group_name.trim(),
       ...buildQuotaPayload(channelForm),
     };
-    if (channelEditingCanViewApiKey) updateBody.api_key = channelForm.api_key;
+    // 输入框留空表示不修改已保存的密钥：省略 api_key 字段，避免空串被当作清空
+    if (channelEditingCanViewApiKey && channelForm.api_key !== "") updateBody.api_key = channelForm.api_key;
     if (channelEditingCanManagePrivacy) updateBody.api_key_private = channelForm.api_key_private;
 
     const response = await authedFetch(`/api/admin/channels/${channelEditingId}`, {
@@ -373,13 +403,35 @@ export function useChannelAdmin() {
     if (response.ok) {
       toast({ variant: "success", description: getApiMessage(data, "更新渠道成功。") });
       setChannelDrawerOpen(false);
-      // 抽屉关闭后状态不能停留在提交前的值：否则再次提交同一渠道时，
-      // 清空密钥的二次确认会依据过期的"是否已存密钥"漏弹或误弹
+      // 抽屉关闭后状态不能停留在提交前的值：否则再次打开同一渠道时，
+      // 「显示明文/清空」按钮会依据过期的"是否已存密钥"错误展示
       setChannelEditingHasStoredApiKey(false);
+      setChannelEditingStoredApiKeyMask("");
       await loadChannels();
       return;
     }
     toast({ variant: "error", description: getApiMessage(data, "更新渠道失败。") });
+  }
+
+  // 显式清空密钥：单独提交空串，与「留空表示不修改」区分开
+  async function clearChannelApiKey() {
+    if (channelEditingId === null) return;
+    const response = await authedFetch(`/api/admin/channels/${channelEditingId}`, {
+      method: "PUT",
+      body: JSON.stringify({ api_key: "" }),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      toast({ variant: "error", description: getApiMessage(data, "清空 API Key 失败。") });
+      return;
+    }
+    toast({ variant: "success", description: "API Key 已清空。" });
+    setChannelEditingHasStoredApiKey(false);
+    setChannelEditingStoredApiKeyMask("");
+    // 清空只提交了 api_key 一个字段，抽屉内其它未保存的编辑并未落库；
+    // 关闭抽屉避免用户在"已保存"的错觉下继续操作
+    setChannelDrawerOpen(false);
+    await loadChannels();
   }
 
   async function toggleChannel(row: Channel) {
@@ -751,6 +803,7 @@ export function useChannelAdmin() {
     channelEditingCanViewApiKey,
     channelEditingCanManagePrivacy,
     channelEditingHasStoredApiKey,
+    channelEditingStoredApiKeyMask,
     channelForm,
     channelModels,
     channels,
@@ -770,6 +823,7 @@ export function useChannelAdmin() {
     modelsDevProviders: modelsDev.providers,
     modelsDevSetPickerOpen: modelsDev.setPickerOpen,
     openCreateChannel,
+    clearChannelApiKey,
     openCreateModel,
     openEditChannel,
     openEditModel,
@@ -780,6 +834,8 @@ export function useChannelAdmin() {
     removeChannel,
     removeChannelModelDraft,
     removeModel,
+    revealChannelApiKey,
+    revealingApiKey,
     selectedChannel,
     selectedChannelProtocols,
     selectedStaleIds: modelCleanup.selectedStaleIds,

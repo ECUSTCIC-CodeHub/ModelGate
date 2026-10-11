@@ -12,7 +12,7 @@ import { disableExpiredChannels } from "@/lib/gateway/channel-expiry";
 import { disableExpiredModels } from "@/lib/gateway/model-expiry";
 import { stringifyCustomHeaders, validateCustomHeaders } from "@/lib/gateway/custom-headers";
 import { stringifyRequestBodyOmit, validateRequestBodyOmit } from "@/lib/gateway/request-body-omit";
-import { maskApiKey, resolveSubmittedApiKey } from "@/lib/shared/redact";
+import { isMaskedApiKey, looksLikeMaskedApiKey, maskApiKey, resolveSubmittedApiKey } from "@/lib/shared/redact";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { resolveChannelOwnerId } from "@/lib/services/channel-ownership";
 
@@ -199,8 +199,14 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
   const existingApiKey = (existing as { api_key?: string | null }).api_key ?? null;
   if (parsed.data.api_key !== undefined) {
+    const submitted = parsed.data.api_key;
+    // 脱敏守卫只作用于有权修改密钥的调用方：非添加人提交的 api_key 一律按
+    // 「忽略并保留原值」处理，不应因提交了畸形值而拿到与既有契约不符的 400
+    if (canManageKey && looksLikeMaskedApiKey(submitted) && !isMaskedApiKey(submitted, existingApiKey)) {
+      return jsonError("API Key 不能是脱敏展示值，请填写真实密钥或留空表示不修改", 400);
+    }
     (merged as { api_key?: string | null }).api_key = canManageKey
-      ? resolveSubmittedApiKey(parsed.data.api_key, existingApiKey, { clearOnEmpty: true })
+      ? resolveSubmittedApiKey(submitted, existingApiKey, { clearOnEmpty: true })
       : existingApiKey;
   }
 

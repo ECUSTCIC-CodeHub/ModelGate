@@ -7,7 +7,7 @@ import { jsonError, jsonOk } from "@/lib/core/http";
 import { fetchUpstreamModelIds } from "@/lib/gateway/upstream-model-list";
 import { validateCustomHeaders } from "@/lib/gateway/custom-headers";
 import { isValidProxyUrl } from "@/lib/gateway/upstream-proxy";
-import { isMaskedApiKey, resolveSubmittedApiKey } from "@/lib/shared/redact";
+import { looksLikeMaskedApiKey, resolveSubmittedApiKey } from "@/lib/shared/redact";
 import { resolveChannelOwnerId } from "@/lib/services/channel-ownership";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 
@@ -59,8 +59,9 @@ export async function POST(request: Request) {
     const canUseStoredKey =
       channel.api_key_private !== 1 || ownerId === null || ownerId === guard.auth.user.id;
     const submittedKey = parsed.data.api_key;
+    // 脱敏展示值不可能是真实密钥：视为未提交，避免把它当成明文发往上游
     const hasExplicitKey =
-      typeof submittedKey === "string" && submittedKey.trim() !== "" && !isMaskedApiKey(submittedKey, channel.api_key);
+      typeof submittedKey === "string" && submittedKey.trim() !== "" && !looksLikeMaskedApiKey(submittedKey.trim());
     if (!canUseStoredKey && !hasExplicitKey) {
       return jsonError("该渠道的 API Key 仅添加人可用，请先填写 API Key 后再探测", 403);
     }

@@ -47,6 +47,10 @@ export function ChannelDrawer({
   canViewApiKey = true,
   canManagePrivacy = true,
   hasStoredApiKey = false,
+  storedApiKeyMask = "",
+  revealingApiKey = false,
+  onRevealApiKey,
+  onClearStoredApiKey,
   dismissBlocked = false,
   onOpenChange,
   onSubmit,
@@ -69,6 +73,10 @@ export function ChannelDrawer({
   canViewApiKey?: boolean;
   canManagePrivacy?: boolean;
   hasStoredApiKey?: boolean;
+  storedApiKeyMask?: string;
+  revealingApiKey?: boolean;
+  onRevealApiKey?: () => void;
+  onClearStoredApiKey: () => void;
   dismissBlocked?: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (event: FormEvent) => void;
@@ -81,19 +89,9 @@ export function ChannelDrawer({
   onImportModelDrafts: (names: string[], protocols: Protocol[]) => void;
 }) {
   const [confirmClearKeyOpen, setConfirmClearKeyOpen] = useState(false);
-  // 已存密钥在界面上是脱敏值，清空输入框即代表清空密钥，这里必须二次确认
-  const clearingStoredKey = editingId !== null && canViewApiKey && hasStoredApiKey && form.api_key === "";
+  const canClearStoredKey = editingId !== null && canViewApiKey && hasStoredApiKey;
   // 与接口一致：非添加人不能修改私有渠道的上游地址与代理
   const addressLocked = editingId !== null && !canViewApiKey;
-
-  function handleSubmit(event: FormEvent) {
-    if (clearingStoredKey) {
-      event.preventDefault();
-      setConfirmClearKeyOpen(true);
-      return;
-    }
-    onSubmit(event);
-  }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -108,7 +106,7 @@ export function ChannelDrawer({
           <SheetTitle>{editingId === null ? "新增接口渠道" : `编辑渠道 #${editingId}`}</SheetTitle>
           <SheetDescription>配置渠道名称、Base URL、API Key、超时与默认模型草稿。</SheetDescription>
         </SheetHeader>
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4 overflow-y-auto pr-1">
+        <form onSubmit={onSubmit} className="mt-4 space-y-4 overflow-y-auto pr-1">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label>渠道名称</Label>
@@ -173,8 +171,29 @@ export function ChannelDrawer({
               {editingId !== null && !canViewApiKey ? (
                 <Input disabled placeholder="仅添加人可见" />
               ) : (
-                <Input value={form.api_key} onChange={(e) => onFormChange({ api_key: e.target.value })} />
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder={hasStoredApiKey ? "留空表示不修改已保存的密钥" : "填写上游 API Key"}
+                    value={form.api_key}
+                    onChange={(e) => onFormChange({ api_key: e.target.value })}
+                  />
+                  {editingId !== null && hasStoredApiKey && canViewApiKey ? (
+                    <Button type="button" variant="outline" size="sm" disabled={revealingApiKey} onClick={onRevealApiKey}>
+                      {revealingApiKey ? "读取中" : "显示明文"}
+                    </Button>
+                  ) : null}
+                  {canClearStoredKey ? (
+                    <Button type="button" variant="outline" size="sm" onClick={() => setConfirmClearKeyOpen(true)}>
+                      清空
+                    </Button>
+                  ) : null}
+                </div>
               )}
+              {editingId !== null && hasStoredApiKey && canViewApiKey ? (
+                <p className="text-xs text-[var(--color-foreground-muted)]">
+                  已保存密钥{storedApiKeyMask ? `（${storedApiKeyMask}）` : ""}。留空则保留原密钥，填写新值则覆盖，点「显示明文」可取回完整密钥。
+                </p>
+              ) : null}
               <Label className="flex items-center gap-2">
                 <Checkbox
                   checked={form.api_key_private}
@@ -341,7 +360,7 @@ export function ChannelDrawer({
             <AlertDialogHeader>
               <AlertDialogTitle>清空该渠道的 API Key？</AlertDialogTitle>
               <AlertDialogDescription>
-                输入框为空将把服务端已保存的密钥清空，清空后该渠道会立即无法访问上游，直到重新填写密钥。
+                将清空服务端已保存的密钥，清空后该渠道会立即无法访问上游，直到重新填写密钥。
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -349,7 +368,8 @@ export function ChannelDrawer({
               <AlertDialogAction
                 onClick={() => {
                   setConfirmClearKeyOpen(false);
-                  onSubmit({ preventDefault: () => {} } as FormEvent);
+                  onFormChange({ api_key: "" });
+                  onClearStoredApiKey();
                 }}
               >
                 确认清空
