@@ -4,6 +4,7 @@ import { modelGateFeatures } from "@/lib/core/features";
 import { formatLimit, periodExpired, periodLabel } from "@/components/layout/dashboard-shell/format";
 import { ProfileActions } from "@/components/layout/dashboard-shell/profile-actions";
 import type { ProfileBrief } from "@/components/layout/dashboard-shell/types";
+import { formatNumber, formatTokenCount } from "@/lib/shared/utils";
 
 type ProfileCardProps = {
   profile: ProfileBrief;
@@ -16,24 +17,94 @@ type ProfileCardProps = {
   onLogout: () => void;
 };
 
-type QuotaRow = readonly [string, number, number];
+type QuotaRow = { key: string; label: string; value: string };
 
-function quotaRows(profile: ProfileBrief) {
-  const rows: Array<QuotaRow | null> = [
-    profile.quota_requests !== null && profile.quota_requests !== undefined
-      ? ["总请求", profile.used_requests ?? 0, profile.quota_requests]
-      : null,
-    profile.quota_tokens !== null && profile.quota_tokens !== undefined
-      ? ["总Token", profile.used_tokens ?? 0, profile.quota_tokens]
-      : null,
-    modelGateFeatures.periodQuota && profile.quota_period && profile.period_quota_requests !== null && profile.period_quota_requests !== undefined
-      ? [`${periodLabel(profile.quota_period)}请求`, periodExpired(profile.period_reset_at) ? 0 : (profile.period_used_requests ?? 0), profile.period_quota_requests]
-      : null,
-    modelGateFeatures.periodQuota && profile.quota_period && profile.period_quota_tokens !== null && profile.period_quota_tokens !== undefined
-      ? [`${periodLabel(profile.quota_period)}Token`, periodExpired(profile.period_reset_at) ? 0 : (profile.period_used_tokens ?? 0), profile.period_quota_tokens]
-      : null,
-  ];
-  return rows.filter((item): item is QuotaRow => Boolean(item));
+// 请求用带千分位的整数、Token 用紧凑单位，与「配额与限制」页一致。
+// 不能两处都用 formatLimit：4,978 与 5,000 都会被压成 5.0k，
+// 显示成「5.0k / 5.0k」会被误读成额度已耗尽。
+function requestPair(remaining: number, total: number): string {
+  return `${formatNumber(remaining)} / ${formatNumber(total)}`;
+}
+
+function tokenPair(remaining: number, total: number): string {
+  return `${formatTokenCount(remaining)} / ${formatTokenCount(total)}`;
+}
+
+// 一个周期档占一行，请求与 Token 合并到同一行。
+// 两个维度都带上「请求」/「Token」前缀：只设一个维度时不加前缀会分不清那一串数字
+// 是请求数还是 Token 数。
+function cycleValue(requests: string | null, tokens: string | null): string {
+  const parts: string[] = [];
+  if (requests !== null) parts.push(`请求 ${requests}`);
+  if (tokens !== null) parts.push(`Token ${tokens}`);
+  return parts.join(" · ");
+}
+
+function quotaRows(profile: ProfileBrief): QuotaRow[] {
+  const rows: QuotaRow[] = [];
+  if (profile.quota_requests !== null && profile.quota_requests !== undefined) {
+    rows.push({
+      key: "total-requests",
+      label: "总请求",
+      value: requestPair(Math.max(0, profile.quota_requests - (profile.used_requests ?? 0)), profile.quota_requests),
+    });
+  }
+  if (profile.quota_tokens !== null && profile.quota_tokens !== undefined) {
+    rows.push({
+      key: "total-tokens",
+      label: "总Token",
+      value: tokenPair(Math.max(0, profile.quota_tokens - (profile.used_tokens ?? 0)), profile.quota_tokens),
+    });
+  }
+  if (!modelGateFeatures.periodQuota) return rows;
+
+  // 多档周期优先：服务端已按档懒重置并算好剩余，直接用它的值，
+  // 与「配额与限制」页保持同一口径。
+  // periods 为 undefined 表示首帧（SSR）尚未拿到数据，此时不展示旧单档值，
+  // 否则会先闪出一份与真实多档配置不符的过期额度再跳变。
+  const periods = profile.periods;
+  if (periods === undefined) return rows;
+  if (periods.length > 0) {
+    for (const entry of periods) {
+      const requests = entry.quota_requests;
+      const tokens = entry.quota_tokens;
+      // 两个维度都不限额的档位是脏数据，不渲染，避免出现只有周期的空行。
+      if (requests === null && tokens === null) continue;
+      // key 用秒数：自有档与继承档的 id 都由序号生成，可能重名；秒数在同一用户内唯一。
+      rows.push({
+        key: String(entry.period_seconds),
+        label: entry.period_label,
+        value: cycleValue(
+          requests !== null ? requestPair(entry.remaining_requests ?? 0, requests) : null,
+          tokens !== null ? tokenPair(entry.remaining_tokens ?? 0, tokens) : null,
+        ),
+      });
+    }
+    return rows;
+  }
+
+  // 回退旧单档列，兼容尚未产生周期档的账号。
+  const legacyPeriod = profile.quota_period;
+  if (legacyPeriod) {
+    const expired = periodExpired(profile.period_reset_at);
+    const legacyRequests = profile.period_quota_requests;
+    const legacyTokens = profile.period_quota_tokens;
+    if (legacyRequests !== null && legacyRequests !== undefined || legacyTokens !== null && legacyTokens !== undefined) {
+      rows.push({
+        key: "legacy",
+        label: periodLabel(legacyPeriod),
+        value: cycleValue(
+          legacyRequests !== null && legacyRequests !== undefined
+            ? requestPair(Math.max(0, legacyRequests - (expired ? 0 : (profile.period_used_requests ?? 0))), legacyRequests)
+            : null,
+          legacyTokens !== null && legacyTokens !== undefined
+            ? tokenPair(Math.max(0, legacyTokens - (expired ? 0 : (profile.period_used_tokens ?? 0))), legacyTokens)
+            : null,
+        ),
+      });
+    }
+  }
+  return rows;
 }
 
 export function DesktopProfileCard({
@@ -62,18 +133,14 @@ export function DesktopProfileCard({
             <span className="font-mono text-sm text-[var(--color-foreground)]">{value}</span>
           </div>
         ))}
-        {quotaRows(profile).map(([label, used, total]) => {
-          const remaining = Math.max(0, total - used);
-          return (
-            <div key={label} className="mt-0.5">
-              <span className="text-[10px] tracking-wide text-[var(--color-foreground-muted)]">{label}</span>
-              <div className="flex justify-end font-mono text-sm text-[var(--color-foreground)]">
-                <span>{formatLimit(remaining)}</span>
-                <span className="text-[var(--color-foreground-muted)]"> / {formatLimit(total)}</span>
-              </div>
+        {quotaRows(profile).map(({ key, label, value }) => (
+          <div key={key} className="mt-0.5">
+            <span className="text-[10px] tracking-wide text-[var(--color-foreground-muted)]">{label}</span>
+            <div className="flex justify-end font-mono text-sm text-[var(--color-foreground)]">
+              <span>{value}</span>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
       <ProfileActions
         oidcAvailable={oidcAvailable}
@@ -98,12 +165,39 @@ export function MobileProfileSummary({ profile }: { profile: ProfileBrief }) {
       </p>
       {profile.quota_requests !== null || profile.quota_tokens !== null ? (
         <p className="mt-1 text-xs text-[var(--color-foreground-muted)]">
-          配额: 请求 {formatLimit(profile.used_requests ?? 0)}/{formatLimit(profile.quota_requests)} / Token {formatLimit(profile.used_tokens ?? 0)}/{formatLimit(profile.quota_tokens)}
+          配额:
+          {profile.quota_requests !== null
+            ? ` 请求 ${formatNumber(Math.max(0, profile.quota_requests - (profile.used_requests ?? 0)))}/${formatNumber(profile.quota_requests)}`
+            : ""}
+          {profile.quota_tokens !== null
+            ? ` Token ${formatTokenCount(Math.max(0, profile.quota_tokens - (profile.used_tokens ?? 0)))}/${formatTokenCount(profile.quota_tokens)}`
+            : ""}
         </p>
       ) : null}
-      {modelGateFeatures.periodQuota && profile.quota_period ? (
+      {modelGateFeatures.periodQuota && profile.periods && profile.periods.length > 0
+        ? profile.periods
+          .filter((entry) => entry.quota_requests !== null || entry.quota_tokens !== null)
+          .map((entry) => (
+          <p key={entry.period_seconds} className="mt-1 text-xs text-[var(--color-foreground-muted)]">
+            {entry.period_label}{" "}
+            {cycleValue(
+              entry.quota_requests !== null ? requestPair(entry.remaining_requests ?? 0, entry.quota_requests) : null,
+              entry.quota_tokens !== null ? tokenPair(entry.remaining_tokens ?? 0, entry.quota_tokens) : null,
+            )}
+          </p>
+          ))
+        : null}
+      {modelGateFeatures.periodQuota && profile.periods?.length === 0 && profile.quota_period ? (
         <p className="mt-1 text-xs text-[var(--color-foreground-muted)]">
-          {periodLabel(profile.quota_period)}: 请求 {formatLimit(periodExpired(profile.period_reset_at) ? 0 : (profile.period_used_requests ?? 0))}/{formatLimit(profile.period_quota_requests)} / Token {formatLimit(periodExpired(profile.period_reset_at) ? 0 : (profile.period_used_tokens ?? 0))}/{formatLimit(profile.period_quota_tokens)}
+          {periodLabel(profile.quota_period)}{" "}
+          {cycleValue(
+            profile.period_quota_requests !== null && profile.period_quota_requests !== undefined
+              ? requestPair(periodExpired(profile.period_reset_at) ? profile.period_quota_requests : Math.max(0, profile.period_quota_requests - (profile.period_used_requests ?? 0)), profile.period_quota_requests)
+              : null,
+            profile.period_quota_tokens !== null && profile.period_quota_tokens !== undefined
+              ? tokenPair(periodExpired(profile.period_reset_at) ? profile.period_quota_tokens : Math.max(0, profile.period_quota_tokens - (profile.period_used_tokens ?? 0)), profile.period_quota_tokens)
+              : null,
+          )}
         </p>
       ) : null}
     </div>

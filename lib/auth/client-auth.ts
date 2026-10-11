@@ -1,5 +1,7 @@
 "use client";
 
+import type { PeriodQuotaEntry } from "@/lib/gateway/quota";
+
 export type Session = {
   accessToken: string;
   refreshToken: string;
@@ -23,6 +25,7 @@ export type CachedProfile = {
   period_used_requests?: number;
   period_reset_at?: string | null;
   period_cycles?: unknown;
+  periods?: PeriodQuotaEntry[];
   oidc_issuer?: string | null;
   oidc_subject?: string | null;
 };

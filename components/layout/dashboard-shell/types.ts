@@ -1,5 +1,6 @@
 import type { ComponentType, ReactNode } from "react";
 import type { LucideProps } from "lucide-react";
+import type { PeriodQuotaEntry } from "@/lib/gateway/quota";
 
 export type Role = "admin" | "user";
 
@@ -32,6 +33,7 @@ export type ProfileBrief = {
   period_used_tokens?: number;
   period_used_requests?: number;
   period_reset_at?: string | null;
+  periods?: PeriodQuotaEntry[];
   oidc_issuer?: string | null;
   oidc_subject?: string | null;
 };

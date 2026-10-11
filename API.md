@@ -2777,6 +2777,21 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 **认证:** 用户
 
+**响应字段（`user`）**
+
+| 字段 | 类型 | 说明 |
+|:---|:---|:---|
+| rpm / qps / tpm | int | 生效的速率限制，-1 表示不限 |
+| quota_tokens / quota_requests | int/null | 生效的总额度，null 表示不限 |
+| quota_period | int/null | 旧单档周期秒数，仅供旧客户端兼容 |
+| period_quota_tokens / period_quota_requests | int/null | 旧单档额度，仅供旧客户端兼容 |
+| period_cycles | string/null | 用户自有的周期档原始 JSON |
+| periods | array | 生效的多档周期，含自有档与**继承自用户组的档位**（完整版；精简版恒为 `[]`） |
+
+`periods` 的每项与 `GET /api/user/quota` 同构（见「多档重置周期」一节），字段为 `id`、`period_seconds`、`period_label`、`quota_tokens`、`quota_requests`、`used_tokens`、`used_requests`、`remaining_tokens`、`remaining_requests`、`reset_at`。读取时会按档懒重置窗口，因此 `used_*` / `remaining_*` 为当前窗口内的值，`reset_at` 已规范化为 ISO 时间。
+
+> 侧边栏按 `periods` 展示周期额度；`quota_period` 等旧字段保留仅用于兼容，改造后不再反映实际生效的多档配置。
+
 ### PUT /api/dashboard/profile/password
 
 修改密码（等同于 `/api/auth/change-password`）。仅在密码登录开启时可用；仅 OIDC 登录时返回 400。
