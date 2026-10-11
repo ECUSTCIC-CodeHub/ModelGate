@@ -1,15 +1,14 @@
 import { gatewayDb } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
-import { ensurePeriodReset } from "@/lib/gateway/period-reset";
+import { resolveStoredPeriodCycles } from "@/lib/gateway/period-cycles";
+import { ensureCycleResets } from "@/lib/gateway/period-cycles-reset";
+import { findExceededCycle, toPeriodQuotaEntry, type PeriodQuotaEntry } from "@/lib/gateway/quota";
 
 export type ModelQuotaInfo = {
   remaining_requests: number | null;
   remaining_tokens: number | null;
-  period_remaining_requests: number | null;
-  period_remaining_tokens: number | null;
-  period_reset_at: string | null;
+  periods: PeriodQuotaEntry[];
 };
-
 
 export async function checkModelQuota(modelId: number, estimatedTokens: number): Promise<{ ok: false; reason: string } | { ok: true; quota: ModelQuotaInfo }> {
   const model = await gatewayDb.queryOne<{
@@ -22,10 +21,11 @@ export async function checkModelQuota(modelId: number, estimatedTokens: number):
     period_used_tokens: number;
     period_used_requests: number;
     period_reset_at: string | null;
+    period_cycles: string | null;
   }>(
     `SELECT id, quota_tokens, quota_requests, quota_period,
               period_quota_tokens, period_quota_requests,
-              period_used_tokens, period_used_requests, period_reset_at
+              period_used_tokens, period_used_requests, period_reset_at, period_cycles
               FROM models WHERE id = ? AND deleted_at IS NULL`,
     [modelId],
   );
@@ -37,9 +37,7 @@ export async function checkModelQuota(modelId: number, estimatedTokens: number):
   const quota: ModelQuotaInfo = {
     remaining_requests: model.quota_requests !== null ? Math.max(0, model.quota_requests - model.period_used_requests) : null,
     remaining_tokens: model.quota_tokens !== null ? Math.max(0, model.quota_tokens - model.period_used_tokens) : null,
-    period_remaining_requests: null,
-    period_remaining_tokens: null,
-    period_reset_at: null,
+    periods: [],
   };
 
   if (model.quota_requests !== null && model.period_used_requests >= model.quota_requests) {
@@ -50,21 +48,14 @@ export async function checkModelQuota(modelId: number, estimatedTokens: number):
     return { ok: false, reason: "模型 Token 配额已用尽" };
   }
 
-  if (modelGateFeatures.periodQuota && model.quota_period) {
-    const period = await ensurePeriodReset("models", modelId, model.quota_period, model.period_reset_at);
-    quota.period_reset_at = period.period_reset_at;
-
-    if (model.period_quota_requests !== null) {
-      quota.period_remaining_requests = Math.max(0, model.period_quota_requests - period.period_used_requests);
-      if (period.period_used_requests >= model.period_quota_requests) {
-        return { ok: false, reason: "模型周期请求配额已用尽" };
-      }
-    }
-
-    if (model.period_quota_tokens !== null) {
-      quota.period_remaining_tokens = Math.max(0, model.period_quota_tokens - period.period_used_tokens);
-      if (period.period_used_tokens + estimatedTokens > model.period_quota_tokens) {
-        return { ok: false, reason: "模型周期 Token 配额已用尽" };
+  if (modelGateFeatures.periodQuota) {
+    const cycles = resolveStoredPeriodCycles(model.period_cycles, model);
+    if (cycles.length > 0) {
+      const reset = await ensureCycleResets("models", modelId, cycles, undefined, model.period_cycles);
+      quota.periods = reset.map(toPeriodQuotaEntry);
+      const exceeded = findExceededCycle(reset, estimatedTokens);
+      if (exceeded) {
+        return { ok: false, reason: exceeded.reason.replace("周期", "模型周期") };
       }
     }
   }
@@ -79,13 +70,27 @@ export function appendModelQuotaHeaders(headers: Record<string, string>, quota: 
   if (quota.remaining_tokens !== null) {
     headers["X-Model-Quota-Tokens-Remaining"] = String(quota.remaining_tokens);
   }
-  if (quota.period_remaining_requests !== null) {
-    headers["X-Model-Period-Quota-Requests-Remaining"] = String(quota.period_remaining_requests);
+  const head = quota.periods[0];
+  if (head) {
+    if (head.remaining_requests !== null) {
+      headers["X-Model-Period-Quota-Requests-Remaining"] = String(head.remaining_requests);
+    }
+    if (head.remaining_tokens !== null) {
+      headers["X-Model-Period-Quota-Tokens-Remaining"] = String(head.remaining_tokens);
+    }
+    if (head.reset_at) {
+      headers["X-Model-Period-Quota-Reset"] = head.reset_at;
+    }
   }
-  if (quota.period_remaining_tokens !== null) {
-    headers["X-Model-Period-Quota-Tokens-Remaining"] = String(quota.period_remaining_tokens);
-  }
-  if (quota.period_reset_at) {
-    headers["X-Model-Period-Quota-Reset"] = quota.period_reset_at;
+  for (const period of quota.periods) {
+    if (period.remaining_requests !== null) {
+      headers[`X-Model-Period-Quota-Requests-Remaining-${period.id}`] = String(period.remaining_requests);
+    }
+    if (period.remaining_tokens !== null) {
+      headers[`X-Model-Period-Quota-Tokens-Remaining-${period.id}`] = String(period.remaining_tokens);
+    }
+    if (period.reset_at) {
+      headers[`X-Model-Period-Quota-Reset-${period.id}`] = period.reset_at;
+    }
   }
 }

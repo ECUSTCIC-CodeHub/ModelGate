@@ -1,15 +1,14 @@
 import { gatewayDb } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
-import { ensurePeriodReset } from "@/lib/gateway/period-reset";
+import { resolveStoredPeriodCycles } from "@/lib/gateway/period-cycles";
+import { ensureCycleResets } from "@/lib/gateway/period-cycles-reset";
+import { findExceededCycle, toPeriodQuotaEntry, type PeriodQuotaEntry } from "@/lib/gateway/quota";
 
 export type ChannelQuotaInfo = {
   remaining_requests: number | null;
   remaining_tokens: number | null;
-  period_remaining_requests: number | null;
-  period_remaining_tokens: number | null;
-  period_reset_at: string | null;
+  periods: PeriodQuotaEntry[];
 };
-
 
 export async function checkChannelQuota(channelId: number, estimatedTokens: number): Promise<{ ok: false; reason: string } | { ok: true; quota: ChannelQuotaInfo }> {
   const channel = await gatewayDb.queryOne<{
@@ -22,10 +21,11 @@ export async function checkChannelQuota(channelId: number, estimatedTokens: numb
     period_used_tokens: number;
     period_used_requests: number;
     period_reset_at: string | null;
+    period_cycles: string | null;
   }>(
     `SELECT id, quota_tokens, quota_requests, quota_period,
               period_quota_tokens, period_quota_requests,
-              period_used_tokens, period_used_requests, period_reset_at
+              period_used_tokens, period_used_requests, period_reset_at, period_cycles
               FROM channels WHERE id = ? AND deleted_at IS NULL`,
     [channelId],
   );
@@ -34,37 +34,32 @@ export async function checkChannelQuota(channelId: number, estimatedTokens: numb
     return { ok: false, reason: "渠道不存在" };
   }
 
+  // 旧单档列：user 侧同名的 period_used_* 仍作为该渠道的周期性累计（见 usage-accounting）。
+  const legacyUsedTokens = channel.period_used_tokens;
+  const legacyUsedRequests = channel.period_used_requests;
+
   const quota: ChannelQuotaInfo = {
-    remaining_requests: channel.quota_requests !== null ? Math.max(0, channel.quota_requests - channel.period_used_requests) : null,
-    remaining_tokens: channel.quota_tokens !== null ? Math.max(0, channel.quota_tokens - channel.period_used_tokens) : null,
-    period_remaining_requests: null,
-    period_remaining_tokens: null,
-    period_reset_at: null,
+    remaining_requests: channel.quota_requests !== null ? Math.max(0, channel.quota_requests - legacyUsedRequests) : null,
+    remaining_tokens: channel.quota_tokens !== null ? Math.max(0, channel.quota_tokens - legacyUsedTokens) : null,
+    periods: [],
   };
 
-  if (channel.quota_requests !== null && channel.period_used_requests >= channel.quota_requests) {
+  if (channel.quota_requests !== null && legacyUsedRequests >= channel.quota_requests) {
     return { ok: false, reason: "渠道请求配额已用尽" };
   }
 
-  if (channel.quota_tokens !== null && channel.period_used_tokens + estimatedTokens > channel.quota_tokens) {
+  if (channel.quota_tokens !== null && legacyUsedTokens + estimatedTokens > channel.quota_tokens) {
     return { ok: false, reason: "渠道 Token 配额已用尽" };
   }
 
-  if (modelGateFeatures.periodQuota && channel.quota_period) {
-    const period = await ensurePeriodReset("channels", channelId, channel.quota_period, channel.period_reset_at);
-    quota.period_reset_at = period.period_reset_at;
-
-    if (channel.period_quota_requests !== null) {
-      quota.period_remaining_requests = Math.max(0, channel.period_quota_requests - period.period_used_requests);
-      if (period.period_used_requests >= channel.period_quota_requests) {
-        return { ok: false, reason: "渠道周期请求配额已用尽" };
-      }
-    }
-
-    if (channel.period_quota_tokens !== null) {
-      quota.period_remaining_tokens = Math.max(0, channel.period_quota_tokens - period.period_used_tokens);
-      if (period.period_used_tokens + estimatedTokens > channel.period_quota_tokens) {
-        return { ok: false, reason: "渠道周期 Token 配额已用尽" };
+  if (modelGateFeatures.periodQuota) {
+    const cycles = resolveStoredPeriodCycles(channel.period_cycles, channel);
+    if (cycles.length > 0) {
+      const reset = await ensureCycleResets("channels", channelId, cycles, undefined, channel.period_cycles);
+      quota.periods = reset.map(toPeriodQuotaEntry);
+      const exceeded = findExceededCycle(reset, estimatedTokens);
+      if (exceeded) {
+        return { ok: false, reason: exceeded.reason.replace("周期", "渠道周期") };
       }
     }
   }
@@ -79,13 +74,27 @@ export function appendChannelQuotaHeaders(headers: Record<string, string>, quota
   if (quota.remaining_tokens !== null) {
     headers["X-Channel-Quota-Tokens-Remaining"] = String(quota.remaining_tokens);
   }
-  if (quota.period_remaining_requests !== null) {
-    headers["X-Channel-Period-Quota-Requests-Remaining"] = String(quota.period_remaining_requests);
+  const head = quota.periods[0];
+  if (head) {
+    if (head.remaining_requests !== null) {
+      headers["X-Channel-Period-Quota-Requests-Remaining"] = String(head.remaining_requests);
+    }
+    if (head.remaining_tokens !== null) {
+      headers["X-Channel-Period-Quota-Tokens-Remaining"] = String(head.remaining_tokens);
+    }
+    if (head.reset_at) {
+      headers["X-Channel-Period-Quota-Reset"] = head.reset_at;
+    }
   }
-  if (quota.period_remaining_tokens !== null) {
-    headers["X-Channel-Period-Quota-Tokens-Remaining"] = String(quota.period_remaining_tokens);
-  }
-  if (quota.period_reset_at) {
-    headers["X-Channel-Period-Quota-Reset"] = quota.period_reset_at;
+  for (const period of quota.periods) {
+    if (period.remaining_requests !== null) {
+      headers[`X-Channel-Period-Quota-Requests-Remaining-${period.id}`] = String(period.remaining_requests);
+    }
+    if (period.remaining_tokens !== null) {
+      headers[`X-Channel-Period-Quota-Tokens-Remaining-${period.id}`] = String(period.remaining_tokens);
+    }
+    if (period.reset_at) {
+      headers[`X-Channel-Period-Quota-Reset-${period.id}`] = period.reset_at;
+    }
   }
 }

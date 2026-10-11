@@ -37,6 +37,8 @@ type CandidateRow = {
   model_period_used_tokens: number;
   model_period_used_requests: number;
   model_period_reset_at: string | null;
+  model_period_cycles: string | null;
+  model_multiplier_schedules: string | null;
   model_supports_vision: number;
   model_created_at: string;
   model_deleted_at: string | null;
@@ -62,6 +64,7 @@ type CandidateRow = {
   channel_period_used_tokens: number;
   channel_period_used_requests: number;
   channel_period_reset_at: string | null;
+  channel_period_cycles: string | null;
   channel_created_at: string;
   channel_deleted_at: string | null;
   channel_force_include_usage: number;
@@ -102,6 +105,8 @@ const LIST_MODEL_ROUTES_SQL = `SELECT
       m.period_used_tokens as model_period_used_tokens,
       m.period_used_requests as model_period_used_requests,
       m.period_reset_at as model_period_reset_at,
+      m.period_cycles as model_period_cycles,
+      m.multiplier_schedules as model_multiplier_schedules,
       m.supports_vision as model_supports_vision,
       m.created_at as model_created_at,
       m.deleted_at as model_deleted_at,
@@ -127,6 +132,7 @@ const LIST_MODEL_ROUTES_SQL = `SELECT
       c.period_used_tokens as channel_period_used_tokens,
       c.period_used_requests as channel_period_used_requests,
       c.period_reset_at as channel_period_reset_at,
+      c.period_cycles as channel_period_cycles,
       c.created_at as channel_created_at,
       c.deleted_at as channel_deleted_at,
       c.force_include_usage as channel_force_include_usage,
@@ -185,6 +191,8 @@ function mapRowToRoute(row: CandidateRow, inboundProtocol?: GatewayProtocol): Ro
       period_used_tokens: row.model_period_used_tokens,
       period_used_requests: row.model_period_used_requests,
       period_reset_at: row.model_period_reset_at,
+      period_cycles: row.model_period_cycles,
+      multiplier_schedules: row.model_multiplier_schedules,
       created_at: row.model_created_at,
       deleted_at: row.model_deleted_at,
       ua_restrictions: row.model_ua_restrictions ?? "",
@@ -211,6 +219,7 @@ function mapRowToRoute(row: CandidateRow, inboundProtocol?: GatewayProtocol): Ro
       period_used_tokens: row.channel_period_used_tokens,
       period_used_requests: row.channel_period_used_requests,
       period_reset_at: row.channel_period_reset_at,
+      period_cycles: row.channel_period_cycles,
       created_at: row.channel_created_at,
       deleted_at: row.channel_deleted_at,
       force_include_usage: row.channel_force_include_usage ?? 1,

@@ -1,13 +1,44 @@
-import { gatewayDb } from "@/lib/core/db";
+import { gatewayDb, ensureDbReady } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { parseStoredUtc, toMysqlDatetime } from "@/lib/core/db/datetime";
-import { buildRedeemScope, scopeCoversPair } from "@/lib/services/redeem-authorization";
+import { applyCycleUsage, parsePeriodCycles, resolveStoredPeriodCycles, serializePeriodCycleState } from "@/lib/gateway/period-cycles";
+import { ensureCycleResets } from "@/lib/gateway/period-cycles-reset";
+import { parseMultiplierSchedules, resolveEffectiveMultiplier } from "@/lib/gateway/multiplier-schedule";
+import { buildRedeemScope, scopeCoversPair, balanceHasRemaining } from "@/lib/services/redeem-authorization";
 
 function cleanFloat(value: number): number {
   const rounded = Math.round(value);
   if (Math.abs(value - rounded) < 1e-6) return rounded;
   return Math.round(value * 1e6) / 1e6;
+}
+
+// 周期档的计数存在 period_cycles JSON 列里，无法用一条 UPDATE 按档累加，只能读改写。
+// 调用点都在 addUsageOrThrow 的事务内；MySQL 默认 REPEATABLE READ 下普通 SELECT 是非锁定读，
+// 两个并发事务会读到同一份旧值、后写者覆盖先写者（丢失一次累加），
+// 因此按方言加行锁，与总量列 SET x = x + ? 的原子性对齐。
+// SQLite 写事务本身串行，无需也不会支持 FOR UPDATE。
+async function accumulateCycles(
+  tx: TransactionContextLike,
+  table: "users" | "channels" | "models" | "redeem_balances",
+  id: number,
+  deltaTokens: number,
+  deltaRequests: number,
+): Promise<void> {
+  // 用 ensureDbReady 取方言：gatewayDb.driver 在未初始化时会返回 Promise（真值但不等于 "mysql"），
+  // 直接比较会漏加行锁。
+  const isMysql = (await ensureDbReady()).driver === "mysql";
+  const row = await tx.queryOne<{ period_cycles: string | null }>(
+    `SELECT period_cycles FROM ${table} WHERE id = ?${isMysql ? " FOR UPDATE" : ""}`,
+    [id],
+  );
+  if (!row) return;
+  const cycles = parsePeriodCycles(row.period_cycles);
+  if (cycles.length === 0) return;
+  await tx.execute(
+    `UPDATE ${table} SET period_cycles = ? WHERE id = ?`,
+    [serializePeriodCycleState(applyCycleUsage(cycles, deltaTokens, deltaRequests)), id],
+  );
 }
 
 // 事务内查找匹配当前渠道+模型的用户有效定向额度。
@@ -26,9 +57,10 @@ async function findMatchingBalanceInTx(
     allowed_channel_ids: string;
     allowed_model_aliases: string;
     expires_at: string | null;
+    period_cycles: string | null;
   }>(
     `SELECT b.id, b.token_quota, b.request_quota, b.used_tokens, b.used_requests,
-            b.allowed_channel_ids, b.allowed_model_aliases, b.expires_at
+            b.allowed_channel_ids, b.allowed_model_aliases, b.expires_at, b.period_cycles
        FROM redeem_balances b
        JOIN redeem_codes c ON c.id = b.code_id
        WHERE b.user_id = ?
@@ -45,6 +77,19 @@ async function findMatchingBalanceInTx(
     const remainingRequests = row.request_quota !== null ? row.request_quota - row.used_requests : null;
     if (remainingTokens !== null && remainingTokens <= 0) continue;
     if (remainingRequests !== null && remainingRequests <= 0) continue;
+    // 先推进已到期的周期窗口再判定：核销快照只带定义值、reset_at 为 null，
+    // 不推进的话周期额度会退化成一次性总额度，首周期用尽后永久不可用。
+    // 事务内重置，与随后同一事务里的累加共用同一条连接。
+    let cycles = resolveStoredPeriodCycles(row.period_cycles, {
+      quota_period: null, period_quota_tokens: null, period_quota_requests: null,
+      period_used_tokens: 0, period_used_requests: 0, period_reset_at: null,
+    });
+    if (modelGateFeatures.periodQuota && cycles.length > 0) {
+      cycles = await ensureCycleResets("redeem_balances", row.id, cycles, tx, row.period_cycles);
+      row.period_cycles = serializePeriodCycleState(cycles);
+    }
+    // 周期档耗尽时不再命中，与 findMatchingRedeemBalance / listRedeemScopes 的口径一致
+    if (!balanceHasRemaining(row)) continue;
     if (row.expires_at) {
       const expires = parseStoredUtc(row.expires_at);
       if (expires && expires.getTime() <= Date.now()) continue;
@@ -59,6 +104,7 @@ async function findMatchingBalanceInTx(
 
 type TransactionContextLike = {
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>;
+  queryOne<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T | undefined>;
   execute(sql: string, params?: unknown[]): Promise<{ changes: number; lastInsertRowid: number }>;
 };
 
@@ -81,6 +127,29 @@ function logUsageFailure(message: string, error: unknown) {
   console.error(`${message}${suffix}`, error instanceof Error ? error.message : error);
 }
 
+// 按请求时刻解析模型的分时倍率。未配置时段、或时段都未命中时返回基础倍率。
+// 查询失败不阻断计费：退化为基础倍率，避免因为一次读库异常丢掉整次用量累加。
+async function resolveScheduledMultiplier(
+  modelId: number | undefined,
+  baseTokenMultiplier: number,
+  baseRequestMultiplier: number,
+): Promise<{ token_multiplier: number; request_multiplier: number }> {
+  const fallback = { token_multiplier: baseTokenMultiplier, request_multiplier: baseRequestMultiplier };
+  if (modelId == null || !modelGateFeatures.periodQuota) return fallback;
+  try {
+    const row = await gatewayDb.queryOne<{ multiplier_schedules: string | null }>(
+      "SELECT multiplier_schedules FROM models WHERE id = ?",
+      [modelId],
+    );
+    const schedules = parseMultiplierSchedules(row?.multiplier_schedules);
+    if (schedules.length === 0) return fallback;
+    return resolveEffectiveMultiplier(baseTokenMultiplier, baseRequestMultiplier, schedules);
+  } catch (error) {
+    logUsageFailure(`[usage] 分时倍率解析失败 model=${modelId}，回退基础倍率:`, error);
+    return fallback;
+  }
+}
+
 export async function addUsage(userId: number, keyId: number, tokens: number, requests = 1, tokenMultiplier = 1, requestMultiplier = 1, channelId?: number, modelId?: number, modelAlias?: string | null, redeemBalanceId?: number | null) {
   try {
     await addUsageOrThrow(userId, keyId, tokens, requests, tokenMultiplier, requestMultiplier, channelId, modelId, modelAlias, redeemBalanceId);
@@ -96,8 +165,11 @@ export async function addUsage(userId: number, keyId: number, tokens: number, re
 }
 
 async function addUsageOrThrow(userId: number, keyId: number, tokens: number, requests = 1, tokenMultiplier = 1, requestMultiplier = 1, channelId?: number, modelId?: number, modelAlias?: string | null, redeemBalanceId?: number | null) {
-  const billedTokens = cleanFloat(Math.max(0, tokens * tokenMultiplier));
-  const billedRequests = cleanFloat(Math.max(0, requests * requestMultiplier));
+  // 分时倍率在计费点统一解析：调用方传的仍是模型的基础倍率，这里按请求时刻覆盖。
+  // 放在这里而不是各个调用点，避免流式/非流式/透传多条路径各自实现导致口径漂移。
+  const effective = await resolveScheduledMultiplier(modelId, tokenMultiplier, requestMultiplier);
+  const billedTokens = cleanFloat(Math.max(0, tokens * effective.token_multiplier));
+  const billedRequests = cleanFloat(Math.max(0, requests * effective.request_multiplier));
   const settings = await getGatewaySettings();
 
   await gatewayDb.transaction(async (tx) => {
@@ -116,6 +188,9 @@ async function addUsageOrThrow(userId: number, keyId: number, tokens: number, re
           [billedTokens, billedRequests, balanceId],
         );
         coveredByRedeem = updated.changes === 1;
+        if (coveredByRedeem && modelGateFeatures.periodQuota) {
+          await accumulateCycles(tx, "redeem_balances", balanceId, billedTokens, billedRequests);
+        }
       }
     }
 
@@ -128,6 +203,9 @@ async function addUsageOrThrow(userId: number, keyId: number, tokens: number, re
              WHERE id = ? AND deleted_at IS NULL`,
           [billedTokens, billedRequests, billedTokens, billedRequests, userId],
         );
+        // 周期档的计数存在 period_cycles JSON 里，SQL 无法直接按档累加，需读改写。
+        // 与上面的总量累加同处一个事务，保证不会出现「总量已扣、周期未扣」的偏差。
+        await accumulateCycles(tx, "users", userId, billedTokens, billedRequests);
       } else {
         await tx.execute(
           `UPDATE users
@@ -152,6 +230,7 @@ async function addUsageOrThrow(userId: number, keyId: number, tokens: number, re
            WHERE id = ? AND deleted_at IS NULL`,
         [billedTokens, billedRequests, channelId],
       );
+      await accumulateCycles(tx, "channels", channelId, billedTokens, billedRequests);
     }
 
     if (modelId != null && modelGateFeatures.periodQuota) {
@@ -161,6 +240,7 @@ async function addUsageOrThrow(userId: number, keyId: number, tokens: number, re
            WHERE id = ? AND deleted_at IS NULL`,
         [billedTokens, billedRequests, modelId],
       );
+      await accumulateCycles(tx, "models", modelId, billedTokens, billedRequests);
     }
   });
 }
