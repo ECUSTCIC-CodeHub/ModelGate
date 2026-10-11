@@ -117,7 +117,11 @@ MySQL 模式下启动时自动建表和初始化默认数据。两种驱动共�
 
 > `period_cycles` 列是**定义与运行时状态的合并存储**（`seconds`/额度上限 + `used_*`/`reset_at`）。写入时提交的是定义值，服务端会按 `seconds` 把已有档位的运行时状态保留下来，因此管理员修改额度不会清空用户已消耗的量、也不会重新锚定窗口。要读取实时用量请以 `periods` 为准。
 
-**与旧单档字段的关系**：`quota_period` / `period_quota_tokens` / `period_quota_requests` / `period_used_*` / `period_reset_at` 这组标量列是改造前的单档实现，为兼容历史数据保留。读取时仅在该对象的 `period_cycles` 为空时才回退到旧列，且**旧列仍参与限额判定**。因此存量对象上的旧单档额度会继续生效；如需改为多档，请显式提交 `period_cycles`（旧列不会被自动清除，但新的多档配置会取代它参与判定）。
+**与旧单档字段的关系**：`quota_period` / `period_quota_tokens` / `period_quota_requests` / `period_used_*` / `period_reset_at` 这组标量列是改造前的单档实现。启动时会做**一次性自动迁移**：旧周期与旧额度都有效、且 `period_cycles` 为空的 `users` / `groups` / `channels` / `models` 行，会被转换成一条 `seconds` 等于旧 `quota_period` 的档位写入 `period_cycles`，已用量与重置锚点一并带入。迁移是幂等的（迁移后 `period_cycles` 非空，不再命中）。
+
+迁移后判定与展示都以 `period_cycles` 为准，**旧列保留在库中仅供回滚**，不再参与限额判定。因此不必手工重建存量配置；如需调整，直接编辑周期档即可。
+
+> 兜底说明：解析时仍保留「`period_cycles` 为空则回退旧单档列」的折算逻辑（`resolveStoredPeriodCycles`），用于覆盖迁移未命中的极少数行（例如 `period_cycles` 曾被写成空数组 `[]` 的行）。这类行的计数由旧列 `period_used_*` 自行承担，因此不会因为兜底折算而重复计费；一旦该行被保存为多档形式，旧列即退回只读。
 
 **响应字段**
 
@@ -152,7 +156,7 @@ MySQL 模式下启动时自动建表和初始化默认数据。两种驱动共�
 }
 ```
 
-> 存量数据兼容：旧版本写入的单周期标量字段（`quota_period` 等）在读取时会自动折算成一个周期档参与限额判定，同时旧字段在响应中保持原样输出，因此升级数据库后无需迁移即可继续生效。两套字段同时存在时以 `period_cycles` 为准。管理员在界面上重新保存该实体的配额后，会改写为多档形式。
+> 存量数据兼容：旧版本写入的单周期标量字段（`quota_period` 等）会在启动时被**一次性迁移**成一条周期档（见上文「与旧单档字段的关系」），迁移后判定与展示都以 `period_cycles` 为准。`resolveStoredPeriodCycles` 仍保留读取时的折算兜底，因此不会出现旧配置失效的瞬间；两套字段同时存在时以 `period_cycles` 为准。旧字段在响应中仍原样输出，但仅供回滚参考，不再参与限额判定。
 
 > 精简版不支持该字段，提交会被忽略，响应中 `periods` 为 `[]`。
 
@@ -1430,7 +1434,7 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
 | quota_requests / quota_tokens | int/null | 否 | null | 总量配额，null 表示不限 |
 | quota_period | int/null | 否 | null | 周期配额重置周期（秒），null 表示不启用 |
 | period_quota_requests / period_quota_tokens | int/null | 否 | null | 周期请求/Token 配额，null 表示不限 |
-| period_cycles | object[] | 否 | [] | 多档重置周期，见「多档重置周期」一节；组上的档位当前仅作定义值，不参与判定（仅完整版） |
+| period_cycles | object[] | 否 | [] | 多档重置周期，见「多档重置周期」一节；组档按每用户独立计数生效（仅完整版） |
 | allowed_model_aliases | string[] | 否 | [] | 非公开模型白名单，为空表示不额外授权（公开模型不受白名单限制） |
 | allowed_channel_ids | int[] | 否 | [] | 可命中渠道白名单（按渠道 id），为空表示允许所有渠道；不在白名单内的渠道在路由和模型列表中会被过滤 |
 | oidc_claim_expr | string | 否 | null | OIDC Claim 匹配表达式，最长 512 字符 |
@@ -2001,7 +2005,9 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 ## 管理接口 - 兑换码管理
 
-> 兑换码功能为完整版专属（`redeemCode`），且受系统设置 `runtime_features.redeemCode` 运行时开关控制，关闭时与精简版一致返回 404。兑换码用于生成「定向额度」，仅当请求命中所限定的渠道与模型时才扣减，不占用用户全局配额。同时，兑换码明确限定的渠道/模型会作为该用户的访问授权来源（兑换即授权）：额度有效期内用户可获得限定的渠道/模型访问权，额度用尽/过期/兑换码停用后自动回收；未限定的部分保持用户原有权限，不扩大也不缩小。
+> 兑换码有两种类型（`kind`）：**额度券**（`quota`）用于生成「定向额度」，仅当请求命中所限定的渠道与模型时才扣减，不占用用户全局配额；**重置券**（`reset`）不发放任何额度，唯一效果是把核销者自己的多档周期用量清零，使周期额度重新起算，因此与额度体系彼此独立。
+>
+> 兑换码功能为完整版专属（`redeemCode`），且受系统设置 `runtime_features.redeemCode` 运行时开关控制，关闭时与精简版一致返回 404。额度券明确限定的渠道/模型会作为该用户的访问授权来源（兑换即授权）：额度有效期内用户可获得限定的渠道/模型访问权，额度用尽/过期/兑换码停用后自动回收；未限定的部分保持用户原有权限，不扩大也不缩小。重置券不产生额度，因此不参与授权判定。
 >
 > **授权按「(渠道, 别名) 配对」判定**，而不是把渠道与别名各自并入白名单。用户可访问某个 (渠道, 别名) 组合，当且仅当满足以下任一条：
 >
@@ -2018,6 +2024,11 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 批量生成兑换码。一次生成 N 个共享同一套渠道/模型限定与额度的兑换码，归入同一批次（`batch_id`）。
 
+兑换码分为两种类型，由 `kind` 指定：
+
+- `quota`（额度券，默认）：向核销者发放一笔定向额度。
+- `reset`（重置券）：**不发放任何额度**，唯一效果是把核销者自己的周期用量清零，使周期额度重新起算。重置券不接受 `token_quota`、`request_quota` 与 `period_cycles`。
+
 **认证:** 管理员
 
 **请求体:**
@@ -2025,9 +2036,10 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | 字段 | 类型 | 必填 | 说明 |
 |:---|:---|:---|:---|
 | count | int | 是 | 生成数量，1-500 |
-| token_quota | int | 否 | Token 额度，与 request_quota、period_cycles 至少填一项 |
-| request_quota | int | 否 | 请求额度 |
-| period_cycles | object[] | 否 | 重置周期额度，见「多档重置周期」一节；核销时随额度一起下发到用户持有的定向额度（仅完整版） |
+| kind | string | 否 | `quota`（默认）或 `reset`，重置券不发放额度 |
+| token_quota | int | 否 | Token 额度，与 request_quota、period_cycles 至少填一项；`kind=reset` 时必须留空 |
+| request_quota | int | 否 | 请求额度；`kind=reset` 时必须留空 |
+| period_cycles | object[] | 否 | 重置周期额度，见「多档重置周期」一节；核销时随额度一起下发到用户持有的定向额度（仅完整版）。`kind=reset` 时忽略 |
 | allowed_channel_ids | int[] | 否 | 限定渠道 ID 列表，空表示不限制 |
 | allowed_model_aliases | string[] | 否 | 限定模型别名列表，空表示不限制 |
 | expires_at | string \| null | 否 | 有效期，接受 `YYYY-MM-DD`、`YYYY-MM-DD HH:MM[:SS[.SSS]]` 以及 `T`/空格分隔的 ISO 写法（如 `2026-12-01T00:00:00Z`）；不带时区后缀按 UTC 解释；须晚于当前时间。不传、`null`、空串或纯空白串都表示长期有效 |
@@ -2035,6 +2047,8 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | note | string | 否 | 备注，最长 500 字符 |
 
 未列出的字段会被忽略，不会返回 400（字段名写错时会按默认值生成，例如拼错的 `expires_at` 会生成长期有效的码）。
+
+`kind=reset` 时若同时传入 `token_quota` 或 `request_quota`，返回 400（重置券与额度是两条独立的语义，混填会导致意图不明）。
 
 **响应 (201):**
 ```json
@@ -2074,6 +2088,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
       "id": 1,
       "code": "XXXX-XXXX-XXXX",
       "batch_id": "1725000000000-a1b2c3d4",
+      "kind": "quota",
       "token_quota": 1000000,
       "request_quota": null,
       "period_cycles": "[{\"id\":\"c1\",\"seconds\":86400,\"quota_tokens\":100000,\"quota_requests\":null,\"used_tokens\":0,\"used_requests\":0,\"reset_at\":null}]",
@@ -2193,11 +2208,12 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 限制规则：
 
 - `token_quota` / `request_quota`：只允许上调；原值为有限额度时不允许改成 `null`（不限）。`null` 是最宽形态，放宽到不限请停用旧码并重新生成
-- `period_cycles`：同样只增不减。已有档位（按 `seconds` 匹配）的额度只允许上调，不允许下调或改成 `null`；不允许删除已有档位。可以新增档位，新增的档位会同步下发到所有已发放的定向额度
 - `max_uses`：只允许放宽（`0` 为不限，属最宽），且不能小于 `used_count`
 - `expires_at`：格式与 POST 相同（不带时区后缀按 UTC 解释）；只允许延长、且必须晚于当前时间（避免设出一个立刻失效的码）；不能早于已发放额度的过期时间，已发放额度的有效期无法解析时同样拒绝；已发放额度为长期有效（null）时不允许改为有限期；不允许改为 `null`、空串或纯空白串（`null` 会让 SQL 原子核销的过期判定被豁免，等于给额度开了永久有效口子；空串是非法时间值，SQLite 下会让核销条件恒不成立、码永远兑换不了，MySQL 严格模式下直接写入失败）
-- `code` / `batch_id` / `allowed_channel_ids` / `allowed_model_aliases` **不在白名单**，传入会返回 400；其余未列出的字段同样按未知字段拒绝
+- `code` / `batch_id` / `kind` / `period_cycles` / `allowed_channel_ids` / `allowed_model_aliases` **不在白名单**，传入会返回 400；其余未列出的字段同样按未知字段拒绝
 - 不传任何字段返回 400
+
+`period_cycles` 不再可编辑：兑换码的周期档改为只在创建时配置（且仅额度券可配），已发放额度上的周期档不再随码行调整。类型 `kind` 亦不可修改，需要另一种类型请停用旧码并重新生成。
 
 **认证:** 管理员
 
@@ -2211,7 +2227,6 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | max_uses | int | 最多兑换次数，0 表示不限 |
 | token_quota | int \| null | Token 额度，null 表示不限 |
 | request_quota | int \| null | 请求额度，null 表示不限 |
-| period_cycles | object[] | 多档重置周期，见「多档重置周期」一节；只增不减（仅完整版） |
 
 **响应 (200):**
 ```json
@@ -2360,7 +2375,9 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 >
 > `periods` 为多档重置周期的当前状态，字段含义见「多档重置周期」一节；未配置周期时为空数组。`period` 保留为兼容字段，取第一个周期档。
 >
-> 组级周期档只作为定义值：用户自己没配置周期档时，`periods` 会回退展示所属用户组的档位定义（因此此时该字段是**非空**的，不是空数组），但这些档位的 `used_*` 恒为 0、`reset_at` 恒为 null，**不参与用户级判定**，因为用户组不持有运行时计数器。若需要周期额度真正生效，请在用户或渠道/模型上直接配置。
+> 组级周期档按**每用户独立计数**生效：用户自己没配置周期档时，`periods` 展示继承自所属用户组的档位，且这些档位**真正参与判定**（额度按每个用户各自计算，与组 `quota_tokens` 等既有字段口径一致）。用户自行配置了同秒数的档位时以用户的为准（覆盖组档），组里其余档位继续继承。
+>
+> 继承档的运行时计数与用户自有档**分开存储**（用户自有档在 `period_cycles`，继承档在 `group_period_cycles`），因此管理员随时收紧、放宽、新增或删除组上的周期档都会**立即对该组所有用户生效**，不会因为曾经计费过而被固化成用户自有档。用户组因此不需要运行时计数器。
 >
 > 精简版 `period` 始终为 `null`，`periods` 始终为 `[]`。
 
@@ -2497,6 +2514,8 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | code | string | 是 | 兑换码 |
 
 **响应 (201):**
+
+额度券（`kind=quota`）：
 ```json
 {
   "message": "兑换成功。",
@@ -2504,6 +2523,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
     "id": 1,
     "code_id": 1,
     "user_id": 1,
+    "kind": "quota",
     "token_quota": 1000000,
     "request_quota": null,
     "used_tokens": 0,
@@ -2533,6 +2553,16 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
   }
 }
 ```
+
+重置券（`kind=reset`）不发放额度，因此不返回额度字段，只回执重置结果：
+```json
+{
+  "message": "周期用量已重置。",
+  "data": { "kind": "reset", "reset": true }
+}
+```
+
+重置券的效果是把核销者自己的多档周期用量清零，使各档位重新起算：用户自有档位（`period_cycles`）与继承自用户组的档位计数（`group_period_cycles`）都被归零，档位定义与周期长度保持不变，因此不影响组的继承关系。它不产生 `redeem_balances` 记录，也不影响用户的总请求/总 Token 配额。
 
 ### GET /api/user/redeem
 

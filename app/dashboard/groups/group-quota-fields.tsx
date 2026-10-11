@@ -49,7 +49,7 @@ export function GroupQuotaFields({
           <PeriodCycleFields
             drafts={form.period_cycles}
             onChange={(drafts) => onChange({ period_cycles: drafts })}
-            hint="按固定时间间隔重置用量。此处配置的是组默认值，用户未自行配置周期时继承。"
+            hint="按固定时间间隔重置用量。每个用户独立计数，用户自己配置同周期档位时会覆盖这里的设置。"
           />
         </div>
       ) : null}
