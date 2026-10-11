@@ -6,7 +6,8 @@ import { ensureUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
 import { parseStoredUtc } from "@/lib/core/db/datetime";
 import { resolveStoredPeriodCycles } from "@/lib/gateway/period-cycles";
-import { ensureCycleResets } from "@/lib/gateway/period-cycles-reset";
+import { resolveEnforcedCycles } from "@/lib/gateway/effective-limits";
+import { ensureCycleResets, loadGroupCycleState } from "@/lib/gateway/period-cycles-reset";
 import { toPeriodQuotaEntry } from "@/lib/gateway/quota";
 import { formatPeriodLabel } from "@/lib/shared/period-format";
 
@@ -38,15 +39,17 @@ export async function GET(request: Request) {
   }
 
   // 多档周期：先按档懒重置，再输出。
-  // 只有用户自有的档位才写回用户行；组档继承路径不落库，
-  // 否则该用户会变成「自有档位」，组后续调整对他永久失效，且每次读取都会多一次写。
+  // 自有档与继承自组的档位计数分开存放（period_cycles / group_period_cycles），
+  // 因此这里分别推进窗口再合并展示，与判定、计费口径一致。
   const userCycles = resolveStoredPeriodCycles(user.period_cycles, user);
-  const cycles = userCycles.length > 0 ? userCycles : limits.period_cycles;
-  const periods = cycles.length > 0
-    ? (userCycles.length > 0
-      ? await ensureCycleResets("users", userId, userCycles, undefined, user.period_cycles)
-      : cycles).map(toPeriodQuotaEntry)
+  const enforced = resolveEnforcedCycles(userCycles, limits.group_cycles);
+  const ownState = enforced.own.length > 0
+    ? await ensureCycleResets("users", userId, enforced.own, undefined, user.period_cycles)
     : [];
+  const inheritedState = enforced.inherited.length > 0
+    ? await loadGroupCycleState(userId, enforced.inherited)
+    : [];
+  const periods = [...ownState, ...inheritedState].map(toPeriodQuotaEntry);
 
   return jsonOk({
     total: {

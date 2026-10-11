@@ -18,6 +18,7 @@ import {
   MYSQL_POST_MIGRATION_INDEXES,
 } from "@/lib/core/db/mysql-schema";
 import { toMysqlDatetime } from "@/lib/core/db/datetime";
+import { legacyToPeriodCycle, serializePeriodCycleState } from "@/lib/gateway/period-cycles";
 
 const dataDir = path.join(process.cwd(), "data");
 const dbPath = path.join(dataDir, "gateway.db");
@@ -268,6 +269,40 @@ async function backfillOidcGroupSyncedAt(db: DatabaseAdapter) {
   );
 }
 
+// 存量单档周期迁移到多档列。旧列结构相近但不一致：用户/渠道/模型有运行时计数
+// （period_used_* 与 period_reset_at），用户组没有（组档按每用户独立计数）。
+// 因此按表选择要搬运的列。幂等：迁移后 period_cycles 非空，后续启动不会再命中。
+async function migrateLegacyPeriodCycles(db: DatabaseAdapter) {
+  const tables = ["users", "groups", "channels", "models"] as const;
+  for (const table of tables) {
+    const hasCounters = table !== "groups";
+    const rows = await db.query<{
+      id: number;
+      quota_period: number | null;
+      period_quota_tokens: number | null;
+      period_quota_requests: number | null;
+      period_used_tokens: number;
+      period_used_requests: number;
+      period_reset_at: string | null;
+    }>(
+      `SELECT id, quota_period, period_quota_tokens, period_quota_requests,
+              ${hasCounters ? "period_used_tokens, period_used_requests, period_reset_at" : "0 AS period_used_tokens, 0 AS period_used_requests, NULL AS period_reset_at"}
+         FROM ${table}
+        WHERE quota_period IS NOT NULL
+          AND (period_quota_tokens IS NOT NULL OR period_quota_requests IS NOT NULL)
+          AND (period_cycles IS NULL OR period_cycles = '')`,
+    );
+    for (const row of rows) {
+      const cycles = legacyToPeriodCycle(row);
+      if (cycles.length === 0) continue;
+      await db.execute(
+        `UPDATE ${table} SET period_cycles = ? WHERE id = ? AND (period_cycles IS NULL OR period_cycles = '')`,
+        [serializePeriodCycleState(cycles), row.id],
+      );
+    }
+  }
+}
+
 async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("users", "deleted_at", "deleted_at DATETIME");
   await db.ensureColumn("users", "allowed_model_aliases", "allowed_model_aliases TEXT DEFAULT '[]'");
@@ -358,12 +393,22 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("email_send_log", "title", "title TEXT");
   await db.ensureColumn("email_send_log", "content", "content TEXT");
   await db.ensureColumn("users", "period_cycles", "period_cycles TEXT DEFAULT NULL");
+  // 继承自用户组的周期档计数。与 period_cycles 分开存放，避免把组档物化成用户自有档，
+  // 否则组后续收紧/放宽/删除对该用户永久失效。
+  await db.ensureColumn("users", "group_period_cycles", "group_period_cycles TEXT DEFAULT NULL");
   await db.ensureColumn("groups", "period_cycles", "period_cycles TEXT DEFAULT NULL");
   await db.ensureColumn("channels", "period_cycles", "period_cycles TEXT DEFAULT NULL");
   await db.ensureColumn("models", "period_cycles", "period_cycles TEXT DEFAULT NULL");
   await db.ensureColumn("models", "multiplier_schedules", "multiplier_schedules TEXT DEFAULT NULL");
   await db.ensureColumn("redeem_codes", "period_cycles", "period_cycles TEXT DEFAULT NULL");
+  // 兑换码类型：quota 为额度券（原行为），reset 为重置券（只重置周期用量，不发额度）。
+  await db.ensureColumn("redeem_codes", "kind", "kind VARCHAR(16) NOT NULL DEFAULT 'quota'");
   await db.ensureColumn("redeem_balances", "period_cycles", "period_cycles TEXT DEFAULT NULL");
+
+  // 存量单档周期（quota_period + period_quota_* + period_used_* + period_reset_at）迁移进多档列。
+  // 只迁移 period_cycles 为空且有旧值的行，因此可重复执行；旧列保留只读以便回滚，
+  // 迁移后多档列存在值，读取路径不再回退旧列，判定与展示都以多档列为准。
+  await migrateLegacyPeriodCycles(db);
 
   if (db.driver === "sqlite") {
     await db.exec(`UPDATE users SET used_tokens = ROUND(used_tokens, 6), used_requests = ROUND(used_requests, 6),

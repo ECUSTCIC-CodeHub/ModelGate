@@ -270,7 +270,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     // 档位运行时计数与旧标量列分开存放，重置时一并清零，否则档位配额仍按旧用量继续扣。
     // 以「本次 UPDATE 后库里的值」为基准读取，避免把 merged.period_cycles 里刚写入的定义值当成已重置状态。
     const cycleRow = await gatewayDb
-      .queryOne<{ period_cycles: string | null }>("SELECT period_cycles FROM users WHERE id = ?", [id]);
+      .queryOne<{ period_cycles: string | null; group_period_cycles: string | null }>(
+        "SELECT period_cycles, group_period_cycles FROM users WHERE id = ?",
+        [id],
+      );
     const currentCycles = parsePeriodCycles(cycleRow?.period_cycles);
     if (currentCycles.length > 0) {
       const resetCycles = currentCycles.map((cycle) => ({
@@ -281,6 +284,18 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       }));
       await gatewayDb
         .execute("UPDATE users SET period_cycles = ? WHERE id = ?", [serializePeriodCycleState(resetCycles), id]);
+    }
+    // 继承自用户组的档位计数单独存放，同样需要清零，否则「重置用量」后用户仍被组档拦住。
+    const inheritedCycles = parsePeriodCycles(cycleRow?.group_period_cycles);
+    if (inheritedCycles.length > 0) {
+      const resetInherited = inheritedCycles.map((cycle) => ({
+        ...cycle,
+        used_tokens: 0,
+        used_requests: 0,
+        reset_at: null,
+      }));
+      await gatewayDb
+        .execute("UPDATE users SET group_period_cycles = ? WHERE id = ?", [serializePeriodCycleState(resetInherited), id]);
     }
   }
 

@@ -1,7 +1,7 @@
 import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
-import { resolveStoredPeriodCycles, type PeriodCycle } from "@/lib/gateway/period-cycles";
-import { ensureCycleResets } from "@/lib/gateway/period-cycles-reset";
+import { type PeriodCycle } from "@/lib/gateway/period-cycles";
+import { ensureCycleResets, loadGroupCycleState } from "@/lib/gateway/period-cycles-reset";
 import { formatPeriodLabel } from "@/lib/shared/period-format";
 
 export type PeriodQuotaEntry = {
@@ -137,22 +137,23 @@ export async function checkQuota(userId: number, estimatedTokens: number): Promi
     return { ok: false, reason: "Token 配额已用尽", quota };
   }
 
-  // 用户自有的周期档优先；用户没配任何档时用组档定义参与判定。
-  // 组表没有运行时计数器，因此继承来的组档只作定义值：它的用量无法累积，
-  // 也不能写进用户行（写进去就会被当成自有档位，组的后续调整对该用户永久失效）。
-  const ownCycles = resolveStoredPeriodCycles(user.period_cycles, {
-    quota_period: user.quota_period,
-    period_quota_tokens: user.period_quota_tokens,
-    period_quota_requests: user.period_quota_requests,
-    period_used_tokens: user.period_used_tokens,
-    period_used_requests: user.period_used_requests,
-    period_reset_at: user.period_reset_at,
-  });
+  // 用户自有的周期档 + 继承自用户组的档位。
+  // 两者的计数分开存放：自有档用 users.period_cycles，继承档用 users.group_period_cycles。
+  // 分开是为了让组配置的后续调整（收紧/放宽/删除）始终对用户生效。
+  // getEffectiveLimits 已按同一口径算好生效档位（自有 + 继承），直接复用，
+  // 避免这里再算一遍形成两份真值来源。
+  const enforced = limits.period_cycles;
 
-  if (ownCycles.length > 0) {
-    const reset = await ensureCycleResets("users", userId, ownCycles, undefined, user.period_cycles);
-    quota.periods = reset.map(toPeriodQuotaEntry);
-    const exceeded = findExceededCycle(reset, estimatedTokens);
+  if (enforced.all.length > 0) {
+    const own = enforced.own.length > 0
+      ? await ensureCycleResets("users", userId, enforced.own, undefined, user.period_cycles)
+      : [];
+    const inherited = enforced.inherited.length > 0
+      ? await loadGroupCycleState(userId, enforced.inherited)
+      : [];
+    const all = [...own, ...inherited];
+    quota.periods = all.map(toPeriodQuotaEntry);
+    const exceeded = findExceededCycle(all, estimatedTokens);
     if (exceeded) {
       return { ok: false, reason: exceeded.reason, quota };
     }

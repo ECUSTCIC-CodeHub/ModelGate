@@ -2,7 +2,7 @@ import { gatewayDb, ensureDbReady } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { parseStoredUtc, toMysqlDatetime } from "@/lib/core/db/datetime";
-import { applyCycleUsage, parsePeriodCycles, resolveStoredPeriodCycles, serializePeriodCycleState } from "@/lib/gateway/period-cycles";
+import { applyCycleUsage, parsePeriodCycles, resolveStoredPeriodCycles, serializePeriodCycleState, type PeriodCycle } from "@/lib/gateway/period-cycles";
 import { ensureCycleResets } from "@/lib/gateway/period-cycles-reset";
 import { parseMultiplierSchedules, resolveEffectiveMultiplier } from "@/lib/gateway/multiplier-schedule";
 import { buildRedeemScope, scopeCoversPair, balanceHasRemaining } from "@/lib/services/redeem-authorization";
@@ -24,21 +24,85 @@ async function accumulateCycles(
   id: number,
   deltaTokens: number,
   deltaRequests: number,
+  inherited: PeriodCycle[] = [],
 ): Promise<void> {
   // 用 ensureDbReady 取方言：gatewayDb.driver 在未初始化时会返回 Promise（真值但不等于 "mysql"），
   // 直接比较会漏加行锁。
   const isMysql = (await ensureDbReady()).driver === "mysql";
-  const row = await tx.queryOne<{ period_cycles: string | null }>(
-    `SELECT period_cycles FROM ${table} WHERE id = ?${isMysql ? " FOR UPDATE" : ""}`,
+  // 只有 users 有 group_period_cycles；其余表保持单列查询，避免引用不存在的列。
+  // 旧单档列只在 users/channels/models 上存在，redeem_balances 没有。
+  const hasLegacy = table !== "redeem_balances";
+  const legacySelect = hasLegacy
+    ? "quota_period, period_quota_tokens, period_quota_requests, period_used_tokens, period_used_requests, period_reset_at"
+    : "NULL AS quota_period, NULL AS period_quota_tokens, NULL AS period_quota_requests, NULL AS period_used_tokens, NULL AS period_used_requests, NULL AS period_reset_at";
+  const cycleSelect = table === "users"
+    ? "period_cycles, group_period_cycles"
+    : "period_cycles, NULL AS group_period_cycles";
+  const row = await tx.queryOne<{
+    period_cycles: string | null;
+    group_period_cycles: string | null;
+    quota_period: number | null;
+    period_quota_tokens: number | null;
+    period_quota_requests: number | null;
+    period_used_tokens: number;
+    period_used_requests: number;
+    period_reset_at: string | null;
+  }>(
+    `SELECT ${cycleSelect}, ${legacySelect} FROM ${table} WHERE id = ?${isMysql ? " FOR UPDATE" : ""}`,
     [id],
   );
   if (!row) return;
-  const cycles = parsePeriodCycles(row.period_cycles);
-  if (cycles.length === 0) return;
+  // 自有档与继承档分开累加：继承自用户组的档位计数写 users.group_period_cycles，
+  // 不能混进 period_cycles，否则组档会被物化成用户自有档，
+  // 组后续收紧/放宽/删除对该用户永久失效，已删除的组限制还会继续拦人。
+  // 自有档的解析口径必须与判定侧 checkQuota 一致：新列为空时回退旧单档列。
+  // 否则「靠旧列生效」的用户在判定上被拦住、计费却从不累加，档位就成了永远拦人的死限。
+  const storedOwn = parsePeriodCycles(row.period_cycles);
+  const ownCycles = resolveStoredPeriodCycles(row.period_cycles, row);
+  // 计数只写回新列，且仅在该行已有新列档位时写回：旧单档列由下方 period_used_* 的
+  // 独立自增承担计数（见本文件各 UPDATE），此处若把折算出的档位回写新列，
+  // 同一笔用量会同时记在新列与旧列上，形成重复计数。旧列因此保持只读，
+  // 判定侧的回退折算只用于读取，不改变计数载体。
+  if (storedOwn.length > 0) {
+    await tx.execute(
+      `UPDATE ${table} SET period_cycles = ? WHERE id = ?`,
+      [serializePeriodCycleState(applyCycleUsage(storedOwn, deltaTokens, deltaRequests)), id],
+    );
+  }
+  if (table !== "users") return;
+  // 组里已被用户自有档按秒数覆盖的档位不参与继承，与判定侧口径一致。
+  const ownSeconds = new Set(ownCycles.map((cycle) => cycle.seconds));
+  const effectiveInherited = inherited.filter((cycle) => !ownSeconds.has(cycle.seconds));
+  const storedInherited = parsePeriodCycles(row.group_period_cycles);
+  // 组已清空周期档（或全部被自有档覆盖）时清掉残留计数：
+  // 这些档位不再参与判定，留着只会占空间。
+  if (effectiveInherited.length === 0) {
+    if (storedInherited.length > 0) {
+      await tx.execute("UPDATE users SET group_period_cycles = NULL WHERE id = ?", [id]);
+    }
+    return;
+  }
+  const storedBySeconds = new Map(storedInherited.map((cycle) => [cycle.seconds, cycle]));
+  const mergedInherited = effectiveInherited.map((cycle) => {
+    const prior = storedBySeconds.get(cycle.seconds);
+    return prior ? { ...cycle, used_tokens: prior.used_tokens, used_requests: prior.used_requests, reset_at: prior.reset_at } : cycle;
+  });
   await tx.execute(
-    `UPDATE ${table} SET period_cycles = ? WHERE id = ?`,
-    [serializePeriodCycleState(applyCycleUsage(cycles, deltaTokens, deltaRequests)), id],
+    "UPDATE users SET group_period_cycles = ? WHERE id = ?",
+    [serializePeriodCycleState(applyCycleUsage(mergedInherited, deltaTokens, deltaRequests)), id],
   );
+}
+
+// 事务内读取用户所属用户组的周期档定义。组档按每用户独立计数，
+// 因此只需定义值，运行时计数记在用户行上。查不到组时返回空数组，不影响计费。
+async function loadUserGroupCycles(tx: TransactionContextLike, userId: number): Promise<PeriodCycle[]> {
+  const row = await tx.queryOne<{ period_cycles: string | null }>(
+    `SELECT g.period_cycles FROM users u
+       JOIN \`groups\` g ON g.id = u.group_id
+      WHERE u.id = ? AND g.enabled = 1 AND g.deleted_at IS NULL`,
+    [userId],
+  );
+  return parsePeriodCycles(row?.period_cycles);
 }
 
 // 事务内查找匹配当前渠道+模型的用户有效定向额度。
@@ -205,7 +269,9 @@ async function addUsageOrThrow(userId: number, keyId: number, tokens: number, re
         );
         // 周期档的计数存在 period_cycles JSON 里，SQL 无法直接按档累加，需读改写。
         // 与上面的总量累加同处一个事务，保证不会出现「总量已扣、周期未扣」的偏差。
-        await accumulateCycles(tx, "users", userId, billedTokens, billedRequests);
+        // 用户组档按每用户独立计数，这里取组定义一并累加到用户行，组档才能拦得住请求。
+        const userGroupCycles = await loadUserGroupCycles(tx, userId);
+        await accumulateCycles(tx, "users", userId, billedTokens, billedRequests, userGroupCycles);
       } else {
         await tx.execute(
           `UPDATE users

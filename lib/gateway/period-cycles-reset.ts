@@ -17,6 +17,10 @@ import { parsePeriodCycles, serializePeriodCycleState, type PeriodCycle } from "
 // 让计费侧在同一个事务里完成「重置 + 累加」，避免跨连接导致状态不一致。
 export type CycleResetExecutor = Pick<DatabaseAdapter, "execute" | "queryOne">;
 
+// 计数列名。users 有两套：自有档 period_cycles、继承自组的档位 group_period_cycles。
+// 两者必须分开存取，否则组档会被物化成用户自有档，组后续调整对该用户永久失效。
+export type CycleStateColumn = "period_cycles" | "group_period_cycles";
+
 // 返回重置后的档位数组；未发生重置时原样返回（不写库）。
 //
 // guardRaw 是调用方从库里读到的 period_cycles **原始文本**，作为乐观更新的守卫。
@@ -29,6 +33,7 @@ export async function ensureCycleResets<Table extends "users" | "channels" | "mo
   cycles: PeriodCycle[],
   db: CycleResetExecutor = gatewayDb,
   guardRaw?: string | null,
+  column: CycleStateColumn = "period_cycles",
 ): Promise<PeriodCycle[]> {
   if (cycles.length === 0) return cycles;
 
@@ -59,11 +64,11 @@ export async function ensureCycleResets<Table extends "users" | "channels" | "mo
   const guardedUpdate = (value: PeriodCycle[], guard: string | null) => (
     isMysql
       ? db.execute(
-        `UPDATE ${table} SET period_cycles = ? WHERE id = ? AND period_cycles <=> ?`,
+        `UPDATE ${table} SET ${column} = ? WHERE id = ? AND ${column} <=> ?`,
         [serializePeriodCycleState(value), id, guard],
       )
       : db.execute(
-        `UPDATE ${table} SET period_cycles = ? WHERE id = ? AND period_cycles IS ?`,
+        `UPDATE ${table} SET ${column} = ? WHERE id = ? AND ${column} IS ?`,
         [serializePeriodCycleState(value), id, guard],
       )
   );
@@ -72,7 +77,7 @@ export async function ensureCycleResets<Table extends "users" | "channels" | "mo
 
   // 未命中说明并发下已被他人改写：采信库里的最新值。
   const row = await db.queryOne<{ period_cycles: string | null }>(
-    `SELECT period_cycles FROM ${table} WHERE id = ?`,
+    `SELECT ${column} FROM ${table} WHERE id = ?`,
     [id],
   );
   const current = parsePeriodCycles(row?.period_cycles);
@@ -102,9 +107,42 @@ export async function ensureCycleResets<Table extends "users" | "channels" | "mo
 
   // 仍未命中：并发方刚刚又改过，采信它的值而非覆盖。
   const latest = await db.queryOne<{ period_cycles: string | null }>(
-    `SELECT period_cycles FROM ${table} WHERE id = ?`,
+    `SELECT ${column} FROM ${table} WHERE id = ?`,
     [id],
   );
   const parsedLatest = parsePeriodCycles(latest?.period_cycles);
   return parsedLatest.length > 0 ? parsedLatest : forced;
+}
+
+// 读取「继承自用户组的周期档」在该用户上的运行时状态，并按需推进窗口。
+//
+// 计数存在 users.group_period_cycles，与用户自有档 period_cycles 分开：
+// 否则组档会被物化成用户自有档，组后续收紧/放宽/删除对该用户永久失效，
+// 已删除的组限制还会继续拦人。
+// 传入的 definitions 是组当前的档位定义（已被自有档按秒数覆盖过滤），
+// 这里把同一秒数已存在的计数接上，未存在的从 0 起算；
+// 组里删掉的档位不会被带回来，因此组配置变更立即生效。
+export async function loadGroupCycleState(
+  userId: number,
+  definitions: PeriodCycle[],
+  db: CycleResetExecutor = gatewayDb,
+): Promise<PeriodCycle[]> {
+  if (definitions.length === 0) return [];
+  const row = await db.queryOne<{ group_period_cycles: string | null }>(
+    "SELECT group_period_cycles FROM users WHERE id = ?",
+    [userId],
+  );
+  const stored = parsePeriodCycles(row?.group_period_cycles);
+  const bySeconds = new Map(stored.map((cycle) => [cycle.seconds, cycle]));
+  const merged = definitions.map((definition) => {
+    const prior = bySeconds.get(definition.seconds);
+    if (!prior) return definition;
+    return {
+      ...definition,
+      used_tokens: prior.used_tokens,
+      used_requests: prior.used_requests,
+      reset_at: prior.reset_at,
+    };
+  });
+  return ensureCycleResets("users", userId, merged, db, row?.group_period_cycles ?? null, "group_period_cycles");
 }
