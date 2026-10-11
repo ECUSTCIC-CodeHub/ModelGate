@@ -90,12 +90,15 @@ export async function GET(request: Request) {
   }
   const whereSql = `WHERE ${whereParts.join(" AND ")}`;
 
+  // period_cycles 必须一起查出来：前端编辑弹窗用它回填档位，缺了它弹窗会显示为空，
+  // 保存时提交空数组就会把用户已有的周期档清空。
   const rows = await gatewayDb
     .query<DbUser & { group_name: string | null; allowed_model_aliases: string }>(
       `SELECT u.id, u.username, u.email, u.role, u.group_id, g.name AS group_name,
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
               u.quota_period, u.period_quota_tokens, u.period_quota_requests,
               u.period_used_tokens, u.period_used_requests, u.period_reset_at,
+              u.period_cycles,
               u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.group_locked,
               u.pref_model_fallback, u.pref_vision_fallback, u.pref_quota_fallback,
               u.enabled, u.created_at
