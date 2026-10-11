@@ -7,6 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { authedFetch } from "@/lib/auth/client-auth";
+import { modelGateFeatures } from "@/lib/core/features";
+import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
+import { PeriodCycleFields, cyclesToDrafts, draftsToPayload, type PeriodCycleDraft } from "@/app/dashboard/period-cycle-fields";
 import type { CodeRow } from "./redeem-code-types";
 
 // 把存储的 UTC 裸字符串转成 datetime-local 需要的本地时间字符串。
@@ -42,7 +45,12 @@ export function RedeemCodeEditDialog({
   const [maxUsesInput, setMaxUsesInput] = useState(String(row.max_uses));
   const [tokenQuotaInput, setTokenQuotaInput] = useState(row.token_quota === null ? "" : String(row.token_quota));
   const [requestQuotaInput, setRequestQuotaInput] = useState(row.request_quota === null ? "" : String(row.request_quota));
+  const [periodCycles, setPeriodCycles] = useState<PeriodCycleDraft[]>(
+    cyclesToDrafts(parsePeriodCycles(row.period_cycles)),
+  );
   const [saving, setSaving] = useState(false);
+
+  const periodQuotaEnabled = modelGateFeatures.periodQuota;
 
   const save = async () => {
     const payload: Record<string, unknown> = {};
@@ -110,6 +118,35 @@ export function RedeemCodeEditDialog({
 
     if (tokenValue !== row.token_quota) payload.token_quota = tokenValue;
     if (requestValue !== row.request_quota) payload.request_quota = requestValue;
+
+    if (periodQuotaEnabled) {
+      const nextCycles = draftsToPayload(periodCycles);
+      const existingCycles = parsePeriodCycles(row.period_cycles);
+      // 周期额度同样「只增不减」：已有档位的额度不能调低，也不能删除档位。
+      for (const existing of existingCycles) {
+        const next = nextCycles.find((cycle) => cycle.seconds === existing.seconds);
+        if (!next) {
+          toast.error(`已存在 ${existing.seconds} 秒的重置周期，不能删除`);
+          return;
+        }
+        const lower = (
+          (existing.quota_tokens !== null && (next.quota_tokens === null || next.quota_tokens < existing.quota_tokens))
+          || (existing.quota_requests !== null && (next.quota_requests === null || next.quota_requests < existing.quota_requests))
+        );
+        if (lower) {
+          toast.error("周期额度只能上调，不能下调或改为不限");
+          return;
+        }
+      }
+      if (JSON.stringify(nextCycles) !== JSON.stringify(existingCycles.map((cycle) => ({
+        seconds: cycle.seconds,
+        quota_tokens: cycle.quota_tokens,
+        quota_requests: cycle.quota_requests,
+      })))) {
+        payload.period_cycles = nextCycles;
+      }
+    }
+
     if (maxUses !== row.max_uses) payload.max_uses = maxUses;
     if (expiresAtTouched && nextExpiresAt !== normalized(row.expires_at)) payload.expires_at = nextExpiresAt;
 
@@ -203,6 +240,15 @@ export function RedeemCodeEditDialog({
               />
             </div>
           </div>
+          {periodQuotaEnabled ? (
+            <div className="rounded-xl border border-[var(--color-border)] p-3">
+              <PeriodCycleFields
+                drafts={periodCycles}
+                onChange={setPeriodCycles}
+                hint="周期额度只能上调、不能删除已有档位；新增档位会同步下发到所有已核销的额度，若已有用户在其他档位产生用量则会被拒绝。"
+              />
+            </div>
+          ) : null}
         </div>
 
         <DialogFooter>

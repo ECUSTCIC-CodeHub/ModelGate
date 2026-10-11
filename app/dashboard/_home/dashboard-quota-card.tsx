@@ -2,7 +2,9 @@
 
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { formatNumber, formatTokenCount } from "@/lib/shared/utils";
+import type { PeriodQuotaEntry } from "@/lib/gateway/quota";
 import { quotaProgress } from "./dashboard-formatters";
 import type { QuotaData } from "./dashboard-model";
 
@@ -25,17 +27,76 @@ function QuotaProgress({ remaining, quota }: { remaining: number | null; quota: 
   );
 }
 
+// 单档周期配额块。多档与旧单档共用同一布局，避免两种渲染风格不一致。
+function PeriodQuotaBlock({
+  label,
+  usedRequests,
+  quotaRequests,
+  remainingRequests,
+  usedTokens,
+  quotaTokens,
+  remainingTokens,
+  resetAt,
+}: {
+  label: string;
+  usedRequests: number;
+  quotaRequests: number | null;
+  remainingRequests: number | null;
+  usedTokens: number;
+  quotaTokens: number | null;
+  remainingTokens: number | null;
+  resetAt: string | null;
+}) {
+  const showRequests = quotaRequests !== null;
+  const showTokens = quotaTokens !== null;
+
+  return (
+    <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-[var(--color-foreground-muted)]">周期配额</p>
+        <Badge variant="outline" className="text-xs">{label}</Badge>
+      </div>
+      {showRequests ? (
+        <div className="space-y-1">
+          <p className="text-sm font-semibold text-[var(--color-foreground)]">
+            {formatNumber(remainingRequests)} <span className="text-xs font-normal text-[var(--color-foreground-muted)]">剩余请求</span>
+          </p>
+          <QuotaProgress remaining={remainingRequests} quota={quotaRequests} />
+          <p className="text-xs text-[var(--color-foreground-muted)]">{formatNumber(usedRequests)} / {formatNumber(quotaRequests)} 已使用</p>
+        </div>
+      ) : null}
+      {showTokens ? (
+        <div className="space-y-1">
+          <p className="text-sm font-semibold text-[var(--color-foreground)]">
+            {formatTokenCount(remainingTokens)} <span className="text-xs font-normal text-[var(--color-foreground-muted)]">剩余 Token</span>
+          </p>
+          <QuotaProgress remaining={remainingTokens} quota={quotaTokens} />
+          <p className="text-xs text-[var(--color-foreground-muted)]">{formatTokenCount(usedTokens)} / {formatTokenCount(quotaTokens)} 已使用</p>
+        </div>
+      ) : null}
+      {!showRequests && !showTokens ? (
+        <p className="text-xs text-[var(--color-foreground-muted)]">不限制</p>
+      ) : null}
+      {resetAt ? (
+        <p className="text-xs text-[var(--color-foreground-muted)]">重置于 {new Date(resetAt).toLocaleString()}</p>
+      ) : null}
+    </div>
+  );
+}
+
 export function DashboardQuotaCard({ quota }: DashboardQuotaCardProps) {
   if (!quota) return null;
   const period = quota.period;
+  const periods: PeriodQuotaEntry[] = quota.periods ?? [];
 
   const showRate = quota.rate.rpm >= 0 || quota.rate.qps >= 0 || quota.rate.tpm >= 0;
   const showTotalRequests = quota.total.quota_requests !== null;
   const showTotalTokens = quota.total.quota_tokens !== null;
   const showPeriodRequests = !!period && period.quota_requests !== null;
   const showPeriodTokens = !!period && period.quota_tokens !== null;
+  const showPeriodCycleFallback = periods.length === 0 && (showPeriodRequests || showPeriodTokens);
 
-  if (!showRate && !showTotalRequests && !showTotalTokens && !showPeriodRequests && !showPeriodTokens) {
+  if (!showRate && !showTotalRequests && !showTotalTokens && periods.length === 0 && !showPeriodCycleFallback) {
     return null;
   }
 
@@ -88,32 +149,33 @@ export function DashboardQuotaCard({ quota }: DashboardQuotaCardProps) {
             </div>
           ) : null}
 
-          {showPeriodRequests ? (
-            <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
-              <p className="text-xs text-[var(--color-foreground-muted)]">{period!.period_label}请求配额</p>
-              <p className="text-lg font-semibold text-[var(--color-foreground)]">
-                {formatNumber(period!.remaining_requests)} <span className="text-sm font-normal text-[var(--color-foreground-muted)]">剩余</span>
-              </p>
-              <QuotaProgress remaining={period!.remaining_requests} quota={period!.quota_requests} />
-              <p className="text-xs text-[var(--color-foreground-muted)]">
-                {formatNumber(period!.used_requests)} / {formatNumber(period!.quota_requests)} 已使用
-                {period!.reset_at ? ` · 重置于 ${new Date(period!.reset_at).toLocaleString()}` : ""}
-              </p>
-            </div>
-          ) : null}
+          {periods.length > 0
+            ? periods.map((entry) => (
+                <PeriodQuotaBlock
+                  key={entry.id}
+                  label={entry.period_label}
+                  usedRequests={entry.used_requests}
+                  quotaRequests={entry.quota_requests}
+                  remainingRequests={entry.remaining_requests}
+                  usedTokens={entry.used_tokens}
+                  quotaTokens={entry.quota_tokens}
+                  remainingTokens={entry.remaining_tokens}
+                  resetAt={entry.reset_at}
+                />
+              ))
+            : null}
 
-          {showPeriodTokens ? (
-            <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
-              <p className="text-xs text-[var(--color-foreground-muted)]">{period!.period_label} Token 配额</p>
-              <p className="text-lg font-semibold text-[var(--color-foreground)]">
-                {formatTokenCount(period!.remaining_tokens)} <span className="text-sm font-normal text-[var(--color-foreground-muted)]">剩余</span>
-              </p>
-              <QuotaProgress remaining={period!.remaining_tokens} quota={period!.quota_tokens} />
-              <p className="text-xs text-[var(--color-foreground-muted)]">
-                {formatTokenCount(period!.used_tokens)} / {formatTokenCount(period!.quota_tokens)} 已使用
-                {period!.reset_at ? ` · 重置于 ${new Date(period!.reset_at).toLocaleString()}` : ""}
-              </p>
-            </div>
+          {showPeriodCycleFallback ? (
+            <PeriodQuotaBlock
+              label={period!.period_label}
+              usedRequests={period!.used_requests}
+              quotaRequests={period!.quota_requests}
+              remainingRequests={period!.remaining_requests}
+              usedTokens={period!.used_tokens}
+              quotaTokens={period!.quota_tokens}
+              remainingTokens={period!.remaining_tokens}
+              resetAt={period!.reset_at}
+            />
           ) : null}
         </div>
       </CardContent>

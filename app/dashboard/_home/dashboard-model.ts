@@ -1,6 +1,9 @@
+import type { PeriodQuotaEntry } from "@/lib/gateway/quota";
+
 export type Role = "admin" | "user";
 
 export type QuotaData = {
+  periods?: PeriodQuotaEntry[];
   total: {
     quota_requests: number | null;
     quota_tokens: number | null;

@@ -1,3 +1,5 @@
+import type { PeriodCycleDraft } from "@/app/dashboard/period-cycle-fields";
+
 export type GroupRow = {
   id: number;
   name: string;
@@ -10,6 +12,7 @@ export type GroupRow = {
   quota_period: number | null;
   period_quota_tokens: number | null;
   period_quota_requests: number | null;
+  period_cycles: string | null;
   allowed_model_aliases: string[];
   allowed_channel_ids: number[];
   oidc_claim_expr: string | null;
@@ -67,10 +70,7 @@ export type GroupForm = {
   tpm: number;
   quota_requests: string;
   quota_tokens: string;
-  quota_period_preset: string;
-  quota_period_custom: string;
-  period_quota_tokens: string;
-  period_quota_requests: string;
+  period_cycles: PeriodCycleDraft[];
   allowed_model_aliases: string[];
   allowed_channel_ids: number[];
   oidc_claim_expr: string;
@@ -87,10 +87,7 @@ export const initialForm: GroupForm = {
   tpm: -1,
   quota_requests: "",
   quota_tokens: "",
-  quota_period_preset: "",
-  quota_period_custom: "",
-  period_quota_tokens: "",
-  period_quota_requests: "",
+  period_cycles: [],
   allowed_model_aliases: [],
   allowed_channel_ids: [],
   oidc_claim_expr: "",

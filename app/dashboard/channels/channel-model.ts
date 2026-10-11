@@ -1,3 +1,6 @@
+import type { PeriodCycleDraft } from "@/app/dashboard/period-cycle-fields";
+import type { MultiplierScheduleDraft } from "@/app/dashboard/multiplier-schedule-fields";
+
 export type Protocol = "chat_completions" | "responses" | "anthropic_messages" | "embeddings" | "images" | "other";
 
 export const protocolOptions: Array<{ value: Protocol; label: string; shortLabel: string }> = [
@@ -83,6 +86,8 @@ export type ModelRow = {
   ua_restrictions: string;
   expires_at: string | null;
   system_prompt: string | null;
+  period_cycles: string | null;
+  multiplier_schedules: string | null;
 };
 
 export type Channel = {
@@ -108,6 +113,7 @@ export type Channel = {
   time_restrictions: string;
   custom_headers: string;
   request_body_omit: string;
+  period_cycles: string | null;
   group_name: string;
   created_by?: number | null;
   created_by_username?: string | null;
@@ -146,10 +152,7 @@ export type ChannelForm = {
   timeout: number;
   quota_tokens: string;
   quota_requests: string;
-  quota_period_preset: string;
-  quota_period_custom: string;
-  period_quota_tokens: string;
-  period_quota_requests: string;
+  period_cycles: PeriodCycleDraft[];
   force_include_usage: boolean;
   ua_restrictions: string;
   expires_at: string;
@@ -175,10 +178,8 @@ export type ModelForm = {
   quota_mode: ModelQuotaMode;
   quota_tokens: string;
   quota_requests: string;
-  quota_period_preset: string;
-  quota_period_custom: string;
-  period_quota_tokens: string;
-  period_quota_requests: string;
+  period_cycles: PeriodCycleDraft[];
+  multiplier_schedules: MultiplierScheduleDraft[];
   enabled: boolean;
   ua_restrictions: string;
   expires_at: string;
@@ -229,10 +230,7 @@ export const initialChannelForm: ChannelForm = {
   timeout: 60,
   quota_tokens: "",
   quota_requests: "",
-  quota_period_preset: "",
-  quota_period_custom: "",
-  period_quota_tokens: "",
-  period_quota_requests: "",
+  period_cycles: [],
   force_include_usage: true,
   ua_restrictions: "",
   expires_at: "",
@@ -274,10 +272,8 @@ export const initialModelForm: ModelForm = {
   quota_mode: "follow_group",
   quota_tokens: "",
   quota_requests: "",
-  quota_period_preset: "",
-  quota_period_custom: "",
-  period_quota_tokens: "",
-  period_quota_requests: "",
+  period_cycles: [],
+  multiplier_schedules: [],
   enabled: true,
   ua_restrictions: "",
   expires_at: "",

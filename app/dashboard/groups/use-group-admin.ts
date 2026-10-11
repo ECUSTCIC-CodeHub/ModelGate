@@ -10,19 +10,19 @@ import { getApiMessage } from "@/lib/shared/api-message";
 import { getApiWarnings } from "@/lib/shared/api-message";
 import {
   initialForm,
-  periodToPreset,
   type AliasOption,
   type ChannelOption,
   type GroupForm,
   type GroupRow,
 } from "./group-model";
+import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
+import { cyclesToDrafts, draftsToPayload } from "@/app/dashboard/period-cycle-fields";
 
 type GroupsResponse = {
   data?: GroupRow[];
 };
 
 function buildGroupForm(row: GroupRow): GroupForm {
-  const preset = periodToPreset(row.quota_period);
   return {
     name: row.name,
     description: row.description ?? "",
@@ -31,10 +31,7 @@ function buildGroupForm(row: GroupRow): GroupForm {
     tpm: row.tpm,
     quota_requests: row.quota_requests === null ? "" : String(row.quota_requests),
     quota_tokens: row.quota_tokens === null ? "" : String(row.quota_tokens),
-    quota_period_preset: preset,
-    quota_period_custom: preset === "custom" && row.quota_period ? String(row.quota_period) : "",
-    period_quota_tokens: row.period_quota_tokens === null ? "" : String(row.period_quota_tokens),
-    period_quota_requests: row.period_quota_requests === null ? "" : String(row.period_quota_requests),
+    period_cycles: cyclesToDrafts(parsePeriodCycles(row.period_cycles)),
     allowed_model_aliases: row.allowed_model_aliases ?? [],
     allowed_channel_ids: row.allowed_channel_ids ?? [],
     oidc_claim_expr: row.oidc_claim_expr ?? "",
@@ -49,10 +46,6 @@ function buildGroupPayload(
   periodQuotaEnabled: boolean,
   oidcFeatureEnabled: boolean,
 ) {
-  const periodValue = form.quota_period_preset === "custom"
-    ? (form.quota_period_custom.trim() === "" ? null : Number(form.quota_period_custom))
-    : (form.quota_period_preset === "" ? null : Number(form.quota_period_preset));
-
   return {
     name: form.name,
     description: form.description.trim() || null,
@@ -62,9 +55,7 @@ function buildGroupPayload(
     quota_requests: form.quota_requests.trim() === "" ? null : Number(form.quota_requests),
     quota_tokens: form.quota_tokens.trim() === "" ? null : Number(form.quota_tokens),
     ...(periodQuotaEnabled ? {
-      quota_period: periodValue,
-      period_quota_tokens: form.period_quota_tokens.trim() === "" ? null : Number(form.period_quota_tokens),
-      period_quota_requests: form.period_quota_requests.trim() === "" ? null : Number(form.period_quota_requests),
+      period_cycles: draftsToPayload(form.period_cycles),
     } : {}),
     allowed_model_aliases: form.allowed_model_aliases,
     allowed_channel_ids: form.allowed_channel_ids,

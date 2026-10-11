@@ -10,7 +10,6 @@ import { getApiMessage } from "@/lib/shared/api-message";
 import { getApiWarnings } from "@/lib/shared/api-message";
 import {
   initialForm,
-  periodToPreset,
   type AliasOption,
   type GroupOption,
   type UserForm,
@@ -19,6 +18,8 @@ import {
   type UserRow,
   type UserSortKey,
 } from "./user-model";
+import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
+import { cyclesToDrafts, draftsToPayload } from "@/app/dashboard/period-cycle-fields";
 
 const PAGE_SIZE = 20;
 
@@ -44,11 +45,11 @@ function pickGroupLimits(row: UserRow): UserGroupLimits | null {
     quota_period: row.group_quota_period,
     period_quota_tokens: row.group_period_quota_tokens,
     period_quota_requests: row.group_period_quota_requests,
+    period_cycles: row.group_period_cycles,
   };
 }
 
 function buildUserForm(row: UserRow): UserForm {
-  const preset = periodToPreset(row.quota_period);
   return {
     username: row.username,
     email: row.email ?? "",
@@ -64,19 +65,12 @@ function buildUserForm(row: UserRow): UserForm {
     tpm: row.tpm,
     quota_tokens: row.quota_tokens === null ? "" : String(row.quota_tokens),
     quota_requests: row.quota_requests === null ? "" : String(row.quota_requests),
-    quota_period_preset: preset,
-    quota_period_custom: preset === "custom" && row.quota_period ? String(row.quota_period) : "",
-    period_quota_tokens: row.period_quota_tokens === null ? "" : String(row.period_quota_tokens),
-    period_quota_requests: row.period_quota_requests === null ? "" : String(row.period_quota_requests),
+    period_cycles: cyclesToDrafts(parsePeriodCycles(row.period_cycles)),
     allowed_model_aliases: row.allowed_model_aliases ?? [],
   };
 }
 
 function buildUserPayload(form: UserForm, periodQuotaEnabled: boolean) {
-  const periodValue = form.quota_period_preset === "custom"
-    ? (form.quota_period_custom.trim() === "" ? null : Number(form.quota_period_custom))
-    : (form.quota_period_preset === "" ? null : Number(form.quota_period_preset));
-
   return {
     username: form.username,
     email: form.email.trim() === "" ? null : form.email.trim(),
@@ -90,9 +84,7 @@ function buildUserPayload(form: UserForm, periodQuotaEnabled: boolean) {
     quota_tokens: form.quota_tokens.trim() === "" ? null : Number(form.quota_tokens),
     quota_requests: form.quota_requests.trim() === "" ? null : Number(form.quota_requests),
     ...(periodQuotaEnabled ? {
-      quota_period: periodValue,
-      period_quota_tokens: form.period_quota_tokens.trim() === "" ? null : Number(form.period_quota_tokens),
-      period_quota_requests: form.period_quota_requests.trim() === "" ? null : Number(form.period_quota_requests),
+      period_cycles: draftsToPayload(form.period_cycles),
     } : {}),
     allowed_model_aliases: form.allowed_model_aliases,
     note: form.note.trim() === "" ? null : form.note.trim(),

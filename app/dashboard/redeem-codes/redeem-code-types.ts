@@ -7,6 +7,7 @@ export type CodeRow = {
   batch_id: string;
   token_quota: number | null;
   request_quota: number | null;
+  period_cycles: string | null;
   allowed_channel_ids: string;
   allowed_model_aliases: string;
   expires_at: string | null;

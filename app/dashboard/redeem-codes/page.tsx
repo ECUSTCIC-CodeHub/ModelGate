@@ -14,6 +14,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { PagePagination } from "@/components/dashboard/page-pagination";
 import { authedFetch } from "@/lib/auth/client-auth";
 import { formatExpiresAt, formatNumber, formatTokenCount } from "@/lib/shared/utils";
+import { modelGateFeatures } from "@/lib/core/features";
+import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
+import { formatPeriodLabel } from "@/lib/shared/period-format";
+import { PeriodCycleFields, draftsToPayload, type PeriodCycleDraft } from "@/app/dashboard/period-cycle-fields";
 import { RedeemCodeDetailDialog, useRedeemCodeDetail } from "./redeem-code-detail-dialog";
 import { RedeemCodeEditDialog } from "./redeem-code-edit-dialog";
 import type { ChannelOption, CodeRow, ModelOption } from "./redeem-code-types";
@@ -55,6 +59,7 @@ function downloadRedeemCodesCsv(anchor: HTMLAnchorElement, codes: string[], batc
 
 export default function AdminRedeemCodesPage() {
   const downloadAnchorRef = useRef<HTMLAnchorElement>(null);
+  const periodQuotaEnabled = modelGateFeatures.periodQuota;
   const [channels, setChannels] = useState<ChannelOption[]>([]);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [rows, setRows] = useState<CodeRow[]>([]);
@@ -69,6 +74,7 @@ export default function AdminRedeemCodesPage() {
   const [count, setCount] = useState(10);
   const [tokenQuota, setTokenQuota] = useState("");
   const [requestQuota, setRequestQuota] = useState("");
+  const [periodCycles, setPeriodCycles] = useState<PeriodCycleDraft[]>([]);
   const [channelIds, setChannelIds] = useState<number[]>([]);
   const [aliases, setAliases] = useState<string[]>([]);
   const [expiresAt, setExpiresAt] = useState("");
@@ -136,6 +142,7 @@ export default function AdminRedeemCodesPage() {
     const payload: Record<string, unknown> = { count };
     if (tokenQuota.trim()) payload.token_quota = Number(tokenQuota);
     if (requestQuota.trim()) payload.request_quota = Number(requestQuota);
+    if (periodQuotaEnabled) payload.period_cycles = draftsToPayload(periodCycles);
     if (channelIds.length > 0) payload.allowed_channel_ids = channelIds;
     if (aliases.length > 0) payload.allowed_model_aliases = aliases;
     if (expiresAt) payload.expires_at = new Date(expiresAt).toISOString();
@@ -166,6 +173,7 @@ export default function AdminRedeemCodesPage() {
       setCount(10);
       setTokenQuota("");
       setRequestQuota("");
+      setPeriodCycles([]);
       setChannelIds([]);
       setAliases([]);
       setExpiresAt("");
@@ -280,6 +288,15 @@ export default function AdminRedeemCodesPage() {
                 <Label>请求额度（留空表示不限制）</Label>
                 <Input type="number" min={1} value={requestQuota} onChange={(e) => setRequestQuota(e.target.value)} placeholder="如 1000" />
               </div>
+              {periodQuotaEnabled ? (
+                <div className="md:col-span-2">
+                  <PeriodCycleFields
+                    drafts={periodCycles}
+                    onChange={setPeriodCycles}
+                    hint="为兑换码额度附加重置周期，可配置多个。核销后周期额度随码一起带入用户额度，任一周期超出即停止使用。"
+                  />
+                </div>
+              ) : null}
               <div>
                 <Label>有效期</Label>
                 <Input type="datetime-local" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
@@ -383,6 +400,7 @@ export default function AdminRedeemCodesPage() {
                     <TableHead>Token 额度</TableHead>
                     <TableHead>请求额度</TableHead>
                     <TableHead>剩余额度</TableHead>
+                    {periodQuotaEnabled ? <TableHead>重置周期</TableHead> : null}
                     <TableHead>限定渠道</TableHead>
                     <TableHead>限定模型</TableHead>
                     <TableHead>有效期</TableHead>
@@ -423,6 +441,15 @@ export default function AdminRedeemCodesPage() {
                             <br />
                             {row.request_quota == null ? "请求不限" : `请求 ${formatNumber(Math.max(0, row.request_quota - row.used_requests_sum))}`}
                           </TableCell>
+                          {periodQuotaEnabled ? (
+                            <TableCell className="whitespace-nowrap text-xs">
+                              {parsePeriodCycles(row.period_cycles).length === 0
+                                ? "—"
+                                : parsePeriodCycles(row.period_cycles)
+                                  .map((cycle) => formatPeriodLabel(cycle.seconds))
+                                  .join(" / ")}
+                            </TableCell>
+                          ) : null}
                           <TableCell>{ch.length === 0 ? "不限" : ch.join(",")}</TableCell>
                           <TableCell>{al.length === 0 ? "不限" : al.join(",")}</TableCell>
                           <TableCell>{formatExpiresAt(row.expires_at)}</TableCell>

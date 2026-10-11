@@ -13,6 +13,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { authedFetch, getCachedProfile } from "@/lib/auth/client-auth";
 import { useAuthProfile } from "@/components/providers/auth-provider";
 import { formatExpiresAt, formatNumber, formatTokenCount } from "@/lib/shared/utils";
+import { modelGateFeatures } from "@/lib/core/features";
+import type { PeriodQuotaEntry } from "@/lib/gateway/quota";
+
+const periodQuotaEnabled = modelGateFeatures.periodQuota;
 
 type Balance = {
   id: number;
@@ -26,6 +30,7 @@ type Balance = {
   expires_at: string | null;
   remaining_tokens: number | null;
   remaining_requests: number | null;
+  periods?: PeriodQuotaEntry[];
   active: boolean;
   inactive_reason: string | null;
 };
@@ -123,6 +128,7 @@ export default function RedeemPage() {
                     <TableRow>
                       <TableHead>剩余 Token</TableHead>
                       <TableHead>剩余请求</TableHead>
+                      {periodQuotaEnabled ? <TableHead>周期额度</TableHead> : null}
                       <TableHead>限定渠道</TableHead>
                       <TableHead>限定模型</TableHead>
                       <TableHead>有效期</TableHead>
@@ -142,6 +148,22 @@ export default function RedeemPage() {
                             ? `${formatNumber(b.remaining_requests ?? 0)} / ${formatNumber(b.request_quota)}`
                             : "不限"}
                         </TableCell>
+                        {periodQuotaEnabled ? (
+                          <TableCell className="whitespace-nowrap text-xs">
+                            {!b.periods || b.periods.length === 0 ? (
+                              "—"
+                            ) : (
+                              b.periods.map((entry) => (
+                                <div key={entry.id}>
+                                  {entry.period_label}：
+                                  {entry.quota_tokens === null ? "Token 不限" : `Token ${formatTokenCount(entry.remaining_tokens ?? 0)} / ${formatTokenCount(entry.quota_tokens)}`}
+                                  {" · "}
+                                  {entry.quota_requests === null ? "请求不限" : `请求 ${formatNumber(entry.remaining_requests ?? 0)} / ${formatNumber(entry.quota_requests)}`}
+                                </div>
+                              ))
+                            )}
+                          </TableCell>
+                        ) : null}
                         <TableCell>{b.allowed_channel_ids.length === 0 ? "不限" : b.allowed_channel_ids.join(",")}</TableCell>
                         <TableCell>{b.allowed_model_aliases.length === 0 ? "不限" : b.allowed_model_aliases.join(",")}</TableCell>
                         <TableCell>{formatExpiresAt(b.expires_at)}</TableCell>

@@ -21,9 +21,10 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { ModelDraftCard } from "./model-draft-card";
+import { PeriodCycleFields } from "@/app/dashboard/period-cycle-fields";
+import { MultiplierScheduleFields } from "@/app/dashboard/multiplier-schedule-fields";
 import { UaRestrictionsEditor, type UaRestrictionRuleDraft, rulesToJson, jsonToRules } from "@/components/ua-restrictions-editor";
 import {
-  PERIOD_PRESETS,
   protocolLabel,
   QUOTA_MODE_OPTIONS,
   type Channel,
@@ -239,66 +240,22 @@ export function ModelDrawer({
                     </div>
                     {periodQuotaEnabled ? (
                       <div className="border-t border-[var(--color-border)] pt-3">
-                        <p className="mb-3 text-xs font-medium text-[var(--color-foreground-muted)]">周期配额</p>
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <div className="space-y-2">
-                            <Label>重置周期</Label>
-                            <Select
-                              value={form.quota_period_preset || "none"}
-                              onValueChange={(value) => onFormChange({
-                                quota_period_preset: value === "none" ? "" : value,
-                                quota_period_custom: value === "custom" ? form.quota_period_custom : "",
-                              })}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="不限制" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {PERIOD_PRESETS.map((preset) => (
-                                  <SelectItem key={preset.value || "none"} value={preset.value || "none"}>
-                                    {preset.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          {form.quota_period_preset === "custom" ? (
-                            <div className="space-y-2">
-                              <Label>自定义周期（秒）</Label>
-                              <Input
-                                type="number"
-                                min={60}
-                                value={form.quota_period_custom}
-                                onChange={(e) => onFormChange({ quota_period_custom: e.target.value })}
-                                placeholder="如 7200 = 2小时"
-                              />
-                            </div>
-                          ) : <div />}
-                          <div className="space-y-2">
-                            <Label>周期请求配额</Label>
-                            <Input
-                              type="number"
-                              min={0}
-                              value={form.period_quota_requests}
-                              onChange={(e) => onFormChange({ period_quota_requests: e.target.value })}
-                              placeholder="留空不限制"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>周期 Token 配额</Label>
-                            <Input
-                              type="number"
-                              min={0}
-                              value={form.period_quota_tokens}
-                              onChange={(e) => onFormChange({ period_quota_tokens: e.target.value })}
-                              placeholder="留空不限制"
-                            />
-                          </div>
-                        </div>
+                        <PeriodCycleFields
+                          drafts={form.period_cycles}
+                          onChange={(drafts) => onFormChange({ period_cycles: drafts })}
+                        />
                       </div>
                     ) : null}
                   </>
                 ) : null}
+                <div className="border-t border-[var(--color-border)] pt-3">
+                  <MultiplierScheduleFields
+                    drafts={form.multiplier_schedules}
+                    onChange={(drafts) => onFormChange({ multiplier_schedules: drafts })}
+                    baseTokenMultiplier={form.token_multiplier}
+                    baseRequestMultiplier={form.request_multiplier}
+                  />
+                </div>
               </div>
 
               <div className="flex items-center justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">

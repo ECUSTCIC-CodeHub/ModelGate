@@ -1,3 +1,5 @@
+import type { PeriodCycleDraft } from "@/app/dashboard/period-cycle-fields";
+
 export type UserRow = {
   id: number;
   username: string;
@@ -15,6 +17,7 @@ export type UserRow = {
   quota_period: number | null;
   period_quota_tokens: number | null;
   period_quota_requests: number | null;
+  period_cycles: string | null;
   period_used_tokens: number;
   period_used_requests: number;
   period_reset_at: string | null;
@@ -32,6 +35,7 @@ export type UserRow = {
   group_quota_period: number | null;
   group_period_quota_tokens: number | null;
   group_period_quota_requests: number | null;
+  group_period_cycles: string | null;
   effective_rpm: number;
   effective_qps: number;
   effective_tpm: number;
@@ -69,6 +73,7 @@ export type UserGroupLimits = {
   quota_period: number | null;
   period_quota_tokens: number | null;
   period_quota_requests: number | null;
+  period_cycles: string | null;
 };
 
 export type UserSortKey = "created_at" | "used_requests" | "used_tokens" | "username";
@@ -116,10 +121,7 @@ export type UserForm = {
   tpm: number;
   quota_tokens: string;
   quota_requests: string;
-  quota_period_preset: string;
-  quota_period_custom: string;
-  period_quota_tokens: string;
-  period_quota_requests: string;
+  period_cycles: PeriodCycleDraft[];
   allowed_model_aliases: string[];
   note: string;
 };
@@ -138,10 +140,7 @@ export const initialForm: UserForm = {
   tpm: -1,
   quota_tokens: "",
   quota_requests: "",
-  quota_period_preset: "",
-  quota_period_custom: "",
-  period_quota_tokens: "",
-  period_quota_requests: "",
+  period_cycles: [],
   allowed_model_aliases: [],
   note: "",
 };

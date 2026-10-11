@@ -8,7 +8,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { PagePagination } from "@/components/dashboard/page-pagination";
 import { authedFetch } from "@/lib/auth/client-auth";
 import { formatExpiresAt, formatNumber, formatTokenCount } from "@/lib/shared/utils";
+import { modelGateFeatures } from "@/lib/core/features";
+import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
+import { formatPeriodLabel } from "@/lib/shared/period-format";
 import type { CodeRow } from "./redeem-code-types";
+
+const periodQuotaEnabled = modelGateFeatures.periodQuota;
 
 type RedemptionRow = {
   id: number;
@@ -76,6 +81,16 @@ export function RedeemCodeDetailDialog({
               <div className="font-mono sm:col-span-2">{code.code}</div>
               <div>剩余额度（Token）：{remainingToken(code.token_quota, code.used_tokens_sum)}</div>
               <div>剩余额度（请求）：{remainingRequest(code.request_quota, code.used_requests_sum)}</div>
+              {periodQuotaEnabled ? (
+                <div className="sm:col-span-2">
+                  周期额度：
+                  {parsePeriodCycles(code.period_cycles).length === 0
+                    ? "未配置"
+                    : parsePeriodCycles(code.period_cycles)
+                      .map((cycle) => `${formatPeriodLabel(cycle.seconds)} ${cycle.quota_tokens === null ? "Token 不限" : `Token ${formatTokenCount(cycle.quota_tokens)}`} / ${cycle.quota_requests === null ? "请求不限" : `请求 ${formatNumber(cycle.quota_requests)}`}`)
+                      .join("；")}
+                </div>
+              ) : null}
               <div>
                 有效持有 {formatNumber(code.redeemed_users)} 人 / 已兑换 {code.used_count}
                 {code.max_uses === 0 ? " 次（不限）" : ` / ${code.max_uses} 次`}
