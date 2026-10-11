@@ -9,11 +9,13 @@ import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { listExistingChannelIds } from "@/lib/gateway/channel-access";
 import { listExistingModelAliases } from "@/lib/gateway/model-access";
 import { parseExpiresInput, EXPIRES_FUTURE_HINT, generateRedeemCodes, listCodes, getCodeByCode, setRedeemCodesEnabled, deleteRedeemCodes } from "@/lib/services/redeem-codes";
+import { validatePeriodCycles } from "@/lib/gateway/period-cycles";
 
 const generateSchema = z.object({
   count: z.number().int().min(1).max(500),
   token_quota: z.number().int().min(1).nullable().optional(),
   request_quota: z.number().int().min(1).nullable().optional(),
+  period_cycles: z.unknown().optional(),
   allowed_channel_ids: z.array(z.number().int().positive()).optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
   expires_at: z.string().nullable().optional(),
@@ -51,8 +53,12 @@ export async function POST(request: Request) {
   const parsed = generateSchema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
-  if (parsed.data.token_quota == null && parsed.data.request_quota == null) {
-    return jsonError("Token 额度与请求额度至少填写一项", 400);
+  const cyclesResult = validatePeriodCycles(parsed.data.period_cycles ?? null);
+  if (!cyclesResult.valid) return jsonError(cyclesResult.error, 400);
+  const periodCycles = cyclesResult.cycles;
+
+  if (parsed.data.token_quota == null && parsed.data.request_quota == null && periodCycles.length === 0) {
+    return jsonError("Token 额度、请求额度与重置周期额度至少填写一项", 400);
   }
 
   const channelIds = parsed.data.allowed_channel_ids ?? [];
@@ -79,6 +85,7 @@ export async function POST(request: Request) {
     count: parsed.data.count,
     tokenQuota: parsed.data.token_quota ?? null,
     requestQuota: parsed.data.request_quota ?? null,
+    periodCycles,
     allowedChannelIds: existingChannels,
     allowedModelAliases: existingAliases,
     expiresAt,

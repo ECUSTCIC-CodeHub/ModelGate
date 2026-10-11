@@ -10,6 +10,8 @@ import { gatewayDb } from "@/lib/core/db";
 import { redeemCodeForUser, listUserBalances } from "@/lib/services/redeem-codes";
 import { parseAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { parseAllowedModelAliases } from "@/lib/gateway/model-access";
+import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
+import { toPeriodQuotaEntry } from "@/lib/gateway/quota";
 
 const redeemSchema = z.object({
   code: z.string().min(1).max(64),
@@ -31,7 +33,7 @@ export async function GET(request: Request) {
 
   // 补充兑换记录与渠道/模型可读信息
   const redemptions = await gatewayDb.query<Record<string, unknown>>(
-    `SELECT r.id, r.code_id, r.redeemed_at, c.code, c.token_quota, c.request_quota
+    `SELECT r.id, r.code_id, r.redeemed_at, c.code, c.token_quota, c.request_quota, c.period_cycles
        FROM redeem_redemptions r
        LEFT JOIN redeem_codes c ON c.id = r.code_id
        WHERE r.user_id = ?
@@ -68,6 +70,7 @@ export async function POST(request: Request) {
       allowed_model_aliases: parseAllowedModelAliases(balance.allowed_model_aliases),
       remaining_tokens: balance.token_quota !== null ? Math.max(0, balance.token_quota - balance.used_tokens) : null,
       remaining_requests: balance.request_quota !== null ? Math.max(0, balance.request_quota - balance.used_requests) : null,
+      periods: parsePeriodCycles(balance.period_cycles).map(toPeriodQuotaEntry),
       // 与 GET /api/user/redeem 保持同一形状：核销成功即代表该额度当下有效
       active: true,
       inactive_reason: null,

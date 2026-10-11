@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { gatewayDb } from "@/lib/core/db";
+import { modelGateFeatures } from "@/lib/core/features";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { GATEWAY_PROTOCOLS, normalizeSupportedProtocols, parseSupportedProtocols, stringifySupportedProtocols } from "@/lib/gateway/protocols";
@@ -15,6 +16,7 @@ import { stringifyRequestBodyOmit, validateRequestBodyOmit } from "@/lib/gateway
 import { isMaskedApiKey, looksLikeMaskedApiKey, maskApiKey, resolveSubmittedApiKey } from "@/lib/shared/redact";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { resolveChannelOwnerId } from "@/lib/services/channel-ownership";
+import { validatePeriodCycles, serializePeriodCycleState, mergeDefinitionOntoState } from "@/lib/gateway/period-cycles";
 
 const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
 
@@ -35,6 +37,7 @@ const updateSchema = z.object({
   quota_period: z.number().int().min(0).nullable().optional(),
   period_quota_tokens: z.number().int().min(0).nullable().optional(),
   period_quota_requests: z.number().int().min(0).nullable().optional(),
+  period_cycles: z.unknown().optional(),
   force_include_usage: z.boolean().optional(),
   ua_restrictions: z.string().max(20000).optional(),
   expires_at: z.string().max(32).nullable().optional(),
@@ -72,6 +75,21 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
   const existing = await gatewayDb.queryOne("SELECT * FROM channels WHERE id = ? AND deleted_at IS NULL", [id]);
   if (!existing) return jsonError("渠道不存在", 404);
+
+  let periodCycles: string | null = null;
+  let periodCyclesProvided = false;
+  if (parsed.data.period_cycles !== undefined) {
+    const validation = validatePeriodCycles(parsed.data.period_cycles);
+    if (!validation.valid) return jsonError(validation.error, 400);
+    // 精简版不落库周期档：该版本没有周期配额判定，存进去只会是一份永远不生效的数据。
+    // 合并已有运行时状态，避免管理员改额度时把用户的已用量与重置锚点一并清空。
+    const merged = mergeDefinitionOntoState(
+      (existing as { period_cycles?: string | null }).period_cycles ?? null,
+      validation.cycles,
+    );
+    periodCycles = modelGateFeatures.periodQuota ? serializePeriodCycleState(merged) || null : null;
+    periodCyclesProvided = true;
+  }
 
   let nextExpiresAt: string | null;
   if (parsed.data.expires_at === undefined) {
@@ -194,6 +212,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       timeRestrictions === null
         ? (existing as { time_restrictions?: string | null }).time_restrictions ?? ""
         : timeRestrictions,
+    // 字段缺席保持原值；显式传入（含空数组）按本次提交序列化，空数组即清空
+    period_cycles: periodCyclesProvided
+      ? periodCycles
+      : (existing as { period_cycles?: string | null }).period_cycles ?? null,
     enabled: nextEnabled,
   };
 
@@ -215,7 +237,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       .execute(
         `UPDATE channels
          SET name = ?, base_url = ?, api_key = ?, supported_protocols = ?, user_agent = ?, proxy_url = ?, enabled = ?, weight = ?, max_concurrency = ?, timeout = ?,
-             quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, force_include_usage = ?, ua_restrictions = ?, expires_at = ?, time_restrictions = ?, custom_headers = ?, request_body_omit = ?, group_name = ?, api_key_private = ?, created_by = ?
+             quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, period_cycles = ?, force_include_usage = ?, ua_restrictions = ?, expires_at = ?, time_restrictions = ?, custom_headers = ?, request_body_omit = ?, group_name = ?, api_key_private = ?, created_by = ?
          WHERE id = ?`,
         [
           (merged as { name: string }).name,
@@ -233,6 +255,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           (merged as { quota_period: number | null }).quota_period ?? null,
           (merged as { period_quota_tokens: number | null }).period_quota_tokens ?? null,
           (merged as { period_quota_requests: number | null }).period_quota_requests ?? null,
+          (merged as { period_cycles: string | null }).period_cycles,
           parsed.data.force_include_usage === undefined
             ? (existing as { force_include_usage: number }).force_include_usage
             : parsed.data.force_include_usage

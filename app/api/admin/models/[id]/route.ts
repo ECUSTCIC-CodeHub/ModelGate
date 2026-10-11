@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { gatewayDb } from "@/lib/core/db";
+import { modelGateFeatures } from "@/lib/core/features";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
@@ -12,6 +13,8 @@ import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
 import { MODEL_SYSTEM_PROMPT_MAX_LENGTH } from "@/lib/gateway/model-system-prompt";
 import { toLocalDatetime } from "@/lib/gateway/channel-time";
 import { disableExpiredModels } from "@/lib/gateway/model-expiry";
+import { validatePeriodCycles, serializePeriodCycleState, mergeDefinitionOntoState } from "@/lib/gateway/period-cycles";
+import { validateMultiplierSchedules, normalizeMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
 
 const QUOTA_MODES = ["follow_group", "bypass_group", "independent", "dual"] as const;
 
@@ -35,6 +38,8 @@ const updateSchema = z.object({
   quota_period: z.number().int().min(0).nullable().optional(),
   period_quota_tokens: z.number().int().min(0).nullable().optional(),
   period_quota_requests: z.number().int().min(0).nullable().optional(),
+  period_cycles: z.unknown().optional(),
+  multiplier_schedules: z.unknown().optional(),
   ua_restrictions: z.string().max(20000).optional(),
   system_prompt: z.string().max(MODEL_SYSTEM_PROMPT_MAX_LENGTH).nullable().optional(),
   expires_at: z.string().max(32).nullable().optional(),
@@ -72,6 +77,12 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     if (!validation.valid) return jsonError(validation.error, 400);
   }
 
+  const periodCyclesResult = validatePeriodCycles(parsed.data.period_cycles);
+  if (!periodCyclesResult.valid) return jsonError(periodCyclesResult.error, 400);
+
+  const multiplierSchedulesResult = validateMultiplierSchedules(parsed.data.multiplier_schedules);
+  if (!multiplierSchedulesResult.valid) return jsonError(multiplierSchedulesResult.error, 400);
+
   const existing = await gatewayDb.queryOne<{
         id: number;
         alias: string;
@@ -96,6 +107,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         ua_restrictions: string;
         expires_at: string | null;
         system_prompt: string | null;
+        period_cycles: string | null;
+        multiplier_schedules: string | null;
       }>("SELECT * FROM models WHERE id = ? AND deleted_at IS NULL", [id]);
   if (!existing) return jsonError("模型不存在", 404);
 
@@ -165,6 +178,24 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         : (parsed.data.system_prompt ?? "").trim(),
     enabled: targetEnabled,
     expires_at: nextExpiresAt,
+    // period_cycles / multiplier_schedules 取值正确语义：字段缺席沿用原值，
+    // 显式传入（含空数组）一律采用本次序列化结果，空数组即清空为 NULL。
+    // 与上面 period_quota_* 的 `merged.x ?? existing.x` 不同，后者无法用显式 null 清空。
+    // 周期档需合并已有运行时状态，避免管理员改额度时清空用户的已用量与重置锚点。
+    period_cycles:
+      parsed.data.period_cycles === undefined
+        ? existing.period_cycles ?? null
+        : modelGateFeatures.periodQuota
+          ? serializePeriodCycleState(
+            mergeDefinitionOntoState(existing.period_cycles, periodCyclesResult.cycles),
+          ) || null
+          : existing.period_cycles ?? null,
+    multiplier_schedules:
+      parsed.data.multiplier_schedules === undefined
+        ? existing.multiplier_schedules ?? null
+        : modelGateFeatures.periodQuota
+          ? normalizeMultiplierSchedules(multiplierSchedulesResult.schedules) || null
+          : existing.multiplier_schedules ?? null,
   };
 
   await gatewayDb.transaction(async (tx) => {
@@ -172,7 +203,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       .execute(
         `UPDATE models
          SET alias = ?, real_model = ?, channel_id = ?, upstream_protocol = ?, supported_protocols = ?, copilot_compatibility = ?, supports_vision = ?, is_public = ?, enabled = ?, weight = ?, token_multiplier = ?, request_multiplier = ?, max_concurrency = ?,
-             quota_mode = ?, quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, ua_restrictions = ?, expires_at = ?, system_prompt = ?
+             quota_mode = ?, quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, period_cycles = ?, multiplier_schedules = ?, ua_restrictions = ?, expires_at = ?, system_prompt = ?
          WHERE id = ?`,
         [merged.alias, merged.real_model, merged.channel_id, merged.upstream_protocol, targetSupportedProtocols, parsed.data.copilot_compatibility === true ? 1 : parsed.data.copilot_compatibility === false ? 0 : existing.copilot_compatibility ?? 0, merged.supports_vision ?? 0, merged.is_public, merged.enabled, merged.weight, merged.token_multiplier, merged.request_multiplier, merged.max_concurrency,
           merged.quota_mode ?? existing.quota_mode ?? "follow_group",
@@ -181,6 +212,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           merged.quota_period ?? existing.quota_period ?? null,
           merged.period_quota_tokens ?? existing.period_quota_tokens ?? null,
           merged.period_quota_requests ?? existing.period_quota_requests ?? null,
+          merged.period_cycles ?? null,
+          merged.multiplier_schedules ?? null,
           merged.ua_restrictions ?? existing.ua_restrictions ?? "",
           merged.expires_at ?? null,
           merged.system_prompt || null,

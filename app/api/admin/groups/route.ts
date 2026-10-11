@@ -9,6 +9,7 @@ import { jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { listExistingChannelIds, parseAllowedChannelIds, stringifyAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { listExistingModelAliases, parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
+import { serializePeriodCycles, validatePeriodCycles } from "@/lib/gateway/period-cycles";
 
 const createSchema = z.object({
   name: z.string().min(1).max(64),
@@ -21,6 +22,7 @@ const createSchema = z.object({
   quota_period: z.number().int().min(0).nullable().optional(),
   period_quota_tokens: z.number().int().min(-1).nullable().optional(),
   period_quota_requests: z.number().int().min(-1).nullable().optional(),
+  period_cycles: z.unknown().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
   allowed_channel_ids: z.array(z.number().int().positive()).optional(),
   oidc_claim_expr: z.string().max(512).nullable().optional(),
@@ -83,6 +85,12 @@ export async function POST(request: Request) {
     .queryOne<{ id: number }>("SELECT id FROM `groups` WHERE name = ? AND deleted_at IS NULL", [parsed.data.name]);
   if (existing) return jsonError("组名已存在", 409);
 
+  const cycleValidation = validatePeriodCycles(parsed.data.period_cycles);
+  if (!cycleValidation.valid) return jsonError(cycleValidation.error, 400);
+  const periodCycles = modelGateFeatures.periodQuota
+    ? serializePeriodCycles(cycleValidation.cycles) || null
+    : null;
+
   const setDefault = parsed.data.is_default === true;
   const channelIds = parsed.data.allowed_channel_ids
     ? await listExistingChannelIds(parsed.data.allowed_channel_ids)
@@ -98,8 +106,8 @@ export async function POST(request: Request) {
 
     return tx
       .execute(
-        `INSERT INTO \`groups\` (name, description, qps, rpm, tpm, quota_requests, quota_tokens, quota_period, period_quota_tokens, period_quota_requests, allowed_model_aliases, allowed_channel_ids, oidc_claim_expr, oidc_claim_priority, is_default)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO \`groups\` (name, description, qps, rpm, tpm, quota_requests, quota_tokens, quota_period, period_quota_tokens, period_quota_requests, period_cycles, allowed_model_aliases, allowed_channel_ids, oidc_claim_expr, oidc_claim_priority, is_default)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           parsed.data.name,
           parsed.data.description?.trim() || null,
@@ -111,6 +119,7 @@ export async function POST(request: Request) {
           modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.quota_period) : null,
           modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_tokens) : null,
           modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_requests) : null,
+          periodCycles,
           stringifyAllowedModelAliases(existingAliases),
           stringifyAllowedChannelIds(channelIds),
           exprTrimmed,

@@ -22,6 +22,7 @@ export type CachedProfile = {
   period_used_tokens?: number;
   period_used_requests?: number;
   period_reset_at?: string | null;
+  period_cycles?: unknown;
   oidc_issuer?: string | null;
   oidc_subject?: string | null;
 };

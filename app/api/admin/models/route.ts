@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { gatewayDb } from "@/lib/core/db";
+import { modelGateFeatures } from "@/lib/core/features";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
@@ -10,6 +11,8 @@ import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
 import { toLocalDatetime } from "@/lib/gateway/channel-time";
 import { disableExpiredModels } from "@/lib/gateway/model-expiry";
 import { MODEL_SYSTEM_PROMPT_MAX_LENGTH } from "@/lib/gateway/model-system-prompt";
+import { validatePeriodCycles, serializePeriodCycles } from "@/lib/gateway/period-cycles";
+import { validateMultiplierSchedules, normalizeMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
 
 const QUOTA_MODES = ["follow_group", "bypass_group", "independent", "dual"] as const;
 
@@ -33,6 +36,8 @@ const createSchema = z.object({
   quota_period: z.number().int().min(0).nullable().optional(),
   period_quota_tokens: z.number().int().min(0).nullable().optional(),
   period_quota_requests: z.number().int().min(0).nullable().optional(),
+  period_cycles: z.unknown().optional(),
+  multiplier_schedules: z.unknown().optional(),
   ua_restrictions: z.string().max(20000).optional(),
   system_prompt: z.string().max(MODEL_SYSTEM_PROMPT_MAX_LENGTH).nullable().optional(),
   expires_at: z.string().max(32).nullable().optional(),
@@ -98,11 +103,25 @@ export async function POST(request: Request) {
     expiresAt = toLocalDatetime(new Date(expiresRaw));
   }
 
+  const periodCyclesResult = validatePeriodCycles(parsed.data.period_cycles);
+  if (!periodCyclesResult.valid) return jsonError(periodCyclesResult.error, 400);
+  // 精简版不落库周期档与分时倍率：这两个特性都不参与精简版的判定，
+  // 存进去只会是一份永远不生效的数据。
+  const periodCycles = modelGateFeatures.periodQuota
+    ? serializePeriodCycles(periodCyclesResult.cycles) || null
+    : null;
+
+  const multiplierSchedulesResult = validateMultiplierSchedules(parsed.data.multiplier_schedules);
+  if (!multiplierSchedulesResult.valid) return jsonError(multiplierSchedulesResult.error, 400);
+  const multiplierSchedules = modelGateFeatures.periodQuota
+    ? normalizeMultiplierSchedules(multiplierSchedulesResult.schedules) || null
+    : null;
+
   const result = await gatewayDb.transaction(async (tx) => {
     const res = await tx
       .execute(
-        `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, supports_vision, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, ua_restrictions, expires_at, system_prompt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, supports_vision, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, period_cycles, multiplier_schedules, ua_restrictions, expires_at, system_prompt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           parsed.data.alias,
           parsed.data.real_model,
@@ -123,6 +142,8 @@ export async function POST(request: Request) {
           parsed.data.quota_period ?? null,
           parsed.data.period_quota_tokens ?? null,
           parsed.data.period_quota_requests ?? null,
+          periodCycles,
+          multiplierSchedules,
           parsed.data.ua_restrictions?.trim() ?? "",
           expiresAt,
           parsed.data.system_prompt?.trim() || null,

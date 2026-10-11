@@ -7,16 +7,10 @@ import { parseStoredUtc } from "@/lib/core/db/datetime";
 import { parseAllowedModelAliases } from "@/lib/gateway/model-access";
 import { parseAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { getUserScope, listRedeemScopes, scopeCoversPair, scopesCoverPair } from "@/lib/services/redeem-authorization";
-
-function formatPeriodLabel(seconds: number): string {
-  if (seconds === 3600) return "每小时";
-  if (seconds === 86400) return "每日";
-  if (seconds === 604800) return "每周";
-  if (seconds === 2592000) return "每月";
-  if (seconds >= 86400) return `每 ${Math.round(seconds / 86400)} 天`;
-  if (seconds >= 3600) return `每 ${Math.round(seconds / 3600)} 小时`;
-  return `每 ${seconds} 秒`;
-}
+import { resolveStoredPeriodCycles } from "@/lib/gateway/period-cycles";
+import { toPeriodQuotaEntry } from "@/lib/gateway/quota";
+import { parseMultiplierSchedules, resolveEffectiveMultiplier } from "@/lib/gateway/multiplier-schedule";
+import { formatPeriodLabel } from "@/lib/shared/period-format";
 
 export async function GET(request: Request) {
   const guard = await ensureUser(request);
@@ -47,13 +41,16 @@ export async function GET(request: Request) {
     period_used_tokens: number;
     period_used_requests: number;
     period_reset_at: string | null;
+    period_cycles: string | null;
+    multiplier_schedules: string | null;
     token_multiplier: number;
     request_multiplier: number;
   }>(
     `SELECT m.id, m.alias, m.real_model, m.channel_id, c.name AS channel_name, m.is_public, m.quota_mode,
             m.quota_tokens, m.quota_requests, m.quota_period,
             m.period_quota_tokens, m.period_quota_requests,
-            m.period_used_tokens, m.period_used_requests, m.period_reset_at,
+            m.period_used_tokens, m.period_used_requests, m.period_reset_at, m.period_cycles,
+            m.multiplier_schedules,
             m.token_multiplier, m.request_multiplier
      FROM models m
      JOIN channels c ON c.id = m.channel_id
@@ -92,6 +89,12 @@ export async function GET(request: Request) {
 
     const selfQuota = m.quota_mode === "independent" || m.quota_mode === "dual";
     const periodEnabled = selfQuota && m.quota_period;
+    const periods = selfQuota
+      ? resolveStoredPeriodCycles(m.period_cycles, m).map(toPeriodQuotaEntry)
+      : [];
+    // 展示当下实际生效的倍率：分时倍率命中时覆盖基础倍率。
+    const schedules = parseMultiplierSchedules(m.multiplier_schedules);
+    const effective = resolveEffectiveMultiplier(m.token_multiplier ?? 1, m.request_multiplier ?? 1, schedules, now);
 
     return {
       alias: m.alias,
@@ -101,6 +104,9 @@ export async function GET(request: Request) {
       quota_mode: m.quota_mode,
       token_multiplier: m.token_multiplier ?? 1,
       request_multiplier: m.request_multiplier ?? 1,
+      effective_token_multiplier: effective.token_multiplier,
+      effective_request_multiplier: effective.request_multiplier,
+      multiplier_schedule_applied: effective.schedule_applied,
       quota_requests: selfQuota ? m.quota_requests : null,
       quota_tokens: selfQuota ? m.quota_tokens : null,
       used_requests: selfQuota ? periodUsedRequests : null,
@@ -116,6 +122,7 @@ export async function GET(request: Request) {
       period_remaining_requests: periodEnabled && m.period_quota_requests != null ? Math.max(0, m.period_quota_requests - periodUsedRequests) : null,
       period_remaining_tokens: periodEnabled && m.period_quota_tokens != null ? Math.max(0, m.period_quota_tokens - periodUsedTokens) : null,
       period_reset_at: periodEnabled ? periodResetAt : null,
+      periods,
     };
   });
 

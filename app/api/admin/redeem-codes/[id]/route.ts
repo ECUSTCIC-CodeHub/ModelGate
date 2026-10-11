@@ -7,7 +7,8 @@ import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { gatewayDb } from "@/lib/core/db";
-import { parseExpiresInput, getCodeById, getCodeDetail, listRedemptions, updateRedeemCode } from "@/lib/services/redeem-codes";
+import { parseExpiresInput, getCodeById, getCodeDetail, listRedemptions, updateRedeemCode, type PeriodCycleInput } from "@/lib/services/redeem-codes";
+import { validatePeriodCycles } from "@/lib/gateway/period-cycles";
 
 const patchSchema = z
   .strictObject({
@@ -17,6 +18,7 @@ const patchSchema = z
     max_uses: z.number().int().min(0).optional(),
     token_quota: z.number().int().min(1).nullable().optional(),
     request_quota: z.number().int().min(1).nullable().optional(),
+    period_cycles: z.unknown().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, { message: "没有需要更新的字段" });
 
@@ -74,6 +76,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
   }
 
+  let periodCycles: PeriodCycleInput[] | undefined;
+  if (parsed.data.period_cycles !== undefined) {
+    const cyclesResult = validatePeriodCycles(parsed.data.period_cycles);
+    if (!cyclesResult.valid) return jsonError(cyclesResult.error, 400);
+    periodCycles = cyclesResult.cycles;
+  }
+
   const result = await updateRedeemCode(codeId, {
     note: parsed.data.note,
     enabled: parsed.data.enabled,
@@ -81,6 +90,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     maxUses: parsed.data.max_uses,
     tokenQuota: parsed.data.token_quota,
     requestQuota: parsed.data.request_quota,
+    periodCycles,
   });
   if (!result.ok) return jsonError(result.reason, 400);
 

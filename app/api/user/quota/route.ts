@@ -5,16 +5,10 @@ import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
 import { ensureUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
 import { parseStoredUtc } from "@/lib/core/db/datetime";
-
-function formatPeriodLabel(seconds: number): string {
-  if (seconds === 3600) return "每小时";
-  if (seconds === 86400) return "每日";
-  if (seconds === 604800) return "每周";
-  if (seconds === 2592000) return "每月";
-  if (seconds >= 86400) return `每 ${Math.round(seconds / 86400)} 天`;
-  if (seconds >= 3600) return `每 ${Math.round(seconds / 3600)} 小时`;
-  return `每 ${seconds} 秒`;
-}
+import { resolveStoredPeriodCycles } from "@/lib/gateway/period-cycles";
+import { ensureCycleResets } from "@/lib/gateway/period-cycles-reset";
+import { toPeriodQuotaEntry } from "@/lib/gateway/quota";
+import { formatPeriodLabel } from "@/lib/shared/period-format";
 
 export async function GET(request: Request) {
   const guard = await ensureUser(request);
@@ -43,6 +37,17 @@ export async function GET(request: Request) {
     periodResetAt = nextReset.toISOString();
   }
 
+  // 多档周期：先按档懒重置，再输出。
+  // 只有用户自有的档位才写回用户行；组档继承路径不落库，
+  // 否则该用户会变成「自有档位」，组后续调整对他永久失效，且每次读取都会多一次写。
+  const userCycles = resolveStoredPeriodCycles(user.period_cycles, user);
+  const cycles = userCycles.length > 0 ? userCycles : limits.period_cycles;
+  const periods = cycles.length > 0
+    ? (userCycles.length > 0
+      ? await ensureCycleResets("users", userId, userCycles, undefined, user.period_cycles)
+      : cycles).map(toPeriodQuotaEntry)
+    : [];
+
   return jsonOk({
     total: {
       quota_requests: limits.quota_requests,
@@ -52,6 +57,7 @@ export async function GET(request: Request) {
       remaining_requests: limits.quota_requests !== null ? Math.max(0, limits.quota_requests - user.used_requests) : null,
       remaining_tokens: limits.quota_tokens !== null ? Math.max(0, limits.quota_tokens - user.used_tokens) : null,
     },
+    periods,
     period: limits.quota_period ? {
       period_seconds: limits.quota_period,
       period_label: formatPeriodLabel(limits.quota_period),

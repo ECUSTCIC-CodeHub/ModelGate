@@ -9,6 +9,7 @@ import { jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { listExistingChannelIds, parseAllowedChannelIds, stringifyAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { listExistingModelAliases, parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
+import { serializePeriodCycleState, mergeDefinitionOntoState, validatePeriodCycles } from "@/lib/gateway/period-cycles";
 
 const updateSchema = z.object({
   name: z.string().min(1).max(64).optional(),
@@ -21,6 +22,7 @@ const updateSchema = z.object({
   quota_period: z.number().int().min(0).nullable().optional(),
   period_quota_tokens: z.number().int().min(-1).nullable().optional(),
   period_quota_requests: z.number().int().min(-1).nullable().optional(),
+  period_cycles: z.unknown().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
   allowed_channel_ids: z.array(z.number().int().positive()).optional(),
   oidc_claim_expr: z.string().max(512).nullable().optional(),
@@ -68,6 +70,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const parsed = updateSchema.safeParse(body.data);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
+  const cycleValidation = validatePeriodCycles(parsed.data.period_cycles);
+  if (!cycleValidation.valid) return jsonError(cycleValidation.error, 400);
+
   const exprTrimmed = modelGateFeatures.oidc ? parsed.data.oidc_claim_expr?.trim() || null : null;
   if (exprTrimmed) {
     const result = validateClaimExpr(exprTrimmed);
@@ -87,6 +92,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         quota_period: number | null;
         period_quota_tokens: number | null;
         period_quota_requests: number | null;
+        period_cycles: string | null;
         allowed_model_aliases: string;
         allowed_channel_ids: string;
         oidc_claim_expr: string | null;
@@ -144,6 +150,15 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         : modelGateFeatures.periodQuota
           ? normalizeQuota(parsed.data.period_quota_requests)
           : existing.period_quota_requests,
+    // 周期档需合并已有运行时状态，避免管理员改额度时清空已用量与重置锚点。
+    period_cycles:
+      parsed.data.period_cycles === undefined
+        ? existing.period_cycles
+        : modelGateFeatures.periodQuota
+          ? serializePeriodCycleState(
+            mergeDefinitionOntoState(existing.period_cycles, cycleValidation.cycles),
+          ) || null
+          : existing.period_cycles,
     allowed_model_aliases:
       parsed.data.allowed_model_aliases === undefined
         ? existing.allowed_model_aliases
@@ -177,6 +192,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
          SET name = ?, description = ?, qps = ?, rpm = ?, tpm = ?,
              quota_requests = ?, quota_tokens = ?,
              quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?,
+             period_cycles = ?,
              allowed_model_aliases = ?, allowed_channel_ids = ?,
              oidc_claim_expr = ?, oidc_claim_priority = ?, is_default = ?, enabled = ?
          WHERE id = ?`,
@@ -191,6 +207,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           merged.quota_period,
           merged.period_quota_tokens,
           merged.period_quota_requests,
+          merged.period_cycles,
           merged.allowed_model_aliases,
           merged.allowed_channel_ids,
           merged.oidc_claim_expr,

@@ -11,6 +11,7 @@ import { softDeleteUser } from "@/lib/services/soft-delete-service";
 import { USERNAME_SCHEMA } from "@/lib/auth/username";
 import { friendlyCredentialPayloadError, passwordSchema } from "@/lib/auth/validation";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
+import { parsePeriodCycles, serializePeriodCycleState, mergeDefinitionOntoState, validatePeriodCycles } from "@/lib/gateway/period-cycles";
 
 const updateSchema = z.object({
   username: USERNAME_SCHEMA.optional(),
@@ -26,6 +27,7 @@ const updateSchema = z.object({
   quota_period: z.number().int().min(0).nullable().optional(),
   period_quota_tokens: z.number().int().min(-1).nullable().optional(),
   period_quota_requests: z.number().int().min(-1).nullable().optional(),
+  period_cycles: z.unknown().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
   note: z.string().max(500).nullable().optional(),
   new_password: passwordSchema().optional(),
@@ -53,6 +55,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     if (unavailable) return unavailable;
   }
 
+  const cycleValidation = validatePeriodCycles(parsed.data.period_cycles);
+  if (!cycleValidation.valid) return jsonError(cycleValidation.error, 400);
+
   const existing = await gatewayDb
     .queryOne<{
         id: number;
@@ -70,12 +75,13 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         quota_period: number | null;
         period_quota_tokens: number | null;
         period_quota_requests: number | null;
+        period_cycles: string | null;
         allowed_model_aliases: string;
         note: string | null;
       }>(
         `SELECT id, username, email, role, group_id, enabled, group_locked, rpm, qps, tpm,
                 quota_tokens, quota_requests,
-                quota_period, period_quota_tokens, period_quota_requests,
+                quota_period, period_quota_tokens, period_quota_requests, period_cycles,
                 allowed_model_aliases, note
          FROM users WHERE id = ? AND deleted_at IS NULL`,
         [id],
@@ -148,6 +154,15 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         : modelGateFeatures.periodQuota
           ? normalizeQuota(parsed.data.period_quota_requests)
           : existing.period_quota_requests,
+    // 周期档需合并已有运行时状态，避免管理员改额度时清空用户的已用量与重置锚点。
+    period_cycles:
+      parsed.data.period_cycles === undefined
+        ? existing.period_cycles
+        : modelGateFeatures.periodQuota
+          ? serializePeriodCycleState(
+            mergeDefinitionOntoState(existing.period_cycles, cycleValidation.cycles),
+          ) || null
+          : existing.period_cycles,
     allowed_model_aliases:
       parsed.data.allowed_model_aliases === undefined
         ? existing.allowed_model_aliases
@@ -183,6 +198,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
          SET username = ?, email = ?, role = ?, group_id = ?, enabled = ?, group_locked = ?, rpm = ?, qps = ?, tpm = ?,
              quota_tokens = ?, quota_requests = ?,
              quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?,
+             period_cycles = ?,
              allowed_model_aliases = ?, note = ?, password_hash = ?,
              token_version = COALESCE(token_version, 0) + 1
          WHERE id = ?`,
@@ -201,6 +217,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           merged.quota_period,
           merged.period_quota_tokens,
           merged.period_quota_requests,
+          merged.period_cycles,
           merged.allowed_model_aliases,
           merged.note,
           nextPasswordHash,
@@ -214,6 +231,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
          SET username = ?, email = ?, role = ?, group_id = ?, enabled = ?, group_locked = ?, rpm = ?, qps = ?, tpm = ?,
              quota_tokens = ?, quota_requests = ?,
              quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?,
+             period_cycles = ?,
              allowed_model_aliases = ?, note = ?
          WHERE id = ?`,
         [
@@ -231,6 +249,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           merged.quota_period,
           merged.period_quota_tokens,
           merged.period_quota_requests,
+          merged.period_cycles,
           merged.allowed_model_aliases,
           merged.note,
           id,
@@ -247,6 +266,22 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   if (modelGateFeatures.periodQuota && (parsed.data.reset_usage === "all" || parsed.data.reset_usage === "period")) {
     await gatewayDb
       .execute("UPDATE users SET period_used_tokens = 0, period_used_requests = 0, period_reset_at = NULL WHERE id = ?", [id]);
+
+    // 档位运行时计数与旧标量列分开存放，重置时一并清零，否则档位配额仍按旧用量继续扣。
+    // 以「本次 UPDATE 后库里的值」为基准读取，避免把 merged.period_cycles 里刚写入的定义值当成已重置状态。
+    const cycleRow = await gatewayDb
+      .queryOne<{ period_cycles: string | null }>("SELECT period_cycles FROM users WHERE id = ?", [id]);
+    const currentCycles = parsePeriodCycles(cycleRow?.period_cycles);
+    if (currentCycles.length > 0) {
+      const resetCycles = currentCycles.map((cycle) => ({
+        ...cycle,
+        used_tokens: 0,
+        used_requests: 0,
+        reset_at: null,
+      }));
+      await gatewayDb
+        .execute("UPDATE users SET period_cycles = ? WHERE id = ?", [serializePeriodCycleState(resetCycles), id]);
+    }
   }
 
   const row = (await gatewayDb

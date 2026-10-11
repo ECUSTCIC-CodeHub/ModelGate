@@ -23,6 +23,9 @@ export async function GET(request: Request) {
       quota_period: effective.quota_period,
       period_quota_tokens: effective.period_quota_tokens,
       period_quota_requests: effective.period_quota_requests,
+      // 只回用户自有的周期档：组级周期档当前只作定义、不参与判定，
+      // 若在这里把合并结果当作用户配置返回，前端会看到一份实际不生效的额度。
+      period_cycles: user.period_cycles ?? null,
     },
   });
 }

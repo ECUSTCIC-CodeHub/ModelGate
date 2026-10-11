@@ -11,6 +11,7 @@ import { listExistingModelAliases, parseAllowedModelAliases, stringifyAllowedMod
 import { USERNAME_SCHEMA } from "@/lib/auth/username";
 import { friendlyCredentialPayloadError, passwordSchema } from "@/lib/auth/validation";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
+import { serializePeriodCycles, validatePeriodCycles } from "@/lib/gateway/period-cycles";
 
 const createSchema = z.object({
   username: USERNAME_SCHEMA,
@@ -27,6 +28,7 @@ const createSchema = z.object({
   quota_period: z.number().int().min(0).nullable().optional(),
   period_quota_tokens: z.number().int().min(-1).nullable().optional(),
   period_quota_requests: z.number().int().min(-1).nullable().optional(),
+  period_cycles: z.unknown().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
   note: z.string().max(500).nullable().optional(),
   group_locked: z.boolean().optional(),
@@ -143,6 +145,7 @@ export async function GET(request: Request) {
       group_quota_period: group?.quota_period ?? null,
       group_period_quota_tokens: group?.period_quota_tokens ?? null,
       group_period_quota_requests: group?.period_quota_requests ?? null,
+      group_period_cycles: group?.period_cycles ?? null,
       effective_rpm: effective.rpm,
       effective_qps: effective.qps,
       effective_tpm: effective.tpm,
@@ -177,6 +180,12 @@ export async function POST(request: Request) {
     .queryOne<{ id: number }>("SELECT id FROM users WHERE username = ?", [parsed.data.username]);
   if (existing) return jsonError("用户名已存在", 409);
 
+  const cycleValidation = validatePeriodCycles(parsed.data.period_cycles);
+  if (!cycleValidation.valid) return jsonError(cycleValidation.error, 400);
+  const periodCycles = modelGateFeatures.periodQuota
+    ? serializePeriodCycles(cycleValidation.cycles) || null
+    : null;
+
   let groupId = parsed.data.group_id ?? null;
   if (groupId === null) {
     const defaultGroup = await gatewayDb
@@ -199,8 +208,9 @@ export async function POST(request: Request) {
          username, password_hash, email, role, group_id, enabled, group_locked,
          rpm, qps, tpm, quota_tokens, quota_requests,
          quota_period, period_quota_tokens, period_quota_requests,
+         period_cycles,
          allowed_model_aliases, note
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         parsed.data.username,
         passwordHash,
@@ -217,6 +227,7 @@ export async function POST(request: Request) {
         modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.quota_period) : null,
         modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_tokens) : null,
         modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_requests) : null,
+        periodCycles,
         stringifyAllowedModelAliases(existingAliases),
         parsed.data.note?.trim() ? parsed.data.note.trim() : null,
       ],

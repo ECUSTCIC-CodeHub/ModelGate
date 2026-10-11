@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { gatewayDb } from "@/lib/core/db";
+import { modelGateFeatures } from "@/lib/core/features";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { GATEWAY_PROTOCOLS, normalizeSupportedProtocols, stringifySupportedProtocols } from "@/lib/gateway/protocols";
@@ -16,6 +17,8 @@ import type { ModelRow } from "@/app/dashboard/channels/channel-model";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { stringifyCustomHeaders, validateCustomHeaders } from "@/lib/gateway/custom-headers";
 import { stringifyRequestBodyOmit, validateRequestBodyOmit } from "@/lib/gateway/request-body-omit";
+import { validatePeriodCycles, serializePeriodCycles } from "@/lib/gateway/period-cycles";
+import { validateMultiplierSchedules, normalizeMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
 
 const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
 
@@ -40,6 +43,7 @@ const createSchema = z.object({
   quota_period: z.number().int().min(0).nullable().optional(),
   period_quota_tokens: z.number().int().min(0).nullable().optional(),
   period_quota_requests: z.number().int().min(0).nullable().optional(),
+  period_cycles: z.unknown().optional(),
   force_include_usage: z.boolean().optional(),
   ua_restrictions: z.string().max(20000).optional(),
   expires_at: z.string().max(32).nullable().optional(),
@@ -63,6 +67,8 @@ const createSchema = z.object({
         request_multiplier: z.number().min(0).max(100).optional(),
         max_concurrency: z.number().int().min(0).optional(),
         quota_mode: z.enum(["follow_group", "bypass_group", "independent", "dual"]).optional(),
+        period_cycles: z.unknown().optional(),
+        multiplier_schedules: z.unknown().optional(),
       }),
     )
     .optional(),
@@ -93,6 +99,8 @@ const MODEL_ROW_COLUMNS = [
   "quota_period",
   "period_quota_tokens",
   "period_quota_requests",
+  "period_cycles",
+  "multiplier_schedules",
   "ua_restrictions",
   "expires_at",
   "system_prompt",
@@ -165,6 +173,13 @@ export async function POST(request: Request) {
     timeRestrictions = normalizeTimeRestrictions(validation.windows);
   }
 
+  const periodCyclesResult = validatePeriodCycles(parsed.data.period_cycles);
+  if (!periodCyclesResult.valid) return jsonError(periodCyclesResult.error, 400);
+  // 精简版不落库周期档：该版本没有周期配额判定，存进去只会是一份永远不生效的数据。
+  const periodCycles = modelGateFeatures.periodQuota
+    ? serializePeriodCycles(periodCyclesResult.cycles) || null
+    : null;
+
   let expiresAt: string | null = null;
   const expiresRaw = parsed.data.expires_at?.trim() ?? "";
   if (expiresRaw) {
@@ -174,11 +189,19 @@ export async function POST(request: Request) {
   }
 
   const supportedProtocols = normalizeSupportedProtocols(parsed.data.supported_protocols);
+  const modelPeriodCycles: Array<string | null> = [];
+  const modelMultiplierSchedules: Array<string | null> = [];
   for (const model of parsed.data.models ?? []) {
     const upstreamProtocol = model.upstream_protocol ?? supportedProtocols[0] ?? "chat_completions";
     if (!supportedProtocols.includes(upstreamProtocol)) {
       return jsonError("模型草稿包含渠道不支持的上游协议", 400);
     }
+    const cyclesResult = validatePeriodCycles(model.period_cycles);
+    if (!cyclesResult.valid) return jsonError(cyclesResult.error, 400);
+    const schedulesResult = validateMultiplierSchedules(model.multiplier_schedules);
+    if (!schedulesResult.valid) return jsonError(schedulesResult.error, 400);
+    modelPeriodCycles.push(modelGateFeatures.periodQuota ? serializePeriodCycles(cyclesResult.cycles) || null : null);
+    modelMultiplierSchedules.push(modelGateFeatures.periodQuota ? normalizeMultiplierSchedules(schedulesResult.schedules) || null : null);
   }
 
   const customHeadersResult = validateCustomHeaders(parsed.data.custom_headers);
@@ -190,8 +213,8 @@ export async function POST(request: Request) {
     const channelEnabled = parsed.data.enabled === false ? 0 : 1;
     const result = await tx
       .execute(
-        `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, force_include_usage, ua_restrictions, expires_at, time_restrictions, custom_headers, request_body_omit, group_name, created_by, api_key_private)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, period_cycles, force_include_usage, ua_restrictions, expires_at, time_restrictions, custom_headers, request_body_omit, group_name, created_by, api_key_private)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           parsed.data.name,
           parsed.data.base_url,
@@ -208,6 +231,7 @@ export async function POST(request: Request) {
           parsed.data.quota_period ?? null,
           parsed.data.period_quota_tokens ?? null,
           parsed.data.period_quota_requests ?? null,
+          periodCycles,
           parsed.data.force_include_usage === false ? 0 : 1,
           parsed.data.ua_restrictions?.trim() ?? "",
           expiresAt,
@@ -221,15 +245,15 @@ export async function POST(request: Request) {
       );
 
     const channelId = Number(result.lastInsertRowid);
-    for (const model of parsed.data.models ?? []) {
+    for (const [index, model] of (parsed.data.models ?? []).entries()) {
       const upstreamProtocol = model.upstream_protocol ?? supportedProtocols[0] ?? "chat_completions";
       const modelProtocols = normalizeSupportedProtocols(model.supported_protocols);
       const validModelProtocols = modelProtocols.filter((p) => supportedProtocols.includes(p));
       const finalModelProtocols = validModelProtocols.length > 0 ? validModelProtocols : [upstreamProtocol];
       await tx
         .execute(
-          `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, supports_vision, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, supports_vision, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, period_cycles, multiplier_schedules)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             model.alias,
             model.real_model,
@@ -245,6 +269,8 @@ export async function POST(request: Request) {
             model.request_multiplier ?? 1,
             model.max_concurrency ?? 0,
             model.quota_mode ?? "follow_group",
+            modelPeriodCycles[index],
+            modelMultiplierSchedules[index],
           ],
         );
     }

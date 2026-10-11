@@ -5,6 +5,8 @@ import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
 import { modelGateFeatures } from "@/lib/core/features";
 import { parseStoredUtc } from "@/lib/core/db/datetime";
+import { parsePeriodCycles, resolveStoredPeriodCycles } from "@/lib/gateway/period-cycles";
+import { toPeriodQuotaEntry } from "@/lib/gateway/quota";
 
 function formatPeriodLabel(seconds: number): string {
   if (seconds === 3600) return "每小时";
@@ -34,11 +36,12 @@ export async function GET(request: Request) {
     quota_period: number | null;
     period_quota_tokens: number | null;
     period_quota_requests: number | null;
+    period_cycles: string | null;
     user_count: number;
   }>(
     `SELECT g.id, g.name, g.qps, g.rpm, g.tpm,
             g.quota_tokens, g.quota_requests, g.quota_period,
-            g.period_quota_tokens, g.period_quota_requests,
+            g.period_quota_tokens, g.period_quota_requests, g.period_cycles,
             COALESCE(u_stats.user_count, 0) AS user_count
      FROM \`groups\` g
      LEFT JOIN (
@@ -60,11 +63,12 @@ export async function GET(request: Request) {
     period_used_tokens: number;
     period_used_requests: number;
     period_reset_at: string | null;
+    period_cycles: string | null;
     model_count: number;
   }>(
     `SELECT c.id, c.name, c.quota_tokens, c.quota_requests, c.quota_period,
             c.period_quota_tokens, c.period_quota_requests,
-            c.period_used_tokens, c.period_used_requests, c.period_reset_at,
+            c.period_used_tokens, c.period_used_requests, c.period_reset_at, c.period_cycles,
             COALESCE(m_stats.model_count, 0) AS model_count
      FROM channels c
      LEFT JOIN (
@@ -90,6 +94,7 @@ export async function GET(request: Request) {
     }
 
     const periodEnabled = modelGateFeatures.periodQuota && c.quota_period;
+    const periods = resolveStoredPeriodCycles(c.period_cycles, c).map(toPeriodQuotaEntry);
 
     return {
       id: c.id,
@@ -110,6 +115,7 @@ export async function GET(request: Request) {
       period_remaining_tokens: periodEnabled && c.period_quota_tokens != null ? Math.max(0, c.period_quota_tokens - periodUsedTokens) : null,
       period_remaining_requests: periodEnabled && c.period_quota_requests != null ? Math.max(0, c.period_quota_requests - periodUsedRequests) : null,
       period_reset_at: periodEnabled ? periodResetAt : null,
+      periods,
     };
   });
 
@@ -128,6 +134,8 @@ export async function GET(request: Request) {
       period_label: periodEnabled ? formatPeriodLabel(g.quota_period as number) : null,
       period_quota_tokens: periodEnabled ? g.period_quota_tokens : null,
       period_quota_requests: periodEnabled ? g.period_quota_requests : null,
+      // 组不持有运行时计数，只展示定义值
+      periods: (modelGateFeatures.periodQuota ? parsePeriodCycles(g.period_cycles) : []).map(toPeriodQuotaEntry),
     };
   });
 
@@ -144,12 +152,13 @@ export async function GET(request: Request) {
     period_used_tokens: number;
     period_used_requests: number;
     period_reset_at: string | null;
+    period_cycles: string | null;
     channel_name: string;
   }>(
     `SELECT m.id, m.alias, m.real_model, m.quota_mode,
             m.quota_tokens, m.quota_requests, m.quota_period,
             m.period_quota_tokens, m.period_quota_requests,
-            m.period_used_tokens, m.period_used_requests, m.period_reset_at,
+            m.period_used_tokens, m.period_used_requests, m.period_reset_at, m.period_cycles,
             c.name AS channel_name
      FROM models m
      JOIN channels c ON c.id = m.channel_id
@@ -194,6 +203,7 @@ export async function GET(request: Request) {
       period_remaining_requests: periodEnabled && selfQuota && m.period_quota_requests != null ? Math.max(0, m.period_quota_requests - periodUsedRequests) : null,
       period_remaining_tokens: periodEnabled && selfQuota && m.period_quota_tokens != null ? Math.max(0, m.period_quota_tokens - periodUsedTokens) : null,
       period_reset_at: periodEnabled ? periodResetAt : null,
+      periods: selfQuota ? resolveStoredPeriodCycles(m.period_cycles, m).map(toPeriodQuotaEntry) : [],
     };
   });
 
