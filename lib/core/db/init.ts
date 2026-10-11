@@ -357,6 +357,13 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("email_send_log", "kind", "kind VARCHAR(16) NOT NULL DEFAULT 'announcement'");
   await db.ensureColumn("email_send_log", "title", "title TEXT");
   await db.ensureColumn("email_send_log", "content", "content TEXT");
+  await db.ensureColumn("users", "period_cycles", "period_cycles TEXT DEFAULT NULL");
+  await db.ensureColumn("groups", "period_cycles", "period_cycles TEXT DEFAULT NULL");
+  await db.ensureColumn("channels", "period_cycles", "period_cycles TEXT DEFAULT NULL");
+  await db.ensureColumn("models", "period_cycles", "period_cycles TEXT DEFAULT NULL");
+  await db.ensureColumn("models", "multiplier_schedules", "multiplier_schedules TEXT DEFAULT NULL");
+  await db.ensureColumn("redeem_codes", "period_cycles", "period_cycles TEXT DEFAULT NULL");
+  await db.ensureColumn("redeem_balances", "period_cycles", "period_cycles TEXT DEFAULT NULL");
 
   if (db.driver === "sqlite") {
     await db.exec(`UPDATE users SET used_tokens = ROUND(used_tokens, 6), used_requests = ROUND(used_requests, 6),

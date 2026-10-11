@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS channels (
   time_restrictions TEXT DEFAULT NULL,
   custom_headers TEXT DEFAULT NULL,
   request_body_omit TEXT DEFAULT NULL,
+  period_cycles TEXT DEFAULT NULL,
   group_name TEXT DEFAULT NULL
 );
 
@@ -33,6 +34,8 @@ CREATE TABLE IF NOT EXISTS models (
   deleted_at DATETIME,
   expires_at DATETIME DEFAULT NULL,
   system_prompt TEXT DEFAULT NULL,
+  period_cycles TEXT DEFAULT NULL,
+  multiplier_schedules TEXT DEFAULT NULL,
   FOREIGN KEY (channel_id) REFERENCES channels(id)
 );
 
@@ -45,6 +48,7 @@ CREATE TABLE IF NOT EXISTS groups (
   tpm INTEGER DEFAULT -1,
   quota_requests INTEGER,
   quota_tokens INTEGER,
+  period_cycles TEXT DEFAULT NULL,
   allowed_model_aliases TEXT DEFAULT '[]',
   is_default INTEGER DEFAULT 0,
   enabled INTEGER DEFAULT 1,
@@ -65,6 +69,7 @@ CREATE TABLE IF NOT EXISTS users (
   quota_requests INTEGER,
   used_tokens INTEGER DEFAULT 0,
   used_requests INTEGER DEFAULT 0,
+  period_cycles TEXT DEFAULT NULL,
   allowed_model_aliases TEXT DEFAULT '[]',
   note TEXT,
   enabled INTEGER DEFAULT 1,
@@ -184,6 +189,7 @@ CREATE TABLE IF NOT EXISTS redeem_codes (
   batch_id TEXT NOT NULL,
   token_quota INTEGER,
   request_quota INTEGER,
+  period_cycles TEXT DEFAULT NULL,
   allowed_channel_ids TEXT DEFAULT '[]',
   allowed_model_aliases TEXT DEFAULT '[]',
   expires_at DATETIME DEFAULT NULL,
@@ -204,6 +210,7 @@ CREATE TABLE IF NOT EXISTS redeem_balances (
   request_quota INTEGER,
   used_tokens INTEGER DEFAULT 0,
   used_requests INTEGER DEFAULT 0,
+  period_cycles TEXT DEFAULT NULL,
   allowed_channel_ids TEXT DEFAULT '[]',
   allowed_model_aliases TEXT DEFAULT '[]',
   expires_at DATETIME DEFAULT NULL,

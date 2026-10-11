@@ -20,6 +20,7 @@ export type DbChannel = {
   period_used_tokens: number;
   period_used_requests: number;
   period_reset_at: string | null;
+  period_cycles: string | null;
   created_at: string;
   deleted_at: string | null;
   force_include_usage: number;
@@ -57,6 +58,8 @@ export type DbModel = {
   period_used_tokens: number;
   period_used_requests: number;
   period_reset_at: string | null;
+  period_cycles: string | null;
+  multiplier_schedules: string | null;
   created_at: string;
   deleted_at: string | null;
   ua_restrictions: string;
@@ -76,6 +79,7 @@ export type DbGroup = {
   quota_period: number | null;
   period_quota_tokens: number | null;
   period_quota_requests: number | null;
+  period_cycles: string | null;
   allowed_model_aliases: string;
   allowed_channel_ids: string;
   oidc_claim_value: string | null;
@@ -113,6 +117,7 @@ export type DbUser = {
   period_used_tokens: number;
   period_used_requests: number;
   period_reset_at: string | null;
+  period_cycles: string | null;
   used_tokens: number;
   used_requests: number;
   allowed_model_aliases: string;

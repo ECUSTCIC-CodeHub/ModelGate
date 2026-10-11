@@ -6,6 +6,7 @@ const TIMESTAMP_KEYS = new Set([
   "deleted_at",
   "period_reset_at",
   "reset_at",
+  "resetAt",
   "last_used_at",
   "expires_at",
 ]);
