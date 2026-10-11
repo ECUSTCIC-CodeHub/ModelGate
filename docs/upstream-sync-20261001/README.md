@@ -479,7 +479,7 @@ CREATE INDEX IF NOT EXISTS idx_usage_hourly_user_hour ON usage_hourly(user_id, h
 | 上游提交 | 结论 |
 |:---|:---|
 | `1c4f1ac` 业务 4xx 不计熔断 | **修复**，新增 `countsAsChannelFailure`，3 处状态推导调用点全部改对 |
-| `f7e484d` 周期配额格式 | **修复**，新增 `period-reset.ts`，旧 RFC3339 值的字典序缺陷已消除 |
+| `f7e484d` 周期配额格式 | **修复**，新增 `period-reset.ts`，旧 RFC3339 值的字典序缺陷已消除（注：该文件已随后续「停用旧单档周期列」改造删除；其中复用的 `parseStoredUtc` / `toMysqlDatetime` 仍由 `lib/core/db/datetime.ts` 提供，多档周期改用 `period-cycles-reset.ts`） |
 | `dfc4ab7` 软删除组名 | **修复**，并补了默认组缺失时的自愈 |
 | `b449c36` 用量累加日志 | **修复**，fire-and-forget 的 unhandledRejection 改为限频记录 |
 | `1332542` 计费四舍五入 | **本已满足**，`cleanFloat` 仅在整数值 1e-6 内收敛，不截断、无系统性少计 |

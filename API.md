@@ -115,22 +115,26 @@ MySQL 模式下启动时自动建表和初始化默认数据。两种驱动共�
 
 时间字段有两种形态：响应里的 `periods[].reset_at` 会统一规范化为 ISO 8601（如 `2026-05-01T00:00:00.000Z`）；而请求/响应中 `period_cycles` 这个 **JSON 字符串**内部保留裸 UTC 形态 `YYYY-MM-DD HH:MM:SS`，前端需自行解析该字符串。
 
-> `period_cycles` 列是**定义与运行时状态的合并存储**（`seconds`/额度上限 + `used_*`/`reset_at`）。写入时提交的是定义值，服务端会按 `seconds` 把已有档位的运行时状态保留下来，因此管理员修改额度不会清空用户已消耗的量、也不会重新锚定窗口。要读取实时用量请以 `periods` 为准。
+> `period_cycles` 列是**定义与运行时状态的合并存储**（`seconds`/额度上限 + `used_*`/`reset_at`）。提交时写入的是定义值：字段缺席则原样沿用原值；显式提交（含空数组）时服务端按 `seconds` 把已有档位的运行时状态保留下来，因此管理员修改额度不会清空用户已消耗的量、也不会重新锚定窗口。要读取实时用量请以 `periods` 为准。
 
 **与旧单档字段的关系**：`quota_period` / `period_quota_tokens` / `period_quota_requests` / `period_used_*` / `period_reset_at` 这组标量列是改造前的单档实现。启动时会做**一次性自动迁移**：旧周期与旧额度都有效、且 `period_cycles` 为空的 `users` / `groups` / `channels` / `models` 行，会被转换成一条 `seconds` 等于旧 `quota_period` 的档位写入 `period_cycles`，已用量与重置锚点一并带入。迁移是幂等的（迁移后 `period_cycles` 非空，不再命中）。
 
 迁移后判定与展示都以 `period_cycles` 为准，**旧列保留在库中仅供回滚**，不再参与限额判定。因此不必手工重建存量配置；如需调整，直接编辑周期档即可。
 
-> 兜底说明：解析时仍保留「`period_cycles` 为空则回退旧单档列」的折算逻辑（`resolveStoredPeriodCycles`），用于覆盖迁移未命中的极少数行（例如 `period_cycles` 曾被写成空数组 `[]` 的行）。这类行的计数由旧列 `period_used_*` 自行承担，因此不会因为兜底折算而重复计费；一旦该行被保存为多档形式，旧列即退回只读。
+> 旧列已全部停止写入与读取：`quota_period` / `period_quota_tokens` / `period_quota_requests` / `period_reset_at` 不再被任何业务代码路径写入，也不再参与限额判定或展示，唯一的业务消费者是启动时的一次性迁移（`migrateLegacyPeriodCycles`）。读取侧原有的兜底折算逻辑（`resolveStoredPeriodCycles`）已删除，因此 `period_cycles` 为空的行不会回退到旧单档配置。时间归一化脚本仍会把 `period_reset_at` 当作普通时间列做格式规范化，不读取其取值参与任何判定。
+>
+> 例外是渠道与模型的 `period_used_tokens` / `period_used_requests`：它们是「总请求配额 / 总 Token 配额」（`quota_requests` / `quota_tokens`）的累计计数器，仍在随请求累加并参与判定，在配额响应中以 `used_*` / `remaining_*` 展示。
+>
+> 用户行与用户组行已完全不再使用这组旧列。用户面响应（登录、刷新、`GET /api/dashboard/profile`）会对用户对象做脱敏，其中一并剔除这组旧列，因此不会出现旧字段。仅管理接口中直接展开数据库行（`SELECT *`）的响应仍可能原样带出旧列，但仅为回滚参考，不代表任何生效配置。
 
 **响应字段**
 
-响应中除原有 `quota_period` / `period_quota_*` / `period_used_*` / `period_reset_at` 标量字段外，新增 `periods` 数组，逐档给出当前状态：
+响应中以 `periods` 数组逐档给出当前状态（旧单档标量字段已不再输出）：
 
 | 字段 | 类型 | 说明 |
 |:---|:---|:---|
 | id | string | 档位标识 |
-| seconds | int | 周期秒数 |
+| period_seconds | int | 周期秒数 |
 | period_label | string | 周期可读文案，如「每日」「每 2 小时」 |
 | quota_tokens / quota_requests | int/null | 该档额度上限，null 表示不限 |
 | used_tokens / used_requests | int | 当前周期已用量 |
@@ -142,7 +146,7 @@ MySQL 模式下启动时自动建表和初始化默认数据。两种驱动共�
   "periods": [
     {
       "id": "c1",
-      "seconds": 86400,
+      "period_seconds": 86400,
       "period_label": "每日",
       "quota_tokens": 1000000,
       "quota_requests": 1000,
@@ -156,7 +160,7 @@ MySQL 模式下启动时自动建表和初始化默认数据。两种驱动共�
 }
 ```
 
-> 存量数据兼容：旧版本写入的单周期标量字段（`quota_period` 等）会在启动时被**一次性迁移**成一条周期档（见上文「与旧单档字段的关系」），迁移后判定与展示都以 `period_cycles` 为准。`resolveStoredPeriodCycles` 仍保留读取时的折算兜底，因此不会出现旧配置失效的瞬间；两套字段同时存在时以 `period_cycles` 为准。旧字段在响应中仍原样输出，但仅供回滚参考，不再参与限额判定。
+> 存量数据兼容：旧版本写入的单周期标量字段（`quota_period` 等）已不再被写入与读取，只在启动时被**一次性迁移**成一条周期档（见上文「与旧单档字段的关系」），迁移后判定与展示都以 `period_cycles` 为准。读取时没有折算兜底，旧字段也不再出现在响应中；旧列保留在库中仅供回滚参考，不再参与限额判定。
 
 > 精简版不支持该字段，提交会被忽略，响应中 `periods` 为 `[]`。
 
@@ -1117,9 +1121,7 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
       "group_name": "default",
       "rpm": -1, "qps": -1, "tpm": -1,
       "quota_tokens": null, "quota_requests": null,
-      "quota_period": null,
-      "period_quota_tokens": null,
-      "period_quota_requests": null,
+      "period_cycles": null,
       "used_tokens": 1234, "used_requests": 56,
       "allowed_model_aliases": [],
       "note": null,
@@ -1127,22 +1129,18 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
       "created_at": "2026-05-08 00:00:00",
       "group_rpm": -1, "group_qps": -1, "group_tpm": -1,
       "group_quota_requests": null, "group_quota_tokens": null,
-      "group_quota_period": null,
-      "group_period_quota_tokens": null,
-      "group_period_quota_requests": null,
       "group_period_cycles": null,
       "effective_rpm": -1, "effective_qps": -1, "effective_tpm": -1,
       "effective_quota_requests": null, "effective_quota_tokens": null,
-      "effective_quota_period": null,
-      "effective_period_quota_tokens": null,
-      "effective_period_quota_requests": null,
-      "period_cycles": null
+      "periods": []
     }
   ],
   "paging": { "limit": 20, "offset": 0, "total": 1 },
   "sorting": { "sort_by": "created_at", "sort_dir": "desc" }
 }
 ```
+
+> 旧单档标量列（`quota_period`、`period_quota_tokens`、`period_quota_requests`、`period_used_tokens`、`period_used_requests`、`period_reset_at`）已停止写入，也不再被查询，因此不会出现在本响应中；它们仅保留在库中供回滚参考。用户的周期配置与用量以 `period_cycles` 与 `periods` 为准，组的档位定义见 `group_period_cycles`。
 
 ### POST /api/admin/users
 
@@ -1163,9 +1161,9 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
   "rpm": -1, "qps": -1, "tpm": -1,
   "quota_tokens": null,
   "quota_requests": null,
-  "quota_period": 86400,
-  "period_quota_tokens": 500000,
-  "period_quota_requests": 1000,
+  "period_cycles": [
+    { "seconds": 86400, "quota_tokens": 500000, "quota_requests": 1000 }
+  ],
   "allowed_model_aliases": [],
   "note": "备注"
 }
@@ -1182,9 +1180,7 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
 | group_locked | bool | 否 | false | 锁定身份组；开启后 OIDC 登录与过期回收定时任务都不再修改该用户的身份组，由管理员手动指定 |
 | rpm / qps / tpm | int | 否 | -1 | 速率限制，-1 表示继承组设置 |
 | quota_tokens / quota_requests | int/null | 否 | null | 总量配额，`null` 表示继承组设置，`-1` 表示不限制（覆盖组） |
-| quota_period | int/null | 否 | null | 周期配额重置周期（秒），null 表示继承组设置 |
-| period_quota_tokens / period_quota_requests | int/null | 否 | null | 周期配额，`null` 表示继承组设置，`-1` 表示不限制（覆盖组） |
-| period_cycles | object[] | 否 | [] | 多档重置周期，见「多档重置周期」一节；与 `quota_period` / `period_quota_*` 二选一，同为完整版功能 |
+| period_cycles | object[] | 否 | [] | 多档重置周期，见「多档重置周期」一节（仅完整版） |
 | allowed_model_aliases | string[] | 否 | [] | 非公开模型白名单，为空表示不额外授权（公开模型不受白名单限制） |
 | note | string | 否 | null | 备注，最长 500 字符 |
 
@@ -1192,10 +1188,12 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
 ```json
 {
   "message": "用户创建成功。",
-  "data": { "id": 1, "username": "newuser", ... },
+  "data": { "id": 1, "username": "newuser", "period_cycles": null, "periods": [], ... },
   "warnings": ["以下模型别名不存在，已忽略: xxx"]
 }
 ```
+
+> `data` 与 `GET /api/admin/users` 列表项同构：`period_cycles` 为该用户自有的档位定义与运行时状态，`periods` 为生效档位（自有档 + 继承自用户组的档位）的当前状态——继承档的用量取该用户自己的计数（`users.group_period_cycles`，按每用户独立计数），因此 `periods` 里的 `used_*` 就是真实用量。`group_period_cycles` 则是所属组的档位**定义**，仅用于前端提示「继承自用户组」，不含该用户的用量。
 
 | 字段 | 类型 | 说明 |
 |:---|:---|:---|
@@ -1231,13 +1229,13 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
 
 > `new_password` 为 8-72 字节（UTF-8 编码，一个汉字约 3 字节）；提交后该用户的全部令牌立即失效。
 
-> 精简版忽略 `quota_period`、`period_quota_tokens`、`period_quota_requests`、`period_cycles`；`reset_usage: "period"` 返回 404，`reset_usage: "all"` 仅重置总量用量。
+> 精简版忽略 `period_cycles`；`reset_usage: "period"` 返回 404，`reset_usage: "all"` 仅重置总量用量。
 
 **响应 (200):**
 ```json
 {
   "message": "用户更新成功。",
-  "data": { "id": 1, "username": "newuser", ... },
+  "data": { "id": 1, "username": "newuser", "period_cycles": null, "periods": [], ... },
   "warnings": ["以下模型别名不存在，已忽略: xxx"]
 }
 ```
@@ -1247,6 +1245,8 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
 | message | string | 操作结果描述 |
 | data | object | 更新后的用户数据 |
 | warnings | string[] | 被忽略的模型别名提示（仅当有不存在于 models 表的别名时出现） |
+
+> `data` 与 `GET /api/admin/users` 列表项同构：`period_cycles` 为该用户自有的档位定义与运行时状态，`periods` 为生效档位（自有档 + 继承自用户组的档位）的当前状态——继承档的用量取该用户自己的计数（`users.group_period_cycles`，按每用户独立计数），因此 `periods` 里的 `used_*` 就是真实用量。`group_period_cycles` 则是所属组的档位**定义**，仅用于前端提示「继承自用户组」，不含该用户的用量。
 
 ### DELETE /api/admin/users/:id
 
@@ -1284,10 +1284,7 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
       "tpm": -1,
       "quota_tokens": null,
       "quota_requests": 100,
-      "quota_period": null,
-      "period_label": null,
-      "period_quota_tokens": null,
-      "period_quota_requests": null
+      "periods": []
     }
   ],
   "channels": [
@@ -1301,15 +1298,20 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
       "used_requests": null,
       "remaining_tokens": 750000,
       "remaining_requests": null,
-      "quota_period": 86400,
-      "period_label": "每日",
-      "period_quota_tokens": 500000,
-      "period_quota_requests": null,
-      "period_used_tokens": 120000,
-      "period_used_requests": null,
-      "period_remaining_tokens": 380000,
-      "period_remaining_requests": null,
-      "period_reset_at": "2026-06-02T00:00:00.000Z"
+      "periods": [
+        {
+          "id": "p1",
+          "period_seconds": 86400,
+          "period_label": "每日",
+          "quota_tokens": 500000,
+          "quota_requests": null,
+          "used_tokens": 120000,
+          "used_requests": 0,
+          "remaining_tokens": 380000,
+          "remaining_requests": null,
+          "reset_at": "2026-06-02T00:00:00.000Z"
+        }
+      ]
     }
   ],
   "models": [
@@ -1325,19 +1327,10 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
       "used_tokens": 75000,
       "remaining_requests": 850,
       "remaining_tokens": 425000,
-      "quota_period": 3600,
-      "period_label": "每小时",
-      "period_quota_requests": 100,
-      "period_quota_tokens": 50000,
-      "period_used_requests": 30,
-      "period_used_tokens": 12000,
-      "period_remaining_requests": 70,
-      "period_remaining_tokens": 38000,
-      "period_reset_at": "2026-06-01T00:00:00.000Z",
       "periods": [
         {
           "id": "c1",
-          "seconds": 3600,
+          "period_seconds": 3600,
           "period_label": "每小时",
           "quota_tokens": 50000,
           "quota_requests": 100,
@@ -1353,7 +1346,7 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
 }
 ```
 
-> 精简版 `quota_period`、`period_label`、`period_quota_*`、`period_used_*`、`period_remaining_*`、`period_reset_at` 字段均为 `null`，`periods` 为 `[]`。
+> 精简版不支持多档重置周期：`periods` 恒为 `[]`，`period_cycles` 提交会被忽略；`used_*` / `remaining_*` 等总配额字段不受影响。
 >
 > `groups` / `channels` / `models` 各项均带 `periods` 数组（多档重置周期的当前状态，见「多档重置周期」一节）；用户组自身不持有运行时计数，其 `periods` 只反映定义值，`used_*` 恒为 0。
 >
@@ -1381,9 +1374,6 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
       "description": null,
       "rpm": -1, "qps": -1, "tpm": -1,
       "quota_requests": null, "quota_tokens": null,
-      "quota_period": null,
-      "period_quota_tokens": null,
-      "period_quota_requests": null,
       "period_cycles": null,
       "allowed_model_aliases": [],
       "allowed_channel_ids": [],
@@ -1412,9 +1402,6 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
   "rpm": 200, "qps": 50, "tpm": 1000000,
   "quota_requests": 10000,
   "quota_tokens": 50000000,
-  "quota_period": 86400,
-  "period_quota_requests": 1000,
-  "period_quota_tokens": 5000000,
   "period_cycles": [
     { "seconds": 86400, "quota_tokens": 5000000, "quota_requests": 1000 }
   ],
@@ -1432,8 +1419,6 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
 | description | string | 否 | null | 描述，最长 200 字符 |
 | rpm / qps / tpm | int | 否 | -1 | 速率限制，-1 表示不限 |
 | quota_requests / quota_tokens | int/null | 否 | null | 总量配额，null 表示不限 |
-| quota_period | int/null | 否 | null | 周期配额重置周期（秒），null 表示不启用 |
-| period_quota_requests / period_quota_tokens | int/null | 否 | null | 周期请求/Token 配额，null 表示不限 |
 | period_cycles | object[] | 否 | [] | 多档重置周期，见「多档重置周期」一节；组档按每用户独立计数生效（仅完整版） |
 | allowed_model_aliases | string[] | 否 | [] | 非公开模型白名单，为空表示不额外授权（公开模型不受白名单限制） |
 | allowed_channel_ids | int[] | 否 | [] | 可命中渠道白名单（按渠道 id），为空表示允许所有渠道；不在白名单内的渠道在路由和模型列表中会被过滤 |
@@ -1588,9 +1573,6 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
   "timeout": 60,
   "quota_tokens": 1000000,
   "quota_requests": null,
-  "quota_period": 86400,
-  "period_quota_tokens": 500000,
-  "period_quota_requests": null,
   "period_cycles": [
     { "seconds": 86400, "quota_tokens": 500000, "quota_requests": null }
   ],
@@ -1633,9 +1615,6 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | timeout | int | 否 | 60 | 超时时间（秒） |
 | quota_tokens | int\|null | 否 | null | 渠道总 Token 配额，null 表示不限制 |
 | quota_requests | int\|null | 否 | null | 渠道总请求配额，null 表示不限制 |
-| quota_period | int\|null | 否 | null | 周期配额重置间隔（秒），null 表示不启用周期配额（仅完整版） |
-| period_quota_tokens | int\|null | 否 | null | 每周期 Token 配额上限（仅完整版） |
-| period_quota_requests | int\|null | 否 | null | 每周期请求配额上限（仅完整版） |
 | period_cycles | object[] | 否 | [] | 多档重置周期，见「多档重置周期」一节；为空数组表示清空已有档位（仅完整版） |
 | force_include_usage | bool | 否 | true | 流式请求时向上游发送 `stream_options.include_usage`，设为 false 可兼容不支持该参数的上游（如微软） |
 | request_body_omit | array\|null | 否 | null | 渠道级请求体字段剔除列表，字符串数组，元素为要从上游请求体中删除的**顶层**字段名（如 `["metadata"]`）。发往该渠道上游的所有请求都会先删除这些字段，用于兼容不接受特定字段的上游（如智谱不接受 `metadata`）。最多 16 项，单个字段名最长 64 字符且须为 `[A-Za-z_][A-Za-z0-9_]*` 形态的顶层字段名（不支持 `a.b`、`a[0]` 这类嵌套路径写法）；重复项自动去重，空字符串项被忽略。`model`、`messages`、`input`、`contents`、`prompt`、`system`、`stream` 承载请求语义，不允许剔除。留空或 null 表示不剔除。读取时容错：脏数据或含非法项时整份退回「不剔除」。`other` 通用转发路径请求体原样转发，该配置对其不生效 |
@@ -1922,9 +1901,6 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
   "quota_mode": "independent",
   "quota_tokens": 1000000,
   "quota_requests": null,
-  "quota_period": 86400,
-  "period_quota_tokens": 500000,
-  "period_quota_requests": null,
   "period_cycles": [
     { "seconds": 86400, "quota_tokens": 500000, "quota_requests": null }
   ],
@@ -1955,9 +1931,6 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | expires_at | string\|null | 否 | null | 过期时间（本地 datetime，如 `2026-08-01T00:00`），null 或留空表示永不过期；到达该时间后该模型在路由中自动不可用，管理员对任意渠道或模型执行操作后，已过期模型会被自动禁用 |
 | quota_tokens | int\|null | 否 | null | 模型总 Token 配额（仅 `independent` / `dual` 模式生效），null 表示不限制 |
 | quota_requests | int\|null | 否 | null | 模型总请求配额（仅 `independent` / `dual` 模式生效），null 表示不限制 |
-| quota_period | int\|null | 否 | null | 周期配额重置间隔（秒），null 表示不启用（仅完整版） |
-| period_quota_tokens | int\|null | 否 | null | 每周期 Token 配额上限（仅完整版） |
-| period_quota_requests | int\|null | 否 | null | 每周期请求配额上限（仅完整版） |
 | period_cycles | object[] | 否 | [] | 多档重置周期，见「多档重置周期」一节；为空数组表示清空已有档位（仅完整版） |
 | multiplier_schedules | object[] | 否 | [] | 分时倍率，见「分时倍率」一节；为空数组表示清空所有时段（仅完整版） |
 
@@ -2341,7 +2314,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
   "periods": [
     {
       "id": "c1",
-      "seconds": 86400,
+      "period_seconds": 86400,
       "period_label": "每日",
       "quota_tokens": 5000000,
       "quota_requests": 1000,
@@ -2352,17 +2325,6 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
       "reset_at": "2026-06-01T00:00:00.000Z"
     }
   ],
-  "period": {
-    "period_seconds": 86400,
-    "period_label": "每日",
-    "quota_requests": 1000,
-    "quota_tokens": 5000000,
-    "used_requests": 50,
-    "used_tokens": 123456,
-    "remaining_requests": 950,
-    "remaining_tokens": 4876544,
-    "reset_at": "2026-06-01T00:00:00.000Z"
-  },
   "rate": {
     "rpm": 200,
     "qps": 50,
@@ -2371,15 +2333,15 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 }
 ```
 
-> `null` 表示不限制。速率限制 `-1` 表示不限制。`period` 在未配置周期配额时为 `null`。
+> `null` 表示不限制。速率限制 `-1` 表示不限制。
 >
-> `periods` 为多档重置周期的当前状态，字段含义见「多档重置周期」一节；未配置周期时为空数组。`period` 保留为兼容字段，取第一个周期档。
+> `periods` 为多档重置周期的当前状态，字段含义见「多档重置周期」一节；未配置周期时为空数组。
 >
 > 组级周期档按**每用户独立计数**生效：用户自己没配置周期档时，`periods` 展示继承自所属用户组的档位，且这些档位**真正参与判定**（额度按每个用户各自计算，与组 `quota_tokens` 等既有字段口径一致）。用户自行配置了同秒数的档位时以用户的为准（覆盖组档），组里其余档位继续继承。
 >
 > 继承档的运行时计数与用户自有档**分开存储**（用户自有档在 `period_cycles`，继承档在 `group_period_cycles`），因此管理员随时收紧、放宽、新增或删除组上的周期档都会**立即对该组所有用户生效**，不会因为曾经计费过而被固化成用户自有档。用户组因此不需要运行时计数器。
 >
-> 精简版 `period` 始终为 `null`，`periods` 始终为 `[]`。
+> 精简版 `periods` 始终为 `[]`。
 
 ### GET /api/user/model-quotas
 
@@ -2408,19 +2370,10 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
       "used_tokens": 75000,
       "remaining_requests": 850,
       "remaining_tokens": 425000,
-      "quota_period": 3600,
-      "period_label": "每小时",
-      "period_quota_requests": 100,
-      "period_quota_tokens": 50000,
-      "period_used_requests": 30,
-      "period_used_tokens": 12000,
-      "period_remaining_requests": 70,
-      "period_remaining_tokens": 38000,
-      "period_reset_at": "2026-06-01T00:00:00.000Z",
       "periods": [
         {
           "id": "c1",
-          "seconds": 3600,
+          "period_seconds": 3600,
           "period_label": "每小时",
           "quota_tokens": 50000,
           "quota_requests": 100,
@@ -2449,15 +2402,6 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
       "used_tokens": null,
       "remaining_requests": null,
       "remaining_tokens": null,
-      "quota_period": null,
-      "period_label": null,
-      "period_quota_requests": null,
-      "period_quota_tokens": null,
-      "period_used_requests": null,
-      "period_used_tokens": null,
-      "period_remaining_requests": null,
-      "period_remaining_tokens": null,
-      "period_reset_at": null,
       "periods": []
     },
     {
@@ -2474,15 +2418,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
       "used_tokens": null,
       "remaining_requests": null,
       "remaining_tokens": null,
-      "quota_period": null,
-      "period_label": null,
-      "period_quota_requests": null,
-      "period_quota_tokens": null,
-      "period_used_requests": null,
-      "period_used_tokens": null,
-      "period_remaining_requests": null,
-      "period_remaining_tokens": null,
-      "period_reset_at": null
+      "periods": []
     }
   ]
 }
@@ -2490,9 +2426,9 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 > 返回当前用户有权访问的所有模型。`channel_id` 为模型所属渠道 ID，`channel_name` 为渠道名称。`follow_group` 模型的配额字段均为 `null`（受用户组配额约束）；`bypass_group` 模型的配额字段均为 `null`（不受配额限制）；`independent` 模型使用自身的配额额度；`dual` 模型同时受用户组配额与模型自身配额约束，配额字段同 `independent` 返回模型自身配额额度。`token_multiplier` 和 `request_multiplier` 表示模型的基础扣量倍率，`effective_*` 为按分时倍率解析后当前时刻实际生效的倍率，`multiplier_schedule_applied` 表示当前是否命中某个分时档位（见「分时倍率」一节）。
 >
-> `periods` 为多档重置周期的当前状态；仅 `independent` / `dual` 模型返回实际档位，其余模式返回 `[]`，此时按 `period_*` 兼容字段展示或不展示。
+> `quota_requests` / `quota_tokens` / `used_*` / `remaining_*` 为模型的**总请求/总 Token 配额**及其累计用量；`periods` 为多档重置周期的当前状态，仅 `independent` / `dual` 模型返回实际档位，其余模式返回 `[]`。
 >
-> 精简版 `quota_period`、`period_label`、`period_quota_*`、`period_used_*`、`period_remaining_*`、`period_reset_at` 字段均为 `null`，`periods` 为 `[]`，`effective_*` 等于基础倍率。
+> 精简版 `periods` 恒为 `[]`，`effective_*` 等于基础倍率。
 
 ---
 
@@ -2537,7 +2473,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
     "periods": [
       {
         "id": "c1",
-        "seconds": 86400,
+        "period_seconds": 86400,
         "period_label": "每日",
         "quota_tokens": 100000,
         "quota_requests": null,
@@ -2591,7 +2527,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
       "periods": [
         {
           "id": "c1",
-          "seconds": 86400,
+          "period_seconds": 86400,
           "period_label": "每日",
           "quota_tokens": 100000,
           "quota_requests": null,
@@ -2783,14 +2719,12 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 |:---|:---|:---|
 | rpm / qps / tpm | int | 生效的速率限制，-1 表示不限 |
 | quota_tokens / quota_requests | int/null | 生效的总额度，null 表示不限 |
-| quota_period | int/null | 旧单档周期秒数，仅供旧客户端兼容 |
-| period_quota_tokens / period_quota_requests | int/null | 旧单档额度，仅供旧客户端兼容 |
 | period_cycles | string/null | 用户自有的周期档原始 JSON |
 | periods | array | 生效的多档周期，含自有档与**继承自用户组的档位**（完整版；精简版恒为 `[]`） |
 
 `periods` 的每项与 `GET /api/user/quota` 同构（见「多档重置周期」一节），字段为 `id`、`period_seconds`、`period_label`、`quota_tokens`、`quota_requests`、`used_tokens`、`used_requests`、`remaining_tokens`、`remaining_requests`、`reset_at`。读取时会按档懒重置窗口，因此 `used_*` / `remaining_*` 为当前窗口内的值，`reset_at` 已规范化为 ISO 时间。
 
-> 侧边栏按 `periods` 展示周期额度；`quota_period` 等旧字段保留仅用于兼容，改造后不再反映实际生效的多档配置。
+> 侧边栏按 `periods` 展示周期额度；`period_cycles` 为「定义 + 运行时状态」的合并存储，实际生效额度以 `periods` 为准。
 
 ### PUT /api/dashboard/profile/password
 
