@@ -40,9 +40,6 @@ const createSchema = z.object({
   timeout: z.number().int().min(1).optional(),
   quota_tokens: z.number().int().min(0).nullable().optional(),
   quota_requests: z.number().int().min(0).nullable().optional(),
-  quota_period: z.number().int().min(0).nullable().optional(),
-  period_quota_tokens: z.number().int().min(0).nullable().optional(),
-  period_quota_requests: z.number().int().min(0).nullable().optional(),
   period_cycles: z.unknown().optional(),
   force_include_usage: z.boolean().optional(),
   ua_restrictions: z.string().max(20000).optional(),
@@ -96,9 +93,6 @@ const MODEL_ROW_COLUMNS = [
   "quota_mode",
   "quota_tokens",
   "quota_requests",
-  "quota_period",
-  "period_quota_tokens",
-  "period_quota_requests",
   "period_cycles",
   "multiplier_schedules",
   "ua_restrictions",
@@ -213,8 +207,8 @@ export async function POST(request: Request) {
     const channelEnabled = parsed.data.enabled === false ? 0 : 1;
     const result = await tx
       .execute(
-        `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, period_cycles, force_include_usage, ua_restrictions, expires_at, time_restrictions, custom_headers, request_body_omit, group_name, created_by, api_key_private)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, period_cycles, force_include_usage, ua_restrictions, expires_at, time_restrictions, custom_headers, request_body_omit, group_name, created_by, api_key_private)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           parsed.data.name,
           parsed.data.base_url,
@@ -228,9 +222,6 @@ export async function POST(request: Request) {
           parsed.data.timeout ?? 60,
           parsed.data.quota_tokens ?? null,
           parsed.data.quota_requests ?? null,
-          parsed.data.quota_period ?? null,
-          parsed.data.period_quota_tokens ?? null,
-          parsed.data.period_quota_requests ?? null,
           periodCycles,
           parsed.data.force_include_usage === false ? 0 : 1,
           parsed.data.ua_restrictions?.trim() ?? "",

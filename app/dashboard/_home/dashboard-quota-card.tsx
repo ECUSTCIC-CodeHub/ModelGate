@@ -86,17 +86,13 @@ function PeriodQuotaBlock({
 
 export function DashboardQuotaCard({ quota }: DashboardQuotaCardProps) {
   if (!quota) return null;
-  const period = quota.period;
   const periods: PeriodQuotaEntry[] = quota.periods ?? [];
 
   const showRate = quota.rate.rpm >= 0 || quota.rate.qps >= 0 || quota.rate.tpm >= 0;
   const showTotalRequests = quota.total.quota_requests !== null;
   const showTotalTokens = quota.total.quota_tokens !== null;
-  const showPeriodRequests = !!period && period.quota_requests !== null;
-  const showPeriodTokens = !!period && period.quota_tokens !== null;
-  const showPeriodCycleFallback = periods.length === 0 && (showPeriodRequests || showPeriodTokens);
 
-  if (!showRate && !showTotalRequests && !showTotalTokens && periods.length === 0 && !showPeriodCycleFallback) {
+  if (!showRate && !showTotalRequests && !showTotalTokens && periods.length === 0) {
     return null;
   }
 
@@ -164,19 +160,6 @@ export function DashboardQuotaCard({ quota }: DashboardQuotaCardProps) {
                 />
               ))
             : null}
-
-          {showPeriodCycleFallback ? (
-            <PeriodQuotaBlock
-              label={period!.period_label}
-              usedRequests={period!.used_requests}
-              quotaRequests={period!.quota_requests}
-              remainingRequests={period!.remaining_requests}
-              usedTokens={period!.used_tokens}
-              quotaTokens={period!.quota_tokens}
-              remainingTokens={period!.remaining_tokens}
-              resetAt={period!.reset_at}
-            />
-          ) : null}
         </div>
       </CardContent>
     </Card>

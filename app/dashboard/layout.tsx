@@ -3,7 +3,6 @@ import { AuthProvider } from "@/components/providers/auth-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { getServerProfileFromCookieStore } from "@/lib/auth/auth";
 import { getAuthStatus } from "@/lib/auth/auth-status";
-import { type DbUser } from "@/lib/core/db";
 import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
 import { modelGateFeatures } from "@/lib/core/features";
 import { cookies, headers } from "next/headers";
@@ -43,7 +42,7 @@ export default async function DashboardLayout({
   const prefsCookie = cookieStore.get(PREFS_COOKIE)?.value;
   const prefs = parsePrefs(prefsCookie);
 
-  const effective = await getEffectiveLimits(profile as DbUser);
+  const effective = await getEffectiveLimits(profile);
   const enrichedProfile = {
     ...profile,
     rpm: effective.rpm,
@@ -51,9 +50,6 @@ export default async function DashboardLayout({
     tpm: effective.tpm,
     quota_tokens: effective.quota_tokens,
     quota_requests: effective.quota_requests,
-    quota_period: effective.quota_period,
-    period_quota_tokens: effective.period_quota_tokens,
-    period_quota_requests: effective.period_quota_requests,
   };
 
   const authStatus = await getAuthStatus();

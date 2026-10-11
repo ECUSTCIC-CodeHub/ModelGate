@@ -336,7 +336,7 @@ async function resetUserCycleUsage(tx: CycleResetExecutor, userId: number): Prom
     })));
   };
   await tx.execute(
-    "UPDATE users SET period_cycles = ?, group_period_cycles = ?, period_used_tokens = 0, period_used_requests = 0, period_reset_at = NULL WHERE id = ?",
+    "UPDATE users SET period_cycles = ?, group_period_cycles = ? WHERE id = ?",
     [clear(row.period_cycles), clear(row.group_period_cycles), userId],
   );
 }

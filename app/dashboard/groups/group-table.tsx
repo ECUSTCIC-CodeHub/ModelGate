@@ -9,12 +9,27 @@ import { ResizeHandle } from "@/components/ui/resize-handle";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatLimit } from "@/lib/shared/formatters";
 import { useResizableColumns, type ColumnWidthDef } from "@/lib/shared/use-resizable-columns";
+import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
 import { formatPeriodLabel, type ChannelOption, type GroupRow } from "./group-model";
 
 function formatAllowedChannels(ids: number[] | undefined, channelOptions: ChannelOption[]) {
   const allowedIds = ids ?? [];
   if (allowedIds.length === 0) return "全部";
   return allowedIds.map((id) => channelOptions.find((channel) => channel.id === id)?.name ?? `#${id}`).join(", ");
+}
+
+// 组表没有运行时计数器，周期档只展示定义值（每用户独立计数，组行上不体现用量）。
+function groupCyclesSummary(row: GroupRow): string {
+  const cycles = parsePeriodCycles(row.period_cycles).filter(
+    (c) => c.quota_requests !== null || c.quota_tokens !== null,
+  );
+  if (cycles.length === 0) return "-";
+  return cycles.map((c) => {
+    const parts: string[] = [];
+    if (c.quota_requests !== null) parts.push(`请求 ${formatLimit(c.quota_requests)}`);
+    if (c.quota_tokens !== null) parts.push(`Token ${formatLimit(c.quota_tokens)}`);
+    return `${formatPeriodLabel(c.seconds)} ${parts.join(" · ")}`;
+  }).join("\n");
 }
 
 export function GroupTable({
@@ -89,7 +104,9 @@ export function GroupTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((row) => (
+          {rows.map((row) => {
+            const cyclesSummary = groupCyclesSummary(row);
+            return (
             <TableRow key={row.id}>
               <TableCell className="font-medium">{row.name}</TableCell>
               <TableCell className="max-w-48">
@@ -109,16 +126,12 @@ export function GroupTable({
               <TableCell>{row.quota_tokens === null ? "∞" : formatLimit(row.quota_tokens)}</TableCell>
               {periodQuotaEnabled ? (
                 <TableCell>
-                  {row.quota_period ? (
-                    <div className="space-y-0.5 text-sm">
-                      <p className="font-medium text-[var(--color-foreground)]">{formatPeriodLabel(row.quota_period)}</p>
-                      <p className="text-xs text-[var(--color-foreground-muted)]">
-                        请求 {row.period_quota_requests === null ? "∞" : formatLimit(row.period_quota_requests)}
-                        {" / "}
-                        Token {row.period_quota_tokens === null ? "∞" : formatLimit(row.period_quota_tokens)}
-                      </p>
-                    </div>
-                  ) : "-"}
+                  <span
+                    className="block whitespace-pre-line text-xs leading-relaxed text-[var(--color-foreground-muted)]"
+                    title={cyclesSummary}
+                  >
+                    {cyclesSummary}
+                  </span>
                 </TableCell>
               ) : null}
               <TableCell className="max-w-48">
@@ -146,7 +159,8 @@ export function GroupTable({
                 )}
               </TableCell>
             </TableRow>
-          ))}
+            );
+          })}
         </TableBody>
       </Table>
     </div>

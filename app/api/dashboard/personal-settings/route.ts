@@ -7,19 +7,27 @@ import { jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { getGatewaySettings } from "@/lib/core/settings";
 
+// 只读取偏好字段。这里不要用 as DbUser 断言：guard.auth.user 是脱敏后的对象，
+// 断言会绕过 SanitizedUser 的类型防线，使已冻结的旧周期列看起来仍然可读。
+type PreferenceFields = Pick<DbUser, "pref_model_fallback" | "pref_vision_fallback" | "pref_quota_fallback">;
+
+function preferencesOf(user: PreferenceFields) {
+  return {
+    model_fallback: user.pref_model_fallback,
+    vision_fallback: user.pref_vision_fallback,
+    quota_fallback: user.pref_quota_fallback,
+  };
+}
+
 export async function GET(request: Request) {
   const guard = await ensureWebUser(request);
   if ("error" in guard) return guard.error;
 
-  const user = guard.auth.user as DbUser;
+  const user: PreferenceFields = guard.auth.user;
   const settings = await getGatewaySettings();
 
   return jsonOk({
-    preferences: {
-      model_fallback: user.pref_model_fallback,
-      vision_fallback: user.pref_vision_fallback,
-      quota_fallback: user.pref_quota_fallback,
-    },
+    preferences: preferencesOf(user),
     defaults: {
       model_fallback: settings.model_fallback_enabled === 1,
       vision_fallback: settings.vision_fallback_enabled === 1,

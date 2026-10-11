@@ -33,9 +33,6 @@ const createSchema = z.object({
   quota_mode: z.enum(QUOTA_MODES).optional(),
   quota_tokens: z.number().int().min(0).nullable().optional(),
   quota_requests: z.number().int().min(0).nullable().optional(),
-  quota_period: z.number().int().min(0).nullable().optional(),
-  period_quota_tokens: z.number().int().min(0).nullable().optional(),
-  period_quota_requests: z.number().int().min(0).nullable().optional(),
   period_cycles: z.unknown().optional(),
   multiplier_schedules: z.unknown().optional(),
   ua_restrictions: z.string().max(20000).optional(),
@@ -120,8 +117,8 @@ export async function POST(request: Request) {
   const result = await gatewayDb.transaction(async (tx) => {
     const res = await tx
       .execute(
-        `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, supports_vision, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, quota_period, period_quota_tokens, period_quota_requests, period_cycles, multiplier_schedules, ua_restrictions, expires_at, system_prompt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, supports_vision, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, period_cycles, multiplier_schedules, ua_restrictions, expires_at, system_prompt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           parsed.data.alias,
           parsed.data.real_model,
@@ -139,9 +136,6 @@ export async function POST(request: Request) {
           parsed.data.quota_mode ?? "follow_group",
           parsed.data.quota_tokens ?? null,
           parsed.data.quota_requests ?? null,
-          parsed.data.quota_period ?? null,
-          parsed.data.period_quota_tokens ?? null,
-          parsed.data.period_quota_requests ?? null,
           periodCycles,
           multiplierSchedules,
           parsed.data.ua_restrictions?.trim() ?? "",

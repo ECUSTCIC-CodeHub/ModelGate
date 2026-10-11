@@ -11,6 +11,8 @@ import { softDeleteUser } from "@/lib/services/soft-delete-service";
 import { USERNAME_SCHEMA } from "@/lib/auth/username";
 import { friendlyCredentialPayloadError, passwordSchema } from "@/lib/auth/validation";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
+import { type EffectiveLimitsInput, getEffectiveLimits } from "@/lib/gateway/effective-limits";
+import { resolveEffectivePeriods } from "@/lib/gateway/quota";
 import { parsePeriodCycles, serializePeriodCycleState, mergeDefinitionOntoState, validatePeriodCycles } from "@/lib/gateway/period-cycles";
 
 const updateSchema = z.object({
@@ -24,9 +26,6 @@ const updateSchema = z.object({
   tpm: z.number().int().min(-1).optional(),
   quota_tokens: z.number().int().min(-1).nullable().optional(),
   quota_requests: z.number().int().min(-1).nullable().optional(),
-  quota_period: z.number().int().min(0).nullable().optional(),
-  period_quota_tokens: z.number().int().min(-1).nullable().optional(),
-  period_quota_requests: z.number().int().min(-1).nullable().optional(),
   period_cycles: z.unknown().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
   note: z.string().max(500).nullable().optional(),
@@ -72,16 +71,13 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         tpm: number;
         quota_tokens: number | null;
         quota_requests: number | null;
-        quota_period: number | null;
-        period_quota_tokens: number | null;
-        period_quota_requests: number | null;
         period_cycles: string | null;
         allowed_model_aliases: string;
         note: string | null;
       }>(
         `SELECT id, username, email, role, group_id, enabled, group_locked, rpm, qps, tpm,
                 quota_tokens, quota_requests,
-                quota_period, period_quota_tokens, period_quota_requests, period_cycles,
+                period_cycles,
                 allowed_model_aliases, note
          FROM users WHERE id = ? AND deleted_at IS NULL`,
         [id],
@@ -136,24 +132,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       parsed.data.quota_requests === undefined
         ? existing.quota_requests
         : normalizeQuota(parsed.data.quota_requests),
-    quota_period:
-      parsed.data.quota_period === undefined
-        ? existing.quota_period
-        : modelGateFeatures.periodQuota
-          ? normalizeQuota(parsed.data.quota_period)
-          : existing.quota_period,
-    period_quota_tokens:
-      parsed.data.period_quota_tokens === undefined
-        ? existing.period_quota_tokens
-        : modelGateFeatures.periodQuota
-          ? normalizeQuota(parsed.data.period_quota_tokens)
-          : existing.period_quota_tokens,
-    period_quota_requests:
-      parsed.data.period_quota_requests === undefined
-        ? existing.period_quota_requests
-        : modelGateFeatures.periodQuota
-          ? normalizeQuota(parsed.data.period_quota_requests)
-          : existing.period_quota_requests,
+    // 周期配额只走 period_cycles：旧单档列（quota_period / period_quota_*）已停止写入，
+    // 仅保留在库里供回滚参考。
     // 周期档需合并已有运行时状态，避免管理员改额度时清空用户的已用量与重置锚点。
     period_cycles:
       parsed.data.period_cycles === undefined
@@ -197,7 +177,6 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         `UPDATE users
          SET username = ?, email = ?, role = ?, group_id = ?, enabled = ?, group_locked = ?, rpm = ?, qps = ?, tpm = ?,
              quota_tokens = ?, quota_requests = ?,
-             quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?,
              period_cycles = ?,
              allowed_model_aliases = ?, note = ?, password_hash = ?,
              token_version = COALESCE(token_version, 0) + 1
@@ -214,9 +193,6 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           merged.tpm,
           merged.quota_tokens,
           merged.quota_requests,
-          merged.quota_period,
-          merged.period_quota_tokens,
-          merged.period_quota_requests,
           merged.period_cycles,
           merged.allowed_model_aliases,
           merged.note,
@@ -230,7 +206,6 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         `UPDATE users
          SET username = ?, email = ?, role = ?, group_id = ?, enabled = ?, group_locked = ?, rpm = ?, qps = ?, tpm = ?,
              quota_tokens = ?, quota_requests = ?,
-             quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?,
              period_cycles = ?,
              allowed_model_aliases = ?, note = ?
          WHERE id = ?`,
@@ -246,9 +221,6 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           merged.tpm,
           merged.quota_tokens,
           merged.quota_requests,
-          merged.quota_period,
-          merged.period_quota_tokens,
-          merged.period_quota_requests,
           merged.period_cycles,
           merged.allowed_model_aliases,
           merged.note,
@@ -264,11 +236,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       .execute("UPDATE `keys` SET used_tokens = 0, used_requests = 0 WHERE user_id = ? AND deleted_at IS NULL", [id]);
   }
   if (modelGateFeatures.periodQuota && (parsed.data.reset_usage === "all" || parsed.data.reset_usage === "period")) {
-    await gatewayDb
-      .execute("UPDATE users SET period_used_tokens = 0, period_used_requests = 0, period_reset_at = NULL WHERE id = ?", [id]);
-
-    // 档位运行时计数与旧标量列分开存放，重置时一并清零，否则档位配额仍按旧用量继续扣。
-    // 以「本次 UPDATE 后库里的值」为基准读取，避免把 merged.period_cycles 里刚写入的定义值当成已重置状态。
+    // 周期用量只存在于档位计数器里（旧标量列已停写），因此这里只清档位计数。
     const cycleRow = await gatewayDb
       .queryOne<{ period_cycles: string | null; group_period_cycles: string | null }>(
         "SELECT period_cycles, group_period_cycles FROM users WHERE id = ?",
@@ -300,23 +268,32 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   }
 
   const row = (await gatewayDb
-    .queryOne<{ allowed_model_aliases: string } & Record<string, unknown>>(
+    .queryOne<EffectiveLimitsInput & {
+      id: number;
+      allowed_model_aliases: string;
+      group_name: string | null;
+      group_period_cycles: string | null;
+    }>(
       `SELECT u.id, u.username, u.email, u.role, u.group_id, g.name AS group_name,
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
-              u.quota_period, u.period_quota_tokens, u.period_quota_requests,
-              u.period_used_tokens, u.period_used_requests, u.period_reset_at,
+              u.period_cycles, g.period_cycles AS group_period_cycles,
               u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.group_locked,
               u.pref_model_fallback, u.pref_vision_fallback, u.pref_quota_fallback,
               u.enabled, u.created_at
        FROM users u
-       LEFT JOIN \`groups\` g ON g.id = u.group_id AND g.deleted_at IS NULL
+       LEFT JOIN \`groups\` g ON g.id = u.group_id AND g.enabled = 1 AND g.deleted_at IS NULL
        WHERE u.id = ? AND u.deleted_at IS NULL`,
       [id],
     ))!;
 
+  // 与列表接口同口径回传生效档位，避免更新与查询两个响应的契约不一致。
+  // 这里在重置用量的分支之后重新查库，因此重置后返回的是归零状态，而不是重置前的旧值。
+  const effective = await getEffectiveLimits(row);
+  const periods = await resolveEffectivePeriods(row.id, effective.period_cycles, row.period_cycles);
+
   return jsonOk({
     message: parsed.data.reset_usage ? "用量已重置。" : "用户更新成功。",
-    data: { ...row, allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases) },
+    data: { ...row, allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases), periods },
     ...(droppedAliases.length > 0 ? { warnings: [`以下模型别名不存在，已忽略: ${droppedAliases.join(", ")}`] } : {}),
   });
 }

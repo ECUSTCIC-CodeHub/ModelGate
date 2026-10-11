@@ -3,14 +3,12 @@ export const dynamic = "force-dynamic";
 import { gatewayDb } from "@/lib/core/db";
 import { ensureUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
-import { parseStoredUtc } from "@/lib/core/db/datetime";
 import { parseAllowedModelAliases } from "@/lib/gateway/model-access";
 import { parseAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { getUserScope, listRedeemScopes, scopeCoversPair, scopesCoverPair } from "@/lib/services/redeem-authorization";
-import { resolveStoredPeriodCycles } from "@/lib/gateway/period-cycles";
+import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
 import { toPeriodQuotaEntry } from "@/lib/gateway/quota";
 import { parseMultiplierSchedules, resolveEffectiveMultiplier } from "@/lib/gateway/multiplier-schedule";
-import { formatPeriodLabel } from "@/lib/shared/period-format";
 
 export async function GET(request: Request) {
   const guard = await ensureUser(request);
@@ -35,21 +33,16 @@ export async function GET(request: Request) {
     quota_mode: string;
     quota_tokens: number | null;
     quota_requests: number | null;
-    quota_period: number | null;
-    period_quota_tokens: number | null;
-    period_quota_requests: number | null;
     period_used_tokens: number;
     period_used_requests: number;
-    period_reset_at: string | null;
     period_cycles: string | null;
     multiplier_schedules: string | null;
     token_multiplier: number;
     request_multiplier: number;
   }>(
     `SELECT m.id, m.alias, m.real_model, m.channel_id, c.name AS channel_name, m.is_public, m.quota_mode,
-            m.quota_tokens, m.quota_requests, m.quota_period,
-            m.period_quota_tokens, m.period_quota_requests,
-            m.period_used_tokens, m.period_used_requests, m.period_reset_at, m.period_cycles,
+            m.quota_tokens, m.quota_requests,
+            m.period_used_tokens, m.period_used_requests, m.period_cycles,
             m.multiplier_schedules,
             m.token_multiplier, m.request_multiplier
      FROM models m
@@ -76,22 +69,11 @@ export async function GET(request: Request) {
 
   const now = new Date();
   const data = accessible.map((m) => {
-    let periodUsedTokens = m.period_used_tokens;
-    let periodUsedRequests = m.period_used_requests;
-    let periodResetAt: string | null = m.period_reset_at;
-    const mReset = parseStoredUtc(m.period_reset_at);
-    if (m.quota_period && mReset && mReset <= now) {
-      periodUsedTokens = 0;
-      periodUsedRequests = 0;
-      const nextReset = new Date(now.getTime() + m.quota_period * 1000);
-      periodResetAt = nextReset.toISOString();
-    }
-
+    // 模型的 quota_tokens / quota_requests 是「总配额」，计数器是 period_used_*。
     const selfQuota = m.quota_mode === "independent" || m.quota_mode === "dual";
-    const periodEnabled = selfQuota && m.quota_period;
-    const periods = selfQuota
-      ? resolveStoredPeriodCycles(m.period_cycles, m).map(toPeriodQuotaEntry)
-      : [];
+    const usedTokens = m.period_used_tokens;
+    const usedRequests = m.period_used_requests;
+    const periods = selfQuota ? parsePeriodCycles(m.period_cycles).map(toPeriodQuotaEntry) : [];
     // 展示当下实际生效的倍率：分时倍率命中时覆盖基础倍率。
     const schedules = parseMultiplierSchedules(m.multiplier_schedules);
     const effective = resolveEffectiveMultiplier(m.token_multiplier ?? 1, m.request_multiplier ?? 1, schedules, now);
@@ -109,19 +91,10 @@ export async function GET(request: Request) {
       multiplier_schedule_applied: effective.schedule_applied,
       quota_requests: selfQuota ? m.quota_requests : null,
       quota_tokens: selfQuota ? m.quota_tokens : null,
-      used_requests: selfQuota ? periodUsedRequests : null,
-      used_tokens: selfQuota ? periodUsedTokens : null,
-      remaining_requests: selfQuota && m.quota_requests !== null ? Math.max(0, m.quota_requests - periodUsedRequests) : null,
-      remaining_tokens: selfQuota && m.quota_tokens !== null ? Math.max(0, m.quota_tokens - periodUsedTokens) : null,
-      quota_period: selfQuota ? m.quota_period : null,
-      period_label: periodEnabled ? formatPeriodLabel(m.quota_period as number) : null,
-      period_quota_requests: periodEnabled ? m.period_quota_requests : null,
-      period_quota_tokens: periodEnabled ? m.period_quota_tokens : null,
-      period_used_requests: periodEnabled && m.period_quota_requests != null ? periodUsedRequests : null,
-      period_used_tokens: periodEnabled && m.period_quota_tokens != null ? periodUsedTokens : null,
-      period_remaining_requests: periodEnabled && m.period_quota_requests != null ? Math.max(0, m.period_quota_requests - periodUsedRequests) : null,
-      period_remaining_tokens: periodEnabled && m.period_quota_tokens != null ? Math.max(0, m.period_quota_tokens - periodUsedTokens) : null,
-      period_reset_at: periodEnabled ? periodResetAt : null,
+      used_requests: selfQuota ? usedRequests : null,
+      used_tokens: selfQuota ? usedTokens : null,
+      remaining_requests: selfQuota && m.quota_requests !== null ? Math.max(0, m.quota_requests - usedRequests) : null,
+      remaining_tokens: selfQuota && m.quota_tokens !== null ? Math.max(0, m.quota_tokens - usedTokens) : null,
       periods,
     };
   });

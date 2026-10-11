@@ -1,6 +1,6 @@
 import { gatewayDb, type DbGroup, type DbUser } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
-import { parsePeriodCycles, resolveStoredPeriodCycles, type PeriodCycle } from "@/lib/gateway/period-cycles";
+import { parsePeriodCycles, type PeriodCycle } from "@/lib/gateway/period-cycles";
 
 export type EffectiveLimits = {
   qps: number;
@@ -8,9 +8,6 @@ export type EffectiveLimits = {
   tpm: number;
   quota_requests: number | null;
   quota_tokens: number | null;
-  quota_period: number | null;
-  period_quota_tokens: number | null;
-  period_quota_requests: number | null;
   // 生效的周期档（自有 + 继承自组）。继承档的计数存在 users.group_period_cycles，
   // 与自有档分开，保证组配置调整始终对用户生效。
   period_cycles: EnforcedCycles;
@@ -30,12 +27,6 @@ function pickQuota(userVal: number | null, groupVal: number | null): number | nu
   // 组表当前不会存 -1，此分支为前瞻性防御
   if (groupVal === -1) return null;
   if (groupVal !== null) return groupVal;
-  return null;
-}
-
-function pickPeriod(userVal: number | null, groupVal: number | null): number | null {
-  if (userVal !== null && userVal > 0) return userVal;
-  if (groupVal !== null && groupVal > 0) return groupVal;
   return null;
 }
 
@@ -76,22 +67,19 @@ export function resolveEnforcedCycles(userCycles: PeriodCycle[], groupCycles: Pe
 
 export const mergePeriodCycles = resolveEnforcedCycles;
 
-export async function getEffectiveLimits(user: DbUser): Promise<EffectiveLimits> {
+export type EffectiveLimitsInput = Pick<
+  DbUser,
+  "group_id" | "qps" | "rpm" | "tpm" | "quota_requests" | "quota_tokens" | "period_cycles"
+>;
+
+export async function getEffectiveLimits(user: EffectiveLimitsInput): Promise<EffectiveLimits> {
   const group = await getUserGroup(user.group_id);
 
-  // 自有档用 resolveStoredPeriodCycles：新列为空时回退旧单档列，
-  // 与计费侧 accumulateCycles 的口径一致，避免判定看到的档位与计费累加的档位不同。
-  // 组档不做同样的回退：groups 表没有 period_used_* 计数列（组档按每用户独立计数），
-  // 且旧单档组配置已由启动迁移写入 period_cycles，这里保持只读新列。
-  const userCycles = resolveStoredPeriodCycles(user.period_cycles, user);
+  // 周期档只认 period_cycles：旧单档列已停止写入，启动迁移已把存量单档配置折成档位，
+  // 因此判定、计费、展示三处共用这一个口径。
+  const userCycles = parsePeriodCycles(user.period_cycles);
   const groupCycles = parsePeriodCycles(group?.period_cycles);
   const merged = modelGateFeatures.periodQuota ? mergePeriodCycles(userCycles, groupCycles) : { own: [], inherited: [], all: [] };
-
-  // 旧单档列继续生效：周期与额度都按「用户值优先、否则组值」取值，
-  // 与改造前的 pickPeriod / pickQuota 行为一致。
-  const legacyPeriod = modelGateFeatures.periodQuota
-    ? pickPeriod(user.quota_period ?? null, group?.quota_period ?? null)
-    : null;
 
   return {
     qps: pickRate(user.qps, group?.qps ?? -1),
@@ -99,9 +87,6 @@ export async function getEffectiveLimits(user: DbUser): Promise<EffectiveLimits>
     tpm: pickRate(user.tpm, group?.tpm ?? -1),
     quota_requests: pickQuota(user.quota_requests, group?.quota_requests ?? null),
     quota_tokens: pickQuota(user.quota_tokens, group?.quota_tokens ?? null),
-    quota_period: legacyPeriod,
-    period_quota_tokens: legacyPeriod ? pickQuota(user.period_quota_tokens ?? null, group?.period_quota_tokens ?? null) : null,
-    period_quota_requests: legacyPeriod ? pickQuota(user.period_quota_requests ?? null, group?.period_quota_requests ?? null) : null,
     period_cycles: merged,
     group_cycles: modelGateFeatures.periodQuota ? groupCycles : [],
   };

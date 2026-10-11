@@ -35,24 +35,6 @@ export function parseSupportedProtocols(raw: string | null | undefined): Protoco
   }
 }
 
-export const PERIOD_PRESETS = [
-  { label: "不限制", value: "" },
-  { label: "每小时", value: "3600" },
-  { label: "每日", value: "86400" },
-  { label: "每周", value: "604800" },
-  { label: "每月", value: "2592000" },
-  { label: "自定义", value: "custom" },
-] as const;
-
-export function periodToPreset(v: number | null): string {
-  if (v === null || v <= 0) return "";
-  if (v === 3600) return "3600";
-  if (v === 86400) return "86400";
-  if (v === 604800) return "604800";
-  if (v === 2592000) return "2592000";
-  return "custom";
-}
-
 export type ModelQuotaMode = "follow_group" | "bypass_group" | "independent" | "dual";
 
 export const QUOTA_MODE_OPTIONS: Array<{ value: ModelQuotaMode; label: string; description: string }> = [
@@ -80,9 +62,6 @@ export type ModelRow = {
   quota_mode: ModelQuotaMode;
   quota_tokens: number | null;
   quota_requests: number | null;
-  quota_period: number | null;
-  period_quota_tokens: number | null;
-  period_quota_requests: number | null;
   ua_restrictions: string;
   expires_at: string | null;
   system_prompt: string | null;
@@ -104,9 +83,6 @@ export type Channel = {
   timeout: number;
   quota_tokens: number | null;
   quota_requests: number | null;
-  quota_period: number | null;
-  period_quota_tokens: number | null;
-  period_quota_requests: number | null;
   force_include_usage: number;
   ua_restrictions: string;
   expires_at: string | null;

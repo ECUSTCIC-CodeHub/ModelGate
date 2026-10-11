@@ -2,11 +2,12 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { hashPassword } from "@/lib/auth/auth";
-import { gatewayDb, type DbUser } from "@/lib/core/db";
+import { gatewayDb } from "@/lib/core/db";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
-import { getEffectiveLimits, getUserGroup } from "@/lib/gateway/effective-limits";
+import { getEffectiveLimits, getUserGroup, type EffectiveLimitsInput } from "@/lib/gateway/effective-limits";
 import { modelGateFeatures } from "@/lib/core/features";
+import { resolveEffectivePeriods } from "@/lib/gateway/quota";
 import { listExistingModelAliases, parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
 import { USERNAME_SCHEMA } from "@/lib/auth/username";
 import { friendlyCredentialPayloadError, passwordSchema } from "@/lib/auth/validation";
@@ -25,9 +26,6 @@ const createSchema = z.object({
   tpm: z.number().int().min(-1).optional(),
   quota_tokens: z.number().int().min(-1).nullable().optional(),
   quota_requests: z.number().int().min(-1).nullable().optional(),
-  quota_period: z.number().int().min(0).nullable().optional(),
-  period_quota_tokens: z.number().int().min(-1).nullable().optional(),
-  period_quota_requests: z.number().int().min(-1).nullable().optional(),
   period_cycles: z.unknown().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
   note: z.string().max(500).nullable().optional(),
@@ -92,12 +90,30 @@ export async function GET(request: Request) {
 
   // period_cycles 必须一起查出来：前端编辑弹窗用它回填档位，缺了它弹窗会显示为空，
   // 保存时提交空数组就会把用户已有的周期档清空。
+  // 旧单档列（quota_period / period_quota_* / period_used_* / period_reset_at）已停止写入与读取，
+  // 不再查询，避免把冻结的历史值混进响应。
   const rows = await gatewayDb
-    .query<DbUser & { group_name: string | null; allowed_model_aliases: string }>(
+    .query<EffectiveLimitsInput & {
+      id: number;
+      username: string;
+      email: string | null;
+      role: "admin" | "user";
+      used_tokens: number;
+      used_requests: number;
+      allowed_model_aliases: string;
+      note: string | null;
+      oidc_issuer: string | null;
+      oidc_subject: string | null;
+      group_locked: number;
+      pref_model_fallback: number;
+      pref_vision_fallback: number;
+      pref_quota_fallback: number;
+      enabled: number;
+      created_at: string;
+      group_name: string | null;
+    }>(
       `SELECT u.id, u.username, u.email, u.role, u.group_id, g.name AS group_name,
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
-              u.quota_period, u.period_quota_tokens, u.period_quota_requests,
-              u.period_used_tokens, u.period_used_requests, u.period_reset_at,
               u.period_cycles,
               u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.group_locked,
               u.pref_model_fallback, u.pref_vision_fallback, u.pref_quota_fallback,
@@ -137,6 +153,9 @@ export async function GET(request: Request) {
   for (const row of rows) {
     const group = await getUserGroup(row.group_id ?? null);
     const effective = await getEffectiveLimits(row);
+    // 生效档位 = 自有档（计数在 period_cycles）+ 组档中未被自有档覆盖的部分（计数在 group_period_cycles），
+    // 与 /api/user/quota 同口径：两处计数分开存放，必须分别推进窗口再合并。
+    const periods = await resolveEffectivePeriods(row.id, effective.period_cycles, row.period_cycles);
     data.push({
       ...row,
       allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases),
@@ -145,18 +164,13 @@ export async function GET(request: Request) {
       group_tpm: group?.tpm ?? null,
       group_quota_requests: group?.quota_requests ?? null,
       group_quota_tokens: group?.quota_tokens ?? null,
-      group_quota_period: group?.quota_period ?? null,
-      group_period_quota_tokens: group?.period_quota_tokens ?? null,
-      group_period_quota_requests: group?.period_quota_requests ?? null,
       group_period_cycles: group?.period_cycles ?? null,
       effective_rpm: effective.rpm,
       effective_qps: effective.qps,
       effective_tpm: effective.tpm,
       effective_quota_requests: effective.quota_requests,
       effective_quota_tokens: effective.quota_tokens,
-      effective_quota_period: effective.quota_period,
-      effective_period_quota_tokens: effective.period_quota_tokens,
-      effective_period_quota_requests: effective.period_quota_requests,
+      periods,
     });
   }
 
@@ -210,10 +224,9 @@ export async function POST(request: Request) {
       `INSERT INTO users (
          username, password_hash, email, role, group_id, enabled, group_locked,
          rpm, qps, tpm, quota_tokens, quota_requests,
-         quota_period, period_quota_tokens, period_quota_requests,
          period_cycles,
          allowed_model_aliases, note
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         parsed.data.username,
         passwordHash,
@@ -227,9 +240,6 @@ export async function POST(request: Request) {
         parsed.data.tpm ?? -1,
         normalizeQuota(parsed.data.quota_tokens),
         normalizeQuota(parsed.data.quota_requests),
-        modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.quota_period) : null,
-        modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_tokens) : null,
-        modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_requests) : null,
         periodCycles,
         stringifyAllowedModelAliases(existingAliases),
         parsed.data.note?.trim() ? parsed.data.note.trim() : null,
@@ -237,23 +247,31 @@ export async function POST(request: Request) {
     );
 
   const row = (await gatewayDb
-    .queryOne<{ allowed_model_aliases: string } & Record<string, unknown>>(
+    .queryOne<EffectiveLimitsInput & {
+      id: number;
+      allowed_model_aliases: string;
+      group_name: string | null;
+      group_period_cycles: string | null;
+    }>(
       `SELECT u.id, u.username, u.email, u.role, u.group_id, g.name AS group_name,
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
-              u.quota_period, u.period_quota_tokens, u.period_quota_requests,
-              u.period_used_tokens, u.period_used_requests, u.period_reset_at,
+              u.period_cycles, g.period_cycles AS group_period_cycles,
               u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.group_locked,
               u.pref_model_fallback, u.pref_vision_fallback, u.pref_quota_fallback,
               u.enabled, u.created_at
        FROM users u
-       LEFT JOIN \`groups\` g ON g.id = u.group_id AND g.deleted_at IS NULL
+       LEFT JOIN \`groups\` g ON g.id = u.group_id AND g.enabled = 1 AND g.deleted_at IS NULL
        WHERE u.id = ? AND u.deleted_at IS NULL`,
       [result.lastInsertRowid],
     ))!;
 
+  // 与列表接口同口径回传生效档位，避免创建与查询两个响应的契约不一致。
+  const effective = await getEffectiveLimits(row);
+  const periods = await resolveEffectivePeriods(row.id, effective.period_cycles, row.period_cycles);
+
   return jsonOk({
     message: "用户创建成功。",
-    data: { ...row, allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases) },
+    data: { ...row, allowed_model_aliases: parseAllowedModelAliases(row.allowed_model_aliases), periods },
     ...(droppedAliases.length > 0 ? { warnings: [`以下模型别名不存在，已忽略: ${droppedAliases.join(", ")}`] } : {}),
   }, 201);
 }

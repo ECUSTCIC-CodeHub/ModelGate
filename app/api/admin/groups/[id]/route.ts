@@ -19,9 +19,6 @@ const updateSchema = z.object({
   tpm: z.number().int().min(-1).optional(),
   quota_requests: z.number().int().min(-1).nullable().optional(),
   quota_tokens: z.number().int().min(-1).nullable().optional(),
-  quota_period: z.number().int().min(0).nullable().optional(),
-  period_quota_tokens: z.number().int().min(-1).nullable().optional(),
-  period_quota_requests: z.number().int().min(-1).nullable().optional(),
   period_cycles: z.unknown().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
   allowed_channel_ids: z.array(z.number().int().positive()).optional(),
@@ -132,24 +129,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       parsed.data.quota_tokens === undefined
         ? existing.quota_tokens
         : normalizeQuota(parsed.data.quota_tokens),
-    quota_period:
-      parsed.data.quota_period === undefined
-        ? existing.quota_period
-        : modelGateFeatures.periodQuota
-          ? normalizeQuota(parsed.data.quota_period)
-          : existing.quota_period,
-    period_quota_tokens:
-      parsed.data.period_quota_tokens === undefined
-        ? existing.period_quota_tokens
-        : modelGateFeatures.periodQuota
-          ? normalizeQuota(parsed.data.period_quota_tokens)
-          : existing.period_quota_tokens,
-    period_quota_requests:
-      parsed.data.period_quota_requests === undefined
-        ? existing.period_quota_requests
-        : modelGateFeatures.periodQuota
-          ? normalizeQuota(parsed.data.period_quota_requests)
-          : existing.period_quota_requests,
+    // 周期配额只走 period_cycles：旧单档列（quota_period / period_quota_*）已停止写入。
     // 周期档需合并已有运行时状态，避免管理员改额度时清空已用量与重置锚点。
     period_cycles:
       parsed.data.period_cycles === undefined
@@ -191,7 +171,6 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         `UPDATE \`groups\`
          SET name = ?, description = ?, qps = ?, rpm = ?, tpm = ?,
              quota_requests = ?, quota_tokens = ?,
-             quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?,
              period_cycles = ?,
              allowed_model_aliases = ?, allowed_channel_ids = ?,
              oidc_claim_expr = ?, oidc_claim_priority = ?, is_default = ?, enabled = ?
@@ -204,9 +183,6 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           merged.tpm,
           merged.quota_requests,
           merged.quota_tokens,
-          merged.quota_period,
-          merged.period_quota_tokens,
-          merged.period_quota_requests,
           merged.period_cycles,
           merged.allowed_model_aliases,
           merged.allowed_channel_ids,

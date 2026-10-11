@@ -1,6 +1,6 @@
 import { gatewayDb } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
-import { resolveStoredPeriodCycles } from "@/lib/gateway/period-cycles";
+import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
 import { ensureCycleResets } from "@/lib/gateway/period-cycles-reset";
 import { findExceededCycle, toPeriodQuotaEntry, type PeriodQuotaEntry } from "@/lib/gateway/quota";
 
@@ -15,17 +15,12 @@ export async function checkChannelQuota(channelId: number, estimatedTokens: numb
     id: number;
     quota_tokens: number | null;
     quota_requests: number | null;
-    quota_period: number | null;
-    period_quota_tokens: number | null;
-    period_quota_requests: number | null;
     period_used_tokens: number;
     period_used_requests: number;
-    period_reset_at: string | null;
     period_cycles: string | null;
   }>(
-    `SELECT id, quota_tokens, quota_requests, quota_period,
-              period_quota_tokens, period_quota_requests,
-              period_used_tokens, period_used_requests, period_reset_at, period_cycles
+    `SELECT id, quota_tokens, quota_requests,
+              period_used_tokens, period_used_requests, period_cycles
               FROM channels WHERE id = ? AND deleted_at IS NULL`,
     [channelId],
   );
@@ -34,7 +29,7 @@ export async function checkChannelQuota(channelId: number, estimatedTokens: numb
     return { ok: false, reason: "渠道不存在" };
   }
 
-  // 旧单档列：user 侧同名的 period_used_* 仍作为该渠道的周期性累计（见 usage-accounting）。
+  // period_used_* 是「总配额」（quota_requests / quota_tokens）的累计，仍在写入。
   const legacyUsedTokens = channel.period_used_tokens;
   const legacyUsedRequests = channel.period_used_requests;
 
@@ -53,7 +48,8 @@ export async function checkChannelQuota(channelId: number, estimatedTokens: numb
   }
 
   if (modelGateFeatures.periodQuota) {
-    const cycles = resolveStoredPeriodCycles(channel.period_cycles, channel);
+    // 渠道的旧单档列已停止写入且不再参与读取，周期档只认 period_cycles。
+    const cycles = parsePeriodCycles(channel.period_cycles);
     if (cycles.length > 0) {
       const reset = await ensureCycleResets("channels", channelId, cycles, undefined, channel.period_cycles);
       quota.periods = reset.map(toPeriodQuotaEntry);

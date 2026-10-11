@@ -34,9 +34,6 @@ const updateSchema = z.object({
   timeout: z.number().int().min(1).optional(),
   quota_tokens: z.number().int().min(0).nullable().optional(),
   quota_requests: z.number().int().min(0).nullable().optional(),
-  quota_period: z.number().int().min(0).nullable().optional(),
-  period_quota_tokens: z.number().int().min(0).nullable().optional(),
-  period_quota_requests: z.number().int().min(0).nullable().optional(),
   period_cycles: z.unknown().optional(),
   force_include_usage: z.boolean().optional(),
   ua_restrictions: z.string().max(20000).optional(),
@@ -237,7 +234,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       .execute(
         `UPDATE channels
          SET name = ?, base_url = ?, api_key = ?, supported_protocols = ?, user_agent = ?, proxy_url = ?, enabled = ?, weight = ?, max_concurrency = ?, timeout = ?,
-             quota_tokens = ?, quota_requests = ?, quota_period = ?, period_quota_tokens = ?, period_quota_requests = ?, period_cycles = ?, force_include_usage = ?, ua_restrictions = ?, expires_at = ?, time_restrictions = ?, custom_headers = ?, request_body_omit = ?, group_name = ?, api_key_private = ?, created_by = ?
+             quota_tokens = ?, quota_requests = ?, period_cycles = ?, force_include_usage = ?, ua_restrictions = ?, expires_at = ?, time_restrictions = ?, custom_headers = ?, request_body_omit = ?, group_name = ?, api_key_private = ?, created_by = ?
          WHERE id = ?`,
         [
           (merged as { name: string }).name,
@@ -252,9 +249,6 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           (merged as { timeout: number }).timeout,
           (merged as { quota_tokens: number | null }).quota_tokens ?? null,
           (merged as { quota_requests: number | null }).quota_requests ?? null,
-          (merged as { quota_period: number | null }).quota_period ?? null,
-          (merged as { period_quota_tokens: number | null }).period_quota_tokens ?? null,
-          (merged as { period_quota_requests: number | null }).period_quota_requests ?? null,
           (merged as { period_cycles: string | null }).period_cycles,
           parsed.data.force_include_usage === undefined
             ? (existing as { force_include_usage: number }).force_include_usage

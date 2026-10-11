@@ -4,19 +4,8 @@ import { gatewayDb } from "@/lib/core/db";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
 import { modelGateFeatures } from "@/lib/core/features";
-import { parseStoredUtc } from "@/lib/core/db/datetime";
-import { parsePeriodCycles, resolveStoredPeriodCycles } from "@/lib/gateway/period-cycles";
+import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
 import { toPeriodQuotaEntry } from "@/lib/gateway/quota";
-
-function formatPeriodLabel(seconds: number): string {
-  if (seconds === 3600) return "每小时";
-  if (seconds === 86400) return "每日";
-  if (seconds === 604800) return "每周";
-  if (seconds === 2592000) return "每月";
-  if (seconds >= 86400) return `每 ${Math.round(seconds / 86400)} 天`;
-  if (seconds >= 3600) return `每 ${Math.round(seconds / 3600)} 小时`;
-  return `每 ${seconds} 秒`;
-}
 
 export async function GET(request: Request) {
   const guard = await ensureAdmin(request);
@@ -33,15 +22,11 @@ export async function GET(request: Request) {
     tpm: number;
     quota_tokens: number | null;
     quota_requests: number | null;
-    quota_period: number | null;
-    period_quota_tokens: number | null;
-    period_quota_requests: number | null;
     period_cycles: string | null;
     user_count: number;
   }>(
     `SELECT g.id, g.name, g.qps, g.rpm, g.tpm,
-            g.quota_tokens, g.quota_requests, g.quota_period,
-            g.period_quota_tokens, g.period_quota_requests, g.period_cycles,
+            g.quota_tokens, g.quota_requests, g.period_cycles,
             COALESCE(u_stats.user_count, 0) AS user_count
      FROM \`groups\` g
      LEFT JOIN (
@@ -57,18 +42,13 @@ export async function GET(request: Request) {
     name: string;
     quota_tokens: number | null;
     quota_requests: number | null;
-    quota_period: number | null;
-    period_quota_tokens: number | null;
-    period_quota_requests: number | null;
     period_used_tokens: number;
     period_used_requests: number;
-    period_reset_at: string | null;
     period_cycles: string | null;
     model_count: number;
   }>(
-    `SELECT c.id, c.name, c.quota_tokens, c.quota_requests, c.quota_period,
-            c.period_quota_tokens, c.period_quota_requests,
-            c.period_used_tokens, c.period_used_requests, c.period_reset_at, c.period_cycles,
+    `SELECT c.id, c.name, c.quota_tokens, c.quota_requests,
+            c.period_used_tokens, c.period_used_requests, c.period_cycles,
             COALESCE(m_stats.model_count, 0) AS model_count
      FROM channels c
      LEFT JOIN (
@@ -79,22 +59,11 @@ export async function GET(request: Request) {
      WHERE c.deleted_at IS NULL AND c.enabled = 1`,
   );
 
-  const now = new Date();
-
   const channels = channelRows.map((c) => {
-    let periodUsedTokens = c.period_used_tokens;
-    let periodUsedRequests = c.period_used_requests;
-    let periodResetAt: string | null = c.period_reset_at;
-    const cReset = parseStoredUtc(c.period_reset_at);
-    if (c.quota_period && cReset && cReset <= now) {
-      periodUsedTokens = 0;
-      periodUsedRequests = 0;
-      const nextReset = new Date(now.getTime() + c.quota_period * 1000);
-      periodResetAt = nextReset.toISOString();
-    }
-
-    const periodEnabled = modelGateFeatures.periodQuota && c.quota_period;
-    const periods = resolveStoredPeriodCycles(c.period_cycles, c).map(toPeriodQuotaEntry);
+    // 渠道的 quota_tokens / quota_requests 是「总配额」，计数器是 period_used_*，
+    // 至今仍在生效且界面上可编辑（见 checkChannelQuota）。该计数器不随窗口重置。
+    const usedTokens = c.period_used_tokens;
+    const usedRequests = c.period_used_requests;
 
     return {
       id: c.id,
@@ -102,42 +71,26 @@ export async function GET(request: Request) {
       model_count: c.model_count,
       quota_tokens: c.quota_tokens,
       quota_requests: c.quota_requests,
-      used_tokens: c.quota_tokens !== null ? periodUsedTokens : null,
-      used_requests: c.quota_requests !== null ? periodUsedRequests : null,
-      remaining_tokens: c.quota_tokens !== null ? Math.max(0, c.quota_tokens - periodUsedTokens) : null,
-      remaining_requests: c.quota_requests !== null ? Math.max(0, c.quota_requests - periodUsedRequests) : null,
-      quota_period: modelGateFeatures.periodQuota ? c.quota_period : null,
-      period_label: periodEnabled ? formatPeriodLabel(c.quota_period as number) : null,
-      period_quota_tokens: periodEnabled ? c.period_quota_tokens : null,
-      period_quota_requests: periodEnabled ? c.period_quota_requests : null,
-      period_used_tokens: periodEnabled && c.period_quota_tokens != null ? periodUsedTokens : null,
-      period_used_requests: periodEnabled && c.period_quota_requests != null ? periodUsedRequests : null,
-      period_remaining_tokens: periodEnabled && c.period_quota_tokens != null ? Math.max(0, c.period_quota_tokens - periodUsedTokens) : null,
-      period_remaining_requests: periodEnabled && c.period_quota_requests != null ? Math.max(0, c.period_quota_requests - periodUsedRequests) : null,
-      period_reset_at: periodEnabled ? periodResetAt : null,
-      periods,
+      used_tokens: c.quota_tokens !== null ? usedTokens : null,
+      used_requests: c.quota_requests !== null ? usedRequests : null,
+      remaining_tokens: c.quota_tokens !== null ? Math.max(0, c.quota_tokens - usedTokens) : null,
+      remaining_requests: c.quota_requests !== null ? Math.max(0, c.quota_requests - usedRequests) : null,
+      periods: parsePeriodCycles(c.period_cycles).map(toPeriodQuotaEntry),
     };
   });
 
-  const groups = groupRows.map((g) => {
-    const periodEnabled = modelGateFeatures.periodQuota && g.quota_period;
-    return {
-      id: g.id,
-      name: g.name,
-      user_count: g.user_count,
-      rpm: g.rpm,
-      qps: g.qps,
-      tpm: g.tpm,
-      quota_tokens: g.quota_tokens,
-      quota_requests: g.quota_requests,
-      quota_period: modelGateFeatures.periodQuota ? g.quota_period : null,
-      period_label: periodEnabled ? formatPeriodLabel(g.quota_period as number) : null,
-      period_quota_tokens: periodEnabled ? g.period_quota_tokens : null,
-      period_quota_requests: periodEnabled ? g.period_quota_requests : null,
-      // 组不持有运行时计数，只展示定义值
-      periods: (modelGateFeatures.periodQuota ? parsePeriodCycles(g.period_cycles) : []).map(toPeriodQuotaEntry),
-    };
-  });
+  const groups = groupRows.map((g) => ({
+    id: g.id,
+    name: g.name,
+    user_count: g.user_count,
+    rpm: g.rpm,
+    qps: g.qps,
+    tpm: g.tpm,
+    quota_tokens: g.quota_tokens,
+    quota_requests: g.quota_requests,
+    // 组不持有运行时计数，只展示定义值
+    periods: (modelGateFeatures.periodQuota ? parsePeriodCycles(g.period_cycles) : []).map(toPeriodQuotaEntry),
+  }));
 
   const modelRows = await gatewayDb.query<{
     id: number;
@@ -146,19 +99,14 @@ export async function GET(request: Request) {
     quota_mode: string;
     quota_tokens: number | null;
     quota_requests: number | null;
-    quota_period: number | null;
-    period_quota_tokens: number | null;
-    period_quota_requests: number | null;
     period_used_tokens: number;
     period_used_requests: number;
-    period_reset_at: string | null;
     period_cycles: string | null;
     channel_name: string;
   }>(
     `SELECT m.id, m.alias, m.real_model, m.quota_mode,
-            m.quota_tokens, m.quota_requests, m.quota_period,
-            m.period_quota_tokens, m.period_quota_requests,
-            m.period_used_tokens, m.period_used_requests, m.period_reset_at, m.period_cycles,
+            m.quota_tokens, m.quota_requests,
+            m.period_used_tokens, m.period_used_requests, m.period_cycles,
             c.name AS channel_name
      FROM models m
      JOIN channels c ON c.id = m.channel_id
@@ -169,18 +117,9 @@ export async function GET(request: Request) {
 
   const models = modelRows.map((m) => {
     const selfQuota = m.quota_mode === "independent" || m.quota_mode === "dual";
-    let periodUsedTokens = m.period_used_tokens;
-    let periodUsedRequests = m.period_used_requests;
-    let periodResetAt: string | null = m.period_reset_at;
-    const mReset = parseStoredUtc(m.period_reset_at);
-    if (m.quota_period && mReset && mReset <= now) {
-      periodUsedTokens = 0;
-      periodUsedRequests = 0;
-      const nextReset = new Date(now.getTime() + m.quota_period * 1000);
-      periodResetAt = nextReset.toISOString();
-    }
-
-    const periodEnabled = modelGateFeatures.periodQuota && m.quota_period;
+    // 模型的 quota_tokens / quota_requests 同为「总配额」，计数器是 period_used_*。
+    const usedTokens = m.period_used_tokens;
+    const usedRequests = m.period_used_requests;
 
     return {
       id: m.id,
@@ -190,20 +129,11 @@ export async function GET(request: Request) {
       quota_mode: m.quota_mode,
       quota_requests: m.quota_requests,
       quota_tokens: m.quota_tokens,
-      used_requests: selfQuota ? periodUsedRequests : null,
-      used_tokens: selfQuota ? periodUsedTokens : null,
-      remaining_requests: selfQuota && m.quota_requests !== null ? Math.max(0, m.quota_requests - periodUsedRequests) : null,
-      remaining_tokens: selfQuota && m.quota_tokens !== null ? Math.max(0, m.quota_tokens - periodUsedTokens) : null,
-      quota_period: modelGateFeatures.periodQuota ? m.quota_period : null,
-      period_label: periodEnabled ? formatPeriodLabel(m.quota_period as number) : null,
-      period_quota_requests: periodEnabled ? m.period_quota_requests : null,
-      period_quota_tokens: periodEnabled ? m.period_quota_tokens : null,
-      period_used_requests: periodEnabled && selfQuota && m.period_quota_requests != null ? periodUsedRequests : null,
-      period_used_tokens: periodEnabled && selfQuota && m.period_quota_tokens != null ? periodUsedTokens : null,
-      period_remaining_requests: periodEnabled && selfQuota && m.period_quota_requests != null ? Math.max(0, m.period_quota_requests - periodUsedRequests) : null,
-      period_remaining_tokens: periodEnabled && selfQuota && m.period_quota_tokens != null ? Math.max(0, m.period_quota_tokens - periodUsedTokens) : null,
-      period_reset_at: periodEnabled ? periodResetAt : null,
-      periods: selfQuota ? resolveStoredPeriodCycles(m.period_cycles, m).map(toPeriodQuotaEntry) : [],
+      used_requests: selfQuota ? usedRequests : null,
+      used_tokens: selfQuota ? usedTokens : null,
+      remaining_requests: selfQuota && m.quota_requests !== null ? Math.max(0, m.quota_requests - usedRequests) : null,
+      remaining_tokens: selfQuota && m.quota_tokens !== null ? Math.max(0, m.quota_tokens - usedTokens) : null,
+      periods: selfQuota ? parsePeriodCycles(m.period_cycles).map(toPeriodQuotaEntry) : [],
     };
   });
 

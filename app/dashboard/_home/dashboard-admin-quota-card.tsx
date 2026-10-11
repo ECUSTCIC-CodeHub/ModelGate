@@ -20,10 +20,6 @@ export type AdminQuotaOverview = {
     tpm: number;
     quota_tokens: number | null;
     quota_requests: number | null;
-    quota_period: number | null;
-    period_label: string | null;
-    period_quota_tokens: number | null;
-    period_quota_requests: number | null;
     periods?: PeriodQuotaEntry[];
   }>;
   channels: Array<{
@@ -36,15 +32,6 @@ export type AdminQuotaOverview = {
     used_requests: number | null;
     remaining_tokens: number | null;
     remaining_requests: number | null;
-    quota_period: number | null;
-    period_label: string | null;
-    period_quota_tokens: number | null;
-    period_quota_requests: number | null;
-    period_used_tokens: number | null;
-    period_used_requests: number | null;
-    period_remaining_tokens: number | null;
-    period_remaining_requests: number | null;
-    period_reset_at: string | null;
     periods?: PeriodQuotaEntry[];
   }>;
   models: Array<{
@@ -59,15 +46,6 @@ export type AdminQuotaOverview = {
     used_tokens: number | null;
     remaining_requests: number | null;
     remaining_tokens: number | null;
-    quota_period: number | null;
-    period_label: string | null;
-    period_quota_requests: number | null;
-    period_quota_tokens: number | null;
-    period_used_requests: number | null;
-    period_used_tokens: number | null;
-    period_remaining_requests: number | null;
-    period_remaining_tokens: number | null;
-    period_reset_at: string | null;
     periods?: PeriodQuotaEntry[];
   }>;
 };
@@ -88,14 +66,8 @@ function QuotaProgress({ remaining, quota }: { remaining: number | null; quota: 
 }
 
 // 多档周期配额：每档一段，展平显示「已用 / 额度」，额度为 null（不限）时显示「不限」。
-function PeriodCycleList({
-  periods,
-  fallback,
-}: {
-  periods: PeriodQuotaEntry[];
-  fallback: React.ReactNode;
-}) {
-  if (periods.length === 0) return <>{fallback}</>;
+function PeriodCycleList({ periods }: { periods: PeriodQuotaEntry[] }) {
+  if (periods.length === 0) return <span className="text-xs text-[var(--color-foreground-muted)]">-</span>;
 
   return (
     <div className="space-y-1">
@@ -175,7 +147,7 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
                     <TableHead>速率限制</TableHead>
                     <TableHead>Token 配额</TableHead>
                     <TableHead>请求配额</TableHead>
-                    {overview.groups.some((g) => (g.periods?.length ?? 0) > 0 || g.period_label) ? <TableHead>周期配额</TableHead> : null}
+                    {overview.groups.some((g) => (g.periods?.length ?? 0) > 0) ? <TableHead>周期配额</TableHead> : null}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -204,30 +176,9 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
                           <span className="text-xs text-[var(--color-foreground-muted)]">不限制</span>
                         )}
                       </TableCell>
-                      {(g.periods?.length ?? 0) > 0 || g.period_label ? (
+                      {(g.periods?.length ?? 0) > 0 ? (
                         <TableCell>
-                          <PeriodCycleList
-                            periods={g.periods ?? []}
-                            fallback={
-                              g.period_label && (g.period_quota_tokens !== null || g.period_quota_requests !== null) ? (
-                                <div className="space-y-1">
-                                  <Badge variant="outline" className="text-xs">{g.period_label}</Badge>
-                                  {g.period_quota_tokens !== null ? (
-                                    <p className="text-xs text-[var(--color-foreground-muted)]">
-                                      Token: {formatTokenCount(g.period_quota_tokens)}
-                                    </p>
-                                  ) : null}
-                                  {g.period_quota_requests !== null ? (
-                                    <p className="text-xs text-[var(--color-foreground-muted)]">
-                                      请求: {formatNumber(g.period_quota_requests)}
-                                    </p>
-                                  ) : null}
-                                </div>
-                              ) : (
-                                <span className="text-xs text-[var(--color-foreground-muted)]">-</span>
-                              )
-                            }
-                          />
+                          <PeriodCycleList periods={g.periods ?? []} />
                         </TableCell>
                       ) : null}
                     </TableRow>
@@ -253,7 +204,7 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
                     <TableHead>模型数</TableHead>
                     <TableHead>Token 配额</TableHead>
                     <TableHead>请求配额</TableHead>
-                    {overview.channels.some((c) => (c.periods?.length ?? 0) > 0 || c.period_label) ? <TableHead>周期配额</TableHead> : null}
+                    {overview.channels.some((c) => (c.periods?.length ?? 0) > 0) ? <TableHead>周期配额</TableHead> : null}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -285,30 +236,9 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
                           <span className="text-xs text-[var(--color-foreground-muted)]">不限制</span>
                         )}
                       </TableCell>
-                      {(c.periods?.length ?? 0) > 0 || c.period_label ? (
+                      {(c.periods?.length ?? 0) > 0 ? (
                         <TableCell>
-                          <PeriodCycleList
-                            periods={c.periods ?? []}
-                            fallback={
-                              c.period_label && (c.period_quota_tokens !== null || c.period_quota_requests !== null) ? (
-                                <div className="space-y-1">
-                                  <Badge variant="outline" className="text-xs">{c.period_label}</Badge>
-                                  {c.period_quota_tokens !== null ? (
-                                    <p className="text-xs text-[var(--color-foreground-muted)]">
-                                      Token: {formatTokenCount(c.period_used_tokens ?? 0)} / {formatTokenCount(c.period_quota_tokens)}
-                                    </p>
-                                  ) : null}
-                                  {c.period_quota_requests !== null ? (
-                                    <p className="text-xs text-[var(--color-foreground-muted)]">
-                                      请求: {formatNumber(c.period_used_requests ?? 0)} / {formatNumber(c.period_quota_requests)}
-                                    </p>
-                                  ) : null}
-                                </div>
-                              ) : (
-                                <span className="text-xs text-[var(--color-foreground-muted)]">-</span>
-                              )
-                            }
-                          />
+                          <PeriodCycleList periods={c.periods ?? []} />
                         </TableCell>
                       ) : null}
                     </TableRow>
@@ -335,7 +265,7 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
                     <TableHead>配额模式</TableHead>
                     <TableHead>Token 配额</TableHead>
                     <TableHead>请求配额</TableHead>
-                    {overview.models.some((m) => (m.periods?.length ?? 0) > 0 || m.period_label) ? <TableHead>周期配额</TableHead> : null}
+                    {overview.models.some((m) => (m.periods?.length ?? 0) > 0) ? <TableHead>周期配额</TableHead> : null}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -383,30 +313,9 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
                           </span>
                         )}
                       </TableCell>
-                      {(m.periods?.length ?? 0) > 0 || m.period_label ? (
+                      {(m.periods?.length ?? 0) > 0 ? (
                         <TableCell>
-                          <PeriodCycleList
-                            periods={m.periods ?? []}
-                            fallback={
-                              (m.quota_mode === "independent" || m.quota_mode === "dual") && m.period_label && (m.period_quota_tokens !== null || m.period_quota_requests !== null) ? (
-                                <div className="space-y-1">
-                                  <Badge variant="outline" className="text-xs">{m.period_label}</Badge>
-                                  {m.period_quota_tokens !== null ? (
-                                    <p className="text-xs text-[var(--color-foreground-muted)]">
-                                      Token: {formatTokenCount(m.period_used_tokens ?? 0)} / {formatTokenCount(m.period_quota_tokens)}
-                                    </p>
-                                  ) : null}
-                                  {m.period_quota_requests !== null ? (
-                                    <p className="text-xs text-[var(--color-foreground-muted)]">
-                                      请求: {formatNumber(m.period_used_requests ?? 0)} / {formatNumber(m.period_quota_requests)}
-                                    </p>
-                                  ) : null}
-                                </div>
-                              ) : (
-                                <span className="text-xs text-[var(--color-foreground-muted)]">-</span>
-                              )
-                            }
-                          />
+                          <PeriodCycleList periods={m.periods ?? []} />
                         </TableCell>
                       ) : null}
                     </TableRow>

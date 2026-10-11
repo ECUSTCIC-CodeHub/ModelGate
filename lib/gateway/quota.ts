@@ -1,4 +1,4 @@
-import { gatewayDb, type DbUser } from "@/lib/core/db";
+import { gatewayDb } from "@/lib/core/db";
 import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
 import { type PeriodCycle } from "@/lib/gateway/period-cycles";
 import { ensureCycleResets, loadGroupCycleState } from "@/lib/gateway/period-cycles-reset";
@@ -60,6 +60,22 @@ export function appendQuotaHeaders(headers: Record<string, string>, quota: Quota
   }
 }
 
+// 生效档位的当前状态：自有档的计数在 users.period_cycles，继承档的计数在
+// users.group_period_cycles，两处分开存放，因此必须分别推进窗口再合并。
+// 只读 getEffectiveLimits 的 period_cycles 会漏掉继承档的实际用量（组表只有定义值），
+// 与判定、计费口径不一致。
+export async function resolveEffectivePeriods(
+  userId: number,
+  enforced: { own: PeriodCycle[]; inherited: PeriodCycle[] },
+  ownRaw: string | null,
+): Promise<PeriodQuotaEntry[]> {
+  const own = enforced.own.length > 0
+    ? await ensureCycleResets("users", userId, enforced.own, undefined, ownRaw)
+    : [];
+  const inherited = await loadGroupCycleState(userId, enforced.inherited);
+  return [...own, ...inherited].map(toPeriodQuotaEntry);
+}
+
 export function toPeriodQuotaEntry(cycle: PeriodCycle): PeriodQuotaEntry {
   return {
     id: cycle.id,
@@ -99,20 +115,13 @@ export async function checkQuota(userId: number, estimatedTokens: number): Promi
     quota_requests: number | null;
     used_tokens: number;
     used_requests: number;
-    quota_period: number | null;
-    period_quota_tokens: number | null;
-    period_quota_requests: number | null;
-    period_used_tokens: number;
-    period_used_requests: number;
-    period_reset_at: string | null;
     period_cycles: string | null;
     rpm: number;
     qps: number;
     tpm: number;
   }>(
     `SELECT id, group_id, quota_tokens, quota_requests, used_tokens, used_requests,
-              quota_period, period_quota_tokens, period_quota_requests,
-              period_used_tokens, period_used_requests, period_reset_at, period_cycles,
+              period_cycles,
               rpm, qps, tpm FROM users WHERE id = ? AND deleted_at IS NULL`,
     [userId],
   );
@@ -121,7 +130,7 @@ export async function checkQuota(userId: number, estimatedTokens: number): Promi
     return { ok: false, reason: "用户不存在" };
   }
 
-  const limits = await getEffectiveLimits(user as DbUser);
+  const limits = await getEffectiveLimits(user);
 
   const quota: QuotaInfo = {
     remaining_requests: limits.quota_requests !== null ? Math.max(0, limits.quota_requests - user.used_requests) : null,

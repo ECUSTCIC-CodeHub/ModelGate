@@ -9,8 +9,9 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 import { ResizeHandle } from "@/components/ui/resize-handle";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatLimit, formatNumber } from "@/lib/shared/formatters";
+import { periodQuotaLines, summarizePeriodQuota } from "@/lib/shared/period-format";
 import { useResizableColumns, type ColumnWidthDef } from "@/lib/shared/use-resizable-columns";
-import { formatPeriodLabel, type UserRow } from "./user-model";
+import { type UserRow } from "./user-model";
 
 export function UserTable({
   rows,
@@ -139,19 +140,14 @@ export function UserTable({
               </TableCell>
               {periodQuotaEnabled ? (
                 <TableCell>
-                  {row.effective_quota_period ? (
-                    <div className="space-y-0.5 text-sm">
-                      <p className="font-medium text-[var(--color-foreground)]">{formatPeriodLabel(row.effective_quota_period)}</p>
-                      <p className="text-xs text-[var(--color-foreground-muted)]">
-                        请求 {row.effective_period_quota_requests === null ? "∞" : formatLimit(row.effective_period_quota_requests)}
-                        {" / "}
-                        Token {row.effective_period_quota_tokens === null ? "∞" : formatLimit(row.effective_period_quota_tokens)}
-                      </p>
-                      <p className="text-xs text-[var(--color-foreground-muted)]">
-                        已用 {formatNumber(row.period_used_requests)} / {formatNumber(row.period_used_tokens)}
-                      </p>
-                    </div>
-                  ) : <span className="text-sm text-[var(--color-foreground-muted)]">-</span>}
+                  <span
+                    className="block whitespace-pre-line text-xs leading-relaxed text-[var(--color-foreground-muted)]"
+                    title={row.periods && row.periods.length > 0 ? summarizePeriodQuota(row.periods) : undefined}
+                  >
+                    {row.periods && row.periods.length > 0
+                      ? periodQuotaLines(row.periods).join("\n") || "-"
+                      : "-"}
+                  </span>
                 </TableCell>
               ) : null}
               <TableCell className="space-x-2 whitespace-nowrap text-right">

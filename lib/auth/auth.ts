@@ -42,7 +42,26 @@ type TokenPayload = {
   tv: number;
 };
 
-export type SanitizedUser = Omit<DbUser, "password_hash" | "token_version">;
+// 旧单档周期列已停止写入与读取，不再属于对外的用户对象；
+// 这些列在库中保留仅供回滚，任何 SELECT * 展开出来的旧值都会在这里被剔除。
+export type LegacyPeriodKeys =
+  | "quota_period"
+  | "period_quota_tokens"
+  | "period_quota_requests"
+  | "period_used_tokens"
+  | "period_used_requests"
+  | "period_reset_at";
+
+const LEGACY_PERIOD_KEYS: LegacyPeriodKeys[] = [
+  "quota_period",
+  "period_quota_tokens",
+  "period_quota_requests",
+  "period_used_tokens",
+  "period_used_requests",
+  "period_reset_at",
+];
+
+export type SanitizedUser = Omit<DbUser, "password_hash" | "token_version" | LegacyPeriodKeys>;
 
 export type AuthContext = {
   user: SanitizedUser;
@@ -146,6 +165,8 @@ export function sanitizeUser(user: DbUser): SanitizedUser {
   delete rest.totp_enabled;
   // 令牌版本号属内部状态，且剔除后能让「用已脱敏对象签发令牌」在类型层面直接编译失败
   delete rest.token_version;
+  // 旧单档周期列已冻结，避免经 SELECT * 回传给客户端
+  for (const key of LEGACY_PERIOD_KEYS) delete rest[key];
   return rest as SanitizedUser;
 }
 

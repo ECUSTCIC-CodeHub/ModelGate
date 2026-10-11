@@ -1,7 +1,7 @@
 "use client";
 
 import { modelGateFeatures } from "@/lib/core/features";
-import { formatLimit, periodExpired, periodLabel } from "@/components/layout/dashboard-shell/format";
+import { formatLimit } from "@/components/layout/dashboard-shell/format";
 import { ProfileActions } from "@/components/layout/dashboard-shell/profile-actions";
 import type { ProfileBrief } from "@/components/layout/dashboard-shell/types";
 import { formatNumber, formatTokenCount } from "@/lib/shared/utils";
@@ -83,27 +83,8 @@ function quotaRows(profile: ProfileBrief): QuotaRow[] {
     return rows;
   }
 
-  // 回退旧单档列，兼容尚未产生周期档的账号。
-  const legacyPeriod = profile.quota_period;
-  if (legacyPeriod) {
-    const expired = periodExpired(profile.period_reset_at);
-    const legacyRequests = profile.period_quota_requests;
-    const legacyTokens = profile.period_quota_tokens;
-    if (legacyRequests !== null && legacyRequests !== undefined || legacyTokens !== null && legacyTokens !== undefined) {
-      rows.push({
-        key: "legacy",
-        label: periodLabel(legacyPeriod),
-        value: cycleValue(
-          legacyRequests !== null && legacyRequests !== undefined
-            ? requestPair(Math.max(0, legacyRequests - (expired ? 0 : (profile.period_used_requests ?? 0))), legacyRequests)
-            : null,
-          legacyTokens !== null && legacyTokens !== undefined
-            ? tokenPair(Math.max(0, legacyTokens - (expired ? 0 : (profile.period_used_tokens ?? 0))), legacyTokens)
-            : null,
-        ),
-      });
-    }
-  }
+  // periods 为空数组表示确实没有配置任何周期档，此时不再回退旧单档列
+  // （旧列已停止写入，回退只会展示过期额度）。
   return rows;
 }
 
@@ -187,19 +168,6 @@ export function MobileProfileSummary({ profile }: { profile: ProfileBrief }) {
           </p>
           ))
         : null}
-      {modelGateFeatures.periodQuota && profile.periods?.length === 0 && profile.quota_period ? (
-        <p className="mt-1 text-xs text-[var(--color-foreground-muted)]">
-          {periodLabel(profile.quota_period)}{" "}
-          {cycleValue(
-            profile.period_quota_requests !== null && profile.period_quota_requests !== undefined
-              ? requestPair(periodExpired(profile.period_reset_at) ? profile.period_quota_requests : Math.max(0, profile.period_quota_requests - (profile.period_used_requests ?? 0)), profile.period_quota_requests)
-              : null,
-            profile.period_quota_tokens !== null && profile.period_quota_tokens !== undefined
-              ? tokenPair(periodExpired(profile.period_reset_at) ? profile.period_quota_tokens : Math.max(0, profile.period_quota_tokens - (profile.period_used_tokens ?? 0)), profile.period_quota_tokens)
-              : null,
-          )}
-        </p>
-      ) : null}
     </div>
   );
 }

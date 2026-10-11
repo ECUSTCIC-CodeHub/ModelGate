@@ -206,7 +206,8 @@ export function validatePeriodCycles(input: unknown): { valid: true; cycles: Per
   return { valid: true, cycles };
 }
 
-// 旧标量列（单档周期）→ 档位数组。用于读取尚未迁移的历史数据。
+// 旧标量列（单档周期）→ 档位数组。仅供启动时的一次性迁移使用：
+// 迁移后判定、计费、展示一律只读 period_cycles。
 // 三张表的旧列结构一致：quota_period + period_quota_* + period_used_* + period_reset_at。
 export function legacyToPeriodCycle(row: {
   quota_period: number | null;
@@ -228,16 +229,6 @@ export function legacyToPeriodCycle(row: {
     used_requests: cleanCount(row.period_used_requests),
     reset_at: parsedReset ? toMysqlDatetime(parsedReset) : null,
   }];
-}
-
-// 优先用新列，为空时回退旧标量列。
-export function resolveStoredPeriodCycles(
-  rawCycles: string | null | undefined,
-  legacyRow: Parameters<typeof legacyToPeriodCycle>[0],
-): PeriodCycle[] {
-  const cycles = parsePeriodCycles(rawCycles);
-  if (cycles.length > 0) return cycles;
-  return legacyToPeriodCycle(legacyRow);
 }
 
 // 周期配额的懒重置需要访问数据库，已拆到 period-cycles-reset.ts，

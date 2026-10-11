@@ -2,7 +2,7 @@ import { gatewayDb, ensureDbReady } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { parseStoredUtc, toMysqlDatetime } from "@/lib/core/db/datetime";
-import { applyCycleUsage, parsePeriodCycles, resolveStoredPeriodCycles, serializePeriodCycleState, type PeriodCycle } from "@/lib/gateway/period-cycles";
+import { applyCycleUsage, parsePeriodCycles, serializePeriodCycleState, type PeriodCycle } from "@/lib/gateway/period-cycles";
 import { ensureCycleResets } from "@/lib/gateway/period-cycles-reset";
 import { parseMultiplierSchedules, resolveEffectiveMultiplier } from "@/lib/gateway/multiplier-schedule";
 import { buildRedeemScope, scopeCoversPair, balanceHasRemaining } from "@/lib/services/redeem-authorization";
@@ -30,43 +30,26 @@ async function accumulateCycles(
   // 直接比较会漏加行锁。
   const isMysql = (await ensureDbReady()).driver === "mysql";
   // 只有 users 有 group_period_cycles；其余表保持单列查询，避免引用不存在的列。
-  // 旧单档列只在 users/channels/models 上存在，redeem_balances 没有。
-  const hasLegacy = table !== "redeem_balances";
-  const legacySelect = hasLegacy
-    ? "quota_period, period_quota_tokens, period_quota_requests, period_used_tokens, period_used_requests, period_reset_at"
-    : "NULL AS quota_period, NULL AS period_quota_tokens, NULL AS period_quota_requests, NULL AS period_used_tokens, NULL AS period_used_requests, NULL AS period_reset_at";
   const cycleSelect = table === "users"
     ? "period_cycles, group_period_cycles"
     : "period_cycles, NULL AS group_period_cycles";
   const row = await tx.queryOne<{
     period_cycles: string | null;
     group_period_cycles: string | null;
-    quota_period: number | null;
-    period_quota_tokens: number | null;
-    period_quota_requests: number | null;
-    period_used_tokens: number;
-    period_used_requests: number;
-    period_reset_at: string | null;
   }>(
-    `SELECT ${cycleSelect}, ${legacySelect} FROM ${table} WHERE id = ?${isMysql ? " FOR UPDATE" : ""}`,
+    `SELECT ${cycleSelect} FROM ${table} WHERE id = ?${isMysql ? " FOR UPDATE" : ""}`,
     [id],
   );
   if (!row) return;
   // 自有档与继承档分开累加：继承自用户组的档位计数写 users.group_period_cycles，
   // 不能混进 period_cycles，否则组档会被物化成用户自有档，
   // 组后续收紧/放宽/删除对该用户永久失效，已删除的组限制还会继续拦人。
-  // 自有档的解析口径必须与判定侧 checkQuota 一致：新列为空时回退旧单档列。
-  // 否则「靠旧列生效」的用户在判定上被拦住、计费却从不累加，档位就成了永远拦人的死限。
-  const storedOwn = parsePeriodCycles(row.period_cycles);
-  const ownCycles = resolveStoredPeriodCycles(row.period_cycles, row);
-  // 计数只写回新列，且仅在该行已有新列档位时写回：旧单档列由下方 period_used_* 的
-  // 独立自增承担计数（见本文件各 UPDATE），此处若把折算出的档位回写新列，
-  // 同一笔用量会同时记在新列与旧列上，形成重复计数。旧列因此保持只读，
-  // 判定侧的回退折算只用于读取，不改变计数载体。
-  if (storedOwn.length > 0) {
+  // 周期档只认 period_cycles：旧单档列已停止写入与自增，启动迁移已把存量单档配置折成档位。
+  const ownCycles = parsePeriodCycles(row.period_cycles);
+  if (ownCycles.length > 0) {
     await tx.execute(
       `UPDATE ${table} SET period_cycles = ? WHERE id = ?`,
-      [serializePeriodCycleState(applyCycleUsage(storedOwn, deltaTokens, deltaRequests)), id],
+      [serializePeriodCycleState(applyCycleUsage(ownCycles, deltaTokens, deltaRequests)), id],
     );
   }
   if (table !== "users") return;
@@ -144,10 +127,7 @@ async function findMatchingBalanceInTx(
     // 先推进已到期的周期窗口再判定：核销快照只带定义值、reset_at 为 null，
     // 不推进的话周期额度会退化成一次性总额度，首周期用尽后永久不可用。
     // 事务内重置，与随后同一事务里的累加共用同一条连接。
-    let cycles = resolveStoredPeriodCycles(row.period_cycles, {
-      quota_period: null, period_quota_tokens: null, period_quota_requests: null,
-      period_used_tokens: 0, period_used_requests: 0, period_reset_at: null,
-    });
+    let cycles = parsePeriodCycles(row.period_cycles);
     if (modelGateFeatures.periodQuota && cycles.length > 0) {
       cycles = await ensureCycleResets("redeem_balances", row.id, cycles, tx, row.period_cycles);
       row.period_cycles = serializePeriodCycleState(cycles);
@@ -260,12 +240,12 @@ async function addUsageOrThrow(userId: number, keyId: number, tokens: number, re
 
     if (!coveredByRedeem) {
       if (modelGateFeatures.periodQuota) {
+        // 周期用量只累加到 period_cycles 的档位计数器里，旧列 period_used_* 已停止写入。
         await tx.execute(
           `UPDATE users
-             SET used_tokens = used_tokens + ?, used_requests = used_requests + ?,
-                 period_used_tokens = period_used_tokens + ?, period_used_requests = period_used_requests + ?
+             SET used_tokens = used_tokens + ?, used_requests = used_requests + ?
              WHERE id = ? AND deleted_at IS NULL`,
-          [billedTokens, billedRequests, billedTokens, billedRequests, userId],
+          [billedTokens, billedRequests, userId],
         );
         // 周期档的计数存在 period_cycles JSON 里，SQL 无法直接按档累加，需读改写。
         // 与上面的总量累加同处一个事务，保证不会出现「总量已扣、周期未扣」的偏差。
@@ -289,6 +269,11 @@ async function addUsageOrThrow(userId: number, keyId: number, tokens: number, re
       [billedTokens, billedRequests, keyId],
     );
 
+    // 渠道/模型的 period_used_* 与用户侧不同：它是「总请求/总 Token 配额」
+    // （quota_requests / quota_tokens，见 checkChannelQuota / checkModelQuota）的计数器，
+    // 至今仍在生效且界面上可编辑，因此这里继续累加。
+    // 渠道/模型的旧单档周期定义列（quota_period / period_quota_*）已停止写入，
+    // 周期配额统一走 period_cycles。
     if (channelId != null && modelGateFeatures.periodQuota) {
       await tx.execute(
         `UPDATE channels

@@ -26,15 +26,6 @@ type ModelQuota = {
   used_tokens: number | null;
   remaining_requests: number | null;
   remaining_tokens: number | null;
-  quota_period: number | null;
-  period_label: string | null;
-  period_quota_requests: number | null;
-  period_quota_tokens: number | null;
-  period_used_requests: number | null;
-  period_used_tokens: number | null;
-  period_remaining_requests: number | null;
-  period_remaining_tokens: number | null;
-  period_reset_at: string | null;
   periods?: PeriodQuotaEntry[];
   effective_token_multiplier?: number;
   effective_request_multiplier?: number;
@@ -81,19 +72,12 @@ function TokenQuotaBar({ used, total }: { used: number; total: number | null }) 
 
 function ModelPeriodRequests({ model }: { model: ModelQuota }) {
   const cycles = model.periods ?? [];
-  if (cycles.length === 0) {
-    return model.period_quota_requests != null ? (
-      <div className="space-y-1">
-        <Badge variant="outline" className="text-xs">{model.period_label}</Badge>
-        <QuotaBar used={model.period_used_requests ?? 0} total={model.period_quota_requests} />
-      </div>
-    ) : (
-      <span className="text-xs text-[var(--color-foreground-muted)]">-</span>
-    );
-  }
-
   const limited = cycles.filter((entry) => entry.quota_requests !== null);
-  if (limited.length === 0) return <span className="text-xs text-[var(--color-foreground-muted)]">不限制</span>;
+  if (limited.length === 0) {
+    return cycles.length === 0
+      ? <span className="text-xs text-[var(--color-foreground-muted)]">-</span>
+      : <span className="text-xs text-[var(--color-foreground-muted)]">不限制</span>;
+  }
 
   return (
     <div className="space-y-1">
@@ -109,19 +93,12 @@ function ModelPeriodRequests({ model }: { model: ModelQuota }) {
 
 function ModelPeriodTokens({ model }: { model: ModelQuota }) {
   const cycles = model.periods ?? [];
-  if (cycles.length === 0) {
-    return model.period_quota_tokens != null ? (
-      <div className="space-y-1">
-        <Badge variant="outline" className="text-xs">{model.period_label}</Badge>
-        <TokenQuotaBar used={model.period_used_tokens ?? 0} total={model.period_quota_tokens} />
-      </div>
-    ) : (
-      <span className="text-xs text-[var(--color-foreground-muted)]">-</span>
-    );
-  }
-
   const limited = cycles.filter((entry) => entry.quota_tokens !== null);
-  if (limited.length === 0) return <span className="text-xs text-[var(--color-foreground-muted)]">不限制</span>;
+  if (limited.length === 0) {
+    return cycles.length === 0
+      ? <span className="text-xs text-[var(--color-foreground-muted)]">-</span>
+      : <span className="text-xs text-[var(--color-foreground-muted)]">不限制</span>;
+  }
 
   return (
     <div className="space-y-1">
@@ -139,17 +116,11 @@ function UserQuotaContent({ quota, modelQuotas }: { quota: QuotaData | null; mod
   const independentModels = modelQuotas.filter((m) => m.quota_mode === "independent" || m.quota_mode === "dual");
   const bypassModels = modelQuotas.filter((m) => m.quota_mode === "bypass_group");
 
-  const resetEntries = independentModels.flatMap((m) => {
-    const cycles = m.periods ?? [];
-    if (cycles.length > 0) {
-      return cycles
-        .filter((entry) => entry.reset_at)
-        .map((entry) => ({ key: `${m.alias}:${entry.id}`, alias: m.alias, label: entry.period_label, resetAt: entry.reset_at as string }));
-    }
-    return m.period_reset_at
-      ? [{ key: `${m.alias}:legacy`, alias: m.alias, label: m.period_label ?? "", resetAt: m.period_reset_at as string }]
-      : [];
-  });
+  const resetEntries = independentModels.flatMap((m) =>
+    (m.periods ?? [])
+      .filter((entry) => entry.reset_at)
+      .map((entry) => ({ key: `${m.alias}:${entry.id}`, alias: m.alias, label: entry.period_label, resetAt: entry.reset_at as string })),
+  );
 
   return (
     <div className="space-y-4 pb-6">

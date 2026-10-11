@@ -42,9 +42,6 @@ function pickGroupLimits(row: UserRow): UserGroupLimits | null {
     tpm: row.group_tpm,
     quota_requests: row.group_quota_requests,
     quota_tokens: row.group_quota_tokens,
-    quota_period: row.group_quota_period,
-    period_quota_tokens: row.group_period_quota_tokens,
-    period_quota_requests: row.group_period_quota_requests,
     period_cycles: row.group_period_cycles,
   };
 }

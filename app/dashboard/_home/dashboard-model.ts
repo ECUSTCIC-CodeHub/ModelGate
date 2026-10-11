@@ -12,17 +12,6 @@ export type QuotaData = {
     remaining_requests: number | null;
     remaining_tokens: number | null;
   };
-  period: {
-    period_seconds: number;
-    period_label: string;
-    quota_requests: number | null;
-    quota_tokens: number | null;
-    used_requests: number;
-    used_tokens: number;
-    remaining_requests: number | null;
-    remaining_tokens: number | null;
-    reset_at: string | null;
-  } | null;
   rate: {
     rpm: number;
     qps: number;

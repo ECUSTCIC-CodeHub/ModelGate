@@ -4,7 +4,7 @@ import { getGatewaySettings } from "@/lib/core/settings";
 import { modelGateFeatures } from "@/lib/core/features";
 import { getUserGroup } from "@/lib/gateway/effective-limits";
 import { parseAllowedChannelIds } from "@/lib/gateway/channel-access";
-import { resolveStoredPeriodCycles } from "@/lib/gateway/period-cycles";
+import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
 import { ensureCycleResets } from "@/lib/gateway/period-cycles-reset";
 import { findExceededCycle } from "@/lib/gateway/quota";
 
@@ -64,10 +64,8 @@ export function balanceHasRemaining(row: {
 }): boolean {
   if (row.token_quota !== null && row.used_tokens >= row.token_quota) return false;
   if (row.request_quota !== null && row.used_requests >= row.request_quota) return false;
-  const cycles = resolveStoredPeriodCycles(row.period_cycles, {
-    quota_period: null, period_quota_tokens: null, period_quota_requests: null,
-    period_used_tokens: 0, period_used_requests: 0, period_reset_at: null,
-  });
+  // redeem_balances 没有旧单档列，档位只来自 period_cycles。
+  const cycles = parsePeriodCycles(row.period_cycles);
   return findExceededCycle(cycles, 0) === null;
 }
 
@@ -75,10 +73,7 @@ export function balanceHasRemaining(row: {
 // 若不在这里推进窗口，周期额度就退化成一次性总额度：首周期用尽后永远判定为耗尽。
 // 本条额度是「已发放」的行，因此按秒数把重置后的运行时状态写回自身。
 export async function ensureBalanceCycleResets(row: BalanceQuotaRow & { id: number }): Promise<void> {
-  const cycles = resolveStoredPeriodCycles(row.period_cycles, {
-    quota_period: null, period_quota_tokens: null, period_quota_requests: null,
-    period_used_tokens: 0, period_used_requests: 0, period_reset_at: null,
-  });
+  const cycles = parsePeriodCycles(row.period_cycles);
   if (cycles.length === 0) return;
   await ensureCycleResets("redeem_balances", row.id, cycles, undefined, row.period_cycles);
 }

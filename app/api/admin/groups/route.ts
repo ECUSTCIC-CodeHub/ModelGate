@@ -19,9 +19,6 @@ const createSchema = z.object({
   tpm: z.number().int().min(-1).optional(),
   quota_requests: z.number().int().min(-1).nullable().optional(),
   quota_tokens: z.number().int().min(-1).nullable().optional(),
-  quota_period: z.number().int().min(0).nullable().optional(),
-  period_quota_tokens: z.number().int().min(-1).nullable().optional(),
-  period_quota_requests: z.number().int().min(-1).nullable().optional(),
   period_cycles: z.unknown().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
   allowed_channel_ids: z.array(z.number().int().positive()).optional(),
@@ -106,8 +103,8 @@ export async function POST(request: Request) {
 
     return tx
       .execute(
-        `INSERT INTO \`groups\` (name, description, qps, rpm, tpm, quota_requests, quota_tokens, quota_period, period_quota_tokens, period_quota_requests, period_cycles, allowed_model_aliases, allowed_channel_ids, oidc_claim_expr, oidc_claim_priority, is_default)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO \`groups\` (name, description, qps, rpm, tpm, quota_requests, quota_tokens, period_cycles, allowed_model_aliases, allowed_channel_ids, oidc_claim_expr, oidc_claim_priority, is_default)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           parsed.data.name,
           parsed.data.description?.trim() || null,
@@ -116,9 +113,6 @@ export async function POST(request: Request) {
           parsed.data.tpm ?? -1,
           normalizeQuota(parsed.data.quota_requests),
           normalizeQuota(parsed.data.quota_tokens),
-          modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.quota_period) : null,
-          modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_tokens) : null,
-          modelGateFeatures.periodQuota ? normalizeQuota(parsed.data.period_quota_requests) : null,
           periodCycles,
           stringifyAllowedModelAliases(existingAliases),
           stringifyAllowedChannelIds(channelIds),

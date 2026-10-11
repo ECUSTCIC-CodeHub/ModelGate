@@ -18,15 +18,6 @@ export type ModelQuotaItem = {
   used_tokens: number | null;
   remaining_requests: number | null;
   remaining_tokens: number | null;
-  quota_period: number | null;
-  period_label: string | null;
-  period_quota_requests: number | null;
-  period_quota_tokens: number | null;
-  period_used_requests: number | null;
-  period_used_tokens: number | null;
-  period_remaining_requests: number | null;
-  period_remaining_tokens: number | null;
-  period_reset_at: string | null;
   periods?: PeriodQuotaEntry[];
   effective_token_multiplier?: number;
   effective_request_multiplier?: number;
@@ -101,11 +92,6 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
                         分时
                       </span>
                     ) : null}
-                    {independent && cycles.length === 0 && m.period_label ? (
-                      <span className="rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-foreground-muted)]">
-                        {m.period_label}
-                      </span>
-                    ) : null}
                   </div>
                 </div>
                 {independent ? (
@@ -115,7 +101,7 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
                         生效倍率 T {m.effective_token_multiplier ?? 1}x / R {m.effective_request_multiplier ?? 1}x
                       </p>
                     ) : null}
-                    {m.quota_requests === null && m.quota_tokens === null && cycles.length === 0 && m.period_quota_requests === null && m.period_quota_tokens === null ? (
+                    {m.quota_requests === null && m.quota_tokens === null && cycles.length === 0 ? (
                       <p className="text-xs text-[var(--color-foreground-muted)]">未配置模型配额</p>
                     ) : (
                       <>
@@ -125,31 +111,20 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
                         {m.quota_tokens !== null ? (
                           <TokenBar used={m.used_tokens ?? 0} total={m.quota_tokens} />
                         ) : null}
-                        {cycles.length > 0
-                          ? cycles.map((entry) => (
-                              <div key={entry.id} className="space-y-1 pt-1">
-                                <Badge variant="outline" className="text-xs">{entry.period_label}</Badge>
-                                {entry.quota_requests !== null ? (
-                                  <QuotaBar used={entry.used_requests} total={entry.quota_requests} />
-                                ) : null}
-                                {entry.quota_tokens !== null ? (
-                                  <TokenBar used={entry.used_tokens} total={entry.quota_tokens} />
-                                ) : null}
-                                {entry.quota_requests === null && entry.quota_tokens === null ? (
-                                  <span className="text-xs text-[var(--color-foreground-muted)]">不限制</span>
-                                ) : null}
-                              </div>
-                            ))
-                          : (
-                            <>
-                              {m.period_quota_requests !== null ? (
-                                <QuotaBar used={m.period_used_requests ?? 0} total={m.period_quota_requests} />
-                              ) : null}
-                              {m.period_quota_tokens !== null ? (
-                                <TokenBar used={m.period_used_tokens ?? 0} total={m.period_quota_tokens} />
-                              ) : null}
-                            </>
-                          )}
+                        {cycles.map((entry) => (
+                          <div key={entry.id} className="space-y-1 pt-1">
+                            <Badge variant="outline" className="text-xs">{entry.period_label}</Badge>
+                            {entry.quota_requests !== null ? (
+                              <QuotaBar used={entry.used_requests} total={entry.quota_requests} />
+                            ) : null}
+                            {entry.quota_tokens !== null ? (
+                              <TokenBar used={entry.used_tokens} total={entry.quota_tokens} />
+                            ) : null}
+                            {entry.quota_requests === null && entry.quota_tokens === null ? (
+                              <span className="text-xs text-[var(--color-foreground-muted)]">不限制</span>
+                            ) : null}
+                          </div>
+                        ))}
                       </>
                     )}
                   </div>
