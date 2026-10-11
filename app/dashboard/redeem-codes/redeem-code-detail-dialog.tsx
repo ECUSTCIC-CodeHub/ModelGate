@@ -2,18 +2,14 @@
 
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PagePagination } from "@/components/dashboard/page-pagination";
 import { authedFetch } from "@/lib/auth/client-auth";
 import { formatExpiresAt, formatNumber, formatTokenCount } from "@/lib/shared/utils";
-import { modelGateFeatures } from "@/lib/core/features";
-import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
-import { formatPeriodLabel } from "@/lib/shared/period-format";
-import type { CodeRow } from "./redeem-code-types";
-
-const periodQuotaEnabled = modelGateFeatures.periodQuota;
+import { redeemCodeKindLabel, type CodeRow } from "./redeem-code-types";
 
 type RedemptionRow = {
   id: number;
@@ -26,6 +22,7 @@ type RedemptionRow = {
   used_tokens: number | null;
   used_requests: number | null;
   // 来自该用户持有的定向额度（redeem_balances）而非兑换码本身，两者过期时间可能不同。
+  // 重置券不发放额度，这些列为空。
   expires_at: string | null;
 };
 
@@ -64,6 +61,7 @@ export function RedeemCodeDetailDialog({
 }) {
   const code = detail?.data;
   const redemptions = detail?.redemptions;
+  const isReset = code?.kind === "reset";
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -71,26 +69,29 @@ export function RedeemCodeDetailDialog({
         <DialogHeader>
           <DialogTitle>兑换码详情</DialogTitle>
           <DialogDescription>
-            列表按码聚合，这里看逐条领取记录：领取人、领取时间、每人剩余额度与各自额度的有效期。
+            {isReset
+              ? "重置券不发放额度，兑换后只把兑换人的周期用量清零，让周期额度重新起算。"
+              : "列表按码聚合，这里看逐条领取记录：领取人、领取时间、每人剩余额度与各自额度的有效期。"}
           </DialogDescription>
         </DialogHeader>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
           {code ? (
             <div className="grid gap-2 rounded-xl border border-[var(--color-border)] p-3 text-sm sm:grid-cols-2">
-              <div className="font-mono sm:col-span-2">{code.code}</div>
-              <div>剩余额度（Token）：{remainingToken(code.token_quota, code.used_tokens_sum)}</div>
-              <div>剩余额度（请求）：{remainingRequest(code.request_quota, code.used_requests_sum)}</div>
-              {periodQuotaEnabled ? (
+              <div className="flex flex-wrap items-center gap-2 font-mono sm:col-span-2">
+                {code.code}
+                <Badge variant={isReset ? "secondary" : "default"}>{redeemCodeKindLabel(code.kind)}</Badge>
+              </div>
+              {isReset ? (
                 <div className="sm:col-span-2">
-                  周期额度：
-                  {parsePeriodCycles(code.period_cycles).length === 0
-                    ? "未配置"
-                    : parsePeriodCycles(code.period_cycles)
-                      .map((cycle) => `${formatPeriodLabel(cycle.seconds)} ${cycle.quota_tokens === null ? "Token 不限" : `Token ${formatTokenCount(cycle.quota_tokens)}`} / ${cycle.quota_requests === null ? "请求不限" : `请求 ${formatNumber(cycle.quota_requests)}`}`)
-                      .join("；")}
+                  重置券不发放额度，兑换后清零兑换人的周期用量（含用户与用户组周期额度）。
                 </div>
-              ) : null}
+              ) : (
+                <>
+                  <div>剩余额度（Token）：{remainingToken(code.token_quota, code.used_tokens_sum)}</div>
+                  <div>剩余额度（请求）：{remainingRequest(code.request_quota, code.used_requests_sum)}</div>
+                </>
+              )}
               <div>
                 有效持有 {formatNumber(code.redeemed_users)} 人 / 已兑换 {code.used_count}
                 {code.max_uses === 0 ? " 次（不限）" : ` / ${code.max_uses} 次`}
@@ -126,9 +127,9 @@ export function RedeemCodeDetailDialog({
                     <TableRow key={row.id}>
                       <TableCell>{row.username ?? `#${row.user_id}`}</TableCell>
                       <TableCell>{new Date(row.redeemed_at).toLocaleString()}</TableCell>
-                      <TableCell>{remainingToken(row.token_quota, row.used_tokens)}</TableCell>
-                      <TableCell>{remainingRequest(row.request_quota, row.used_requests)}</TableCell>
-                      <TableCell>{formatExpiresAt(row.expires_at)}</TableCell>
+                      <TableCell>{isReset ? "—" : remainingToken(row.token_quota, row.used_tokens)}</TableCell>
+                      <TableCell>{isReset ? "—" : remainingRequest(row.request_quota, row.used_requests)}</TableCell>
+                      <TableCell>{isReset ? "—" : formatExpiresAt(row.expires_at)}</TableCell>
                     </TableRow>
                   ))
                 )}
@@ -147,7 +148,9 @@ export function RedeemCodeDetailDialog({
           ) : null}
 
           <p className="text-xs text-[var(--color-foreground-muted)]">
-            兑换码 #{codeId}，剩余额度按「额度 - 已用」计算，不限额度不做扣减统计；有效期列为该用户所持额度的到期时间。
+            {isReset
+              ? `兑换码 #${codeId}，重置券不发放额度，因此领取记录只体现兑换人与兑换时间。`
+              : `兑换码 #${codeId}，剩余额度按「额度 - 已用」计算，不限额度不做扣减统计；有效期列为该用户所持额度的到期时间。`}
           </p>
         </div>
 

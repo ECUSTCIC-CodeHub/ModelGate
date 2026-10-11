@@ -1,13 +1,14 @@
 import { randomBytes } from "node:crypto";
-import { gatewayDb, ensureDbReady } from "@/lib/core/db";
+import { gatewayDb } from "@/lib/core/db";
 import type { ExecuteResult } from "@/lib/core/db/adapter";
 import { modelGateFeatures } from "@/lib/core/features";
 import { toMysqlDatetime, parseStoredUtc } from "@/lib/core/db/datetime";
 import { stringifyAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
-import { parsePeriodCycles, serializePeriodCycles, type PeriodCycle, type PeriodCycleInput } from "@/lib/gateway/period-cycles";
+import { parsePeriodCycles, serializePeriodCycles, serializePeriodCycleState, type PeriodCycle, type PeriodCycleInput } from "@/lib/gateway/period-cycles";
 import { toPeriodQuotaEntry, findExceededCycle, type PeriodQuotaEntry } from "@/lib/gateway/quota";
 import { buildRedeemScope, scopeCoversPair, balanceHasRemaining, ensureBalanceCycleResets } from "@/lib/services/redeem-authorization";
+import type { CycleResetExecutor } from "@/lib/gateway/period-cycles-reset";
 
 // 判断是否为唯一约束冲突（SQLite: UNIQUE constraint failed; MySQL: ER_DUP_ENTRY）。
 function isUniqueConstraintError(err: unknown): boolean {
@@ -18,13 +19,12 @@ function isUniqueConstraintError(err: unknown): boolean {
 // 用于在并发重复兑换时强制回滚事务，再由外层转为友好提示，避免多计一次核销次数。
 class RedeemAlreadyRedeemedError extends Error {}
 
-// 周期档对齐失败时需要回滚整个事务，再由外层转为 { ok:false, reason } 返回。
-class RedeemCycleConflictError extends Error {}
-
 export type RedeemCodeRow = {
   id: number;
   code: string;
   batch_id: string;
+  // quota 为额度券（发放定向额度），reset 为重置券（只清零周期用量，不发额度）。
+  kind: "quota" | "reset";
   token_quota: number | null;
   request_quota: number | null;
   period_cycles: string | null;
@@ -60,6 +60,8 @@ export type { PeriodCycle, PeriodCycleInput, PeriodQuotaEntry };
 // 批量生成 N 个不重复兑换码，归入同一 batch_id。
 export async function generateRedeemCodes(input: {
   count: number;
+  // 额度券发放定向额度；重置券只清零周期用量，额度字段一律忽略。
+  kind: "quota" | "reset";
   tokenQuota: number | null;
   requestQuota: number | null;
   periodCycles: PeriodCycleInput[];
@@ -73,7 +75,9 @@ export async function generateRedeemCodes(input: {
   const count = Math.min(500, Math.max(1, Math.floor(input.count)));
   const batchId = `${Date.now()}-${randomBytes(4).toString("hex")}`;
   const now = toMysqlDatetime(new Date());
-  const periodCycles = stringifyCycles(input.periodCycles);
+  const isReset = input.kind === "reset";
+  // 重置券不携带额度与周期档定义：它的语义是清空已有用量，不是新增限制。
+  const periodCycles = isReset ? null : stringifyCycles(input.periodCycles);
 
   const codes: string[] = [];
   await gatewayDb.transaction(async (tx) => {
@@ -97,13 +101,14 @@ export async function generateRedeemCodes(input: {
 
       await tx.execute(
         `INSERT INTO redeem_codes (
-           code, batch_id, token_quota, request_quota, period_cycles,
+           code, batch_id, kind, token_quota, request_quota, period_cycles,
            allowed_channel_ids, allowed_model_aliases,
            expires_at, enabled, max_uses, used_count, note, created_by, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?, ?, ?)`,
         [
           code,
           batchId,
+          input.kind,
           input.tokenQuota,
           input.requestQuota,
           periodCycles,
@@ -305,7 +310,38 @@ export async function deleteRedeemCodes(codes: string[]): Promise<number> {
 }
 
 // 用户兑换：校验有效性、限定渠道/模型是否存在，创建定向额度并登记核销。
-export async function redeemCodeForUser(userId: number, code: string): Promise<{ ok: true; balance: RedeemBalanceRow } | { ok: false; reason: string }> {
+// 兑换结果：额度券返回新建的定向额度，重置券不发额度（balance 为 null）。
+export type RedeemResult =
+  | { ok: true; balance: RedeemBalanceRow }
+  | { ok: true; balance: null; reset: true }
+  | { ok: false; reason: string };
+
+// 重置券核销：把该用户的周期用量全部清零，周期重新起算。
+// 自有档（users.period_cycles）与继承自组的档位（users.group_period_cycles）分别归零，
+// 两者的定义与秒数保持不变，因此不会影响组配置的继承关系。
+async function resetUserCycleUsage(tx: CycleResetExecutor, userId: number): Promise<void> {
+  const row = await tx.queryOne<{ period_cycles: string | null; group_period_cycles: string | null }>(
+    "SELECT period_cycles, group_period_cycles FROM users WHERE id = ?",
+    [userId],
+  );
+  if (!row) return;
+  const clear = (raw: string | null) => {
+    const cycles = parsePeriodCycles(raw);
+    if (cycles.length === 0) return null;
+    return serializePeriodCycleState(cycles.map((cycle) => ({
+      ...cycle,
+      used_tokens: 0,
+      used_requests: 0,
+      reset_at: null,
+    })));
+  };
+  await tx.execute(
+    "UPDATE users SET period_cycles = ?, group_period_cycles = ?, period_used_tokens = 0, period_used_requests = 0, period_reset_at = NULL WHERE id = ?",
+    [clear(row.period_cycles), clear(row.group_period_cycles), userId],
+  );
+}
+
+export async function redeemCodeForUser(userId: number, code: string): Promise<RedeemResult> {
   const normalized = code.trim().toUpperCase();
   const row = await getCodeByCode(normalized);
   if (!row) {
@@ -317,9 +353,44 @@ export async function redeemCodeForUser(userId: number, code: string): Promise<{
     return { ok: false, reason: validity.reason ?? "兑换码不可用" };
   }
 
-  let result: { ok: false; reason: string } | { ok: true; balance: RedeemBalanceRow } | undefined;
+  let result: RedeemResult | undefined;
   try {
     result = await gatewayDb.transaction(async (tx) => {
+    // 重置券与额度分开：不发额度、不建 redeem_balances，只把核销人的周期用量清零。
+    if (row.kind === "reset") {
+      // 重置券不建额度行，因此不能用 redeem_balances 判重，改查核销记录。
+      const redeemed = await tx.queryOne<{ id: number }>(
+        "SELECT id FROM redeem_redemptions WHERE code_id = ? AND user_id = ?",
+        [row.id, userId],
+      );
+      if (redeemed) {
+        return { ok: false as const, reason: "您已兑换过该兑换码" };
+      }
+      const updated = await tx.execute(
+        `UPDATE redeem_codes
+           SET used_count = used_count + 1
+           WHERE id = ? AND enabled = 1
+             AND (max_uses = 0 OR used_count < max_uses)
+             AND (expires_at IS NULL OR expires_at > ?)`,
+        [row.id, toMysqlDatetime(new Date())],
+      );
+      if (updated.changes !== 1) {
+        return { ok: false as const, reason: "该兑换码已失效或使用次数已达上限" };
+      }
+      await resetUserCycleUsage(tx, userId);
+      try {
+        await tx.execute(
+          "INSERT INTO redeem_redemptions (code_id, user_id, redeemed_at) VALUES (?, ?, ?)",
+          [row.id, userId, toMysqlDatetime(new Date())],
+        );
+      } catch (err) {
+        // 并发下同一用户重复核销，唯一约束兜底；抛出以回滚本次 used_count 自增。
+        if (isUniqueConstraintError(err)) throw new RedeemAlreadyRedeemedError();
+        throw err;
+      }
+      return { ok: true as const, balance: null, reset: true as const };
+    }
+
     const existing = await tx.queryOne<{ id: number }>(
       "SELECT id FROM redeem_balances WHERE code_id = ? AND user_id = ?",
       [row.id, userId],
@@ -523,67 +594,7 @@ export type UpdateRedeemCodeInput = {
   maxUses?: number;
   tokenQuota?: number | null;
   requestQuota?: number | null;
-  periodCycles?: PeriodCycleInput[];
 };
-
-// 周期档的「只增不减」校验：同一秒数的档位额度只能上调，且不允许删除已有档位。
-// 与总额度的收紧规则同源，避免已兑换用户在周期维度上被凭空收紧。
-function mergePeriodCycles(
-  current: PeriodCycleInput[],
-  next: PeriodCycleInput[],
-): { ok: true; cycles: PeriodCycleInput[] } | { ok: false; reason: string } {
-  const nextBySeconds = new Map(next.map((cycle) => [cycle.seconds, cycle]));
-  for (const existing of current) {
-    const candidate = nextBySeconds.get(existing.seconds);
-    if (!candidate) {
-      return { ok: false, reason: `不能移除已有的重置周期（每 ${existing.seconds} 秒）；如需调整请停用旧码并重新生成` };
-    }
-    if (existing.quota_tokens !== null) {
-      if (candidate.quota_tokens === null) {
-        return { ok: false, reason: `每 ${existing.seconds} 秒的 Token 额度不能改为不限` };
-      }
-      if (candidate.quota_tokens < existing.quota_tokens) {
-        return { ok: false, reason: `每 ${existing.seconds} 秒的 Token 额度只能上调，不能下调` };
-      }
-    }
-    if (existing.quota_requests !== null) {
-      if (candidate.quota_requests === null) {
-        return { ok: false, reason: `每 ${existing.seconds} 秒的请求额度不能改为不限` };
-      }
-      if (candidate.quota_requests < existing.quota_requests) {
-        return { ok: false, reason: `每 ${existing.seconds} 秒的请求额度只能上调，不能下调` };
-      }
-    }
-  }
-  return { ok: true, cycles: next };
-}
-
-// 已发放额度的周期运行时计数按秒数对齐到新定义；新档从 0 开始，旧档保留已用量。
-// 若旧档不在新定义里，说明该额度持有码行之外的档位，直接返回 null 交由调用方拒绝本次更新，
-// 避免静默丢弃用户的周期计数（那等于凭空放宽或抹掉已用量）。
-function applyCyclesToBalance(balanceCycles: string | null, next: PeriodCycleInput[]): string | null | "mismatch" {
-  const existing = parsePeriodCycles(balanceCycles);
-  const existingBySeconds = new Map(existing.map((cycle) => [cycle.seconds, cycle]));
-  const nextSeconds = new Set(next.map((cycle) => cycle.seconds));
-  for (const cycle of existing) {
-    if (!nextSeconds.has(cycle.seconds) && (cycle.used_tokens > 0 || cycle.used_requests > 0)) {
-      return "mismatch";
-    }
-  }
-  const merged: PeriodCycle[] = next.map((cycle) => {
-    const prior = existingBySeconds.get(cycle.seconds);
-    return {
-      id: cycle.id ?? prior?.id ?? "",
-      seconds: cycle.seconds,
-      quota_tokens: cycle.quota_tokens,
-      quota_requests: cycle.quota_requests,
-      used_tokens: prior?.used_tokens ?? 0,
-      used_requests: prior?.used_requests ?? 0,
-      reset_at: prior?.reset_at ?? null,
-    };
-  });
-  return merged.length > 0 ? JSON.stringify(merged) : null;
-}
 
 // 管理员编辑单个兑换码。遵循「只增不减」：额度类字段只允许上调，
 // max_uses 只允许放宽（0 视为不限，属最宽），避免收紧后已兑换用户凭空失效。
@@ -678,34 +689,6 @@ export async function updateRedeemCode(
     args.push(input.expiresAt);
   }
 
-  let nextCycles: PeriodCycleInput[] | null = null;
-  if (input.periodCycles !== undefined) {
-    if (!modelGateFeatures.periodQuota) {
-      return { ok: false, reason: "当前构建不包含周期配额功能" };
-    }
-    const merged = mergePeriodCycles(parsePeriodCycles(row.period_cycles), input.periodCycles);
-    if (!merged.ok) return { ok: false, reason: merged.reason };
-
-    // 码行本身没有周期档、但已发放额度上有时，新增档位等于给已兑换用户空降一道限制。
-    // 逐条比对已发放额度，任一额度上出现「码行原本没有的档位」即拒绝。
-    const issued = await gatewayDb.query<{ id: number; period_cycles: string | null }>(
-      "SELECT id, period_cycles FROM redeem_balances WHERE code_id = ?",
-      [id],
-    );
-    const codeSeconds = new Set(parsePeriodCycles(row.period_cycles).map((cycle) => cycle.seconds));
-    for (const balance of issued) {
-      for (const cycle of parsePeriodCycles(balance.period_cycles)) {
-        if (!codeSeconds.has(cycle.seconds)) {
-          return { ok: false, reason: "该兑换码已有用户持有额外周期额度，不能修改周期配置；如需调整请停用旧码并重新生成" };
-        }
-      }
-    }
-
-    nextCycles = merged.cycles;
-    sets.push("period_cycles = ?");
-    args.push(stringifyCycles(nextCycles));
-  }
-
   if (sets.length === 0) return { ok: false, reason: "没有需要更新的字段" };
 
   // 原样应用到已发放额度：只放宽不收紧，不会让已兑换用户的余量变小。
@@ -724,54 +707,15 @@ export async function updateRedeemCode(
     balanceArgs.push(input.expiresAt);
   }
 
-  try {
-    // 用 ensureDbReady 取方言：gatewayDb.driver 在未初始化时会返回 Promise（真值但不等于 "mysql"），
-    // 直接比较会漏加行锁、并误走 SQLite 的守卫语法。
-    const isMysql = (await ensureDbReady()).driver === "mysql";
-    await gatewayDb.transaction(async (tx) => {
-      await tx.execute(`UPDATE redeem_codes SET ${sets.join(", ")} WHERE id = ?`, [...args, id]);
-      if (nextCycles !== null) {
-        // 在事务内读取并按原始文本做乐观守卫：跨事务先读后写会把并发请求刚累加的用量覆盖掉
-        // （额度列用 SET x = x + ? 累加，这里若是盲写就等于把那次扣费抹掉，等于白送额度）。
-        // MySQL 下用 FOR UPDATE 加行锁，与计费事务串行。
-        const balances = await tx.query<{ id: number; period_cycles: string | null }>(
-          `SELECT id, period_cycles FROM redeem_balances WHERE code_id = ?${isMysql ? " FOR UPDATE" : ""}`,
-          [id],
-        );
-        for (const balance of balances) {
-          const applied = applyCyclesToBalance(balance.period_cycles, nextCycles);
-          // 已有额度带着码行之外的档位且已有用量，无法安全对齐，整体拒绝而不是丢弃计数。
-          if (applied === "mismatch") {
-            throw new RedeemCycleConflictError("该兑换码已有用户持有其他周期额度且已产生用量，不能修改周期配置");
-          }
-          const updated = isMysql
-            ? await tx.execute(
-              "UPDATE redeem_balances SET period_cycles = ? WHERE id = ? AND period_cycles <=> ?",
-              [applied, balance.id, balance.period_cycles],
-            )
-            : await tx.execute(
-              "UPDATE redeem_balances SET period_cycles = ? WHERE id = ? AND period_cycles IS ?",
-              [applied, balance.id, balance.period_cycles],
-            );
-          // 守卫未命中说明并发方刚改过这条额度，放弃本次周期改写以免覆盖其用量。
-          if (updated.changes === 0) {
-            throw new RedeemCycleConflictError("该兑换码的额度刚被并发修改，请重试");
-          }
-        }
-      }
-      if (balanceSets.length > 0) {
-        await tx.execute(
-          `UPDATE redeem_balances SET ${balanceSets.join(", ")} WHERE code_id = ?`,
-          [...balanceArgs, id],
-        );
-      }
-    });
-  } catch (error) {
-    if (error instanceof RedeemCycleConflictError) {
-      return { ok: false, reason: error.message };
+  await gatewayDb.transaction(async (tx) => {
+    await tx.execute(`UPDATE redeem_codes SET ${sets.join(", ")} WHERE id = ?`, [...args, id]);
+    if (balanceSets.length > 0) {
+      await tx.execute(
+        `UPDATE redeem_balances SET ${balanceSets.join(", ")} WHERE code_id = ?`,
+        [...balanceArgs, id],
+      );
     }
-    throw error;
-  }
+  });
 
   return { ok: true };
 }

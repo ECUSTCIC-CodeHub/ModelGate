@@ -10,17 +10,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PagePagination } from "@/components/dashboard/page-pagination";
 import { authedFetch } from "@/lib/auth/client-auth";
 import { formatExpiresAt, formatNumber, formatTokenCount } from "@/lib/shared/utils";
-import { modelGateFeatures } from "@/lib/core/features";
-import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
-import { formatPeriodLabel } from "@/lib/shared/period-format";
-import { PeriodCycleFields, draftsToPayload, type PeriodCycleDraft } from "@/app/dashboard/period-cycle-fields";
 import { RedeemCodeDetailDialog, useRedeemCodeDetail } from "./redeem-code-detail-dialog";
 import { RedeemCodeEditDialog } from "./redeem-code-edit-dialog";
-import type { ChannelOption, CodeRow, ModelOption } from "./redeem-code-types";
+import { redeemCodeKindLabel, type ChannelOption, type CodeRow, type ModelOption, type RedeemCodeKind } from "./redeem-code-types";
 
 function parseChannelIds(raw: string | null | undefined): number[] {
   if (!raw) return [];
@@ -59,7 +56,6 @@ function downloadRedeemCodesCsv(anchor: HTMLAnchorElement, codes: string[], batc
 
 export default function AdminRedeemCodesPage() {
   const downloadAnchorRef = useRef<HTMLAnchorElement>(null);
-  const periodQuotaEnabled = modelGateFeatures.periodQuota;
   const [channels, setChannels] = useState<ChannelOption[]>([]);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [rows, setRows] = useState<CodeRow[]>([]);
@@ -72,9 +68,9 @@ export default function AdminRedeemCodesPage() {
   const codeDetail = useRedeemCodeDetail();
 
   const [count, setCount] = useState(10);
+  const [kind, setKind] = useState<RedeemCodeKind>("quota");
   const [tokenQuota, setTokenQuota] = useState("");
   const [requestQuota, setRequestQuota] = useState("");
-  const [periodCycles, setPeriodCycles] = useState<PeriodCycleDraft[]>([]);
   const [channelIds, setChannelIds] = useState<number[]>([]);
   const [aliases, setAliases] = useState<string[]>([]);
   const [expiresAt, setExpiresAt] = useState("");
@@ -139,10 +135,12 @@ export default function AdminRedeemCodesPage() {
   };
 
   const generate = async () => {
-    const payload: Record<string, unknown> = { count };
-    if (tokenQuota.trim()) payload.token_quota = Number(tokenQuota);
-    if (requestQuota.trim()) payload.request_quota = Number(requestQuota);
-    if (periodQuotaEnabled) payload.period_cycles = draftsToPayload(periodCycles);
+    const payload: Record<string, unknown> = { count, kind };
+    // 重置券不发放额度，Token 额度与请求额度一律不下发。
+    if (kind === "quota") {
+      if (tokenQuota.trim()) payload.token_quota = Number(tokenQuota);
+      if (requestQuota.trim()) payload.request_quota = Number(requestQuota);
+    }
     if (channelIds.length > 0) payload.allowed_channel_ids = channelIds;
     if (aliases.length > 0) payload.allowed_model_aliases = aliases;
     if (expiresAt) payload.expires_at = new Date(expiresAt).toISOString();
@@ -173,7 +171,6 @@ export default function AdminRedeemCodesPage() {
       setCount(10);
       setTokenQuota("");
       setRequestQuota("");
-      setPeriodCycles([]);
       setChannelIds([]);
       setAliases([]);
       setExpiresAt("");
@@ -267,7 +264,7 @@ export default function AdminRedeemCodesPage() {
   };
 
   return (
-    <DashboardShell role="admin" title="兑换码管理" subtitle="批量生成定向兑换码，限定渠道与模型，供用户兑换后获得定向额度。">
+    <DashboardShell role="admin" title="兑换码管理" subtitle="批量生成定向兑换码，限定渠道与模型，供用户兑换后获得定向额度或重置周期用量。">
       <div className="space-y-4 pb-6">
         <a ref={downloadAnchorRef} className="hidden" aria-hidden="true" />
         <Card>
@@ -277,25 +274,32 @@ export default function AdminRedeemCodesPage() {
           <CardContent className="space-y-4">
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
               <div>
+                <Label>类型</Label>
+                <Select value={kind} onValueChange={(value) => setKind(value === "reset" ? "reset" : "quota")}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="quota">额度券</SelectItem>
+                    <SelectItem value="reset">重置券</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
                 <Label>生成数量</Label>
                 <Input type="number" min={1} max={500} value={count} onChange={(e) => setCount(Number(e.target.value))} />
               </div>
-              <div>
-                <Label>Token 额度（留空表示不限制）</Label>
-                <Input type="number" min={1} value={tokenQuota} onChange={(e) => setTokenQuota(e.target.value)} placeholder="如 1000000" />
-              </div>
-              <div>
-                <Label>请求额度（留空表示不限制）</Label>
-                <Input type="number" min={1} value={requestQuota} onChange={(e) => setRequestQuota(e.target.value)} placeholder="如 1000" />
-              </div>
-              {periodQuotaEnabled ? (
-                <div className="md:col-span-2">
-                  <PeriodCycleFields
-                    drafts={periodCycles}
-                    onChange={setPeriodCycles}
-                    hint="为兑换码额度附加重置周期，可配置多个。核销后周期额度随码一起带入用户额度，任一周期超出即停止使用。"
-                  />
-                </div>
+              {kind === "quota" ? (
+                <>
+                  <div>
+                    <Label>Token 额度（留空表示不限制）</Label>
+                    <Input type="number" min={1} value={tokenQuota} onChange={(e) => setTokenQuota(e.target.value)} placeholder="如 1000000" />
+                  </div>
+                  <div>
+                    <Label>请求额度（留空表示不限制）</Label>
+                    <Input type="number" min={1} value={requestQuota} onChange={(e) => setRequestQuota(e.target.value)} placeholder="如 1000" />
+                  </div>
+                </>
               ) : null}
               <div>
                 <Label>有效期</Label>
@@ -310,6 +314,12 @@ export default function AdminRedeemCodesPage() {
                 <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="可选" />
               </div>
             </div>
+
+            {kind === "reset" ? (
+              <p className="rounded-xl border border-[var(--color-border)] p-3 text-xs text-[var(--color-foreground-muted)]">
+                重置券不发放任何额度，兑换后只会把兑换人的周期用量清零，让周期额度重新起算。
+              </p>
+            ) : null}
 
             <div className="grid gap-3 md:grid-cols-2">
               <div>
@@ -397,10 +407,10 @@ export default function AdminRedeemCodesPage() {
                     </TableHead>
                     <TableHead>兑换码</TableHead>
                     <TableHead>批次</TableHead>
+                    <TableHead>类型</TableHead>
                     <TableHead>Token 额度</TableHead>
                     <TableHead>请求额度</TableHead>
                     <TableHead>剩余额度</TableHead>
-                    {periodQuotaEnabled ? <TableHead>重置周期</TableHead> : null}
                     <TableHead>限定渠道</TableHead>
                     <TableHead>限定模型</TableHead>
                     <TableHead>有效期</TableHead>
@@ -421,6 +431,7 @@ export default function AdminRedeemCodesPage() {
                     rows.map((row) => {
                       const ch = parseChannelIds(row.allowed_channel_ids);
                       const al = parseAliases(row.allowed_model_aliases);
+                      const isReset = row.kind === "reset";
                       return (
                         <TableRow key={row.id}>
                           <TableCell className="w-10">
@@ -434,22 +445,24 @@ export default function AdminRedeemCodesPage() {
                           <TableCell>
                             <Badge variant="outline" className="font-mono text-xs">{row.batch_id.slice(-8)}</Badge>
                           </TableCell>
-                          <TableCell>{row.token_quota != null ? formatTokenCount(row.token_quota) : "不限"}</TableCell>
-                          <TableCell>{row.request_quota != null ? formatNumber(row.request_quota) : "不限"}</TableCell>
-                          <TableCell className="whitespace-nowrap text-xs">
-                            {row.token_quota == null ? "Token 不限" : `Token ${formatTokenCount(Math.max(0, row.token_quota - row.used_tokens_sum))}`}
-                            <br />
-                            {row.request_quota == null ? "请求不限" : `请求 ${formatNumber(Math.max(0, row.request_quota - row.used_requests_sum))}`}
+                          <TableCell>
+                            <Badge variant={isReset ? "secondary" : "default"}>{redeemCodeKindLabel(row.kind)}</Badge>
                           </TableCell>
-                          {periodQuotaEnabled ? (
-                            <TableCell className="whitespace-nowrap text-xs">
-                              {parsePeriodCycles(row.period_cycles).length === 0
-                                ? "—"
-                                : parsePeriodCycles(row.period_cycles)
-                                  .map((cycle) => formatPeriodLabel(cycle.seconds))
-                                  .join(" / ")}
+                          {isReset ? (
+                            <TableCell colSpan={3} className="text-xs text-[var(--color-foreground-muted)]">
+                              周期重置（不发放额度）
                             </TableCell>
-                          ) : null}
+                          ) : (
+                            <>
+                              <TableCell>{row.token_quota != null ? formatTokenCount(row.token_quota) : "不限"}</TableCell>
+                              <TableCell>{row.request_quota != null ? formatNumber(row.request_quota) : "不限"}</TableCell>
+                              <TableCell className="whitespace-nowrap text-xs">
+                                {row.token_quota == null ? "Token 不限" : `Token ${formatTokenCount(Math.max(0, row.token_quota - row.used_tokens_sum))}`}
+                                <br />
+                                {row.request_quota == null ? "请求不限" : `请求 ${formatNumber(Math.max(0, row.request_quota - row.used_requests_sum))}`}
+                              </TableCell>
+                            </>
+                          )}
                           <TableCell>{ch.length === 0 ? "不限" : ch.join(",")}</TableCell>
                           <TableCell>{al.length === 0 ? "不限" : al.join(",")}</TableCell>
                           <TableCell>{formatExpiresAt(row.expires_at)}</TableCell>

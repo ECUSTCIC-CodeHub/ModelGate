@@ -78,8 +78,11 @@ export default function RedeemPage() {
         toast.error(data?.error?.message ?? "兑换失败");
         return;
       }
-      toast.success(data?.message ?? "兑换成功");
+      // 重置券不发放额度，响应体里没有额度对象，只有重置回执。
+      const isReset = data?.data?.kind === "reset";
+      toast.success(data?.message ?? (isReset ? "周期用量已重置。" : "兑换成功"));
       setCode("");
+      if (isReset) return;
       await load();
     } finally {
       setRedeeming(false);
@@ -87,11 +90,11 @@ export default function RedeemPage() {
   };
 
   return (
-    <DashboardShell role={role} title="兑换码" subtitle="输入兑换码获取定向额度，可限定渠道与模型使用。">
+    <DashboardShell role={role} title="兑换码" subtitle="输入兑换码获取定向额度或重置周期用量，额度可限定渠道与模型使用。">
       <div className="space-y-4 pb-6">
         <Card>
           <CardHeader>
-            <SectionTitle title="兑换" description="输入管理员发放的兑换码，兑换后获得限定渠道与模型的定向额度。" />
+            <SectionTitle title="兑换" description="输入管理员发放的兑换码：额度券用于获取限定渠道与模型的定向额度，重置券用于把周期用量清零。" />
           </CardHeader>
           <CardContent className="flex items-end gap-3">
             <div className="flex-1">

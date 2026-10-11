@@ -13,6 +13,8 @@ import { validatePeriodCycles } from "@/lib/gateway/period-cycles";
 
 const generateSchema = z.object({
   count: z.number().int().min(1).max(500),
+  // 额度券发放定向额度；重置券只清零用户周期用量，不接受额度与周期档配置。
+  kind: z.enum(["quota", "reset"]).default("quota"),
   token_quota: z.number().int().min(1).nullable().optional(),
   request_quota: z.number().int().min(1).nullable().optional(),
   period_cycles: z.unknown().optional(),
@@ -53,11 +55,16 @@ export async function POST(request: Request) {
   const parsed = generateSchema.safeParse(body);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
-  const cyclesResult = validatePeriodCycles(parsed.data.period_cycles ?? null);
+  const kind = parsed.data.kind;
+  if (kind === "reset" && (parsed.data.token_quota != null || parsed.data.request_quota != null)) {
+    return jsonError("重置券不发放额度，请留空 Token 额度与请求额度", 400);
+  }
+
+  const cyclesResult = validatePeriodCycles(kind === "reset" ? null : parsed.data.period_cycles ?? null);
   if (!cyclesResult.valid) return jsonError(cyclesResult.error, 400);
   const periodCycles = cyclesResult.cycles;
 
-  if (parsed.data.token_quota == null && parsed.data.request_quota == null && periodCycles.length === 0) {
+  if (kind === "quota" && parsed.data.token_quota == null && parsed.data.request_quota == null && periodCycles.length === 0) {
     return jsonError("Token 额度、请求额度与重置周期额度至少填写一项", 400);
   }
 
@@ -83,6 +90,7 @@ export async function POST(request: Request) {
 
   const { codes, batchId } = await generateRedeemCodes({
     count: parsed.data.count,
+    kind,
     tokenQuota: parsed.data.token_quota ?? null,
     requestQuota: parsed.data.request_quota ?? null,
     periodCycles,

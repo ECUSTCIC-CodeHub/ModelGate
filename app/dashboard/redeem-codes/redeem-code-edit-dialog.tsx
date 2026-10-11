@@ -2,15 +2,13 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { authedFetch } from "@/lib/auth/client-auth";
-import { modelGateFeatures } from "@/lib/core/features";
-import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
-import { PeriodCycleFields, cyclesToDrafts, draftsToPayload, type PeriodCycleDraft } from "@/app/dashboard/period-cycle-fields";
-import type { CodeRow } from "./redeem-code-types";
+import { redeemCodeKindLabel, type CodeRow } from "./redeem-code-types";
 
 // 把存储的 UTC 裸字符串转成 datetime-local 需要的本地时间字符串。
 function toLocalInput(value: string | null): string {
@@ -43,25 +41,22 @@ export function RedeemCodeEditDialog({
   const [note, setNote] = useState(row.note ?? "");
   const [expiresAt, setExpiresAt] = useState(toLocalInput(row.expires_at));
   const [maxUsesInput, setMaxUsesInput] = useState(String(row.max_uses));
+  const isReset = row.kind === "reset";
   const [tokenQuotaInput, setTokenQuotaInput] = useState(row.token_quota === null ? "" : String(row.token_quota));
   const [requestQuotaInput, setRequestQuotaInput] = useState(row.request_quota === null ? "" : String(row.request_quota));
-  const [periodCycles, setPeriodCycles] = useState<PeriodCycleDraft[]>(
-    cyclesToDrafts(parsePeriodCycles(row.period_cycles)),
-  );
   const [saving, setSaving] = useState(false);
-
-  const periodQuotaEnabled = modelGateFeatures.periodQuota;
 
   const save = async () => {
     const payload: Record<string, unknown> = {};
 
     // 「不限」（null）本身即最宽，只能从有限额度放宽而来，不允许把有限额度改回不限。
-    const tokenValue = parseQuota(tokenQuotaInput);
+    // 重置券不发放额度，额度字段既不可编辑也不提交。
+    const tokenValue = isReset ? null : parseQuota(tokenQuotaInput);
     if (tokenValue === undefined) {
       toast.error("Token 额度需为不小于 1 的整数，留空表示不限");
       return;
     }
-    const requestValue = parseQuota(requestQuotaInput);
+    const requestValue = isReset ? null : parseQuota(requestQuotaInput);
     if (requestValue === undefined) {
       toast.error("请求额度需为不小于 1 的整数，留空表示不限");
       return;
@@ -119,34 +114,6 @@ export function RedeemCodeEditDialog({
     if (tokenValue !== row.token_quota) payload.token_quota = tokenValue;
     if (requestValue !== row.request_quota) payload.request_quota = requestValue;
 
-    if (periodQuotaEnabled) {
-      const nextCycles = draftsToPayload(periodCycles);
-      const existingCycles = parsePeriodCycles(row.period_cycles);
-      // 周期额度同样「只增不减」：已有档位的额度不能调低，也不能删除档位。
-      for (const existing of existingCycles) {
-        const next = nextCycles.find((cycle) => cycle.seconds === existing.seconds);
-        if (!next) {
-          toast.error(`已存在 ${existing.seconds} 秒的重置周期，不能删除`);
-          return;
-        }
-        const lower = (
-          (existing.quota_tokens !== null && (next.quota_tokens === null || next.quota_tokens < existing.quota_tokens))
-          || (existing.quota_requests !== null && (next.quota_requests === null || next.quota_requests < existing.quota_requests))
-        );
-        if (lower) {
-          toast.error("周期额度只能上调，不能下调或改为不限");
-          return;
-        }
-      }
-      if (JSON.stringify(nextCycles) !== JSON.stringify(existingCycles.map((cycle) => ({
-        seconds: cycle.seconds,
-        quota_tokens: cycle.quota_tokens,
-        quota_requests: cycle.quota_requests,
-      })))) {
-        payload.period_cycles = nextCycles;
-      }
-    }
-
     if (maxUses !== row.max_uses) payload.max_uses = maxUses;
     if (expiresAtTouched && nextExpiresAt !== normalized(row.expires_at)) payload.expires_at = nextExpiresAt;
 
@@ -192,14 +159,17 @@ export function RedeemCodeEditDialog({
         <DialogHeader>
           <DialogTitle>编辑兑换码</DialogTitle>
           <DialogDescription>
-            额度与有效期「只增不减」，别让已兑换的用户凭空失效。兑换码本身、批次与限定渠道/模型不可修改。
+            {isReset
+              ? "重置券不发放额度，只能调整备注、有效期与最多兑换次数。兑换码本身、批次与限定渠道/模型不可修改。"
+              : "额度与有效期「只增不减」，别让已兑换的用户凭空失效。兑换码本身、批次与限定渠道/模型不可修改。"}
           </DialogDescription>
         </DialogHeader>
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
-          <div className="rounded-xl border border-[var(--color-border)] p-3 text-sm">
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--color-border)] p-3 text-sm">
             <span className="text-[var(--color-foreground-muted)]">兑换码：</span>
             <span className="font-mono">{row.code}</span>
+            <Badge variant={isReset ? "secondary" : "default"}>{redeemCodeKindLabel(row.kind)}</Badge>
           </div>
           <div>
             <Label>备注</Label>
@@ -219,36 +189,31 @@ export function RedeemCodeEditDialog({
               <Label>最多兑换次数（0 表示不限，只能放宽）</Label>
               <Input type="number" min={0} value={maxUsesInput} onChange={(e) => setMaxUsesInput(e.target.value)} />
             </div>
-            <div>
-              <Label>Token 额度（留空表示不限，只能上调）</Label>
-              <Input
-                type="number"
-                min={1}
-                value={tokenQuotaInput}
-                onChange={(e) => setTokenQuotaInput(e.target.value)}
-                placeholder="不限"
-              />
-            </div>
-            <div>
-              <Label>请求额度（留空表示不限，只能上调）</Label>
-              <Input
-                type="number"
-                min={1}
-                value={requestQuotaInput}
-                onChange={(e) => setRequestQuotaInput(e.target.value)}
-                placeholder="不限"
-              />
-            </div>
+            {isReset ? null : (
+              <>
+                <div>
+                  <Label>Token 额度（留空表示不限，只能上调）</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={tokenQuotaInput}
+                    onChange={(e) => setTokenQuotaInput(e.target.value)}
+                    placeholder="不限"
+                  />
+                </div>
+                <div>
+                  <Label>请求额度（留空表示不限，只能上调）</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={requestQuotaInput}
+                    onChange={(e) => setRequestQuotaInput(e.target.value)}
+                    placeholder="不限"
+                  />
+                </div>
+              </>
+            )}
           </div>
-          {periodQuotaEnabled ? (
-            <div className="rounded-xl border border-[var(--color-border)] p-3">
-              <PeriodCycleFields
-                drafts={periodCycles}
-                onChange={setPeriodCycles}
-                hint="周期额度只能上调、不能删除已有档位；新增档位会同步下发到所有已核销的额度，若已有用户在其他档位产生用量则会被拒绝。"
-              />
-            </div>
-          ) : null}
         </div>
 
         <DialogFooter>

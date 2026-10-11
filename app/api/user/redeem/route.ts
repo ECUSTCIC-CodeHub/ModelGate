@@ -61,11 +61,20 @@ export async function POST(request: Request) {
     return jsonError(result.reason, 400);
   }
 
+  // 重置券不发额度，只回执重置结果；响应形状与额度券区分开，前端据此提示。
+  if (result.balance === null) {
+    return jsonOk({
+      message: "周期用量已重置。",
+      data: { kind: "reset", reset: true },
+    }, 201);
+  }
+
   const balance = result.balance;
   return jsonOk({
     message: "兑换成功。",
     data: {
       ...balance,
+      kind: "quota",
       allowed_channel_ids: parseAllowedChannelIds(balance.allowed_channel_ids),
       allowed_model_aliases: parseAllowedModelAliases(balance.allowed_model_aliases),
       remaining_tokens: balance.token_quota !== null ? Math.max(0, balance.token_quota - balance.used_tokens) : null,
