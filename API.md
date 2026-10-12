@@ -632,8 +632,8 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 |:---|:---|:---|
 | registration_enabled | boolean | 是否允许注册 |
 | password_login_enabled | boolean | 是否允许密码登录 |
-| upstream_retry_enabled | boolean | 是否开启上游自动重试 |
-| upstream_retry_max_attempts | 1-10 | 最大重试次数 |
+| upstream_retry_enabled | boolean | 是否开启上游自动重试（上游返回 401/429/5xx 时换渠道）；仅影响上游报错后的换渠道，预检失败的换渠道始终生效 |
+| upstream_retry_max_attempts | 1-10 | 最大重试次数，只统计真正打到上游的次数；渠道配额不足、并发已满、熔断等预检失败不消耗次数 |
 | upstream_retry_same_channel | boolean | 没有其他渠道时是否对当前渠道重试（429 场景） |
 | upstream_circuit_breaker_enabled | boolean | 是否开启上游熔断 |
 | oidc_enabled | boolean | 是否开启 OIDC 登录 |
@@ -2622,6 +2622,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
       "output_tps": 45.5,
       "route_attempts": 1,
       "attempted_channels": "openai-main",
+      "skipped_channels": null,
       "error_message": null,
       "client_ip": "1.2.3.4",
       "user_agent": "OpenAI/JS 6.39.0",
@@ -2632,7 +2633,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 }
 ```
 
-> `prompt_tokens`、`completion_tokens`、`total_tokens` 为实际用于扣量和汇总的 Token 用量：优先采用远端 usage，远端缺失时回退本地统计。日志中的 `completion_tokens` 表示可见输出 Token，不包含单独识别出的思考 Token；如果上游没有返回可见文本 Token 明细，但流式内容中包含思考文本，会用本地对可见文本的统计作为响应 Token。`total_tokens` 仍包含思考消耗。`metadata.token_usage.remote` 记录上游返回的 usage 原始 Token 数，其中 `text_tokens` 表示上游明细中明确返回的可见文本 Token，`reasoning_tokens` 表示上游明确返回的思考 Token，`cache` 记录上游返回的缓存命中/读取、缓存创建/写入、缓存未命中 Token。`metadata.token_usage.local` 记录本地分词统计结果。`output_tps` 使用可见输出 Token 与思考 Token 共同计算输出速度。`token_source` 表示本次采用来源：`usage` 为上游响应返回的 usage 字段，`local` 为本地 GPT 分词器兜底统计，`estimated` 为请求失败时的预估值。`user_agent` 记录客户端请求携带的 User-Agent，最长保留 500 字符。普通用户不会看到 `username`、`channel_name`、`route_attempts`、`attempted_channels` 字段。
+> `prompt_tokens`、`completion_tokens`、`total_tokens` 为实际用于扣量和汇总的 Token 用量：优先采用远端 usage，远端缺失时回退本地统计。日志中的 `completion_tokens` 表示可见输出 Token，不包含单独识别出的思考 Token；如果上游没有返回可见文本 Token 明细，但流式内容中包含思考文本，会用本地对可见文本的统计作为响应 Token。`total_tokens` 仍包含思考消耗。`metadata.token_usage.remote` 记录上游返回的 usage 原始 Token 数，其中 `text_tokens` 表示上游明细中明确返回的可见文本 Token，`reasoning_tokens` 表示上游明确返回的思考 Token，`cache` 记录上游返回的缓存命中/读取、缓存创建/写入、缓存未命中 Token。`metadata.token_usage.local` 记录本地分词统计结果。`output_tps` 使用可见输出 Token 与思考 Token 共同计算输出速度。`token_source` 表示本次采用来源：`usage` 为上游响应返回的 usage 字段，`local` 为本地 GPT 分词器兜底统计，`estimated` 为请求失败时的预估值。`user_agent` 记录客户端请求携带的 User-Agent，最长保留 500 字符。`route_attempts` 与 `attempted_channels` 只统计真正打到上游的渠道，`skipped_channels` 记录因预检（渠道配额、并发、熔断、用户配额、模型配额）被跳过的渠道。普通用户不会看到 `username`、`channel_name`、`route_attempts`、`attempted_channels`、`skipped_channels` 字段。
 
 ---
 
@@ -3545,7 +3546,7 @@ curl https://your-domain:3000/api/v1/rerank \
 
 **JSONL 行格式:**
 ```json
-{"timestamp":"2026-05-08T12:00:00.000Z","user_id":1,"key_id":7,"channel_id":2,"model_alias":"gpt-4","real_model":"gpt-4-turbo","stream":1,"status_code":200,"estimated_tokens":200,"prompt_tokens":100,"completion_tokens":50,"total_tokens":150,"token_source":"usage","metadata":{"token_usage":{"remote":{"prompt_tokens":100,"completion_tokens":50,"total_tokens":150,"cache":{"read_tokens":32,"creation_tokens":0,"miss_tokens":68}}}},"latency_ms":1234,"first_token_latency_ms":300,"output_tps":45.5,"route_attempts":1,"attempted_channels":"openai-main","error_message":null,"client_ip":"1.2.3.4","user_agent":"OpenAI/JS 6.39.0"}
+{"timestamp":"2026-05-08T12:00:00.000Z","user_id":1,"key_id":7,"channel_id":2,"model_alias":"gpt-4","real_model":"gpt-4-turbo","stream":1,"status_code":200,"estimated_tokens":200,"prompt_tokens":100,"completion_tokens":50,"total_tokens":150,"token_source":"usage","metadata":{"token_usage":{"remote":{"prompt_tokens":100,"completion_tokens":50,"total_tokens":150,"cache":{"read_tokens":32,"creation_tokens":0,"miss_tokens":68}}}},"latency_ms":1234,"first_token_latency_ms":300,"output_tps":45.5,"route_attempts":1,"attempted_channels":"openai-main","skipped_channels":null,"error_message":null,"client_ip":"1.2.3.4","user_agent":"OpenAI/JS 6.39.0"}
 ```
 
 > 异步批量写入：队列容量 1024，每批 64 条或 100ms 间隔刷新落盘。队列满时请求会等待入队（不丢日志）。
@@ -3572,6 +3573,10 @@ curl https://your-domain:3000/api/v1/rerank \
 
 ## 上游重试与熔断
 
-- **自动重试:** 上游返回 401/429/5xx 时自动切换到其他渠道，最大重试次数可配置
-- **熔断机制:** 连续失败 3 次后暂停该渠道 15 秒，可通过设置开关关闭
+- **候选遍历与换渠道:** 选路按「候选渠道」逐个遍历，不再只取一次首选路由。同一别名下的多个渠道（含低权重渠道）都是候选，前一个候选不可用或被上游拒绝时按排序继续尝试下一个，直到候选耗尽或达到重试上限
+- **预检失败不消耗重试预算:** 渠道并发获取失败（并发已满 / 熔断）、渠道配额耗尽、用户配额拦截、模型独立配额不足都发生在真正发起上游请求之前，**不计入**「最大路由尝试次数」，其行为也不受「开启自动切换」开关影响。因此高权重渠道配额耗尽时会自动使用同别名下配置了独立配额的低权重渠道；只有真正打到上游的次数才受该开关与次数上限约束
+- **预检失败单独记录:** `route_attempts` 与 `attempted_channels` 只反映**真正打到上游**的渠道，回答「实际发了几次上游请求」；因预检被跳过的候选写入新字段 `skipped_channels`（渠道名以 ` -> ` 连接），两者在请求日志里分别展示。失败日志的 `error_message` 会带上最后一次预检原因（如「渠道 Token 配额已用尽」「渠道已熔断：xxx」「渠道并发已满：xxx」）
+- **候选遍历上限:** 候选遍历另有一道兜底上界，仅按**实际访问到的候选数**计数，不与「最大路由尝试次数」共用退出条件，因此不会在预算未用尽时提前截断健康候选。正常配置下候选遍历会因排除集合单调增长自然收敛，上界不会触发；一旦触发，只停止拉取新候选（已取出的候选照常处理、同渠道重试照常进行），并在真实预检原因后追加「；候选遍历达到上界，已放弃剩余候选」，不覆盖原原因
+- **自动重试:** 上游返回 401/429/5xx 时自动切换到其他渠道，最大重试次数可配置；关闭「开启自动切换」后上游报错不再换渠道（预检失败的换渠道行为不受影响）
+- **熔断机制:** 连续失败 3 次后暂停该渠道 15 秒，可通过设置开关关闭；被熔断的渠道在选路评分中得分归零并被跳过，自动使用其他候选渠道
 - **计入熔断的状态:** 仅 `5xx` 与 `401`/`403`/`429`，即「渠道侧确实有问题」的情况。业务 4xx（`400`/`404`/`422` 等）由调用方请求本身引起，**不计入**连续失败，否则多用户连续触发会把健康渠道误熔断。注意这与「触发重试的状态集合」（`401`/`429`/`5xx`）**不同**：`403` 计入熔断但不触发重试

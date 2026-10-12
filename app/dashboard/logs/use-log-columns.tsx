@@ -185,8 +185,9 @@ export function useLogColumnDefs(role: LogRole) {
                     <span className="cursor-help text-xs text-[var(--color-foreground-muted)]">·重试</span>
                   </TooltipTrigger>
                   <TooltipContent className="max-w-[320px] break-all">
-                    <p>路由尝试 {(row.route_attempts ?? 1)} 次</p>
-                    <p>尝试渠道：{row.attempted_channels ?? "-"}</p>
+                    <p>上游请求 {(row.route_attempts ?? 1)} 次</p>
+                    <p>请求渠道：{row.attempted_channels ?? "-"}</p>
+                    {row.skipped_channels ? <p>预检跳过：{row.skipped_channels}</p> : null}
                   </TooltipContent>
                 </Tooltip>
               ) : null}

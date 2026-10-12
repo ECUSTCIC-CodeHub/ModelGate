@@ -83,7 +83,7 @@ export function createQueuedUpstreamResponse({
   createTransformedStreamForRoute,
   substitutionNote,
 }: QueuedResponseOptions) {
-  const { route, acquirePromise, attemptedChannels, attemptedChannelNames, redeemBalanceId } = picked;
+  const { route, acquirePromise, attemptedChannels, attemptedChannelNames, skippedChannelNames, redeemBalanceId } = picked;
 
   if (stream) {
     const queuedStream = new ReadableStream<Uint8Array>({
@@ -136,6 +136,7 @@ export function createQueuedUpstreamResponse({
                 output_tps: null,
                 route_attempts: Math.max(1, attemptedChannels.length),
                 attempted_channels: attemptedChannelNames.join(" -> "),
+                skipped_channels: skippedChannelNames.join(" -> ") || null,
                 error_message: upstreamError.message,
                 client_ip: clientIp,
                 user_agent: clientUserAgent,
@@ -189,6 +190,7 @@ export function createQueuedUpstreamResponse({
                 output_tps: outputTps,
                 route_attempts: Math.max(1, attemptedChannels.length),
                 attempted_channels: attemptedChannelNames.join(" -> "),
+                skipped_channels: skippedChannelNames.join(" -> ") || null,
                 error_message: null,
                 client_ip: clientIp,
                 user_agent: clientUserAgent,
@@ -245,6 +247,7 @@ export function createQueuedUpstreamResponse({
                 output_tps: outputTps,
                 route_attempts: Math.max(1, attemptedChannels.length),
                 attempted_channels: attemptedChannelNames.join(" -> "),
+                skipped_channels: skippedChannelNames.join(" -> ") || null,
                 error_message: success ? null : `上游流式请求失败: ${upstream.status}`,
                 client_ip: clientIp,
                 user_agent: clientUserAgent,
@@ -285,6 +288,7 @@ export function createQueuedUpstreamResponse({
               output_tps: null,
               route_attempts: Math.max(1, attemptedChannels.length),
               attempted_channels: attemptedChannelNames.join(" -> "),
+              skipped_channels: skippedChannelNames.join(" -> ") || null,
               error_message: failMessage,
               client_ip: clientIp,
               user_agent: clientUserAgent,
@@ -357,6 +361,7 @@ export function createQueuedUpstreamResponse({
               output_tps: null,
               route_attempts: Math.max(1, attemptedChannels.length),
               attempted_channels: attemptedChannelNames.join(" -> "),
+              skipped_channels: skippedChannelNames.join(" -> ") || null,
               error_message: upstreamError.message,
               client_ip: clientIp,
               user_agent: clientUserAgent,
@@ -405,6 +410,7 @@ export function createQueuedUpstreamResponse({
             output_tps: outputTps,
             route_attempts: Math.max(1, attemptedChannels.length),
             attempted_channels: attemptedChannelNames.join(" -> "),
+            skipped_channels: skippedChannelNames.join(" -> ") || null,
             error_message: null,
             client_ip: clientIp,
             user_agent: clientUserAgent,
@@ -432,6 +438,7 @@ export function createQueuedUpstreamResponse({
             output_tps: null,
             route_attempts: Math.max(1, attemptedChannels.length),
             attempted_channels: attemptedChannelNames.join(" -> "),
+            skipped_channels: skippedChannelNames.join(" -> ") || null,
             error_message: failMessage,
             client_ip: clientIp,
             user_agent: clientUserAgent,

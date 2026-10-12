@@ -116,6 +116,7 @@ CREATE TABLE IF NOT EXISTS logs (
   output_tps REAL,
   route_attempts INTEGER DEFAULT 1,
   attempted_channels TEXT,
+  skipped_channels TEXT,
   error_message TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

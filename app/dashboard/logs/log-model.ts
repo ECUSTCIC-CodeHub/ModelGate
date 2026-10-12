@@ -43,6 +43,7 @@ export type LogRow = {
   output_tps: number | null;
   route_attempts: number | null;
   attempted_channels: string | null;
+  skipped_channels: string | null;
   client_ip: string | null;
   user_agent: string | null;
   created_at: string;

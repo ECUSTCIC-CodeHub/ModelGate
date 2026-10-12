@@ -161,6 +161,7 @@ CREATE TABLE IF NOT EXISTS logs (
   output_tps DOUBLE,
   route_attempts INT DEFAULT 1,
   attempted_channels TEXT,
+  skipped_channels TEXT,
   error_message LONGTEXT,
   client_ip VARCHAR(64),
   user_agent TEXT,

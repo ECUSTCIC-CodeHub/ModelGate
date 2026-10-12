@@ -382,6 +382,7 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("logs", "metadata", "metadata TEXT");
   await db.ensureColumn("logs", "route_attempts", "route_attempts INTEGER DEFAULT 1");
   await db.ensureColumn("logs", "attempted_channels", "attempted_channels TEXT");
+  await db.ensureColumn("logs", "skipped_channels", "skipped_channels TEXT");
   await db.ensureColumn("logs", "user_agent", "user_agent TEXT");
   await db.ensureColumn("users", "webhook_role", "webhook_role TEXT DEFAULT ''");
   await db.ensureColumn("users", "webhook_tags", "webhook_tags TEXT DEFAULT '[]'");

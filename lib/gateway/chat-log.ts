@@ -41,6 +41,7 @@ function buildJsonlRecord(input: ChatLogInput): Record<string, unknown> {
     output_tps: input.output_tps,
     route_attempts: input.route_attempts ?? 1,
     attempted_channels: input.attempted_channels ?? null,
+    skipped_channels: input.skipped_channels ?? null,
     error_message: input.error_message ?? null,
     client_ip: input.client_ip ?? null,
     user_agent: input.user_agent ?? null,

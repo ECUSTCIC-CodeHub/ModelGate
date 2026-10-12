@@ -159,6 +159,7 @@ export type DbLog = {
   output_tps: number | null;
   route_attempts: number | null;
   attempted_channels: string | null;
+  skipped_channels: string | null;
   error_message: string | null;
   created_at: string;
 };

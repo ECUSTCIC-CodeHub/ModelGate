@@ -443,6 +443,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       logRejected(429, picked.quotaReason, alias, estimatedTokens);
       return withQuotaHeaders(jsonError(picked.quotaReason, 429, undefined, { ...quotaHeaders }));
     }
+    // picked.route 只代表真正发起过请求的渠道；预检全失败时为 null，日志据此记为未知渠道。
     if (picked.route) {
       const cq = await checkChannelQuota(picked.route.channel.id, estimatedTokens);
       if (cq.ok) {
@@ -474,6 +475,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       output_tps: null,
       route_attempts: Math.max(1, picked.attemptedChannels.length),
       attempted_channels: picked.attemptedChannelNames.join(" -> "),
+      skipped_channels: picked.skippedChannelNames.join(" -> ") || null,
       error_message: failureMessage,
       client_ip: clientIp,
       user_agent: clientUserAgent,
@@ -534,7 +536,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     }));
   }
 
-  const { route, upstream, lease, attemptedChannels, attemptedChannelNames, modelQuota, redeemBalanceId } = picked;
+  const { route, upstream, lease, attemptedChannels, attemptedChannelNames, skippedChannelNames, modelQuota, redeemBalanceId } = picked;
   if (modelQuota) {
     modelQuotaHeaders = {};
     appendModelQuotaHeaders(modelQuotaHeaders, modelQuota);
@@ -568,6 +570,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
         output_tps: null,
         route_attempts: Math.max(1, attemptedChannels.length),
         attempted_channels: attemptedChannelNames.join(" -> "),
+        skipped_channels: skippedChannelNames.join(" -> ") || null,
         error_message: upstreamError.message,
       client_ip: clientIp,
       user_agent: clientUserAgent,
@@ -605,6 +608,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
           output_tps: null,
           route_attempts: Math.max(1, attemptedChannels.length),
           attempted_channels: attemptedChannelNames.join(" -> "),
+          skipped_channels: skippedChannelNames.join(" -> ") || null,
           error_message: upstreamError.message,
       client_ip: clientIp,
       user_agent: clientUserAgent,
@@ -656,6 +660,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
         output_tps: outputTps,
         route_attempts: Math.max(1, attemptedChannels.length),
         attempted_channels: attemptedChannelNames.join(" -> "),
+        skipped_channels: skippedChannelNames.join(" -> ") || null,
         error_message: null,
       client_ip: clientIp,
       user_agent: clientUserAgent,
@@ -714,6 +719,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
         output_tps: outputTps,
         route_attempts: Math.max(1, attemptedChannels.length),
         attempted_channels: attemptedChannelNames.join(" -> "),
+        skipped_channels: skippedChannelNames.join(" -> ") || null,
         error_message: success ? null : `上游流式请求失败: ${upstream.status}`,
       client_ip: clientIp,
       user_agent: clientUserAgent,
@@ -774,6 +780,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       output_tps: null,
       route_attempts: Math.max(1, attemptedChannels.length),
       attempted_channels: attemptedChannelNames.join(" -> "),
+      skipped_channels: skippedChannelNames.join(" -> ") || null,
       error_message: upstreamError.message,
       client_ip: clientIp,
       user_agent: clientUserAgent,
@@ -826,6 +833,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     output_tps: outputTps,
     route_attempts: Math.max(1, attemptedChannels.length),
     attempted_channels: attemptedChannelNames.join(" -> "),
+    skipped_channels: skippedChannelNames.join(" -> ") || null,
     error_message: null,
       client_ip: clientIp,
       user_agent: clientUserAgent,
