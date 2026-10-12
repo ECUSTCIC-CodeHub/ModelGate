@@ -1,7 +1,7 @@
 "use client";
 
 import { modelGateFeatures } from "@/lib/core/features";
-import { formatLimit, formatResetIn, isUnlimited, usageRatio } from "@/components/layout/dashboard-shell/format";
+import { formatLimit, formatResetIn, isUnlimited } from "@/components/layout/dashboard-shell/format";
 import { ProfileActions } from "@/components/layout/dashboard-shell/profile-actions";
 import type { ProfileBrief } from "@/components/layout/dashboard-shell/types";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -18,7 +18,7 @@ type ProfileCardProps = {
   onLogout: () => void;
 };
 
-type QuotaBar = { key: string; label: string; ratio: number; title: string };
+type QuotaBar = { key: string; label: string; remaining: number; blocked: boolean; title: string };
 
 // 请求用带千分位的整数、Token 用紧凑单位，与「配额与限制」页一致。
 // 不能两处都用 formatLimit：4,978 与 5,000 都会被压成 5.0k，
@@ -49,15 +49,42 @@ type BarInput = {
   resetAt: string | null;
 };
 
-// 侧边栏只放进度条，精确数字与重置时间放悬浮提示：
-// 常驻渲染全部档位的数字会把资料卡撑得很高，而这里只需要一眼看出「哪个档快满了」。
-// 进度条取请求与 Token 中占用更高的一维，任一维超限都意味着被卡住。
-// 未设限（null 或 -1）的维度不参与，因此全都不限的档位不会占位。
+// 每个档位只画一条条，取当前最紧张的那一维（剩余比例最低者）。
+// 请求与 Token 是两个独立制约（判定是任一维触顶即拒），但侧边栏高度有限，
+// 两维各占一行会让四个档位撑成八行；只显示最紧张的一维，
+// 既回答「这个档会不会卡住我」，也让另一维的精确值留在悬浮提示里。
+//
+// 口径与首页「我的配额与限制」一致：条越满表示剩余越多（remaining / total），
+// 与 app/dashboard/quota 页的 used/total 相反，两者在库内并存；这里跟随首页。
+type Dimension = { request: boolean; total: number; remaining: number };
+
+function dimensions(input: BarInput): Dimension[] {
+  const dims: Dimension[] = [];
+  if (!isUnlimited(input.requests.total)) {
+    const total = input.requests.total;
+    dims.push({
+      request: true,
+      total,
+      remaining: input.requests.remaining ?? Math.max(0, total - input.requests.used),
+    });
+  }
+  if (!isUnlimited(input.tokens.total)) {
+    const total = input.tokens.total;
+    dims.push({
+      request: false,
+      total,
+      remaining: input.tokens.remaining ?? Math.max(0, total - input.tokens.used),
+    });
+  }
+  return dims;
+}
+
 function toBar(input: BarInput): QuotaBar | null {
-  const ratios = [input.requests, input.tokens]
-    .filter((dim) => !isUnlimited(dim.total))
-    .map((dim) => usageRatio(dim.used, dim.total) ?? 0);
-  if (ratios.length === 0) return null;
+  const dims = dimensions(input);
+  if (dims.length === 0) return null;
+
+  // 剩余比例最低者为最紧张的一维；并列时取请求（更常见的瓶颈）。
+  const tightest = dims.reduce((worst, dim) => (remainingRatio(dim) < remainingRatio(worst) ? dim : worst));
 
   const parts: string[] = [];
   if (!isUnlimited(input.requests.total)) {
@@ -71,19 +98,25 @@ function toBar(input: BarInput): QuotaBar | null {
 
   return {
     key: input.key,
-    label: input.label,
-    ratio: Math.max(...ratios),
+    // 只显示最紧张的一维，标签要带上维度名，否则看不出这条是请求还是 Token。
+    label: `${input.label} · ${tightest.request ? "请求" : "Token"}`,
+    remaining: remainingRatio(tightest),
+    blocked: tightest.remaining <= 0,
     title: `${input.label}: ${parts.join(" · ")}`,
   };
 }
 
-// 进度条宽度：未耗尽时封顶 99%，避免 99.5% 四舍五入成满格、
-// 让「还没超限」看起来和「已经超限」一样；真正耗尽才给 100%。
-// 下界保底 1%：极小但非零的占用不该被抹成 0%，与「完全没用到」区分开
-// （1% 在 4px 条上肉眼几乎看不出，这里只是不把刻度归零）。
-function barWidth(ratio: number): number {
-  if (!Number.isFinite(ratio) || ratio >= 1) return 100;
-  return Math.max(1, Math.min(99, Math.round(ratio * 100)));
+// 剩余比例，与首页 quotaProgress 同口径。仅在已判定该维已设限后调用。
+function remainingRatio(dim: Dimension): number {
+  if (dim.total <= 0) return 0;
+  return Math.max(0, Math.min(1, dim.remaining / dim.total));
+}
+
+// 剩余条宽度：条越满代表剩得越多。剩余为 0 时给 0%（条空 = 已被卡住），
+// 但非零剩余保底 1%，避免「只剩一点点」被抹成「一点不剩」。
+function barWidth(remaining: number): number {
+  if (!Number.isFinite(remaining) || remaining <= 0) return 0;
+  return Math.max(1, Math.min(100, Math.round(remaining * 100)));
 }
 
 function quotaBars(profile: ProfileBrief): QuotaBar[] {
@@ -157,7 +190,7 @@ export function DesktopProfileCard({
                 <span className="font-mono text-sm text-[var(--color-foreground)]">{formatLimit(value)}</span>
               </div>
             ))}
-            {bars.map(({ key, label, ratio, title }) => (
+            {bars.map(({ key, label, remaining, blocked, title }) => (
               // 用 Tooltip 而不是 title 属性：title 无法键盘聚焦、触屏也不可达，
               // 而这里的数字是唯一能看出「还剩多少」的地方。
               // 触发元素补 tabIndex 使其可聚焦，aria-label 让屏幕阅读器聚焦时直接读出用量，
@@ -174,11 +207,11 @@ export function DesktopProfileCard({
                       <div
                         className={cn(
                           "h-full rounded-full transition-[width] duration-300",
-                          // 只有真正耗尽才用告警色，其余用主题强调色：库内没有 warning 色变量，
-                          // 不为此新增（需同时补 4 套主题），也避免把「用了 80%」渲染成错误。
-                          ratio >= 1 ? "bg-[var(--color-destructive)]" : "bg-[var(--color-accent)]",
+                          // 条是「剩余量」，所以空条才是告警：只有剩余归零才用 destructive 色。
+                          // 其余用强调色；库内没有 warning 色变量，不为此新增 4 套主题。
+                          blocked ? "bg-[var(--color-destructive)]" : "bg-[var(--color-accent)]",
                         )}
-                        style={{ width: `${barWidth(ratio)}%` }}
+                        style={{ width: `${barWidth(remaining)}%` }}
                       />
                     </div>
                   </div>

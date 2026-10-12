@@ -37,12 +37,3 @@ export function formatResetIn(resetAt: string | null | undefined): string | null
   if (hours < 24) return `${hours} 小时后重置`;
   return `${Math.floor(hours / 24)} 天后重置`;
 }
-
-// 占用比例，用于进度条宽度与配色。
-// 只有 null/undefined 才是未设限：配额判定里 `used >= 0` 恒真，所以 0 是一个
-// 「全部拦下」的真实限额，不能当成未设限而把进度条整个藏掉。
-export function usageRatio(used: number, total: number | null | undefined): number | null {
-  if (total === null || total === undefined) return null;
-  if (total <= 0) return 1;
-  return Math.min(1, Math.max(0, used / total));
-}
