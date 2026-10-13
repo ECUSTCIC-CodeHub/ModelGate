@@ -483,6 +483,22 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（TypeCheck
   // 从它们解构出路由名视为合法。新增路由容器时必须同步登记。
   const ROUTE_CONTAINERS = new Set(["picked"]);
 
+  // 已知产出路由容器的工厂：从它们的返回值解构出的路由对象可信。
+  // 用于识别 `const picked = await requestUpstreamWithFallback({...})` 这类绑定 ——
+  // 容器不是函数形参，但来源是网关自己的路由层，不是就地重造。
+  const ROUTE_FACTORIES = new Set(["requestUpstreamWithFallback"]);
+
+  // 判断某声明节点是否为「受信任的路由容器绑定」：
+  // 形参，或 `const X = <路由工厂>(...)` / `await <路由工厂>(...)`。
+  const isTrustedRouteContainerBinding = (decl) => {
+    if (isParameterBinding(decl)) return true;
+    if (!ts.isVariableDeclaration(decl) || !decl.initializer) return false;
+    let init = decl.initializer;
+    if (ts.isAwaitExpression(init)) init = init.expression;
+    if (ts.isCallExpression(init) && ts.isIdentifier(init.expression)) return ROUTE_FACTORIES.has(init.expression.text);
+    return false;
+  };
+
   const cfg = ts.readConfigFile(path.join(root, "tsconfig.json"), ts.sys.readFile);
   const parsed = ts.parseJsonConfigFileContent(cfg.config, ts.sys, root);
   const parseSettings = { ...parsed.options, noEmit: true, skipLibCheck: true, incremental: false };
@@ -539,11 +555,13 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（TypeCheck
         seen.add(source.text);
         const srcSym = checker.getSymbolAtLocation(source);
         const srcDecl = srcSym && (srcSym.declarations || []).find((d) => d.getSourceFile() === sourceFile);
-        if (srcDecl && isParameterBinding(srcDecl)) {
+        // 受信任容器：期望的名字必须解析到受信任绑定（形参或路由工厂出参），
+        // 否则同名局部重声明会按名字蒙混过关。
+        if (srcDecl && isTrustedRouteContainerBinding(srcDecl)) {
           if (ROUTE_CONTAINERS.has(source.text)) return null;
-          return `${ident.text}（解构自形参 ${source.text}，来源不可信）`;
+          return `${ident.text}（解构自受信任绑定 ${source.text}，来源不可信）`;
         }
-        if (ROUTE_CONTAINERS.has(source.text)) return `${ident.text}（来源名 ${source.text} 非形参，疑似遮蔽）`;
+        if (ROUTE_CONTAINERS.has(source.text)) return `${ident.text}（来源名 ${source.text} 非受信任绑定，疑似遮蔽）`;
         if (srcDecl && ts.isVariableDeclaration(srcDecl) && srcDecl.initializer) {
           source = srcDecl.initializer;
           continue;
@@ -580,8 +598,23 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（TypeCheck
     return offenders;
   };
 
-  // 校验某个判定函数在该文件里所有调用的首参，并断言至少存在一处调用
-  const checkCalls = (rel, calleeNames) => {
+  // 统计源文件里指定 callee 名的调用次数（按名字分组）
+  const countCallsByName = (sourceFile, names) => {
+    const counts = new Map(names.map((name) => [name, 0]));
+    const visit = (node) => {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && counts.has(node.expression.text)) {
+        counts.set(node.expression.text, counts.get(node.expression.text) + 1);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+    return counts;
+  };
+
+  // 校验某个判定函数在该文件里所有调用的首参，并逐个登记名断言命中数。
+  // 命中数断言是接线检查：只看「至少有一处调用」时，登记名写错 / 漏登记会被
+  // 同文件里另一处同族调用遮住 —— 守卫看着在跑，实际扫的是空靶子。
+  const checkCalls = (rel, calleeNames, expectedHits) => {
     const abs = path.join(root, rel);
     const program = getProgram([abs]);
     const checker = program.getTypeChecker();
@@ -591,14 +624,17 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（TypeCheck
       return;
     }
     const offenders = collectOffenders(sourceFile, checker, calleeNames);
-    let callCount = 0;
-    const count = (node) => {
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && calleeNames.includes(node.expression.text)) callCount += 1;
-      ts.forEachChild(node, count);
-    };
-    count(sourceFile);
     check(`${rel} ${calleeNames.join("/")} 首参绑定到路由来源`, JSON.stringify(offenders), JSON.stringify([]));
-    check(`${rel} ${calleeNames.join("/")} 至少有一处调用`, callCount > 0, true);
+
+    const counts = countCallsByName(sourceFile, calleeNames);
+    for (const name of calleeNames) {
+      const expected = expectedHits[name];
+      if (expected === undefined) {
+        check(`${rel} ${name} 已登记期望命中数`, false, true);
+      } else {
+        check(`${rel} ${name} 命中数`, counts.get(name) ?? 0, expected);
+      }
+    }
   };
 
   // 结构断言（拒绝面）：绑定来源追溯回答的是「这个符号最终是不是路由」，
@@ -752,9 +788,45 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（TypeCheck
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 
-  // 1) 熔断计入点：gateway-handler 的闭包把判定注入给 queued，实际调用点在下游文件里
-  checkCalls("lib/gateway/gateway-handler.ts", ["routeCountsAsChannelFailure"]);
-  checkCalls("lib/gateway/queued-upstream-response.ts", ["countsAsChannelFailureFor"]);
+  // 1b) 接线自检：把「登记名必须在目标文件真实命中」这件事本身锁进回归清单。
+  //     合成文件模拟本轮真实病根 —— 同名族分散在两个名字上：真实调用点用
+  //     `closure`，而登记名写成只在定义体里出现的 `raw`。按名字分组计数必须
+  //     如实报出「raw 命中 1、closure 命中 2」，才能证明漏登记会被发现。
+  {
+    const os = await import("node:os");
+    const fs = await import("node:fs");
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "route-wiring-"));
+    const file = path.join(tmpDir, "wiring.ts");
+    fs.writeFileSync(file, [
+      "declare function raw(route: RoutedModel, status: number, codes?: number[] | null): boolean;",
+      "declare const picked: { route: RoutedModel };",
+      "const closure = (route: RoutedModel, status: number) => raw(route, status);",
+      "const { route } = picked;",
+      "const a = closure(route, 400);",
+      "const b = closure(route, 401);",
+      "",
+    ].join("\n"));
+    const program = getProgram([file]);
+    const sourceFile = program.getSourceFile(file);
+    const hits = countCallsByName(sourceFile, ["raw", "closure"]);
+    check("接线自检 · 定义处名字命中数如实统计", hits.get("raw"), 1);
+    check("接线自检 · 真实调用点名字命中数如实统计", hits.get("closure"), 2);
+    check("接线自检 · 漏登记的名字命中 0", hits.get("missing") ?? 0, 0);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+
+  // 1) 熔断计入点接线。
+  //    gateway-handler.ts 自带的 4 个熔断计入点用的是本地闭包名 countsAsChannelFailureFor；
+  //    routeCountsAsChannelFailure 只在该文件的闭包定义体里出现 1 次。两个名字都必须登记，
+  //    否则漏登记的那个名字会让 4 个真实调用点整片失守（本轮病根）。
+  //    queued-upstream-response.ts 是注入式调用方，3 个熔断计入点用注入名。
+  checkCalls("lib/gateway/gateway-handler.ts", ["routeCountsAsChannelFailure", "countsAsChannelFailureFor"], {
+    routeCountsAsChannelFailure: 1,
+    countsAsChannelFailureFor: 4,
+  });
+  checkCalls("lib/gateway/queued-upstream-response.ts", ["countsAsChannelFailureFor"], {
+    countsAsChannelFailureFor: 3,
+  });
 
   // 1b) 拒绝面断言：目标文件里不得出现整路由对象构造或来源不可信的路由解构
   for (const rel of ["lib/gateway/gateway-handler.ts", "lib/gateway/queued-upstream-response.ts"]) {
