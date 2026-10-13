@@ -59,7 +59,16 @@ const ERROR_PEEK_MAX_READS = 1024;
 // 上限按「解码后字符数」计，纯中文时约 24KB 字节，内存仍然封顶。
 // 返回的字节可能截断在多字节字符中间，因此用 TextDecoder 的非 fatal 模式解码，
 // 截断处只会丢一个替换字符，不影响前面关键词的匹配。
-async function peekErrorPrefix(response: Response, limit: number): Promise<string | null> {
+// 预读的额外上界：即便关键词早已读到，也至少积累这么多字符再尝试判定，
+// 避免首个分块只有 "{" 这类残缺内容时过早下结论。
+// 命中判定后立即停止，不必读满 ERROR_PEEK_LIMIT —— 慢速大响应体上能显著减少等待。
+const ERROR_PEEK_MIN_DECIDE_CHARS = 512;
+
+async function peekErrorPrefix(
+  response: Response,
+  limit: number,
+  decide?: (text: string) => boolean,
+): Promise<string | null> {
   const reader = response.body?.getReader();
   if (!reader) {
     try {
@@ -79,6 +88,8 @@ async function peekErrorPrefix(response: Response, limit: number): Promise<strin
     while (length < limit && reads < ERROR_PEEK_MAX_READS) {
       const { done, value } = await reader.read();
       if (done) break;
+      // 空块也计入读次数，使 ERROR_PEEK_MAX_READS 成为独立于超时的兜底：
+      // 若只在非空块自增，上游持续发空块时可无限循环，只剩 3 秒超时兜底。
       reads += 1;
       if (value.length === 0) continue;
       const remaining = limit - length;
@@ -88,6 +99,8 @@ async function peekErrorPrefix(response: Response, limit: number): Promise<strin
         parts.push(decoded);
         length += decoded.length;
       }
+      // 已经能判定额度耗尽时提前收工，避免为一个 4xx 把慢速大响应体读完
+      if (decide && length >= ERROR_PEEK_MIN_DECIDE_CHARS && decide(parts.join(""))) break;
     }
   } catch {
     // 读取中途出错或被超时取消时，已拿到的前缀仍可用于判定
@@ -109,7 +122,10 @@ async function shouldRetryResponse(
   if (upstream.status < 400 || upstream.status >= 500) return false;
   let text: string | null = null;
   try {
-    text = await peekErrorPrefix(upstream.clone(), ERROR_PEEK_LIMIT);
+    // 传入判据，命中额度耗尽关键词即提前结束预读（不必读满 8K）。
+    text = await peekErrorPrefix(upstream.clone(), ERROR_PEEK_LIMIT, (prefix) =>
+      shouldRetry(upstream.status, prefix),
+    );
   } catch (error) {
     // 本地调用点保证此处 body 未被读过、clone() 不会失败；真失败说明前提被破坏，
     // 记为无法判定并让状态码语义接管，而不是静默当成普通业务错误。

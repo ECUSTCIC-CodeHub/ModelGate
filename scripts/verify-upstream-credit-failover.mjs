@@ -89,6 +89,31 @@ const creditBodies = [
   // 真实报文里也可能带 "expected"/"must be" 这类泛词，不能被校验排除误伤
   ["insufficient credits + expected", "insufficient credits: expected at least 1, got 0"],
   ["out of credit limit 之外的 out of credit", "You are out of credits"],
+  // 真实上游机器码（one-api / new-api 的 insufficient_user_quota）
+  ["机器码 insufficient_user_quota", "insufficient_user_quota"],
+  ["机器码 insufficient_user_balance", "insufficient_user_balance"],
+  // 语义自足的常见中文形态
+  ["账户余额为0", "账户余额为0"],
+  ["余额已耗尽", "余额已耗尽"],
+  ["剩余额度不足", "剩余额度不足"],
+  ["可用额度不足", "可用额度不足"],
+  ["额度已超限", "额度已超限"],
+  ["用户额度不足(new-api)", "用户额度不足, 剩余额度: 0"],
+  ["当前额度不足陈述句", "当前额度不足，无法完成请求"],
+  // 真实上游英文形态
+  ["credits are exhausted", "Your credits are exhausted"],
+  ["quota is running low", "Your quota is running low"],
+  ["gemini resource exhausted", "Resource has been exhausted (e.g. check quota)."],
+  // 语义自足的中文口语化形态（提升为强特征，不再依赖脆弱的语境词佐证）
+  ["裸 欠费", "欠费"],
+  ["该账号已欠费", "该账号已欠费"],
+  ["渠道欠费停用", "渠道欠费停用"],
+  ["裸 配额不足", "配额不足"],
+  ["裸 余额耗尽", "余额耗尽"],
+  ["额度不足陈述句", "额度不足，无法完成请求"],
+  ["额度不足 已停用", "额度不足 已停用"],
+  ["额度不足 不能继续", "额度不足 不能继续"],
+  ["裸 余额不足", "余额不足"],
 ];
 for (const [label, body] of creditBodies) {
   check(`额度耗尽命中: ${label}`, isChannelCreditExhausted(body), true);
@@ -133,6 +158,32 @@ const validationBodies = [
   ["您的请求已受理", "您的请求已受理"],
   ["当前并发已满", "当前并发已满，请稍后重试"],
   ["您的输入过长", "您的输入过长，请缩短"],
+  // 额度词被当作配置项名 + 校验结论（第四轮审计的中文回归面）
+  ["配置项 不可为空", "额度已用尽告警开关 不可为空"],
+  ["配置项 超出范围", "额度已用尽阈值 超出范围"],
+  ["配置项 格式错误", "账户余额不足配置 格式错误"],
+  ["取值 无效取值", "账户余额不足 无效取值"],
+  ["配置 不支持", "当前额度不足 不支持该配置"],
+  ["缺少必填字段", "账户余额不足 缺少必填字段"],
+  ["未知字段", "额度已用尽 未知字段"],
+  ["类型不匹配", "额度已用尽 类型不匹配"],
+  ["非法参数", "额度已用尽 非法参数"],
+  ["长度超过", "账户余额不足 长度超过 64"],
+  ["方括号参数名", "请求参数 [账户余额不足] 类型错误"],
+  ["弱特征+校验语义", "当前额度不足 参数校验不通过，请检查请求"],
+  ["弱特征+配置项名", "您的额度不足提醒开关为必填项"],
+  ["弱特征+文案长度", "当前欠费提醒文案长度超限"],
+  // out of credit 后置否定的分隔符放宽后仍要挡住
+  ["out of credit, expected", "the value is out of credit, expected 0-100"],
+  ["out of credit! range", "out of credit! range check failed"],
+  ["out of credit。取值范围", "该值 out of credit。取值范围 0-100"],
+  // 语义自足的中文词提升为强特征后，配置项名/参数名校验仍要挡住
+  ["欠费率配置", "用户欠费率配置"],
+  ["欠费提醒开关", "欠费提醒开关 不可为空"],
+  ["欠费金额字段", "欠费金额: must be positive"],
+  ["配额不足阈值", "配额不足阈值"],
+  ["余额耗尽提醒文案", "余额耗尽提醒文案"],
+  ["额度不足+参数校验", "额度不足 参数校验不通过，请检查请求"],
 ];
 for (const [label, body] of validationBodies) {
   check(`不误判: ${label}`, isChannelCreditExhausted(body), false);
