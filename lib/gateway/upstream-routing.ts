@@ -5,7 +5,7 @@ import { checkModelQuota, type ModelQuotaInfo } from "@/lib/gateway/model-quota"
 import { buildUpstreamUrl, fetchUpstreamRequest } from "@/lib/gateway/proxy";
 import { listModelRoutes, type RoutedModel } from "@/lib/gateway/router";
 import { createCandidateQueue, MAX_CANDIDATE_VISITS } from "@/lib/gateway/candidate-queue";
-import { shouldRetryUpstreamStatus } from "@/lib/gateway/upstream-error";
+import { resolveRetryStatusCodes, shouldRetryUpstreamStatus } from "@/lib/gateway/upstream-error";
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 
 type ChannelAcquireResult = Awaited<ReturnType<typeof acquireChannel>>;
@@ -45,6 +45,7 @@ const defaultDeps: UpstreamRoutingDeps = {
 
 // attemptedChannels / attemptedChannelNames 只记录真正打到上游的渠道，route_attempts 以它为准。
 // skippedChannels / skippedChannelNames 记录预检被跳过、未发起请求的渠道，单独落到 skipped_channels 观测。
+
 export type UpstreamPickResult =
   | {
       ok: true;
@@ -118,6 +119,7 @@ export async function requestUpstreamWithFallback({
   inboundProtocol,
   maxRouteAttempts,
   sameChannelRetry,
+  defaultRetryStatusCodes,
   requestSignal,
   inboundHeaders,
   allowedChannelIds,
@@ -133,6 +135,7 @@ export async function requestUpstreamWithFallback({
   inboundProtocol: GatewayProtocol;
   maxRouteAttempts: number;
   sameChannelRetry: boolean;
+  defaultRetryStatusCodes?: readonly number[] | null;
   requestSignal: AbortSignal;
   inboundHeaders: Headers;
   allowedChannelIds?: number[] | null;
@@ -293,7 +296,7 @@ export async function requestUpstreamWithFallback({
           lastUpstreamStatus = upstream.status;
           lastFailure = null;
           markUpstreamAttempted(retryRoute);
-          if (deps.shouldRetryUpstreamStatus(upstream.status) && attempt < maxRouteAttempts) {
+          if (deps.shouldRetryUpstreamStatus(upstream.status, resolveRetryStatusCodes(retryRoute.channel.retry_status_codes, defaultRetryStatusCodes)) && attempt < maxRouteAttempts) {
             lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
             continue;
           }
@@ -407,7 +410,7 @@ export async function requestUpstreamWithFallback({
         lastFailure = null;
         lastRequestedRoute = candidate;
         markUpstreamAttempted(candidate);
-        if (deps.shouldRetryUpstreamStatus(upstream.status) && attempt < maxRouteAttempts) {
+        if (deps.shouldRetryUpstreamStatus(upstream.status, resolveRetryStatusCodes(candidate.channel.retry_status_codes, defaultRetryStatusCodes)) && attempt < maxRouteAttempts) {
           lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
           continue;
         }

@@ -24,7 +24,7 @@ import { resolveClientIp } from "@/lib/core/client-ip";
 import { requestContainsImage } from "@/lib/gateway/normalized-message/detect-image";
 import { resolveTokenUsage, tokenUsageMetadata } from "@/lib/gateway/token-usage";
 import { resolveTriState } from "@/lib/gateway/user-preferences";
-import { buildErrorResponseBody, countsAsChannelFailure, parseUpstreamError } from "@/lib/gateway/upstream-error";
+import { buildErrorResponseBody, countsAsChannelFailure, normalizeRetryStatusCodes, parseUpstreamError, resolveRetryStatusCodes } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
 import { findMatchingRedeemBalance } from "@/lib/services/redeem-codes";
 import { redactUrlCredentials } from "@/lib/shared/redact";
@@ -346,6 +346,10 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     return resp;
   };
 
+  // 换渠道与熔断共用同一份生效状态码：渠道级配置优先，未配置回落全局默认。
+  const defaultRetryStatusCodes = normalizeRetryStatusCodes(settings.upstream_retry_status_codes);
+  const countsAsChannelFailureFor = (route: RoutedModel, status: number) =>
+    countsAsChannelFailure(status, resolveRetryStatusCodes(route.channel.retry_status_codes, defaultRetryStatusCodes));
   const retryEnabled = settings.upstream_retry_enabled === 1;
   const maxRouteAttempts = retryEnabled ? Math.max(1, settings.upstream_retry_max_attempts) : 1;
   const stream = inboundAdapter.getStreamFlag(body);
@@ -419,6 +423,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     inboundProtocol,
     maxRouteAttempts,
     sameChannelRetry: settings.upstream_retry_same_channel === 1,
+    defaultRetryStatusCodes,
     requestSignal: request.signal,
     inboundHeaders: request.headers,
     allowedChannelIds,
@@ -521,6 +526,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       extractCompletionTextForRoute,
       extractReasoningTextForRoute,
       createTransformedStreamForRoute,
+      countsAsChannelFailureFor,
     });
   }
 
@@ -552,7 +558,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     if (upstream.status >= 400) {
       const text = await upstream.text().catch(() => "");
       const upstreamError = parseUpstreamError(text, upstream.status);
-      lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+      lease.complete({ ok: !countsAsChannelFailureFor(route, upstream.status), latencyMs: Date.now() - startedAt });
       insertChatLog({
         user_id: auth.user.id,
         key_id: auth.key.id,
@@ -590,7 +596,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       const rawText = await upstream.text().catch(() => "");
       if (upstream.status >= 400) {
         const upstreamError = parseUpstreamError(rawText, upstream.status);
-        lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+        lease.complete({ ok: !countsAsChannelFailureFor(route, upstream.status), latencyMs: Date.now() - startedAt });
         insertChatLog({
           user_id: auth.user.id,
           key_id: auth.key.id,
@@ -639,7 +645,8 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
           ? Number(((tokenUsage.outputTpsTokens * 1000) / Math.max(1, Date.now() - startedAt)).toFixed(2))
           : null;
 
-      lease.complete({ ok: !countsAsChannelFailure(upstream.status), latencyMs: Date.now() - startedAt });
+      // 该分支只在 status < 400 时可达，直接记成功
+      lease.complete({ ok: true, latencyMs: Date.now() - startedAt });
       addUsage(auth.user.id, auth.key.id, Math.max(1, tokenUsage.totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id, route.model.alias, redeemBalanceId);
       insertChatLog({
         user_id: auth.user.id,
@@ -681,7 +688,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       finalized = true;
       const totalLatencyMs = Date.now() - startedAt;
       const success = upstream.status < 400;
-      lease.complete({ ok: !countsAsChannelFailure(upstream.status), latencyMs: totalLatencyMs });
+      lease.complete({ ok: !countsAsChannelFailureFor(route, upstream.status), latencyMs: totalLatencyMs });
       const tokenUsage = resolveTokenUsage({
         usage: success ? transformed.usage() : null,
         localPromptTokens,
@@ -762,7 +769,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
 
   if (upstream.status >= 400) {
     const upstreamError = parseUpstreamError(rawText, upstream.status);
-    lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+    lease.complete({ ok: !countsAsChannelFailureFor(route, upstream.status), latencyMs: Date.now() - startedAt });
     insertChatLog({
       user_id: auth.user.id,
       key_id: auth.key.id,

@@ -10,22 +10,26 @@ export function UpstreamSettingsCard({
   upstreamRetryEnabled,
   upstreamRetryMaxAttempts,
   upstreamRetrySameChannel,
+  upstreamRetryStatusCodes,
   circuitBreakerEnabled,
   upstreamStrictPriority,
   setUpstreamRetryEnabled,
   setUpstreamRetryMaxAttempts,
   setUpstreamRetrySameChannel,
+  setUpstreamRetryStatusCodes,
   setCircuitBreakerEnabled,
   setUpstreamStrictPriority,
 }: {
   upstreamRetryEnabled: boolean;
   upstreamRetryMaxAttempts: number;
   upstreamRetrySameChannel: boolean;
+  upstreamRetryStatusCodes: string;
   circuitBreakerEnabled: boolean;
   upstreamStrictPriority: boolean;
   setUpstreamRetryEnabled: (value: boolean) => void;
   setUpstreamRetryMaxAttempts: (value: number) => void;
   setUpstreamRetrySameChannel: (value: boolean) => void;
+  setUpstreamRetryStatusCodes: (value: string) => void;
   setCircuitBreakerEnabled: (value: boolean) => void;
   setUpstreamStrictPriority: (value: boolean) => void;
 }) {
@@ -40,10 +44,21 @@ export function UpstreamSettingsCard({
       <CardContent className="space-y-5">
         <ToggleRow
           title="开启自动切换"
-          description="上游返回 401、429 或 5xx 时尝试其他渠道。关闭后上游报错不再换渠道。"
+          description="上游返回下列状态码时尝试其他渠道。关闭后上游报错不再换渠道。"
           checked={upstreamRetryEnabled}
           onCheckedChange={setUpstreamRetryEnabled}
         />
+        <div className="space-y-2">
+          <Label>触发换渠道的状态码</Label>
+          <Input
+            value={upstreamRetryStatusCodes}
+            placeholder="401,402,403,429"
+            onChange={(e) => setUpstreamRetryStatusCodes(e.target.value)}
+          />
+          <p className="text-xs text-[var(--color-foreground-muted)]">
+            用逗号分隔，支持 400-599；留空表示沿用内置默认（401、402、403、429 与全部 5xx）。网关只按状态码判断是否换渠道，不解析响应报文内容。单个渠道可在「渠道管理」里单独覆盖。
+          </p>
+        </div>
         <ToggleRow
           title="同渠道重试"
           description="没有其他候选渠道时，429 仍对当前渠道重试。关闭则 429 直接返回。注意这不会阻止换渠道，只影响候选耗尽后的最后一次重试。"

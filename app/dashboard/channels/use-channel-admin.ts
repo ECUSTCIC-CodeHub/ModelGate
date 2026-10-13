@@ -26,6 +26,7 @@ import {
   type Protocol,
 } from "./channel-model";
 import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
+import { normalizeRetryStatusCodes } from "@/lib/gateway/upstream-error";
 import { parseMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
 import { cyclesToDrafts, draftsToPayload } from "@/app/dashboard/period-cycle-fields";
 import { scheduleDraftsToPayload, schedulesToDrafts } from "@/app/dashboard/multiplier-schedule-fields";
@@ -47,6 +48,18 @@ function expiresAtFromInputValue(value: string): string {
   if (!value.trim()) return "";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
+// 落库是 JSON 状态码数组文本，表单里按「逗号分隔」编辑。
+// 用统一的归一化过滤，避免脏值（越界、非整数）被回显后在保存时静默收窄。
+function formatRetryStatusCodesInput(raw: unknown): string {
+  if (typeof raw !== "string" || raw.trim() === "") return "";
+  try {
+    const codes = normalizeRetryStatusCodes(JSON.parse(raw));
+    return codes ? codes.join(",") : "";
+  } catch {
+    return "";
+  }
 }
 
 // 表单里按「每行 Name: Value」编辑，落库是 JSON 字符串
@@ -193,6 +206,7 @@ export function useChannelAdmin() {
       custom_headers: formatCustomHeadersInput(row.custom_headers),
       request_body_omit: formatRequestBodyOmitInput(row.request_body_omit),
       group_name: row.group_name ?? "",
+      retry_status_codes: formatRetryStatusCodesInput(row.retry_status_codes),
     });
     setChannelModels([baseDraft(supportedProtocols)]);
     setChannelDrawerOpen(true);
@@ -349,6 +363,7 @@ export function useChannelAdmin() {
           custom_headers: customHeaders,
           request_body_omit: requestBodyOmit,
           group_name: channelForm.group_name.trim(),
+          retry_status_codes: normalizeRetryStatusCodes(channelForm.retry_status_codes),
           ...buildQuotaPayload(channelForm),
           models: draftModels,
         }),
@@ -381,6 +396,7 @@ export function useChannelAdmin() {
       custom_headers: customHeaders,
       request_body_omit: requestBodyOmit,
       group_name: channelForm.group_name.trim(),
+      retry_status_codes: normalizeRetryStatusCodes(channelForm.retry_status_codes),
       ...buildQuotaPayload(channelForm),
     };
     // 输入框留空表示不修改已保存的密钥：省略 api_key 字段，避免空串被当作清空

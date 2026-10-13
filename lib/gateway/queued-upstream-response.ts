@@ -6,7 +6,7 @@ import type { GatewayProtocol } from "@/lib/gateway/protocols";
 import type { StreamTransformResult } from "@/lib/gateway/protocol-adapters/streaming";
 import type { RoutedModel } from "@/lib/gateway/router";
 import { resolveTokenUsage, tokenUsageMetadata } from "@/lib/gateway/token-usage";
-import { buildErrorResponseBody, countsAsChannelFailure, isTimeoutError, parseUpstreamError, upstreamFailureStatus } from "@/lib/gateway/upstream-error";
+import { buildErrorResponseBody, isTimeoutError, parseUpstreamError, upstreamFailureStatus } from "@/lib/gateway/upstream-error";
 import type { UpstreamPickResult } from "@/lib/gateway/upstream-routing";
 import { addUsage } from "@/lib/gateway/usage-accounting";
 import { redactUrlCredentials } from "@/lib/shared/redact";
@@ -43,6 +43,8 @@ type QueuedResponseOptions = {
     upstreamBody: ReadableStream<Uint8Array>,
     route: RoutedModel,
   ) => StreamTransformResult;
+  // 熔断口径必须与换渠道判定一致（含渠道级状态码配置），因此由调用方注入而不是就地判定
+  countsAsChannelFailureFor: (route: RoutedModel, status: number) => boolean;
 };
 
 function createQueueKeepAliveTimer(controller: ReadableStreamDefaultController<Uint8Array>, stream: boolean) {
@@ -82,6 +84,7 @@ export function createQueuedUpstreamResponse({
   extractReasoningTextForRoute,
   createTransformedStreamForRoute,
   substitutionNote,
+  countsAsChannelFailureFor,
 }: QueuedResponseOptions) {
   const { route, acquirePromise, attemptedChannels, attemptedChannelNames, skippedChannelNames, redeemBalanceId } = picked;
 
@@ -118,7 +121,7 @@ export function createQueuedUpstreamResponse({
             if (upstream.status >= 400) {
               const text = await upstream.text().catch(() => "");
               const upstreamError = parseUpstreamError(text, upstream.status);
-              lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+              lease.complete({ ok: !countsAsChannelFailureFor(route, upstream.status), latencyMs: Date.now() - startedAt });
               insertChatLog({
                 user_id: auth.user.id,
                 key_id: auth.key.id,
@@ -209,7 +212,7 @@ export function createQueuedUpstreamResponse({
               finalized = true;
               const totalLatencyMs = Date.now() - startedAt;
               const success = upstream.status < 400;
-              lease.complete({ ok: !countsAsChannelFailure(upstream.status), latencyMs: totalLatencyMs });
+              lease.complete({ ok: !countsAsChannelFailureFor(route, upstream.status), latencyMs: totalLatencyMs });
               const tokenUsage = resolveTokenUsage({
                 usage: success ? transformed.usage() : null,
                 localPromptTokens,
@@ -344,7 +347,7 @@ export function createQueuedUpstreamResponse({
 
           if (upstream.status >= 400) {
             const upstreamError = parseUpstreamError(rawText, upstream.status);
-            lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+            lease.complete({ ok: !countsAsChannelFailureFor(route, upstream.status), latencyMs: Date.now() - startedAt });
             insertChatLog({
               user_id: auth.user.id,
               key_id: auth.key.id,

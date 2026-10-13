@@ -79,7 +79,12 @@ function makeDeps({ allRoutes, precheck, fetchImpl }) {
         attempted.push(route.channel.id);
         return fetchImpl(route);
       },
-      shouldRetryUpstreamStatus: (status) => status === 429 || status === 401 || status >= 500,
+      // 桩必须与真实实现同签名：第二参是生效的状态码列表，漏掉就会掩盖「渠道配置未生效」这类回归
+      shouldRetryUpstreamStatus: (status, codes) => {
+        if (status >= 500) return true;
+        const configured = codes && codes.length > 0 ? codes : [401, 402, 403, 429];
+        return configured.includes(status);
+      },
     },
   };
 }

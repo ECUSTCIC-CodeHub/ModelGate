@@ -9,6 +9,7 @@ import { clampStatusLightHours } from "@/lib/shared/utils";
 import { getApiMessage } from "@/lib/shared/api-message";
 import { authedFetch, ensureAdmin } from "@/lib/auth/client-auth";
 import { modelGateFeatures } from "@/lib/core/features";
+import { normalizeRetryStatusCodes } from "@/lib/gateway/upstream-error";
 import {
   AccessGuideNoticeSettingsCard,
   AnnouncementSettingsCard,
@@ -47,6 +48,21 @@ function stringValue(value: unknown, fallback = "") {
   return typeof value === "string" ? value : fallback;
 }
 
+// 接口返回状态码数组；兼容旧版把 JSON 文本直接透出的情况，避免滚动升级期间表单被清空。
+function retryStatusCodesInputValue(value: unknown): string {
+  if (Array.isArray(value)) return value.join(",");
+  if (typeof value === "string" && value.trim() !== "") {
+    try {
+      const parsed = normalizeRetryStatusCodes(JSON.parse(value));
+      if (parsed) return parsed.join(",");
+    } catch {
+      // 不是 JSON 文本，继续按分隔符解析
+    }
+  }
+  const codes = normalizeRetryStatusCodes(value);
+  return codes ? codes.join(",") : "";
+}
+
 export default function AdminSettingsPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("appearance");
@@ -55,6 +71,7 @@ export default function AdminSettingsPage() {
   const [upstreamRetryEnabled, setUpstreamRetryEnabled] = useState(true);
   const [upstreamRetryMaxAttempts, setUpstreamRetryMaxAttempts] = useState(3);
   const [upstreamRetrySameChannel, setUpstreamRetrySameChannel] = useState(false);
+  const [upstreamRetryStatusCodes, setUpstreamRetryStatusCodes] = useState("");
   const [circuitBreakerEnabled, setCircuitBreakerEnabled] = useState(true);
   const [upstreamStrictPriority, setUpstreamStrictPriority] = useState(false);
   const [oidcEnabled, setOidcEnabled] = useState(false);
@@ -113,6 +130,7 @@ export default function AdminSettingsPage() {
     setUpstreamRetryEnabled(settings.upstream_retry_enabled !== 0);
     setUpstreamRetryMaxAttempts(Number(settings.upstream_retry_max_attempts ?? 3));
     setUpstreamRetrySameChannel(settings.upstream_retry_same_channel === 1);
+    setUpstreamRetryStatusCodes(retryStatusCodesInputValue(settings.upstream_retry_status_codes));
     setCircuitBreakerEnabled(settings.upstream_circuit_breaker_enabled !== 0);
     setUpstreamStrictPriority(settings.upstream_strict_priority === 1);
     if (oidcFeatureEnabled) {
@@ -201,6 +219,7 @@ export default function AdminSettingsPage() {
         upstream_retry_enabled: upstreamRetryEnabled,
         upstream_retry_max_attempts: upstreamRetryMaxAttempts,
         upstream_retry_same_channel: upstreamRetrySameChannel,
+        upstream_retry_status_codes: normalizeRetryStatusCodes(upstreamRetryStatusCodes) ?? [],
         upstream_circuit_breaker_enabled: circuitBreakerEnabled,
         upstream_strict_priority: upstreamStrictPriority,
         ...(oidcFeatureEnabled ? {
@@ -343,11 +362,13 @@ export default function AdminSettingsPage() {
             upstreamRetryEnabled={upstreamRetryEnabled}
             upstreamRetryMaxAttempts={upstreamRetryMaxAttempts}
             upstreamRetrySameChannel={upstreamRetrySameChannel}
+            upstreamRetryStatusCodes={upstreamRetryStatusCodes}
             circuitBreakerEnabled={circuitBreakerEnabled}
             upstreamStrictPriority={upstreamStrictPriority}
             setUpstreamRetryEnabled={setUpstreamRetryEnabled}
             setUpstreamRetryMaxAttempts={setUpstreamRetryMaxAttempts}
             setUpstreamRetrySameChannel={setUpstreamRetrySameChannel}
+            setUpstreamRetryStatusCodes={setUpstreamRetryStatusCodes}
             setCircuitBreakerEnabled={setCircuitBreakerEnabled}
             setUpstreamStrictPriority={setUpstreamStrictPriority}
           />

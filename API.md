@@ -548,6 +548,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
     "upstream_retry_enabled": 1,
     "upstream_retry_max_attempts": 3,
     "upstream_retry_same_channel": 0,
+    "upstream_retry_status_codes": [401, 402, 403, 429],
     "upstream_circuit_breaker_enabled": 1,
     "oidc_enabled": 0,
     "oidc_issuer_url": "",
@@ -591,6 +592,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
   "upstream_retry_enabled": true,
   "upstream_retry_max_attempts": 3,
   "upstream_retry_same_channel": false,
+  "upstream_retry_status_codes": [401, 402, 403, 429],
   "upstream_circuit_breaker_enabled": true,
   "oidc_enabled": true,
   "oidc_issuer_url": "https://idp.example.com",
@@ -632,9 +634,10 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 |:---|:---|:---|
 | registration_enabled | boolean | 是否允许注册 |
 | password_login_enabled | boolean | 是否允许密码登录 |
-| upstream_retry_enabled | boolean | 是否开启上游自动重试（上游返回 401/429/5xx 时换渠道）；仅影响上游报错后的换渠道，预检失败的换渠道始终生效 |
+| upstream_retry_enabled | boolean | 是否开启上游自动重试（上游返回 `upstream_retry_status_codes` 中的状态码或任意 5xx 时换渠道）；仅影响上游报错后的换渠道，预检失败的换渠道始终生效 |
 | upstream_retry_max_attempts | 1-10 | 最大重试次数，只统计真正打到上游的次数；渠道配额不足、并发已满、熔断等预检失败不消耗次数 |
 | upstream_retry_same_channel | boolean | 没有其他渠道时是否对当前渠道重试（429 场景） |
+| upstream_retry_status_codes | int[] | 全局触发换渠道的状态码列表，元素取值 400-599，去重升序；5xx 无条件生效。留空或 `null` 时用内置默认 401/402/403/429。同一份列表也决定 `4xx` 是否计入熔断，保证「换渠道」与「计熔断」口径一致。单个渠道可用 `retry_status_codes` 覆盖 |
 | upstream_circuit_breaker_enabled | boolean | 是否开启上游熔断 |
 | oidc_enabled | boolean | 是否开启 OIDC 登录 |
 | oidc_issuer_url | string | OIDC Issuer URL |
@@ -1608,6 +1611,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | ua_restrictions | string | 否 | "" | 渠道级 User-Agent 限制规则 JSON 数组，留空表示不限制（完整版功能，最长 20000 字符） |
 | custom_headers | object\|null | 否 | null | 渠道级自定义 Header，键值对对象；会附加到该渠道的**所有**上游请求（真实转发、模型测试、模型列表探测、`/api/v1/images/edits` 图片编辑）。最多 20 对，名称最长 128 字符且须为 HTTP token 字符，值最长 2048 字符，名称与值的首尾空白会被修剪，值中不允许换行、控制字符或 Unicode 行分隔符（`U+2028`/`U+2029`）等会让 HTTP 头非法的字符（制表符与中文等可打印字符允许）。`Authorization`、`X-Api-Key`、`Api-Key`、`Host`、`Content-Length`、`Transfer-Encoding`、`Connection`、`Upgrade`、`Proxy-Authorization`、`Proxy-Authenticate`、`Via`、`TE`、`Trailer`、`Cookie`、`Content-Type`、`User-Agent`、`Anthropic-Version`、`Anthropic-Beta`、`Accept-Encoding` 不允许配置（大小写不敏感）。标准转发路径下网关托管字段（`Content-Type`、`User-Agent`、鉴权头等）始终覆盖同名自定义值；`other` 透传路径下自定义 Header 会覆盖客户端的同名透传值，但 `Authorization` / `X-Api-Key` 仍由网关最后设置。库中已存数据读取时逐键过滤：混入黑名单键或非法值时只丢弃该项，其余仍生效 |
 | group_name | string\|null | 否 | null | 渠道分组名，最长 64 字符，保存时去掉首尾空白；留空或 `null` 表示未分组。**仅用于前端列表组织，不参与请求路由**（既不影响模型选路，也不影响配额与并发统计口径） |
+| retry_status_codes | int[]\|null | 否 | null | 触发换渠道的状态码列表，元素取值 400-599，最多 64 个，保存时去重升序。上游返回这些状态码时改用同别名的其他候选渠道并计入熔断；`5xx` 无条件生效，不受此列表影响。留空或 `null` 表示沿用系统设置里的全局默认（内置默认 `401`/`402`/`403`/`429`）。判定只看状态码，不解析响应报文内容 |
 | expires_at | string\|null | 否 | null | 过期时间（本地 datetime，如 `2026-08-01T00:00`），null 或留空表示永不过期；到达该时间后渠道在路由中自动不可用，管理员对任意渠道执行操作后，已过期渠道会被彻底禁用并级联禁用其模型 |
 | time_restrictions | string | 否 | "" | 限制时段 JSON 数组，每个元素含 `days`（1-7，周一至周日）、`start`、`end`（HH:MM）；配置后渠道仅在该时段内可用（服务器本地时区），留空表示不限制；`start` 不可等于 `end`，`end` 早于 `start` 表示跨午夜 |
 | weight | int | 否 | 1 | 路由权重 |
@@ -3577,6 +3581,12 @@ curl https://your-domain:3000/api/v1/rerank \
 - **预检失败不消耗重试预算:** 渠道并发获取失败（并发已满 / 熔断）、渠道配额耗尽、用户配额拦截、模型独立配额不足都发生在真正发起上游请求之前，**不计入**「最大路由尝试次数」，其行为也不受「开启自动切换」开关影响。因此高权重渠道配额耗尽时会自动使用同别名下配置了独立配额的低权重渠道；只有真正打到上游的次数才受该开关与次数上限约束
 - **预检失败单独记录:** `route_attempts` 与 `attempted_channels` 只反映**真正打到上游**的渠道，回答「实际发了几次上游请求」；因预检被跳过的候选写入新字段 `skipped_channels`（渠道名以 ` -> ` 连接），两者在请求日志里分别展示。失败日志的 `error_message` 会带上最后一次预检原因（如「渠道 Token 配额已用尽」「渠道已熔断：xxx」「渠道并发已满：xxx」）
 - **候选遍历上限:** 候选遍历另有一道兜底上界，仅按**实际访问到的候选数**计数，不与「最大路由尝试次数」共用退出条件，因此不会在预算未用尽时提前截断健康候选。正常配置下候选遍历会因排除集合单调增长自然收敛，上界不会触发；一旦触发，只停止拉取新候选（已取出的候选照常处理、同渠道重试照常进行），并在真实预检原因后追加「；候选遍历达到上界，已放弃剩余候选」，不覆盖原原因
-- **自动重试:** 上游返回 401/429/5xx 时自动切换到其他渠道，最大重试次数可配置；关闭「开启自动切换」后上游报错不再换渠道（预检失败的换渠道行为不受影响）
+
+- **自动重试完全按状态码判定:** 上游返回配置的状态码时自动切换到其他候选渠道，最大重试次数可配置；关闭「开启自动切换」后上游报错不再换渠道（预检失败的换渠道行为不受影响）。**判定不解析响应报文内容**，只看状态码
+- **触发换渠道的状态码可配置（渠道级 + 全局默认）:** 全局默认在「系统设置 → 网关 → 触发换渠道的状态码」，用逗号分隔填写；单个渠道可在「渠道管理 → 编辑渠道」里单独覆盖，留空即沿用全局默认。内置默认（全局也留空时）为 `401`、`402`、`403`、`429`
+- **`5xx` 始终换渠道且不可关闭:** `5xx` 表示上游自身故障，与调用方请求无关，因此无条件换渠道并计入熔断，不受状态码配置影响
+- **渠道余额/额度耗尽需显式配置 `400`:** 部分上游在渠道自身余额/额度耗尽时返回业务 `400`（报文如 `You have insufficient credits to make this request.`、`You exceeded your current quota`、`insufficient_quota`、`账户余额不足`）。这类报错的成因在渠道侧，但**网关不再通过读取响应文本去猜测**：把 `400` 填进该渠道（或全局）的状态码列表即可让它换渠道。这样调用方参数错误与渠道额度耗尽由管理员显式区分，不存在文案识别误差
+- **为什么不按报文识别:** 上游额度文案形态无穷（各家中转、各版本、中英混排），且中文没有词边界，`额度已用尽` 会整串出现在 `unknown parameter: 额度已用尽告警开关` 这类参数名里。关键词方案在「不误判调用方参数错误」与「不漏判真实额度文案」之间无法同时成立，且需要预读响应体、给慢速上游带来额外等待，因此改为按状态码显式配置
+- **不再预读响应体:** 判定只看状态码，因此网关不再为 `4xx` 克隆并读取响应前缀。上游错误响应体仅在正常解析与透传时读取一次，既避免了慢速大响应体的额外等待，也避免了「预读 + 重读」的二次读取
 - **熔断机制:** 连续失败 3 次后暂停该渠道 15 秒，可通过设置开关关闭；被熔断的渠道在选路评分中得分归零并被跳过，自动使用其他候选渠道
-- **计入熔断的状态:** 仅 `5xx` 与 `401`/`403`/`429`，即「渠道侧确实有问题」的情况。业务 4xx（`400`/`404`/`422` 等）由调用方请求本身引起，**不计入**连续失败，否则多用户连续触发会把健康渠道误熔断。注意这与「触发重试的状态集合」（`401`/`429`/`5xx`）**不同**：`403` 计入熔断但不触发重试
+- **计入熔断的状态:** `5xx` 恒计入；`4xx` 按同一份状态码配置计入（默认 `401`/`402`/`403`/`429`，反映凭据失效、计费欠费或被限流）。调用方请求本身的问题（`400`/`404`/`422` 等，未配置时）不计入熔断，避免多用户连续触发把健康渠道误熔断。`2xx`/`3xx` 永不因状态码计入熔断
