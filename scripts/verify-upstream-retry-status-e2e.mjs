@@ -391,43 +391,114 @@ console.log("=== M. 熔断口径与换渠道一致（渠道配置 [400]）===");
 }
 
 
-console.log("=== N. 熔断计入点必须走渠道配置（源码级守卫）===");
+console.log("=== N. 4xx 分支的熔断计入不得硬编码（AST 级守卫）===");
 {
   // 4xx 的可达分支若硬编码 ok: false，会给未配置渠道误记熔断失败次数。
-  // 这里按源码结构检查：status >= 400 分支里的 lease.complete 必须用 countsAsChannelFailureFor。
-  const { readFileSync } = await import("node:fs");
-  const { fileURLToPath } = await import("node:url");
-  const path = (await import("node:path")).default;
-  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-  for (const rel of ["lib/gateway/gateway-handler.ts", "lib/gateway/queued-upstream-response.ts"]) {
-    const source = readFileSync(path.join(root, rel), "utf8").split("\n");
-    const offenders = [];
-    for (let i = 0; i < source.length; i += 1) {
-      if (source[i].includes("upstream.status >= 400")) {
-        // 该分支内（含嵌套一层）的 lease.complete 不得硬编码 ok: false
-        for (let j = i + 1; j < Math.min(i + 30, source.length); j += 1) {
-          if (source[j].includes("lease.complete")) {
-            if (!source[j].includes("countsAsChannelFailureFor")) offenders.push(j + 1);
-            break;
-          }
-        }
-      }
-    }
-    check(`${rel} 无硬编码 ok: false`, JSON.stringify(offenders), JSON.stringify([]));
-  }
-}
-
-console.log("=== O. 调用点必须把模型级配置传在第 1 参（AST 级守卫）===");
-{
-  // 换渠道与熔断的判定都靠调用点把模型值传进 resolveRetryStatusCodes 的第一个形参。
-  // 只在函数内部测「模型优先」抓不到调用点写死 null 的回归；而字符串正则又会被
-  // 注释夹带、嵌套调用、参数顺序颠倒骗过，因此这里用 AST 取第 1 个实参的文本比对。
+  // 用 AST 定位 `upstream.status >= 400` 分支内的 lease.complete，断言 ok 的取值
+  // 只能来自 countsAsChannelFailureFor 取反（或明确的 true），避免被注释夹带绕过。
   const { readFileSync } = await import("node:fs");
   const { fileURLToPath } = await import("node:url");
   const path = (await import("node:path")).default;
   const ts = (await import("typescript")).default;
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-  for (const rel of ["lib/gateway/gateway-handler.ts", "lib/gateway/upstream-routing.ts"]) {
+  for (const rel of ["lib/gateway/gateway-handler.ts", "lib/gateway/queued-upstream-response.ts"]) {
+    const source = readFileSync(path.join(root, rel), "utf8");
+    const sourceFile = ts.createSourceFile(rel, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const offenders = [];
+    const isStatusGuard = (node) =>
+      ts.isBinaryExpression(node)
+      && node.operatorToken.kind === ts.SyntaxKind.GreaterThanEqualsToken
+      && node.left.getText(sourceFile) === "upstream.status"
+      && node.right.getText(sourceFile) === "400";
+    const checkLeaseComplete = (node) => {
+      if (!ts.isCallExpression(node)) return;
+      const callee = node.expression.getText(sourceFile);
+      if (callee !== "lease.complete") return;
+      const arg = node.arguments[0];
+      if (!arg || !ts.isObjectLiteralExpression(arg)) return;
+      const okProp = arg.properties.find((prop) => ts.isPropertyAssignment(prop) && prop.name.getText(sourceFile) === "ok");
+      const okText = okProp && ts.isPropertyAssignment(okProp) ? okProp.initializer.getText(sourceFile) : "";
+      // 允许：!countsAsChannelFailureFor(...) 或 true
+      const allowed = /^!countsAsChannelFailureFor\(/.test(okText) || okText === "true";
+      if (!allowed) {
+        offenders.push(`${okText || "<无 ok>"} @ 行 ${sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1}`);
+      }
+    };
+    const visit = (node) => {
+      if (ts.isIfStatement(node) && isStatusGuard(node.expression) && node.thenStatement) {
+        const walk = (inner) => {
+          checkLeaseComplete(inner);
+          ts.forEachChild(inner, walk);
+        };
+        walk(node.thenStatement);
+        return;
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+    check(`${rel} 4xx 分支无硬编码 ok`, JSON.stringify(offenders), JSON.stringify([]));
+  }
+}
+
+console.log("=== O. 熔断计入必须认模型级配置（运行时断言）===");
+{
+  // 这里直接喂真实形状的 route 对象跑熔断判定。此前只做源码文本守卫，
+  // 证明不了「传进去的就是路由自身的模型值」；这条运行时断言才是真正的防线。
+  const { routeCountsAsChannelFailure } = await import("@/lib/gateway/upstream-error");
+  const model400 = { model: { retry_status_codes: JSON.stringify([400]) }, channel: { retry_status_codes: null } };
+  const channel418 = { model: { retry_status_codes: null }, channel: { retry_status_codes: JSON.stringify([418]) } };
+  const modelOverChannel = { model: { retry_status_codes: JSON.stringify([400]) }, channel: { retry_status_codes: JSON.stringify([418]) } };
+  const empty = { model: { retry_status_codes: null }, channel: { retry_status_codes: null } };
+
+  check("模型级配 400：400 计熔断", routeCountsAsChannelFailure(model400, 400, null), true);
+  check("模型级配 400：404 不计熔断", routeCountsAsChannelFailure(model400, 404, null), false);
+  check("模型级未配置、渠道配 418：418 计熔断", routeCountsAsChannelFailure(channel418, 418, null), true);
+  check("模型级未配置、渠道配 418：400 不计熔断", routeCountsAsChannelFailure(channel418, 400, null), false);
+  // 模型级必须压过渠道级：这正是「同渠道不同模型行为不同」的核心诉求
+  check("模型级压过渠道级：400 计熔断", routeCountsAsChannelFailure(modelOverChannel, 400, null), true);
+  check("模型级压过渠道级：418 不计熔断", routeCountsAsChannelFailure(modelOverChannel, 418, null), false);
+  check("两者都未配置：回落全局默认 401 计熔断", routeCountsAsChannelFailure(empty, 401, [401, 402]), true);
+  check("两者都未配置：400 不计熔断", routeCountsAsChannelFailure(empty, 400, [401, 402]), false);
+  check("5xx 恒计熔断", routeCountsAsChannelFailure(empty, 503, null), true);
+  check("2xx 不计熔断", routeCountsAsChannelFailure(model400, 200, null), false);
+}
+
+console.log("=== P. 熔断与换渠道调用点必须走统一入口（源码级守卫）===");
+{
+  // 换渠道判定在 upstream-routing 里是直调，运行时已由 L0/L0e 覆盖；
+  // 熔断计入在 gateway-handler 闭包内，运行时靠 O 组覆盖判定函数本身，
+  // 这里补一层结构断言：闭包必须把 route 交给 routeCountsAsChannelFailure。
+  const { readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const path = (await import("node:path")).default;
+  const ts = (await import("typescript")).default;
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+  // 1) gateway-handler：熔断闭包必须调用 routeCountsAsChannelFailure，且首参为 route
+  {
+    const rel = "lib/gateway/gateway-handler.ts";
+    const source = readFileSync(path.join(root, rel), "utf8");
+    const sourceFile = ts.createSourceFile(rel, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const calls = [];
+    let usesRaw = 0;
+    const visit = (node) => {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+        if (node.expression.text === "routeCountsAsChannelFailure") {
+          const first = node.arguments[0];
+          calls.push(first && ts.isIdentifier(first) ? first.text : (first ? first.getText(sourceFile) : "<无首参>"));
+        }
+        if (node.expression.text === "countsAsChannelFailure") usesRaw += 1;
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+    check(`${rel} 熔断判定首参为 route`, JSON.stringify(calls), JSON.stringify(["route"]));
+    check(`${rel} 不再直调裸判定`, usesRaw, 0);
+  }
+
+  // 2) upstream-routing：换渠道判定的首参必须是模型级配置（去注释后文本比对）
+  {
+    const rel = "lib/gateway/upstream-routing.ts";
     const source = readFileSync(path.join(root, rel), "utf8");
     const sourceFile = ts.createSourceFile(rel, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
     const offenders = [];
@@ -436,7 +507,6 @@ console.log("=== O. 调用点必须把模型级配置传在第 1 参（AST 级�
       if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "resolveRetryStatusCodes") {
         callCount += 1;
         const first = node.arguments[0];
-        // 取第 1 个实参的去注释文本，要求形如 <x>.model.retry_status_codes
         const text = first ? first.getText(sourceFile).replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "").trim() : "";
         if (!/^[A-Za-z_$][\w$]*\.model\.retry_status_codes$/.test(text)) {
           offenders.push(`${text || "<无第 1 参>"} @ 行 ${sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1}`);
@@ -448,13 +518,6 @@ console.log("=== O. 调用点必须把模型级配置传在第 1 参（AST 级�
     check(`${rel} 首参为模型级配置`, JSON.stringify(offenders), JSON.stringify([]));
     check(`${rel} 至少有一处调用`, callCount > 0, true);
   }
-
-  // 运行时兜底：确认按首参传模型值时，模型级确实压过渠道级（顺序颠倒会在此暴露）
-  const route = { channel: { retry_status_codes: JSON.stringify([418]) }, model: { retry_status_codes: JSON.stringify([400]) } };
-  const { resolveRetryStatusCodes } = await import("@/lib/gateway/upstream-error");
-  check("首参为模型值时模型压过渠道", JSON.stringify(resolveRetryStatusCodes(route.model.retry_status_codes, route.channel.retry_status_codes, null)), JSON.stringify([400]));
-  // 反证：把两个参数颠倒（渠道塞进模型位）会得到完全不同的结果，说明顺序有意义、断言不是恒真
-  check("参数颠倒会改变结果（断言非恒真）", JSON.stringify(resolveRetryStatusCodes(route.channel.retry_status_codes, route.model.retry_status_codes, null)), JSON.stringify([418]));
 }
 
 console.log(`\n结果: ${passed} 通过, ${failed} 失败`);
