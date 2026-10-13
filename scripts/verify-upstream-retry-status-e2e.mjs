@@ -478,11 +478,27 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（AST 级�
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const ROUTE_NAMES = new Set(["route", "retryRoute", "candidate"]);
 
-  // 收集文件内所有绑定名：变量声明（含解构）、函数/方法形参、函数名
-  const collectBindings = (sourceFile) => {
+  // 同名遮蔽检测：判定拿的是「名字」，名字后面是谁还得看绑定。
+  // 若文件里存在对白名单路由名的局部重声明（const route = {...route...} 之类），
+  // 调用点虽然写着 route，实际拿到的却是重造对象，模型级配置会被静默摘掉。
+  const findShadowedRouteNames = (sourceFile) => {
+    const shadowed = [];
+    const visit = (node) => {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && ROUTE_NAMES.has(node.name.text)) {
+        shadowed.push(`${node.name.text} @ 行 ${sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1}`);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+    return shadowed;
+  };
+
+  // 路由名的「合法来源」：形参或对象解构绑定（如 const { route } = picked）。
+  // 只认这种绑定，普通局部重声明即便同名也不算合法来源。
+  const collectRouteBindings = (sourceFile) => {
     const names = new Set();
     const addPattern = (pattern) => {
-      if (ts.isIdentifier(pattern)) names.add(pattern.text);
+      if (ts.isIdentifier(pattern) && ROUTE_NAMES.has(pattern.text)) names.add(pattern.text);
       else if (ts.isObjectBindingPattern(pattern) || ts.isArrayBindingPattern(pattern)) {
         for (const element of pattern.elements) {
           if (ts.isBindingElement(element)) addPattern(element.name);
@@ -490,20 +506,19 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（AST 级�
       }
     };
     const visit = (node) => {
-      if (ts.isVariableDeclaration(node)) addPattern(node.name);
       if (ts.isParameter(node)) addPattern(node.name);
-      if (ts.isFunctionDeclaration(node) && node.name) names.add(node.name.text);
+      else if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name)) addPattern(node.name);
       ts.forEachChild(node, visit);
     };
     visit(sourceFile);
     return names;
   };
 
-  // 校验某个判定函数在该文件里的所有调用：首参必须是已绑定的路由标识符
+  // 校验某个判定函数在该文件里的所有调用：首参必须是本文件里由形参/解构绑定的路由标识符
   const checkCalls = (rel, calleeNames) => {
     const source = readFileSync(path.join(root, rel), "utf8");
     const sourceFile = ts.createSourceFile(rel, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-    const bindings = collectBindings(sourceFile);
+    const bindings = collectRouteBindings(sourceFile);
     const offenders = [];
     let callCount = 0;
     const visit = (node) => {
@@ -513,7 +528,7 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（AST 级�
         const line = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
         if (!first || !ts.isIdentifier(first)) {
           offenders.push(`${first ? first.getText(sourceFile) : "<无首参>"} @ 行 ${line}`);
-        } else if (!bindings.has(first.text) || !ROUTE_NAMES.has(first.text)) {
+        } else if (!bindings.has(first.text)) {
           offenders.push(`${first.text}（非路由标识符）@ 行 ${line}`);
         }
       }
@@ -522,6 +537,7 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（AST 级�
     visit(sourceFile);
     check(`${rel} ${calleeNames.join("/")} 首参为路由对象`, JSON.stringify(offenders), JSON.stringify([]));
     check(`${rel} ${calleeNames.join("/")} 至少有一处调用`, callCount > 0, true);
+    check(`${rel} 路由标识符未被局部重声明`, JSON.stringify(findShadowedRouteNames(sourceFile)), JSON.stringify([]));
   };
 
   // 1) 熔断计入点：gateway-handler 的闭包把判定注入给 queued，实际调用点在下游文件里
