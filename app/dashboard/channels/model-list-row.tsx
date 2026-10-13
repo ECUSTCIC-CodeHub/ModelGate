@@ -59,7 +59,12 @@ export function ModelListRow({
       ) : null}
       <TableCell className="text-[var(--color-foreground-muted)]">{index + 1}</TableCell>
       <TableCell className="max-w-48 truncate font-mono text-sm">{model.alias}</TableCell>
-      <TableCell className="max-w-48 truncate text-sm text-[var(--color-foreground-muted)]">{model.real_model}</TableCell>
+      <TableCell>
+        <div className="flex items-center gap-1.5">
+          <span className="min-w-0 max-w-48 flex-1 truncate text-sm text-[var(--color-foreground-muted)]">{model.real_model}</span>
+          {model.supports_vision ? <Badge variant="default">识图</Badge> : null}
+        </div>
+      </TableCell>
       <TableCell className="whitespace-nowrap text-sm">{model.channel_name}</TableCell>
       <TableCell>
         <div className="flex flex-wrap gap-1">
@@ -80,16 +85,6 @@ export function ModelListRow({
       </TableCell>
       <TableCell>
         <Badge variant={model.is_public ? "default" : "secondary"}>{model.is_public ? "公开" : "白名单"}</Badge>
-      </TableCell>
-      <TableCell>
-        <div className="flex flex-wrap gap-1">
-          {model.copilot_compatibility ? (
-            <Badge variant="default">Copilot 兼容</Badge>
-          ) : null}
-          {model.supports_vision ? (
-            <Badge variant="default">识图</Badge>
-          ) : null}
-        </div>
       </TableCell>
       <TableCell className="whitespace-nowrap">{model.weight}x</TableCell>
       <TableCell className="whitespace-nowrap text-sm text-[var(--color-foreground-secondary)]">

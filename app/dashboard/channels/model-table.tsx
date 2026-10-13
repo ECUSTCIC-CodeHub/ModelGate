@@ -29,7 +29,6 @@ type FlatSortField =
   | "protocols"
   | "status"
   | "visibility"
-  | "copilot"
   | "weight"
   | "effective_weight"
   | "multiplier"
@@ -58,8 +57,6 @@ function compareModels(a: ModelWithChannel, b: ModelWithChannel, field: FlatSort
       return (a.enabled !== 0 ? 1 : 0) - (b.enabled !== 0 ? 1 : 0);
     case "visibility":
       return (a.is_public !== 0 ? 1 : 0) - (b.is_public !== 0 ? 1 : 0);
-    case "copilot":
-      return (a.copilot_compatibility !== 0 ? 1 : 0) - (b.copilot_compatibility !== 0 ? 1 : 0);
     case "weight":
       return a.weight - b.weight;
     case "effective_weight":
@@ -162,6 +159,17 @@ export function ModelTable({
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectedMany(ids: number[], checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
       return next;
     });
   }
@@ -447,16 +455,7 @@ export function ModelTable({
                     <Checkbox
                       className="shrink-0"
                       checked={selectionState(group.models.map((m) => m.id), selectedIds)}
-                      onCheckedChange={(checked) =>
-                        setSelectedIds((prev) => {
-                          const next = new Set(prev);
-                          for (const m of group.models) {
-                            if (checked === true) next.add(m.id);
-                            else next.delete(m.id);
-                          }
-                          return next;
-                        })
-                      }
+                      onCheckedChange={(checked) => toggleSelectedMany(group.models.map((m) => m.id), checked === true)}
                       aria-label={`全选渠道 ${group.channelName} 下的模型`}
                     />
                   ) : null}
@@ -503,17 +502,23 @@ export function ModelTable({
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead className="w-12">序号</TableHead>
+                            {bulkMode ? (
+                              <SelectAllHead
+                                models={group.models}
+                                selectedIds={selectedIds}
+                                onToggle={toggleSelectedMany}
+                                label={`全选渠道 ${group.channelName} 下的模型`}
+                              />
+                            ) : null}
+                            <TableHead className="w-12 whitespace-nowrap">序号</TableHead>
                             <TableHead>别名</TableHead>
                             <TableHead>真实模型</TableHead>
-                            <TableHead className="w-10">{bulkMode ? <Checkbox checked={selectionState(group.models.map((m) => m.id), selectedIds)} onCheckedChange={(checked) => setSelectedIds((prev) => { const next = new Set(prev); for (const m of group.models) { if (checked === true) next.add(m.id); else next.delete(m.id); } return next; })} aria-label={`全选渠道 ${group.channelName} 下的模型`} /> : null}</TableHead>
                             <TableHead>所属渠道</TableHead>
                             <TableHead>协议</TableHead>
                             <TableHead>状态</TableHead>
                             <TableHead>可见性</TableHead>
-                            <TableHead>Copilot</TableHead>
-                            <TableHead>权重</TableHead>
-                            <TableHead>实际权重</TableHead>
+                            <TableHead className="whitespace-nowrap">权重</TableHead>
+                            <TableHead className="whitespace-nowrap">实际权重</TableHead>
                             <TableHead>倍率</TableHead>
                             <TableHead>最大并发</TableHead>
                             <TableHead>开关</TableHead>
@@ -552,15 +557,21 @@ export function ModelTable({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10">{bulkMode ? <Checkbox checked={selectionState(sorted.map((m) => m.id), selectedIds)} onCheckedChange={(checked) => setSelectedIds((prev) => { const next = new Set(prev); for (const m of sorted) { if (checked === true) next.add(m.id); else next.delete(m.id); } return next; })} aria-label="全选当前排序结果" /> : null}</TableHead>
-                <TableHead className="w-12">序号</TableHead>
+                {bulkMode ? (
+                  <SelectAllHead
+                    models={sorted}
+                    selectedIds={selectedIds}
+                    onToggle={toggleSelectedMany}
+                    label="全选当前排序结果"
+                  />
+                ) : null}
+                <TableHead className="w-12 whitespace-nowrap">序号</TableHead>
                 <SortableHead label="别名" field="alias" currentField={sortField} order={sortOrder} onSort={handleSort} />
                 <SortableHead label="真实模型" field="real_model" currentField={sortField} order={sortOrder} onSort={handleSort} />
                 <SortableHead label="所属渠道" field="channel_name" currentField={sortField} order={sortOrder} onSort={handleSort} />
                 <SortableHead label="协议" field="protocols" currentField={sortField} order={sortOrder} onSort={handleSort} />
                 <SortableHead label="状态" field="status" currentField={sortField} order={sortOrder} onSort={handleSort} />
                 <SortableHead label="可见性" field="visibility" currentField={sortField} order={sortOrder} onSort={handleSort} />
-                <SortableHead label="Copilot" field="copilot" currentField={sortField} order={sortOrder} onSort={handleSort} />
                 <SortableHead label="权重" field="weight" currentField={sortField} order={sortOrder} onSort={handleSort} />
                 <SortableHead label="实际权重" field="effective_weight" currentField={sortField} order={sortOrder} onSort={handleSort} />
                 <SortableHead label="倍率" field="multiplier" currentField={sortField} order={sortOrder} onSort={handleSort} />
@@ -614,16 +625,7 @@ export function ModelTable({
                     <Checkbox
                       className="shrink-0"
                       checked={selectionState(group.models.map((m) => m.id), selectedIds)}
-                      onCheckedChange={(checked) =>
-                        setSelectedIds((prev) => {
-                          const next = new Set(prev);
-                          for (const m of group.models) {
-                            if (checked === true) next.add(m.id);
-                            else next.delete(m.id);
-                          }
-                          return next;
-                        })
-                      }
+                      onCheckedChange={(checked) => toggleSelectedMany(group.models.map((m) => m.id), checked === true)}
                       aria-label={`全选渠道 ${group.channelName} 下的模型`}
                     />
                   ) : null}
@@ -690,6 +692,29 @@ export function ModelTable({
         </div>
       )}
     </div>
+  );
+}
+
+// 全选表头：与数据行的勾选单元格同为条件渲染，缺了它表头会多一格、整行错位
+function SelectAllHead({
+  models,
+  selectedIds,
+  onToggle,
+  label,
+}: {
+  models: ModelWithChannel[];
+  selectedIds: Set<number>;
+  onToggle: (ids: number[], checked: boolean) => void;
+  label: string;
+}) {
+  return (
+    <TableHead className="w-10">
+      <Checkbox
+        checked={selectionState(models.map((m) => m.id), selectedIds)}
+        onCheckedChange={(checked) => onToggle(models.map((m) => m.id), checked === true)}
+        aria-label={label}
+      />
+    </TableHead>
   );
 }
 
