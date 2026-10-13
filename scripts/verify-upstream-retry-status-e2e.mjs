@@ -201,13 +201,20 @@ console.log("=== I. maxRouteAttempts=1 时不换渠道 ===");
 
 console.log("=== J. 失败响应体不被预读消耗，透传完整 ===");
 {
-  const routes = [
+  // 不配置换渠道时上游错误体会原样透传，必须能完整读回（预读会把它消费掉）
+  const routes = [makeRoute({ channelId: 7, modelId: 101 })];
+  const { result } = await run(failThenSucceed(400, routes));
+  const text = await result.upstream.text();
+  check("错误响应体可完整读回", text, CREDIT_BODY);
+  check("错误状态码保留", result.upstream.status, 400);
+
+  // 换渠道场景下，最终成功的响应体同样必须完整可读
+  const routes2 = [
     makeRoute({ channelId: 7, modelId: 101, retryStatusCodes: JSON.stringify([400]) }),
     makeRoute({ channelId: 8, modelId: 102 }),
   ];
-  const { result } = await run(failThenSucceed(400, routes));
-  const text = await result.upstream.text();
-  check("成功响应体可读", text, JSON.stringify({ ok: true }));
+  const { result: r2 } = await run(failThenSucceed(400, routes2));
+  check("换渠道后成功响应体可读", await r2.upstream.text(), JSON.stringify({ ok: true }));
 }
 
 console.log("=== K. 大响应体不再被预读（无读放大）===");
@@ -263,18 +270,45 @@ console.log("=== L. 渠道写错的状态码不被当成合法配置（严格解
 
 console.log("=== M. 熔断口径与换渠道一致（渠道配置 [400]）===");
 {
-  // 配了 400 会换渠道，就必须同时计入熔断，否则渠道会被反复选中
+  // 配了 400 会换渠道，就必须同时计入熔断，否则渠道会被反复选中。
+  // 断言写死期望值，不做「a === b」式别名比对，否则两边同时错也测不出来。
   const { countsAsChannelFailure, resolveRetryStatusCodes } = await import("@/lib/gateway/upstream-error");
   const effective = resolveRetryStatusCodes(JSON.stringify([400]), null);
-  for (const status of [400, 401, 404, 429, 500, 503]) {
-    check(
-      `换渠道=计熔断 ${status}`,
-      shouldRetryUpstreamStatus(status, effective) === countsAsChannelFailure(status, effective),
-      true,
-    );
-  }
+  check("生效列表含 400", JSON.stringify(effective), JSON.stringify([400]));
   check("配置 400 计入熔断", countsAsChannelFailure(400, effective), true);
+  check("配置 400 时 400 换渠道", shouldRetryUpstreamStatus(400, effective), true);
   check("未配置的 404 不计熔断", countsAsChannelFailure(404, effective), false);
+  check("未配置的 404 不换渠道", shouldRetryUpstreamStatus(404, effective), false);
+  check("5xx 始终计熔断", countsAsChannelFailure(503, effective), true);
+  check("5xx 始终换渠道", shouldRetryUpstreamStatus(503, effective), true);
+  check("2xx 不计熔断", countsAsChannelFailure(200, effective), false);
+}
+
+
+console.log("=== N. 熔断计入点必须走渠道配置（源码级守卫）===");
+{
+  // 4xx 的可达分支若硬编码 ok: false，会给未配置渠道误记熔断失败次数。
+  // 这里按源码结构检查：status >= 400 分支里的 lease.complete 必须用 countsAsChannelFailureFor。
+  const { readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const path = (await import("node:path")).default;
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  for (const rel of ["lib/gateway/gateway-handler.ts", "lib/gateway/queued-upstream-response.ts"]) {
+    const source = readFileSync(path.join(root, rel), "utf8").split("\n");
+    const offenders = [];
+    for (let i = 0; i < source.length; i += 1) {
+      if (source[i].includes("upstream.status >= 400")) {
+        // 该分支内（含嵌套一层）的 lease.complete 不得硬编码 ok: false
+        for (let j = i + 1; j < Math.min(i + 30, source.length); j += 1) {
+          if (source[j].includes("lease.complete")) {
+            if (!source[j].includes("countsAsChannelFailureFor")) offenders.push(j + 1);
+            break;
+          }
+        }
+      }
+    }
+    check(`${rel} 无硬编码 ok: false`, JSON.stringify(offenders), JSON.stringify([]));
+  }
 }
 
 console.log(`\n结果: ${passed} 通过, ${failed} 失败`);
