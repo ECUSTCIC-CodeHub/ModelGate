@@ -29,7 +29,6 @@ type FlatSortField =
   | "protocols"
   | "status"
   | "visibility"
-  | "copilot"
   | "weight"
   | "effective_weight"
   | "multiplier"
@@ -58,8 +57,6 @@ function compareModels(a: ModelWithChannel, b: ModelWithChannel, field: FlatSort
       return (a.enabled !== 0 ? 1 : 0) - (b.enabled !== 0 ? 1 : 0);
     case "visibility":
       return (a.is_public !== 0 ? 1 : 0) - (b.is_public !== 0 ? 1 : 0);
-    case "copilot":
-      return (a.copilot_compatibility !== 0 ? 1 : 0) - (b.copilot_compatibility !== 0 ? 1 : 0);
     case "weight":
       return a.weight - b.weight;
     case "effective_weight":
@@ -503,15 +500,16 @@ export function ModelTable({
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead className="w-12">序号</TableHead>
+                            {bulkMode ? (
+                              <TableHead className="w-10"><Checkbox checked={selectionState(group.models.map((m) => m.id), selectedIds)} onCheckedChange={(checked) => setSelectedIds((prev) => { const next = new Set(prev); for (const m of group.models) { if (checked === true) next.add(m.id); else next.delete(m.id); } return next; })} aria-label={`全选渠道 ${group.channelName} 下的模型`} /></TableHead>
+                            ) : null}
+                            <TableHead className="w-12 whitespace-nowrap">序号</TableHead>
                             <TableHead>别名</TableHead>
                             <TableHead>真实模型</TableHead>
-                            <TableHead className="w-10">{bulkMode ? <Checkbox checked={selectionState(group.models.map((m) => m.id), selectedIds)} onCheckedChange={(checked) => setSelectedIds((prev) => { const next = new Set(prev); for (const m of group.models) { if (checked === true) next.add(m.id); else next.delete(m.id); } return next; })} aria-label={`全选渠道 ${group.channelName} 下的模型`} /> : null}</TableHead>
                             <TableHead>所属渠道</TableHead>
                             <TableHead>协议</TableHead>
                             <TableHead>状态</TableHead>
                             <TableHead>可见性</TableHead>
-                            <TableHead>Copilot</TableHead>
                             <TableHead>权重</TableHead>
                             <TableHead>实际权重</TableHead>
                             <TableHead>倍率</TableHead>
@@ -552,15 +550,16 @@ export function ModelTable({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10">{bulkMode ? <Checkbox checked={selectionState(sorted.map((m) => m.id), selectedIds)} onCheckedChange={(checked) => setSelectedIds((prev) => { const next = new Set(prev); for (const m of sorted) { if (checked === true) next.add(m.id); else next.delete(m.id); } return next; })} aria-label="全选当前排序结果" /> : null}</TableHead>
-                <TableHead className="w-12">序号</TableHead>
+                {bulkMode ? (
+                  <TableHead className="w-10"><Checkbox checked={selectionState(sorted.map((m) => m.id), selectedIds)} onCheckedChange={(checked) => setSelectedIds((prev) => { const next = new Set(prev); for (const m of sorted) { if (checked === true) next.add(m.id); else next.delete(m.id); } return next; })} aria-label="全选当前排序结果" /></TableHead>
+                ) : null}
+                <TableHead className="w-12 whitespace-nowrap">序号</TableHead>
                 <SortableHead label="别名" field="alias" currentField={sortField} order={sortOrder} onSort={handleSort} />
                 <SortableHead label="真实模型" field="real_model" currentField={sortField} order={sortOrder} onSort={handleSort} />
                 <SortableHead label="所属渠道" field="channel_name" currentField={sortField} order={sortOrder} onSort={handleSort} />
                 <SortableHead label="协议" field="protocols" currentField={sortField} order={sortOrder} onSort={handleSort} />
                 <SortableHead label="状态" field="status" currentField={sortField} order={sortOrder} onSort={handleSort} />
                 <SortableHead label="可见性" field="visibility" currentField={sortField} order={sortOrder} onSort={handleSort} />
-                <SortableHead label="Copilot" field="copilot" currentField={sortField} order={sortOrder} onSort={handleSort} />
                 <SortableHead label="权重" field="weight" currentField={sortField} order={sortOrder} onSort={handleSort} />
                 <SortableHead label="实际权重" field="effective_weight" currentField={sortField} order={sortOrder} onSort={handleSort} />
                 <SortableHead label="倍率" field="multiplier" currentField={sortField} order={sortOrder} onSort={handleSort} />
