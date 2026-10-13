@@ -20,12 +20,14 @@ const ROOT_PREFIX = pathToFileURL(ROOT + path.sep).href;
 // 会间接拉起 next / better-sqlite3 / mysql2 / undici 的模块，按具名导出替换为占位。
 // 占位只用于让模块图能加载；其中被热路径调用的导出（选路 / 配额 / 上游请求等）一律由
 // 测试注入的 deps stub 覆盖，因此这些占位实现不会被执行。
+// 注意：不再 stub lib/gateway/upstream-error.ts —— 它只依赖一个类型和纯函数，
+// 不会拉起 next / 数据库，而路由现在会用 resolveRetryStatusCodes 解析渠道级配置，
+// 桩掉会导致该导出为 undefined，掩盖真实判定路径。
 const STUBBED_MODULES = {
   "lib/gateway/router.ts": ["listModelRoutes", "selectModelRoute"],
   "lib/gateway/channel-quota.ts": ["checkChannelQuota"],
   "lib/gateway/model-quota.ts": ["checkModelQuota"],
   "lib/gateway/proxy.ts": ["buildUpstreamUrl", "fetchUpstreamRequest"],
-  "lib/gateway/upstream-error.ts": ["shouldRetryUpstreamStatus", "normalizeRetryStatusCodes"],
   "lib/core/settings.ts": ["getGatewaySettings"],
   "lib/core/db/index.ts": ["gatewayDb"],
 };

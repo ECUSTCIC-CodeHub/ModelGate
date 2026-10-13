@@ -4,6 +4,9 @@ import {
   countsAsChannelFailure,
   isRetryableUpstreamStatus,
   normalizeRetryStatusCodes,
+  parseStoredRetryStatusCodes,
+  resolveRetryStatusCodes,
+  serializeRetryStatusCodes,
   shouldRetryUpstreamStatus,
 } from "../lib/gateway/upstream-error.ts";
 
@@ -113,6 +116,49 @@ checkJson("归一化输出", normalized, [400, 402]);
 check("用归一化结果判 400", shouldRetryUpstreamStatus(400, normalized), true);
 check("用归一化结果判 402", shouldRetryUpstreamStatus(402, normalized), true);
 check("用归一化结果判 429", shouldRetryUpstreamStatus(429, normalized), false);
+
+
+console.log("=== 9. 严格解析：写错的值不得被静默当成合法状态码 ===");
+// parseInt 会把 "400abc" 截成 400，让拼错的值被当成合法配置；这里要求整串必须是纯数字
+for (const bad of ["400abc", "401e2", "400.9", "40O", "0x190", "４０１"]) {
+  checkJson(`拒绝 ${JSON.stringify(bad)}`, normalizeRetryStatusCodes(bad), null);
+}
+checkJson("混入脏值的列表只留合法项", normalizeRetryStatusCodes("400abc,500"), [500]);
+checkJson("数组里的脏值同样被拒绝", normalizeRetryStatusCodes([400, "401x"]), [400]);
+checkJson("合法值仍正常", normalizeRetryStatusCodes("401, 429"), [401, 429]);
+
+console.log("=== 10. 换渠道与熔断口径必须一致（同一份生效列表）===");
+for (const status of [400, 401, 402, 403, 404, 429, 500, 503]) {
+  for (const codes of [null, [], [400], [401, 404], [500]]) {
+    check(
+      `口径一致 ${status} / ${JSON.stringify(codes)}`,
+      shouldRetryUpstreamStatus(status, codes) === countsAsChannelFailure(status, codes),
+      true,
+    );
+  }
+}
+
+console.log("=== 11. 渠道落库文本解析 ===");
+checkJson("JSON 数组文本", parseStoredRetryStatusCodes("[400,429]"), [400, 429]);
+checkJson("空串按未配置", parseStoredRetryStatusCodes(""), null);
+checkJson("null 按未配置", parseStoredRetryStatusCodes(null), null);
+checkJson("脏 JSON 按未配置", parseStoredRetryStatusCodes("{oops"), null);
+checkJson("非数组 JSON 按未配置", parseStoredRetryStatusCodes('{"a":1}'), null);
+checkJson("全非法数组按未配置", parseStoredRetryStatusCodes("[200,600]"), null);
+
+console.log("=== 12. 生效列表优先级：渠道 > 全局 > 内置默认 ===");
+checkJson("渠道优先于全局", resolveRetryStatusCodes("[418]", [400]), [418]);
+checkJson("渠道未配置回落全局", resolveRetryStatusCodes(null, [400]), [400]);
+checkJson("渠道脏数据回落全局", resolveRetryStatusCodes("{oops", [400]), [400]);
+checkJson("两者都没有用内置默认", resolveRetryStatusCodes(null, null), [401, 402, 403, 429]);
+checkJson("空串渠道回落全局", resolveRetryStatusCodes("", [429]), [429]);
+
+console.log("=== 13. 落库序列化 ===");
+check("有值序列化", serializeRetryStatusCodes([429, 401, 429]), "[401,429]");
+check("空值写 null", serializeRetryStatusCodes([]), null);
+check("非法值写 null", serializeRetryStatusCodes("abc"), null);
+check("null 写 null", serializeRetryStatusCodes(null), null);
+checkJson("落库文本可被读回", parseStoredRetryStatusCodes(serializeRetryStatusCodes([400, 429])), [400, 429]);
 
 console.log(`\n结果: ${passed} 通过, ${failed} 失败`);
 if (failed > 0) process.exit(1);

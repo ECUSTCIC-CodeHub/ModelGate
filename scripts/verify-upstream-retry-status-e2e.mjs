@@ -1,6 +1,6 @@
 // 端到端验证「按状态码换渠道」：渠道级配置优先，未配置回落全局默认。
 // 运行：
-//   node --experimental-transform-types --loader ./scripts/verify-credit-failover-loader.mjs \
+//   node --experimental-transform-types --loader ./scripts/verify-retry-status-loader.mjs \
 //     scripts/verify-upstream-retry-status-e2e.mjs
 import { requestUpstreamWithFallback } from "@/lib/gateway/upstream-routing";
 import { shouldRetryUpstreamStatus } from "@/lib/gateway/upstream-error";
@@ -236,6 +236,45 @@ console.log("=== K. 大响应体不再被预读（无读放大）===");
   check("4MB 4xx 仍换渠道", JSON.stringify(attempted), JSON.stringify([7, 8]));
   check("最终成功", result.ok, true);
   console.log(`  INFO  4MB 上游 4xx 换渠道耗时 ${elapsed}ms（无预读，不读取大 body）`);
+}
+
+
+console.log("=== L. 渠道写错的状态码不被当成合法配置（严格解析）===");
+{
+  // 非 JSON 文本：按未配置处理并回落默认
+  const bad1 = [makeRoute({ channelId: 7, modelId: 101, retryStatusCodes: "400abc" }), makeRoute({ channelId: 8, modelId: 102 })];
+  const r1 = await run(failThenSucceed(400, bad1));
+  check("非 JSON 脏值不触发 400 换渠道", JSON.stringify(r1.attempted), JSON.stringify([7]));
+  check("非 JSON 脏值透传上游 400", r1.result.upstream?.status, 400);
+
+  // 合法 JSON 但元素是脏值：绝不能静默变成 400（parseInt 会截断成 400）
+  const bad2 = [makeRoute({ channelId: 7, modelId: 101, retryStatusCodes: '["400abc"]' }), makeRoute({ channelId: 8, modelId: 102 })];
+  const r2 = await run(failThenSucceed(400, bad2));
+  check("JSON 内脏值不触发 400 换渠道", JSON.stringify(r2.attempted), JSON.stringify([7]));
+  check("JSON 内脏值透传上游 400", r2.result.upstream?.status, 400);
+
+  // 混入脏值时必须只保留合法项
+  const mixed = [makeRoute({ channelId: 7, modelId: 101, retryStatusCodes: '["400abc", 418]' }), makeRoute({ channelId: 8, modelId: 102 })];
+  const r3 = await run(failThenSucceed(400, mixed));
+  check("只保留合法项：400 不换", JSON.stringify(r3.attempted), JSON.stringify([7]));
+  const r4 = await run(failThenSucceed(418, mixed));
+  check("只保留合法项：418 换", JSON.stringify(r4.attempted), JSON.stringify([7, 8]));
+}
+
+console.log("=== M. 熔断口径与换渠道一致（渠道配置 [400]）===");
+{
+  // 配了 400 会换渠道，就必须同时计入熔断，否则渠道会被反复选中
+  const { countsAsChannelFailure, resolveRetryStatusCodes } = await import("@/lib/gateway/upstream-error");
+  const effective = resolveRetryStatusCodes(JSON.stringify([400]), null);
+  for (const status of [400, 401, 404, 429, 500, 503]) {
+    check(
+      `换渠道=计熔断 ${status}`,
+      shouldRetryUpstreamStatus(status, effective) === countsAsChannelFailure(status, effective),
+      true,
+    );
+  }
+  check("配置 400 计入熔断", countsAsChannelFailure(400, effective), true);
+  check("未配置的 404 不计熔断", countsAsChannelFailure(404, effective), false);
 }
 
 console.log(`\n结果: ${passed} 通过, ${failed} 失败`);

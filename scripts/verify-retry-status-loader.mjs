@@ -3,7 +3,7 @@
 // （按状态码 + 渠道配置判定 4xx 是否换渠道），stub 掉就测不到新逻辑。
 //
 // 运行：
-//   node --experimental-transform-types --loader ./scripts/verify-credit-failover-loader.mjs \
+//   node --experimental-transform-types --loader ./scripts/verify-retry-status-loader.mjs \
 //     scripts/verify-upstream-retry-status-e2e.mjs
 import { existsSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
