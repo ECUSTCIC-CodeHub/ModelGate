@@ -66,6 +66,7 @@ export type DbModel = {
   ua_restrictions: string;
   expires_at: string | null;
   system_prompt: string | null;
+  retry_status_codes: string | null;
 };
 
 export type DbGroup = {
