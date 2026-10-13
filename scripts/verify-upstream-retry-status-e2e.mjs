@@ -601,6 +601,116 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（TypeCheck
     check(`${rel} ${calleeNames.join("/")} 至少有一处调用`, callCount > 0, true);
   };
 
+  // 结构断言（拒绝面）：绑定来源追溯回答的是「这个符号最终是不是路由」，
+  // 但它识破不了「把重造出的对象经由函数形参再交进去」这类形态 —— 形参在追溯里
+  // 永远是合法来源。因此再叠一层结构断言：除「函数形参」和「块顶层
+  // `const { route } = picked`」以外，目标文件里不得出现整路由对象的构造表达式，
+  // 也不得出现来源不可信的路由解构。
+  const ROUTE_NAME_SET = new Set(["route", "retryRoute", "candidate"]);
+  const propKeyOf = (name) => (ts.isIdentifier(name) || ts.isStringLiteral(name) ? name.text : "");
+
+  // 整路由对象构造。路由模型结构是 { model, channel, effective_upstream_protocol }，
+  // 「重造一份路由」必然满足其一：
+  //   a) 带 route 属性（`{ route: Object.assign({}, route, {...}) }` 这类容器重造）
+  //   b) 同时给出 model 与 channel 两个整对象
+  //   c) 展开一个路由-ish 来源（`picked`、`picked.route`、名字含 route 的标识符）
+  const isRouteObjectLiteral = (node) => {
+    if (!ts.isObjectLiteralExpression(node)) return false;
+    const routeish = (name) => name === "picked" || /route/i.test(name);
+    const spreadFromRoute = (expr) => {
+      if (ts.isIdentifier(expr)) return routeish(expr.text);
+      if (ts.isPropertyAccessExpression(expr)) {
+        const parts = [];
+        let cursor = expr;
+        while (ts.isPropertyAccessExpression(cursor)) {
+          parts.unshift(cursor.name.text);
+          cursor = cursor.expression;
+        }
+        if (ts.isIdentifier(cursor)) parts.unshift(cursor.text);
+        return parts.some(routeish);
+      }
+      return false;
+    };
+
+    let routeSpread = false;
+    let hasRouteProp = false;
+    let wholeModel = false;
+    let wholeChannel = false;
+    for (const prop of node.properties) {
+      if (ts.isSpreadAssignment(prop)) {
+        if (spreadFromRoute(prop.expression)) routeSpread = true;
+        continue;
+      }
+      if (!ts.isPropertyAssignment(prop)) continue;
+      const key = propKeyOf(prop.name);
+      const whole = prop.initializer;
+      // 只有整对象（字面量或字段直取如 `route.model`）才算重建路由；
+      // `{ model: route.model.real_model, channel: route.channel.name }` 这类标量取值是普通响应对象
+      const isWholeObject =
+        ts.isObjectLiteralExpression(whole) ||
+        (ts.isPropertyAccessExpression(whole) &&
+          (whole.name.text === "model" || whole.name.text === "channel" || whole.name.text === "route"));
+      if (key === "route") hasRouteProp = true;
+      if (key === "model" && isWholeObject) wholeModel = true;
+      if (key === "channel" && isWholeObject) wholeChannel = true;
+    }
+    return routeSpread || hasRouteProp || (wholeModel && wholeChannel);
+  };
+
+  const isPickedSource = (node) => {
+    if (!node) return false;
+    if (ts.isIdentifier(node)) return node.text === "picked";
+    if (ts.isPropertyAccessExpression(node)) return isPickedSource(node.expression);
+    return false;
+  };
+
+  const collectStructuralOffenders = (sourceFile) => {
+    const offenders = [];
+    const walk = (node, ancestors) => {
+      const line = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
+      const inType = ancestors.some((a) => ts.isTypeNode(a));
+
+      if (!inType && isRouteObjectLiteral(node)) {
+        offenders.push(`整路由对象构造 @ 行 ${line}`);
+      }
+
+      if (!inType && ts.isObjectBindingPattern(node)) {
+        // 括号包裹的箭头函数形参会被 AST 合成一个同名对象解构声明，跳过以免重复判定
+        const fromParenParam = (() => {
+          let cursor = node.parent;
+          while (cursor && (ts.isParenthesizedExpression(cursor) || ts.isParameter(cursor))) {
+            if (ts.isParameter(cursor)) return true;
+            cursor = cursor.parent;
+          }
+          return false;
+        })();
+
+        const named = node.elements.filter(
+          (element) =>
+            ts.isBindingElement(element) && ts.isIdentifier(element.name) && ROUTE_NAME_SET.has(element.name.text),
+        );
+        if (named.length > 0 && !fromParenParam) {
+          const decl = ts.isVariableDeclaration(node.parent) ? node.parent : null;
+          const list = decl && ts.isVariableDeclarationList(decl.parent) ? decl.parent : null;
+          const stmt = list && ts.isVariableStatement(list.parent) ? list.parent : null;
+          const block = stmt ? stmt.parent : null;
+          // 合法形态：直接写在某个块（函数体或 if/循环块）顶层、单一 `const` 声明、
+          // 初始值直接取自路由容器。嵌在回调 / IIFE / 中间对象里的解构拿不到
+          // 「块顶层」这一形态，一律来源不可信。
+          const inBlockTopLevel = Boolean(stmt && block && ts.isBlock(block) && list.declarations.length === 1);
+          const legit = Boolean(decl && inBlockTopLevel && isPickedSource(decl.initializer));
+          if (!legit) {
+            offenders.push(`${named.map((element) => element.name.text).join("/")} 解构来源不可信 @ 行 ${line}`);
+          }
+        }
+      }
+
+      ts.forEachChild(node, (child) => walk(child, [...ancestors, node]));
+    };
+    walk(sourceFile, []);
+    return offenders;
+  };
+
   // 1a) 守卫自检：把历史上绕过过的形态锁进回归清单。
   //     在临时目录造合成源文件，用同一套 traceRouteOrigin 判定，
   //     合法形态必须放行、重造形态必须拦下 —— 守卫本身退化会立刻失败。
@@ -621,6 +731,9 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（TypeCheck
       ["M4 闭包入参改名 + 内部解构自重造", `declare function verdict(route: RoutedModel, status: number): boolean;\nconst f = (input: RoutedModel) => {\n  const shadow = { route: { ...input, model: {} } as RoutedModel };\n  const { route } = shadow;\n  return verdict(route, 400);\n};`, true],
       ["M6 同名解构后再用同名解构重绑", `declare function verdict(route: RoutedModel, status: number): boolean;\ndeclare const picked: { route: RoutedModel };\nconst { route: rawRoute } = picked;\nconst { route } = { route: { ...rawRoute, model: {} } };\nconst r = verdict(route, 400);`, true],
       ["对象字面量直传", `declare function verdict(route: RoutedModel, status: number): boolean;\nconst r = verdict({ ...({} as RoutedModel) }, 400);`, true],
+      ["B1 对象解构形参 + 容器重造", `declare function verdict(route: RoutedModel, status: number): boolean;\nconst f = (route: RoutedModel) => {\n  const holder = { route: { ...route, model: {} } as RoutedModel };\n  return !(({ route }: { route: RoutedModel }) => verdict(route, 400))(holder);\n};`, true],
+      ["B2 IIFE 形参 + 调用点重造", `declare function verdict(route: RoutedModel, status: number): boolean;\nconst f = (route: RoutedModel) => !((r: RoutedModel) => verdict(r, 400))({ ...route, model: {} });`, true],
+      ["B2b IIFE 形参 + Object.assign 重造", `declare function verdict(route: RoutedModel, status: number): boolean;\nconst f = (route: RoutedModel) => {\n  const shadow = { route: Object.assign({}, route, { model: {} }) as RoutedModel };\n  return !(({ route }: { route: RoutedModel }) => verdict(route, 400))(shadow);\n};`, true],
     ];
 
     for (const [index, [label, body, shouldReject]] of CASES.entries()) {
@@ -628,7 +741,11 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（TypeCheck
       const program = getProgram([file]);
       const checker = program.getTypeChecker();
       const sourceFile = program.getSourceFile(file);
-      const offenders = collectOffenders(sourceFile, checker, ["verdict"]);
+      // 两层守卫都要过：绑定来源追溯 + 拒绝面结构断言
+      const offenders = [
+        ...collectOffenders(sourceFile, checker, ["verdict"]),
+        ...collectStructuralOffenders(sourceFile),
+      ];
       const rejected = offenders.length > 0;
       check(`守卫自检 · ${label}`, rejected, shouldReject);
     }
@@ -638,6 +755,13 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（TypeCheck
   // 1) 熔断计入点：gateway-handler 的闭包把判定注入给 queued，实际调用点在下游文件里
   checkCalls("lib/gateway/gateway-handler.ts", ["routeCountsAsChannelFailure"]);
   checkCalls("lib/gateway/queued-upstream-response.ts", ["countsAsChannelFailureFor"]);
+
+  // 1b) 拒绝面断言：目标文件里不得出现整路由对象构造或来源不可信的路由解构
+  for (const rel of ["lib/gateway/gateway-handler.ts", "lib/gateway/queued-upstream-response.ts"]) {
+    const source = readFileSync(path.join(root, rel), "utf8");
+    const sourceFile = ts.createSourceFile(rel, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    check(`${rel} 无整路由对象重造`, JSON.stringify(collectStructuralOffenders(sourceFile)), JSON.stringify([]));
+  }
 
   // 2) gateway-handler 不得回退到直调裸判定（绕过统一入口）
   {
