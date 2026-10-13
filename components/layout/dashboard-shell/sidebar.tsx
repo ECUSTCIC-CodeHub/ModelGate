@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { ChevronRight, MessageSquare } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { DesktopProfileCard } from "@/components/layout/dashboard-shell/profile-card";
 import { useBranding } from "@/components/providers/branding-provider";
@@ -58,41 +57,39 @@ export function DashboardSidebar({
           </div>
           <Separator />
         </div>
-        <ScrollArea className="mt-4 min-h-0 flex-1">
-          <nav className="space-y-1 pr-3">
-            {menus.map((item) => {
-              const active = pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors duration-150",
-                    active
-                      ? "bg-[var(--color-sidebar-active-bg)] text-[var(--color-sidebar-active-text)]"
-                      : "text-[var(--color-sidebar-text)] hover:bg-[var(--color-sidebar-hover)] hover:text-[var(--color-foreground)]",
-                  )}
-                >
-                  <item.icon className="h-4 w-4 shrink-0" />
-                  <span className="flex-1">{item.label}</span>
-                  {active ? <ChevronRight className="h-4 w-4 opacity-60" /> : null}
-                </Link>
-              );
-            })}
-            {feedbackUrl ? (
-              <a
-                href={feedbackUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-sm text-[var(--color-sidebar-text)] transition-colors duration-150 hover:bg-[var(--color-sidebar-hover)] hover:text-[var(--color-foreground)]"
+        <nav className="sidebar-scroll mt-4 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
+          {menus.map((item) => {
+            const active = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors duration-150",
+                  active
+                    ? "bg-[var(--color-sidebar-active-bg)] text-[var(--color-sidebar-active-text)]"
+                    : "text-[var(--color-sidebar-text)] hover:bg-[var(--color-sidebar-hover)] hover:text-[var(--color-foreground)]",
+                )}
               >
-                <MessageSquare className="h-4 w-4 shrink-0" />
-                <span className="flex-1">问题反馈</span>
-              </a>
-            ) : null}
-          </nav>
-        </ScrollArea>
+                <item.icon className="h-4 w-4 shrink-0" />
+                <span className="flex-1">{item.label}</span>
+                {active ? <ChevronRight className="h-4 w-4 opacity-60" /> : null}
+              </Link>
+            );
+          })}
+          {feedbackUrl ? (
+            <a
+              href={feedbackUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-sm text-[var(--color-sidebar-text)] transition-colors duration-150 hover:bg-[var(--color-sidebar-hover)] hover:text-[var(--color-foreground)]"
+            >
+              <MessageSquare className="h-4 w-4 shrink-0" />
+              <span className="flex-1">问题反馈</span>
+            </a>
+          ) : null}
+        </nav>
 
         {profile ? (
           <DesktopProfileCard

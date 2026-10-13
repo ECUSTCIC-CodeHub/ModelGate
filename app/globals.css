@@ -469,6 +469,69 @@ body::before {
   background-clip: padding-box;
 }
 
+/* 侧边栏导航使用原生滚动条：滚动位置由浏览器维护，不依赖 JS 测量，
+   因此不存在滑块位置与滚动位置脱钩的问题。 */
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
+.sidebar-scroll:hover,
+.sidebar-scroll:focus-within {
+  scrollbar-color: var(--color-accent-muted) transparent;
+}
+
+.sidebar-scroll:hover::-webkit-scrollbar-thumb,
+.sidebar-scroll:focus-within::-webkit-scrollbar-thumb {
+  background: var(--color-accent-muted);
+  background-clip: padding-box;
+}
+
+.sidebar-scroll:hover::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent);
+  background-clip: padding-box;
+}
+
+/* retro 主题的滚动条是直角灰色块，上面按颜色变量写的规则会把它覆盖成圆角胶囊，
+   这里在 retro 作用域内还原。 */
+.retro .sidebar-scroll {
+  scrollbar-color: transparent transparent;
+}
+
+.retro .sidebar-scroll:hover,
+.retro .sidebar-scroll:focus-within {
+  scrollbar-color: #999999 transparent;
+}
+
+.retro .sidebar-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
+.retro .sidebar-scroll:hover::-webkit-scrollbar-thumb,
+.retro .sidebar-scroll:focus-within::-webkit-scrollbar-thumb {
+  background: #999999;
+  border-radius: 0;
+  border: none;
+  background-clip: border-box;
+}
+
+.retro .sidebar-scroll:hover::-webkit-scrollbar-thumb:hover {
+  background: #666666;
+}
+
+.retro.dark .sidebar-scroll:hover::-webkit-scrollbar-thumb,
+.retro.dark .sidebar-scroll:focus-within::-webkit-scrollbar-thumb {
+  background: #555555;
+}
+
+.retro.dark .sidebar-scroll:hover::-webkit-scrollbar-thumb:hover {
+  background: #777777;
+}
+
 /* ========== Focus ========== */
 :focus-visible {
   outline: 2px solid var(--color-accent);
