@@ -43,7 +43,7 @@ type QueuedResponseOptions = {
     upstreamBody: ReadableStream<Uint8Array>,
     route: RoutedModel,
   ) => StreamTransformResult;
-  // 熔断口径必须与换渠道判定一致（含渠道级状态码配置），因此由调用方注入而不是就地判定
+  // 熔断口径必须与换渠道判定一致（含模型级与渠道级状态码配置），因此由调用方注入而不是就地判定
   countsAsChannelFailureFor: (route: RoutedModel, status: number) => boolean;
 };
 

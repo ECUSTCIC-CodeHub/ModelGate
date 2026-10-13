@@ -442,8 +442,10 @@ console.log("=== N. 4xx 分支的熔断计入不得硬编码（AST 级守卫）=
 
 console.log("=== O. 熔断计入必须认模型级配置（运行时断言）===");
 {
-  // 这里直接喂真实形状的 route 对象跑熔断判定。此前只做源码文本守卫，
-  // 证明不了「传进去的就是路由自身的模型值」；这条运行时断言才是真正的防线。
+  // 这里直接喂真实形状的 route 对象跑熔断判定函数本身，验证四级回落语义。
+  // 覆盖边界：本组只测判定函数的行为，不承载「调用点有没有接线」——
+  // 调用点接线由 P 组（含 gateway-handler 闭包与 queued-upstream-response 的
+  // 3 个熔断计入点）与 L/L0e 组（换渠道的实际换渠道路径）负责。
   const { routeCountsAsChannelFailure } = await import("@/lib/gateway/upstream-error");
   const model400 = { model: { retry_status_codes: JSON.stringify([400]) }, channel: { retry_status_codes: null } };
   const channel418 = { model: { retry_status_codes: null }, channel: { retry_status_codes: JSON.stringify([418]) } };
@@ -463,40 +465,84 @@ console.log("=== O. 熔断计入必须认模型级配置（运行时断言）===
   check("2xx 不计熔断", routeCountsAsChannelFailure(model400, 200, null), false);
 }
 
-console.log("=== P. 熔断与换渠道调用点必须走统一入口（源码级守卫）===");
+console.log("=== P. 调用点必须把路由对象本身交给判定（AST 级守卫）===");
 {
-  // 换渠道判定在 upstream-routing 里是直调，运行时已由 L0/L0e 覆盖；
-  // 熔断计入在 gateway-handler 闭包内，运行时靠 O 组覆盖判定函数本身，
-  // 这里补一层结构断言：闭包必须把 route 交给 routeCountsAsChannelFailure。
+  // 覆盖面：gateway-handler.ts 的熔断闭包 + queued-upstream-response.ts 的 3 个熔断计入点
+  //         + upstream-routing.ts 的换渠道判定。
+  // 断言首参必须是「文件内确有绑定的路由标识符」（形参 / 局部声明 / 解构），
+  // 不得是对象字面量、临时构造对象或未绑定名 —— 这样遮蔽形参、内联重造都能被挡下。
   const { readFileSync } = await import("node:fs");
   const { fileURLToPath } = await import("node:url");
   const path = (await import("node:path")).default;
   const ts = (await import("typescript")).default;
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const ROUTE_NAMES = new Set(["route", "retryRoute", "candidate"]);
 
-  // 1) gateway-handler：熔断闭包必须调用 routeCountsAsChannelFailure，且首参为 route
-  {
-    const rel = "lib/gateway/gateway-handler.ts";
+  // 收集文件内所有绑定名：变量声明（含解构）、函数/方法形参、函数名
+  const collectBindings = (sourceFile) => {
+    const names = new Set();
+    const addPattern = (pattern) => {
+      if (ts.isIdentifier(pattern)) names.add(pattern.text);
+      else if (ts.isObjectBindingPattern(pattern) || ts.isArrayBindingPattern(pattern)) {
+        for (const element of pattern.elements) {
+          if (ts.isBindingElement(element)) addPattern(element.name);
+        }
+      }
+    };
+    const visit = (node) => {
+      if (ts.isVariableDeclaration(node)) addPattern(node.name);
+      if (ts.isParameter(node)) addPattern(node.name);
+      if (ts.isFunctionDeclaration(node) && node.name) names.add(node.name.text);
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+    return names;
+  };
+
+  // 校验某个判定函数在该文件里的所有调用：首参必须是已绑定的路由标识符
+  const checkCalls = (rel, calleeNames) => {
     const source = readFileSync(path.join(root, rel), "utf8");
     const sourceFile = ts.createSourceFile(rel, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-    const calls = [];
-    let usesRaw = 0;
+    const bindings = collectBindings(sourceFile);
+    const offenders = [];
+    let callCount = 0;
     const visit = (node) => {
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-        if (node.expression.text === "routeCountsAsChannelFailure") {
-          const first = node.arguments[0];
-          calls.push(first && ts.isIdentifier(first) ? first.text : (first ? first.getText(sourceFile) : "<无首参>"));
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && calleeNames.includes(node.expression.text)) {
+        callCount += 1;
+        const first = node.arguments[0];
+        const line = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
+        if (!first || !ts.isIdentifier(first)) {
+          offenders.push(`${first ? first.getText(sourceFile) : "<无首参>"} @ 行 ${line}`);
+        } else if (!bindings.has(first.text) || !ROUTE_NAMES.has(first.text)) {
+          offenders.push(`${first.text}（非路由标识符）@ 行 ${line}`);
         }
-        if (node.expression.text === "countsAsChannelFailure") usesRaw += 1;
       }
       ts.forEachChild(node, visit);
     };
     visit(sourceFile);
-    check(`${rel} 熔断判定首参为 route`, JSON.stringify(calls), JSON.stringify(["route"]));
+    check(`${rel} ${calleeNames.join("/")} 首参为路由对象`, JSON.stringify(offenders), JSON.stringify([]));
+    check(`${rel} ${calleeNames.join("/")} 至少有一处调用`, callCount > 0, true);
+  };
+
+  // 1) 熔断计入点：gateway-handler 的闭包把判定注入给 queued，实际调用点在下游文件里
+  checkCalls("lib/gateway/gateway-handler.ts", ["routeCountsAsChannelFailure"]);
+  checkCalls("lib/gateway/queued-upstream-response.ts", ["countsAsChannelFailureFor"]);
+
+  // 2) gateway-handler 不得回退到直调裸判定（绕过统一入口）
+  {
+    const rel = "lib/gateway/gateway-handler.ts";
+    const source = readFileSync(path.join(root, rel), "utf8");
+    const sourceFile = ts.createSourceFile(rel, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    let usesRaw = 0;
+    const visit = (node) => {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "countsAsChannelFailure") usesRaw += 1;
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
     check(`${rel} 不再直调裸判定`, usesRaw, 0);
   }
 
-  // 2) upstream-routing：换渠道判定的首参必须是模型级配置（去注释后文本比对）
+  // 3) 换渠道判定：upstream-routing 的首参必须是模型级配置的直取
   {
     const rel = "lib/gateway/upstream-routing.ts";
     const source = readFileSync(path.join(root, rel), "utf8");
