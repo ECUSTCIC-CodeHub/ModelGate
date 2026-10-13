@@ -99,6 +99,20 @@ export function countsAsChannelFailure(status: number, retryStatusCodes?: readon
   return matchesRetryStatus(status, retryStatusCodes);
 }
 
+// 带路由上下文的熔断判定：按 模型级 → 渠道级 → 全局 解析出这条路由真正生效的状态码。
+// 抽成导出纯函数是为了让「模型级配置有没有被传到判定里」能被运行时断言覆盖，
+// 而不是只靠源码文本守卫（文本守卫无法证明传进去的就是路由自身的模型值）。
+export function routeCountsAsChannelFailure(
+  route: { model: { retry_status_codes: string | null }; channel: { retry_status_codes: string | null } },
+  status: number,
+  globalDefault?: readonly number[] | null,
+) {
+  return countsAsChannelFailure(
+    status,
+    resolveRetryStatusCodes(route.model.retry_status_codes, route.channel.retry_status_codes, globalDefault),
+  );
+}
+
 export function parseUpstreamError(text: string, status: number) {
   try {
     const parsed = JSON.parse(text) as Record<string, unknown>;
