@@ -30,6 +30,7 @@ export type DbChannel = {
   custom_headers: string | null;
   request_body_omit: string | null;
   group_name: string | null;
+  retry_status_codes: string | null;
 };
 
 export type ModelQuotaMode = "follow_group" | "bypass_group" | "independent" | "dual";

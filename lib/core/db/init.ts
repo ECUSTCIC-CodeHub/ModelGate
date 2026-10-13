@@ -355,6 +355,7 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("channels", "custom_headers", "custom_headers TEXT DEFAULT NULL");
   await db.ensureColumn("channels", "request_body_omit", "request_body_omit TEXT DEFAULT NULL");
   await db.ensureColumn("channels", "group_name", "group_name TEXT DEFAULT NULL");
+  await db.ensureColumn("channels", "retry_status_codes", "retry_status_codes TEXT DEFAULT NULL");
   await db.ensureColumn("models", "deleted_at", "deleted_at DATETIME");
   await db.ensureColumn("models", "is_public", "is_public INTEGER DEFAULT 1");
   await db.ensureColumn("models", "upstream_protocol", `upstream_protocol TEXT DEFAULT 'chat_completions'`);
@@ -533,6 +534,7 @@ async function seedDefaultSettings(db: DatabaseAdapter) {
     ["upstream_retry_enabled", "1"],
     ["upstream_retry_max_attempts", "3"],
     ["upstream_retry_same_channel", "0"],
+    ["upstream_retry_status_codes", ""],
     ["upstream_circuit_breaker_enabled", "1"],
     ["vision_fallback_enabled", "0"],
     ["vision_fallback_alias", ""],

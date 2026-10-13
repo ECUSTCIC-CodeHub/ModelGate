@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS channels (
   custom_headers TEXT DEFAULT NULL,
   request_body_omit TEXT DEFAULT NULL,
   period_cycles TEXT DEFAULT NULL,
-  group_name TEXT DEFAULT NULL
+  group_name TEXT DEFAULT NULL,
+  retry_status_codes TEXT DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS models (

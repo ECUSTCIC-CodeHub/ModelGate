@@ -241,6 +241,17 @@ export function ChannelDrawer({
                 仅用于渠道列表组织，不参与请求路由。最长 64 字符，保存时去掉首尾空白。
               </p>
             </div>
+            <div className="space-y-2">
+              <Label>触发换渠道的状态码</Label>
+              <Input
+                placeholder="留空沿用全局默认"
+                value={form.retry_status_codes}
+                onChange={(e) => onFormChange({ retry_status_codes: e.target.value })}
+              />
+              <p className="text-xs text-[var(--color-foreground-muted)]">
+                用逗号分隔，支持 400-599。上游返回这些状态码时改用同别名的其他渠道，并计入熔断。留空表示沿用系统设置里的全局默认（401、402、403、429 与全部 5xx）。
+              </p>
+            </div>
             <div className="space-y-2 md:col-span-2">
               <Label>自定义 Header</Label>
               <textarea

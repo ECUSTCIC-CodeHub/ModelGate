@@ -16,6 +16,7 @@ const schema = z.object({
   upstream_retry_enabled: z.boolean(),
   upstream_retry_max_attempts: z.number().int().min(1).max(10),
   upstream_retry_same_channel: z.boolean(),
+  upstream_retry_status_codes: z.array(z.number().int().min(400).max(599)).max(64).optional(),
   upstream_circuit_breaker_enabled: z.boolean(),
   upstream_strict_priority: z.boolean(),
   vision_fallback_enabled: z.boolean().optional(),

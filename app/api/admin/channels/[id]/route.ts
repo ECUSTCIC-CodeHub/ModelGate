@@ -42,6 +42,7 @@ const updateSchema = z.object({
   custom_headers: z.record(z.string(), z.string()).nullable().optional(),
   request_body_omit: z.array(z.string()).nullable().optional(),
   group_name: z.string().max(64).nullable().optional(),
+  retry_status_codes: z.array(z.number().int().min(400).max(599)).max(64).nullable().optional(),
 });
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -205,6 +206,12 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       parsed.data.group_name === undefined
         ? (existing as { group_name?: string | null }).group_name ?? ""
         : (parsed.data.group_name ?? "").trim(),
+    retry_status_codes:
+      parsed.data.retry_status_codes === undefined
+        ? (existing as { retry_status_codes?: string | null }).retry_status_codes ?? null
+        : parsed.data.retry_status_codes && parsed.data.retry_status_codes.length > 0
+          ? JSON.stringify([...new Set(parsed.data.retry_status_codes)].sort((a, b) => a - b))
+          : null,
     time_restrictions:
       timeRestrictions === null
         ? (existing as { time_restrictions?: string | null }).time_restrictions ?? ""
@@ -234,7 +241,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       .execute(
         `UPDATE channels
          SET name = ?, base_url = ?, api_key = ?, supported_protocols = ?, user_agent = ?, proxy_url = ?, enabled = ?, weight = ?, max_concurrency = ?, timeout = ?,
-             quota_tokens = ?, quota_requests = ?, period_cycles = ?, force_include_usage = ?, ua_restrictions = ?, expires_at = ?, time_restrictions = ?, custom_headers = ?, request_body_omit = ?, group_name = ?, api_key_private = ?, created_by = ?
+             quota_tokens = ?, quota_requests = ?, period_cycles = ?, force_include_usage = ?, ua_restrictions = ?, expires_at = ?, time_restrictions = ?, custom_headers = ?, request_body_omit = ?, group_name = ?, retry_status_codes = ?, api_key_private = ?, created_by = ?
          WHERE id = ?`,
         [
           (merged as { name: string }).name,
@@ -261,6 +268,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           (merged as { custom_headers: string }).custom_headers,
           (merged as { request_body_omit: string }).request_body_omit,
           (merged as { group_name: string }).group_name || null,
+          (merged as { retry_status_codes: string | null }).retry_status_codes ?? null,
           nextPrivate,
           nextCreatedBy,
           id,

@@ -47,6 +47,17 @@ function stringValue(value: unknown, fallback = "") {
   return typeof value === "string" ? value : fallback;
 }
 
+// 输入框是「逗号分隔」的自由文本，提交前解析成状态码数组；无有效项则传空数组表示沿用内置默认。
+function parseRetryStatusCodesInput(raw: string): number[] {
+  const codes = new Set<number>();
+  for (const part of raw.split(/[\s,，、]+/)) {
+    const code = Number.parseInt(part, 10);
+    if (!Number.isInteger(code) || code < 400 || code > 599) continue;
+    codes.add(code);
+  }
+  return [...codes].sort((a, b) => a - b);
+}
+
 export default function AdminSettingsPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("appearance");
@@ -55,6 +66,7 @@ export default function AdminSettingsPage() {
   const [upstreamRetryEnabled, setUpstreamRetryEnabled] = useState(true);
   const [upstreamRetryMaxAttempts, setUpstreamRetryMaxAttempts] = useState(3);
   const [upstreamRetrySameChannel, setUpstreamRetrySameChannel] = useState(false);
+  const [upstreamRetryStatusCodes, setUpstreamRetryStatusCodes] = useState("");
   const [circuitBreakerEnabled, setCircuitBreakerEnabled] = useState(true);
   const [upstreamStrictPriority, setUpstreamStrictPriority] = useState(false);
   const [oidcEnabled, setOidcEnabled] = useState(false);
@@ -113,6 +125,7 @@ export default function AdminSettingsPage() {
     setUpstreamRetryEnabled(settings.upstream_retry_enabled !== 0);
     setUpstreamRetryMaxAttempts(Number(settings.upstream_retry_max_attempts ?? 3));
     setUpstreamRetrySameChannel(settings.upstream_retry_same_channel === 1);
+    setUpstreamRetryStatusCodes(stringValue(settings.upstream_retry_status_codes));
     setCircuitBreakerEnabled(settings.upstream_circuit_breaker_enabled !== 0);
     setUpstreamStrictPriority(settings.upstream_strict_priority === 1);
     if (oidcFeatureEnabled) {
@@ -201,6 +214,7 @@ export default function AdminSettingsPage() {
         upstream_retry_enabled: upstreamRetryEnabled,
         upstream_retry_max_attempts: upstreamRetryMaxAttempts,
         upstream_retry_same_channel: upstreamRetrySameChannel,
+        upstream_retry_status_codes: parseRetryStatusCodesInput(upstreamRetryStatusCodes),
         upstream_circuit_breaker_enabled: circuitBreakerEnabled,
         upstream_strict_priority: upstreamStrictPriority,
         ...(oidcFeatureEnabled ? {
@@ -343,11 +357,13 @@ export default function AdminSettingsPage() {
             upstreamRetryEnabled={upstreamRetryEnabled}
             upstreamRetryMaxAttempts={upstreamRetryMaxAttempts}
             upstreamRetrySameChannel={upstreamRetrySameChannel}
+            upstreamRetryStatusCodes={upstreamRetryStatusCodes}
             circuitBreakerEnabled={circuitBreakerEnabled}
             upstreamStrictPriority={upstreamStrictPriority}
             setUpstreamRetryEnabled={setUpstreamRetryEnabled}
             setUpstreamRetryMaxAttempts={setUpstreamRetryMaxAttempts}
             setUpstreamRetrySameChannel={setUpstreamRetrySameChannel}
+            setUpstreamRetryStatusCodes={setUpstreamRetryStatusCodes}
             setCircuitBreakerEnabled={setCircuitBreakerEnabled}
             setUpstreamStrictPriority={setUpstreamStrictPriority}
           />

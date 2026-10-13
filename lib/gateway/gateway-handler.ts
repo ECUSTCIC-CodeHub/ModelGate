@@ -24,7 +24,7 @@ import { resolveClientIp } from "@/lib/core/client-ip";
 import { requestContainsImage } from "@/lib/gateway/normalized-message/detect-image";
 import { resolveTokenUsage, tokenUsageMetadata } from "@/lib/gateway/token-usage";
 import { resolveTriState } from "@/lib/gateway/user-preferences";
-import { buildErrorResponseBody, countsAsChannelFailure, parseUpstreamError } from "@/lib/gateway/upstream-error";
+import { buildErrorResponseBody, countsAsChannelFailure, normalizeRetryStatusCodes, parseUpstreamError } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
 import { findMatchingRedeemBalance } from "@/lib/services/redeem-codes";
 import { redactUrlCredentials } from "@/lib/shared/redact";
@@ -419,6 +419,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     inboundProtocol,
     maxRouteAttempts,
     sameChannelRetry: settings.upstream_retry_same_channel === 1,
+    defaultRetryStatusCodes: normalizeRetryStatusCodes(settings.upstream_retry_status_codes),
     requestSignal: request.signal,
     inboundHeaders: request.headers,
     allowedChannelIds,

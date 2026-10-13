@@ -48,6 +48,7 @@ const createSchema = z.object({
   custom_headers: customHeadersSchema,
   request_body_omit: z.array(z.string()).optional(),
   group_name: z.string().max(64).nullable().optional(),
+  retry_status_codes: z.array(z.number().int().min(400).max(599)).max(64).nullable().optional(),
   models: z
     .array(
       z.object({
@@ -207,8 +208,8 @@ export async function POST(request: Request) {
     const channelEnabled = parsed.data.enabled === false ? 0 : 1;
     const result = await tx
       .execute(
-        `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, period_cycles, force_include_usage, ua_restrictions, expires_at, time_restrictions, custom_headers, request_body_omit, group_name, created_by, api_key_private)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, period_cycles, force_include_usage, ua_restrictions, expires_at, time_restrictions, custom_headers, request_body_omit, group_name, retry_status_codes, created_by, api_key_private)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           parsed.data.name,
           parsed.data.base_url,
@@ -230,6 +231,9 @@ export async function POST(request: Request) {
           stringifyCustomHeaders(customHeadersResult.headers),
           stringifyRequestBodyOmit(requestBodyOmitResult.fields),
           parsed.data.group_name?.trim() || null,
+          parsed.data.retry_status_codes && parsed.data.retry_status_codes.length > 0
+            ? JSON.stringify([...new Set(parsed.data.retry_status_codes)].sort((a, b) => a - b))
+            : null,
           guard.auth.user.id,
           parsed.data.api_key_private === true ? 1 : 0,
         ],

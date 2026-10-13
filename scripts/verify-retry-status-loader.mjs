@@ -1,10 +1,10 @@
 // 与 verify-upstream-candidate-loop-loader.mjs 相同，唯一区别是**不 stub**
 // lib/gateway/upstream-error.ts —— 端到端用例要驱动真实的 shouldRetryUpstreamStatus
-// （按响应文本判定 4xx 额度耗尽），stub 掉就测不到新逻辑。
+// （按状态码 + 渠道配置判定 4xx 是否换渠道），stub 掉就测不到新逻辑。
 //
 // 运行：
 //   node --experimental-transform-types --loader ./scripts/verify-credit-failover-loader.mjs \
-//     scripts/verify-upstream-credit-failover-e2e.mjs
+//     scripts/verify-upstream-retry-status-e2e.mjs
 import { existsSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";

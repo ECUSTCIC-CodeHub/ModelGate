@@ -91,6 +91,7 @@ export type Channel = {
   request_body_omit: string;
   period_cycles: string | null;
   group_name: string;
+  retry_status_codes: string | null;
   created_by?: number | null;
   created_by_username?: string | null;
   api_key_private?: number | null;
@@ -136,6 +137,7 @@ export type ChannelForm = {
   custom_headers: string;
   request_body_omit: string;
   group_name: string;
+  retry_status_codes: string;
 };
 
 export type ModelForm = {
@@ -214,6 +216,7 @@ export const initialChannelForm: ChannelForm = {
   custom_headers: "",
   request_body_omit: "",
   group_name: "",
+  retry_status_codes: "",
 };
 
 export const initialModelDraft: ChannelModelDraft = {

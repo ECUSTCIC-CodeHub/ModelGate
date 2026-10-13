@@ -50,6 +50,27 @@ function expiresAtFromInputValue(value: string): string {
 }
 
 // 表单里按「每行 Name: Value」编辑，落库是 JSON 字符串
+function formatRetryStatusCodesInput(raw: unknown): string {
+  if (typeof raw !== "string" || raw.trim() === "") return "";
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "number").join(",") : "";
+  } catch {
+    return "";
+  }
+}
+
+// 留空表示沿用全局默认，因此空数组要传 null 而不是 []，避免被当成「不换渠道」。
+function parseRetryStatusCodesForm(raw: string): number[] | null {
+  const codes = new Set<number>();
+  for (const part of raw.split(/[\s,，、]+/)) {
+    const code = Number.parseInt(part, 10);
+    if (!Number.isInteger(code) || code < 400 || code > 599) continue;
+    codes.add(code);
+  }
+  return codes.size > 0 ? [...codes].sort((a, b) => a - b) : null;
+}
+
 function formatCustomHeadersInput(raw: unknown): string {
   if (typeof raw !== "string" || raw.trim() === "") return "";
   try {
@@ -193,6 +214,7 @@ export function useChannelAdmin() {
       custom_headers: formatCustomHeadersInput(row.custom_headers),
       request_body_omit: formatRequestBodyOmitInput(row.request_body_omit),
       group_name: row.group_name ?? "",
+      retry_status_codes: formatRetryStatusCodesInput(row.retry_status_codes),
     });
     setChannelModels([baseDraft(supportedProtocols)]);
     setChannelDrawerOpen(true);
@@ -349,6 +371,7 @@ export function useChannelAdmin() {
           custom_headers: customHeaders,
           request_body_omit: requestBodyOmit,
           group_name: channelForm.group_name.trim(),
+          retry_status_codes: parseRetryStatusCodesForm(channelForm.retry_status_codes),
           ...buildQuotaPayload(channelForm),
           models: draftModels,
         }),
@@ -381,6 +404,7 @@ export function useChannelAdmin() {
       custom_headers: customHeaders,
       request_body_omit: requestBodyOmit,
       group_name: channelForm.group_name.trim(),
+      retry_status_codes: parseRetryStatusCodesForm(channelForm.retry_status_codes),
       ...buildQuotaPayload(channelForm),
     };
     // 输入框留空表示不修改已保存的密钥：省略 api_key 字段，避免空串被当作清空

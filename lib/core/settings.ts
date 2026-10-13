@@ -1,4 +1,5 @@
 import { gatewayDb } from "@/lib/core/db";
+import { normalizeRetryStatusCodes } from "@/lib/gateway/upstream-error";
 import { clampStatusLightHours } from "@/lib/shared/utils";
 import { featureSettingsKey, modelGateFeatures, resolveRuntimeFeatures, runtimeFeatureDefaults, runtimeToggleableFeatures, type ModelGateFeature } from "@/lib/core/features";
 
@@ -24,6 +25,7 @@ export type GatewaySettings = {
   upstream_retry_enabled: number;
   upstream_retry_max_attempts: number;
   upstream_retry_same_channel: number;
+  upstream_retry_status_codes: string;
   upstream_circuit_breaker_enabled: number;
   upstream_strict_priority: number;
   vision_fallback_enabled: number;
@@ -137,6 +139,7 @@ const GATEWAY_KEYS = [
   "upstream_retry_enabled",
   "upstream_retry_max_attempts",
   "upstream_retry_same_channel",
+  "upstream_retry_status_codes",
   "upstream_circuit_breaker_enabled",
   "upstream_strict_priority",
   "vision_fallback_enabled",
@@ -201,6 +204,7 @@ async function readGatewaySettingsFromDb(): Promise<GatewaySettings> {
       DEFAULTS.upstream_retry_max_attempts,
     ),
     upstream_retry_same_channel: map.get("upstream_retry_same_channel") === "1" ? 1 : DEFAULTS.upstream_retry_same_channel,
+    upstream_retry_status_codes: map.get("upstream_retry_status_codes") ?? "",
     oidc_enabled: map.get("oidc_enabled") === "1" ? 1 : 0,
     oidc_issuer_url: map.get("oidc_issuer_url") ?? "",
     oidc_client_id: map.get("oidc_client_id") ?? "",
@@ -265,6 +269,7 @@ export async function setGatewaySettings(input: {
   upstream_retry_enabled: boolean;
   upstream_retry_max_attempts: number;
   upstream_retry_same_channel: boolean;
+  upstream_retry_status_codes?: number[];
   upstream_circuit_breaker_enabled: boolean;
   upstream_strict_priority: boolean;
   vision_fallback_enabled?: boolean;
@@ -325,6 +330,11 @@ export async function setGatewaySettings(input: {
     upstream_retry_max_attempts: String(Math.max(1, Math.trunc(input.upstream_retry_max_attempts))),
     upstream_retry_same_channel: input.upstream_retry_same_channel ? "1" : "0",
   };
+  // 空数组表示「未配置」，回落代码内置默认；有值才写入。
+  if (input.upstream_retry_status_codes !== undefined) {
+    const codes = normalizeRetryStatusCodes(input.upstream_retry_status_codes);
+    values.upstream_retry_status_codes = codes ? JSON.stringify(codes) : "";
+  }
 
   if (input.log_retention_days !== undefined) values.log_retention_days = String(Math.max(0, Math.min(3650, Math.trunc(input.log_retention_days))));
   if (input.log_auto_cleanup_enabled !== undefined) values.log_auto_cleanup_enabled = input.log_auto_cleanup_enabled ? "1" : "0";
