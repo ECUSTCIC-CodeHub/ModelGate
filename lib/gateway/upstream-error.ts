@@ -8,10 +8,12 @@ const RETRYABLE_UPSTREAM_STATUS = new Set([401, 429, 500, 502, 503, 504]);
 // 因此要和调用方参数错误区分开，否则额度耗尽的渠道会被反复选中。
 //
 // 判定流程（见 isChannelCreditExhausted）：
-//   1) 命中纯机器码（insufficient_quota / insufficient_user_quota）→ 认定；
-//   2) 命中「参数校验」特征（字段指认词，或额度词被当作字段名的语法形态）→ 判否；
-//   3) 强特征命中 → 认定；
-//   4) 弱特征命中且另有额度语境词 → 认定。
+//   1) 命中「下划线/连字符形态」的纯机器码（insufficient_quota、insufficient_user_quota）→ 认定；
+//      这一步优先于参数校验排除：上游常把 error.code 与 error.message 一起回显。
+//   2) 命中「参数校验」特征（字段指认词、额度词被当作字段名的语法形态、配置项名）→ 判否；
+//   3) 空格形态的 insufficient credit(s) → 认定；
+//   4) 强特征命中 → 认定；
+//   5) 弱特征命中且另有额度语境词或陈述句形态 → 认定。
 // 中文没有词边界，"额度已用尽" 会整串出现在 "unknown parameter: 额度已用尽告警开关"
 // 这类参数名里，因此第 2 步是必需的，不能只靠把关键词写长。
 //
@@ -53,7 +55,6 @@ const STRONG_CREDIT_EXHAUSTED_PATTERNS = [
   "usage limit for this billing period",
   "requires billing to be enabled",
   "used all your free credits",
-  "account is not active",
   "account is deactivated",
   "account has been deactivated",
   "payment required to",
@@ -65,6 +66,19 @@ const STRONG_CREDIT_EXHAUSTED_PATTERNS = [
   "账户额度不足",
   "余额已不足",
   "余额已耗尽",
+  "余额用尽",
+  "余额已用尽",
+  "余额已用完",
+  "余额为零",
+  "余额为 0",
+  "余额为0",
+  "账户余额用尽",
+  "账户余额已用尽",
+  "可用额度已不足",
+  "剩余额度为 0",
+  "剩余额度为0",
+  "配额已耗尽",
+  "配额不够",
   "额度已超限",
   "剩余额度不足",
   "可用额度不足",
@@ -190,12 +204,12 @@ const CREDIT_CONTEXT_PATTERNS = [
   "账户额度",
 ];
 
-// 弱特征出现在「配置项名」里时不是渠道余额问题，例如
-// 「您的额度不足提醒开关为必填项」「未知参数: 额度不足阈值」「用户欠费率配置」。
-// 这类写法里额度词后面紧跟名词性成分，而真实报文是「当前额度不足，无法完成请求」这样的句子。
-const WEAK_CREDIT_AS_SETTING_PATTERNS = [
-  /(?:额度|余额|欠费|配额)(?:不足|用尽|耗尽|用完|不够)?(?:提醒|通知|告警|阈值|配置|文案|开关|设置|参数|长度|上限|规则|策略|率|提示|说明|描述)/,
-];
+// 额度词被当作「参数名/字段名」引用，或作为「配置项名」出现时，不是渠道余额问题。
+// 后者例如「额度不足阈值」「欠费率配置」「余额不足提示」。
+// 但真实报文常写成「余额不足提示：请及时充值」，此时后缀后面紧跟冒号与祈使动词——
+// 因此用正向后置区分：只有当后缀后面**不是**标点/祈使/动词时，才认定为配置项名。
+const CREDIT_TERM_AS_SETTING_PATTERN =
+  /(?:额度|余额|欠费|配额)(?:不足|用尽|耗尽|用完|不够)?(?:提醒|通知|告警|阈值|配置|文案|开关|设置|参数|长度|上限|规则|策略|率|提示|说明|描述)(?![：:，,。；;、\s]*(?:请|您|无法|不能|将|已|导致|需|须|应|账户|余额|额度|欠费))/;
 
 // 需要词边界的强特征：单纯用 includes 会命中取值范围、未绑卡、RBAC 角色名等无关文案，
 // 因此用正则限定后续词。分隔符要放宽（逗号/句号/连字符等都可能出现在中间），
@@ -224,26 +238,24 @@ export function isChannelCreditExhausted(text: string | null | undefined): boole
   // 只影响匹配，原文仍用于日志与错误透传。
   const lower = text.toLowerCase().replace(/[\u200b-\u200f\ufeff\u3000]/g, "");
 
+  // 下划线/连字符形态的机器码（insufficient_quota、insufficient_user_quota）是权威标记，
+  // 优先于参数校验排除：上游常把 error.code 与 error.message 一起回显，
+  // 报文里同时出现 "invalid value" 之类也很正常，此时仍应判为额度耗尽。
+  if (CREDIT_CODE_PATTERN.test(lower)) return true;
   // 额度词被当作参数名/字段名引用时，这是调用方的参数错误，不是渠道余额问题。
-  // 注意：这一步必须在机器码判定之前——"invalid value for field: ...insufficient credit history"
-  // 里也含机器码词形，但它明确是在指认调用方字段。
+  // 放在空格形态之前，是为了让
+  // "invalid value for field: report users with insufficient credit history"
+  // 这类字段指认报文不被后面的 spaces 形态命中。
   const asIdentifier =
     REQUEST_VALIDATION_PATTERNS.some((pattern) => lower.includes(pattern)) ||
     CREDIT_TERM_AS_IDENTIFIER_PATTERNS.some((pattern) => pattern.test(lower)) ||
-    WEAK_CREDIT_AS_SETTING_PATTERNS.some((pattern) => pattern.test(lower));
+    CREDIT_TERM_AS_SETTING_PATTERN.test(lower);
   if (asIdentifier) return false;
 
-  // 纯机器码（insufficient_quota / insufficient_credits）是权威标记。
-  // 归一化会去掉零宽字符与全角空格，可能把 "insufficient credits" 粘成
-  // "insufficientcredits"，因此额外匹配紧凑形态。
-  // 注意这里不能用 \s* 放宽：那会命中 "insufficient credit score/history/card/role/limit/rating"
+  // 空格形态（insufficient credits）与归一化后粘连的形态（insufficientcredits）。
+  // 不能用 \s* 放宽：那会命中 "insufficient credit score/history/card/role/limit/rating"
   // 这类与余额无关的文案，正是 STRONG_CREDIT_EXHAUSTED_PATTERNS_BOUNDARY 要挡掉的东西。
-  if (
-    CREDIT_CODE_PATTERN.test(lower) ||
-    /\binsufficient(?:quota|credit|credits|balance|funds)\b/.test(lower)
-  ) {
-    return true;
-  }
+  if (/\binsufficient(?:quota|credit|credits|balance|funds)\b/.test(lower)) return true;
 
   // 强特征语义自足，命中即认定。
   const strong =

@@ -125,6 +125,36 @@ const creditBodies = [
   ["usage budget exceeded", "Your usage budget has been exceeded"],
   ["requires billing enabled", "This API method requires billing to be enabled"],
   ["预付费余额为 0", "预付费余额为 0，无法调用"],
+  // 下划线形态机器码与校验词共现：上游常把 error.code 与 error.message 一起回显，
+  // 此时机器码是权威标记，必须仍判为额度耗尽（否则既不换渠道也不计熔断）
+  ["机器码+invalid value", 'insufficient_quota: invalid value for field "model"'],
+  [
+    "机器码做 error.type+校验 message",
+    '{"error":{"type":"insufficient_quota","message":"invalid value for field: model not allowed"}}',
+  ],
+  ["invalid value + 机器码", "invalid value: insufficient_credits"],
+  ["unknown parameter + 机器码", "unknown parameter: insufficient_credits"],
+  ["参数非法 + 机器码", "参数非法 insufficient_credits"],
+  ["机器码 + invalid value 后置", "insufficient_user_quota invalid value"],
+  // 归一化区间内的其它码点（不只 \u200b / \u3000）
+  ["零宽 U+200C", "insufficient\u200ccredits"],
+  ["零宽 U+200D", "insufficient\u200dcredits"],
+  ["零宽 U+200E", "insufficient\u200ecredits"],
+  ["BOM U+FEFF", "insufficient\ufeffcredits"],
+  // 中文对称形态（L4：此前只收了「额度已用尽」，漏了对称的「余额已用尽」）
+  ["余额用尽", "余额用尽"],
+  ["余额已用尽", "余额已用尽"],
+  ["账户余额用尽", "账户余额用尽"],
+  ["余额为零", "余额为零"],
+  ["可用额度已不足", "可用额度已不足"],
+  ["配额已耗尽", "配额已耗尽"],
+  ["配额不够", "配额不够"],
+  // 配置项名带正向后置：光杆配置项判否（见反例组），真实提示句仍要命中
+  ["真实提示句 冒号", "余额不足提示：请及时充值"],
+  ["真实提示句 逗号", "余额不足提示，请及时充值"],
+  ["真实说明句", "余额不足说明：账户已欠费"],
+  ["真实提示句 无标点", "余额不足提示您尽快充值"],
+  ["欠费提示句", "欠费提示：请及时缴费"],
 ];
 for (const [label, body] of creditBodies) {
   check(`额度耗尽命中: ${label}`, isChannelCreditExhausted(body), true);
@@ -195,7 +225,7 @@ const validationBodies = [
   ["配额不足阈值", "配额不足阈值"],
   ["余额耗尽提醒文案", "余额耗尽提醒文案"],
   ["额度不足+参数校验", "额度不足 参数校验不通过，请检查请求"],
-  // 配置项名后缀扩展到 提示/说明/描述
+  // 配置项名后缀扩展到 提示/说明/描述（光杆形态判否）
   ["余额不足提示", "余额不足提示"],
   ["额度不足说明", "额度不足说明"],
   ["欠费描述", "欠费描述"],
@@ -206,6 +236,8 @@ const validationBodies = [
   ["insufficient credit card information", "insufficient credit card information"],
   ["insufficient credit role", "insufficient credit role for access"],
   ["insufficient credit limit configured", "insufficient credit limit configured"],
+  // "账户未激活"不等于余额问题，不应换渠道/计熔断
+  ["account is not active", "This account is not active for this model"],
 ];
 for (const [label, body] of validationBodies) {
   check(`不误判: ${label}`, isChannelCreditExhausted(body), false);
