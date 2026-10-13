@@ -486,17 +486,44 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（TypeCheck
   // 已知产出路由容器的工厂：从它们的返回值解构出的路由对象可信。
   // 用于识别 `const picked = await requestUpstreamWithFallback({...})` 这类绑定 ——
   // 容器不是函数形参，但来源是网关自己的路由层，不是就地重造。
+  //
+  // 信任按「符号绑定」给，不按名字文本给：必须解析到本文件顶部的 import 声明
+  // （ImportSpecifier），且导入来源是网关路由层。只比对 `init.expression.text`
+  // 时，局部 `const requestUpstreamWithFallback = ...` 同名遮蔽即可放行 ——
+  // 被遮蔽的假工厂出参解构出的 `route` 会静默通过两层守卫。
+  const ROUTE_FACTORY_MODULES = new Set(["@/lib/gateway/upstream-routing"]);
   const ROUTE_FACTORIES = new Set(["requestUpstreamWithFallback"]);
 
+  // 该标识别名是否绑定到「本文件从路由层 import 进来的工厂」。
+  // 解析到本文件 VariableDeclaration（即同名遮蔽）必然被拒。
+  const isImportedRouteFactory = (checker, sourceFile, ident) => {
+    const symbol = checker.getSymbolAtLocation(ident);
+    if (!symbol) return false;
+    const decls = symbol.declarations || [];
+    if (decls.length !== 1) return false;
+    const decl = decls[0];
+    if (!ts.isImportSpecifier(decl)) return false;
+    const imported = decl.propertyName ?? decl.name;
+    if (!ROUTE_FACTORIES.has(imported.text)) return false;
+    const namedImports = decl.parent;
+    const importClause = namedImports && namedImports.parent;
+    const importDecl = importClause && importClause.parent;
+    const moduleText = importDecl && ts.isImportDeclaration(importDecl) && ts.isStringLiteral(importDecl.moduleSpecifier)
+      ? importDecl.moduleSpecifier.text
+      : null;
+    return Boolean(moduleText && ROUTE_FACTORY_MODULES.has(moduleText));
+  };
+
   // 判断某声明节点是否为「受信任的路由容器绑定」：
-  // 形参，或 `const X = <路由工厂>(...)` / `await <路由工厂>(...)`。
-  const isTrustedRouteContainerBinding = (decl) => {
+  // 形参，或 `const X = <路由工厂>(...)` / `await <路由工厂>(...)`，
+  // 其中路由工厂必须按符号绑定确认是 import 进来的那个（同名遮蔽不算）。
+  const isTrustedRouteContainerBinding = (checker, sourceFile, decl) => {
     if (isParameterBinding(decl)) return true;
     if (!ts.isVariableDeclaration(decl) || !decl.initializer) return false;
     let init = decl.initializer;
     if (ts.isAwaitExpression(init)) init = init.expression;
-    if (ts.isCallExpression(init) && ts.isIdentifier(init.expression)) return ROUTE_FACTORIES.has(init.expression.text);
-    return false;
+    if (!ts.isCallExpression(init) || !ts.isIdentifier(init.expression)) return false;
+    return isImportedRouteFactory(checker, sourceFile, init.expression);
   };
 
   const cfg = ts.readConfigFile(path.join(root, "tsconfig.json"), ts.sys.readFile);
@@ -557,7 +584,7 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（TypeCheck
         const srcDecl = srcSym && (srcSym.declarations || []).find((d) => d.getSourceFile() === sourceFile);
         // 受信任容器：期望的名字必须解析到受信任绑定（形参或路由工厂出参），
         // 否则同名局部重声明会按名字蒙混过关。
-        if (srcDecl && isTrustedRouteContainerBinding(srcDecl)) {
+        if (srcDecl && isTrustedRouteContainerBinding(checker, sourceFile, srcDecl)) {
           if (ROUTE_CONTAINERS.has(source.text)) return null;
           return `${ident.text}（解构自受信任绑定 ${source.text}，来源不可信）`;
         }
@@ -751,9 +778,10 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（TypeCheck
   //     在临时目录造合成源文件，用同一套 traceRouteOrigin 判定，
   //     合法形态必须放行、重造形态必须拦下 —— 守卫本身退化会立刻失败。
   {
-    const os = await import("node:os");
     const fs = await import("node:fs");
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "route-guard-"));
+    // 正例需要 import "@/lib/..." 才能解析到真实模块，因此临时目录必须落在仓库内，
+    // 而仓库根的 tsconfig 已配置 paths 别名。用后立即删除，不留残留。
+    const tmpDir = fs.mkdtempSync(path.join(root, ".tmp-route-guard-"));
     const mk = (name, body) => {
       const file = path.join(tmpDir, name);
       fs.writeFileSync(file, body);
@@ -770,6 +798,14 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（TypeCheck
       ["B1 对象解构形参 + 容器重造", `declare function verdict(route: RoutedModel, status: number): boolean;\nconst f = (route: RoutedModel) => {\n  const holder = { route: { ...route, model: {} } as RoutedModel };\n  return !(({ route }: { route: RoutedModel }) => verdict(route, 400))(holder);\n};`, true],
       ["B2 IIFE 形参 + 调用点重造", `declare function verdict(route: RoutedModel, status: number): boolean;\nconst f = (route: RoutedModel) => !((r: RoutedModel) => verdict(r, 400))({ ...route, model: {} });`, true],
       ["B2b IIFE 形参 + Object.assign 重造", `declare function verdict(route: RoutedModel, status: number): boolean;\nconst f = (route: RoutedModel) => {\n  const shadow = { route: Object.assign({}, route, { model: {} }) as RoutedModel };\n  return !(({ route }: { route: RoutedModel }) => verdict(route, 400))(shadow);\n};`, true],
+      // 工厂信任必须按「符号绑定」判：名字文本相同的本地声明（同名遮蔽）不算工厂。
+      // 生产代码里 `requestUpstreamWithFallback` 是 import 进来的，局部重声明会
+      // 解析到本文件 VariableDeclaration/FunctionDeclaration，必须被拒。
+      ["M7 同名遮蔽工厂名 + 出参解构（非字面量出参）", `declare function verdict(route: RoutedModel, status: number): boolean;\ndeclare const fake: { route: RoutedModel };\nconst requestUpstreamWithFallback = async (_o: unknown) => fake;\nconst picked = await requestUpstreamWithFallback({});\nconst { route } = picked;\nconst r = verdict(route, 400);`, true],
+      ["M8 同名遮蔽工厂名（函数声明形态）", `declare function verdict(route: RoutedModel, status: number): boolean;\ndeclare const fake: { route: RoutedModel };\nfunction requestUpstreamWithFallback(_o: unknown) { return Promise.resolve(fake); }\nconst picked = await requestUpstreamWithFallback({});\nconst { route } = picked;\nconst r = verdict(route, 400);`, true],
+      // 正例：从真实路由模块 import 的工厂出参必须放行 —— 证明信任判定不是死的。
+      // 用真实相对路径 import，符号解析到 ImportSpecifier 且来源在受信任模块集合内。
+      ["合法：import 的真实工厂出参解构", `import { requestUpstreamWithFallback } from "@/lib/gateway/upstream-routing";\nimport type { RoutedModel } from "@/lib/gateway/router";\ndeclare function verdict(route: RoutedModel, status: number): boolean;\nexport const f = async () => {\n  const picked = await requestUpstreamWithFallback({} as never);\n  const { route } = picked;\n  return verdict(route, 400);\n};`, false],
     ];
 
     for (const [index, [label, body, shouldReject]] of CASES.entries()) {
@@ -820,8 +856,10 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（TypeCheck
   //    routeCountsAsChannelFailure 只在该文件的闭包定义体里出现 1 次。两个名字都必须登记，
   //    否则漏登记的那个名字会让 4 个真实调用点整片失守（本轮病根）。
   //    queued-upstream-response.ts 是注入式调用方，3 个熔断计入点用注入名。
-  checkCalls("lib/gateway/gateway-handler.ts", ["routeCountsAsChannelFailure", "countsAsChannelFailureFor"], {
-    routeCountsAsChannelFailure: 1,
+  // 熔断判定器现由 createChannelFailureJudge 工厂产出（见 upstream-error.ts），
+  // gateway-handler 内不再直接出现 routeCountsAsChannelFailure；真实调用点只剩 4 处，
+  // 全用本地绑定名 countsAsChannelFailureFor。
+  checkCalls("lib/gateway/gateway-handler.ts", ["countsAsChannelFailureFor"], {
     countsAsChannelFailureFor: 4,
   });
   checkCalls("lib/gateway/queued-upstream-response.ts", ["countsAsChannelFailureFor"], {
