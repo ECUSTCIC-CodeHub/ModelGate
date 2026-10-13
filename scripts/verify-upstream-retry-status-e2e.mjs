@@ -837,6 +837,10 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（TypeCheck
       // 解析到本文件 VariableDeclaration/FunctionDeclaration，必须被拒。
       ["M7 同名遮蔽工厂名 + 出参解构（非字面量出参）", `declare function verdict(route: RoutedModel, status: number): boolean;\ndeclare const fake: { route: RoutedModel };\nconst requestUpstreamWithFallback = async (_o: unknown) => fake;\nconst picked = await requestUpstreamWithFallback({});\nconst { route } = picked;\nconst r = verdict(route, 400);`, true],
       ["M8 同名遮蔽工厂名（函数声明形态）", `declare function verdict(route: RoutedModel, status: number): boolean;\ndeclare const fake: { route: RoutedModel };\nfunction requestUpstreamWithFallback(_o: unknown) { return Promise.resolve(fake); }\nconst picked = await requestUpstreamWithFallback({});\nconst { route } = picked;\nconst r = verdict(route, 400);`, true],
+      // 隔离用例：同名遮蔽工厂名，但出参是外部真实路由对象（非字面量重造、非二次绑定），
+      // 结构层（拒绝面）对这条形态无感，只有「按符号绑定认工厂」这一层能拦下 ——
+      // 即它单独证明符号绑定判定存在且生效，而不只是被结构层顺带兜住。
+      ["M10 同名遮蔽工厂名 + 出参为外部真实路由（仅符号绑定可拦）", `import { requestUpstreamWithFallback as realFactory } from "@/lib/gateway/upstream-routing";\nimport type { RoutedModel } from "@/lib/gateway/router";\ndeclare function verdict(route: RoutedModel, status: number): boolean;\nexport const f = async (real: { route: RoutedModel }) => {\n  const requestUpstreamWithFallback = async (_o: unknown) => real;\n  const picked = await requestUpstreamWithFallback({});\n  const { route } = picked;\n  return verdict(route, 400);\n};`, true],
       // 本地二次绑定 import 进来的工厂：`const X = requestUpstreamWithFallback` 的符号
       // 声明是本文件 VariableDeclaration，不是 ImportSpecifier，必须被拒 —— 否则
       // 「转发一层再调用」就能把出参来源洗成不可追溯。

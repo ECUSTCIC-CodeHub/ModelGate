@@ -123,5 +123,27 @@ async function drive({ route, upstreamStatus = 400, stream = true }) {
   check("queued：模型级 418 压过渠道级 400", leaseOutcomes[0]?.ok, true);
 }
 
+// 说明：queued-upstream-response 有 3 个熔断计入点。第 3 个在流式分支的 finalize() 里，
+// 而流式分支对 4xx 会提前 return，finalize() 只在 2xx（含消费方 cancel）时可达 ——
+// 2xx 下判定恒为「不计熔断」，模型级配置写回对其结果没有可观测影响，因此不单独补用例。
+// 它的形态由 AST 守卫（N 组）覆盖，行为等价性由上面两组运行时用例覆盖。
+
+// E) 非流式分支的 4xx 计入点同样必须认模型级配置。
+//    queued-upstream-response 有 3 个熔断计入点，其中 1 个只在非流式分支可达，
+//    只跑 stream=true 会漏掉它 —— 写入式变异藏在非流式分支时就看不见。
+{
+  const { leaseOutcomes } = await drive({ route: makeRoute({ modelRetryStatusCodes: JSON.stringify([400]) }), stream: false });
+  check("queued 非流式：模型级配 400 计为渠道失败", leaseOutcomes[0]?.ok, false);
+}
+{
+  const { leaseOutcomes } = await drive({ route: makeRoute(), stream: false });
+  check("queued 非流式：未配置 400 不计渠道失败", leaseOutcomes[0]?.ok, true);
+}
+{
+  // 非流式分支同样要证明不是「沿用旧快照」：模型级 418 压过渠道级 400
+  const { leaseOutcomes } = await drive({ route: makeRoute({ modelRetryStatusCodes: JSON.stringify([418]), channelRetryStatusCodes: JSON.stringify([400]) }), stream: false });
+  check("queued 非流式：模型级 418 压过渠道级 400", leaseOutcomes[0]?.ok, true);
+}
+
 console.log(`\n结果: ${passed} 通过, ${failed} 失败`);
 if (failed > 0) process.exit(1);
