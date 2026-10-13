@@ -114,6 +114,17 @@ const creditBodies = [
   ["额度不足 已停用", "额度不足 已停用"],
   ["额度不足 不能继续", "额度不足 不能继续"],
   ["裸 余额不足", "余额不足"],
+  // 零宽 / 全角空白需归一化后再匹配（中转站 JSON 转义偶有零宽字符）
+  ["零宽 insufficient credits", "insufficient\u200bcredits"],
+  ["零宽 额度不足", "额度\u200b不足"],
+  ["零宽 欠费", "欠\u200b费"],
+  ["全角空格 insufficient credits", "insufficient\u3000credits"],
+  // 其它真实上游计费文案
+  ["no remaining credits", "no remaining credits"],
+  ["credits have been depleted", "Your credits have been depleted"],
+  ["usage budget exceeded", "Your usage budget has been exceeded"],
+  ["requires billing enabled", "This API method requires billing to be enabled"],
+  ["预付费余额为 0", "预付费余额为 0，无法调用"],
 ];
 for (const [label, body] of creditBodies) {
   check(`额度耗尽命中: ${label}`, isChannelCreditExhausted(body), true);
@@ -184,6 +195,10 @@ const validationBodies = [
   ["配额不足阈值", "配额不足阈值"],
   ["余额耗尽提醒文案", "余额耗尽提醒文案"],
   ["额度不足+参数校验", "额度不足 参数校验不通过，请检查请求"],
+  // 配置项名后缀扩展到 提示/说明/描述
+  ["余额不足提示", "余额不足提示"],
+  ["额度不足说明", "额度不足说明"],
+  ["欠费描述", "欠费描述"],
 ];
 for (const [label, body] of validationBodies) {
   check(`不误判: ${label}`, isChannelCreditExhausted(body), false);

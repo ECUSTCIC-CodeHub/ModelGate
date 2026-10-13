@@ -47,6 +47,14 @@ const STRONG_CREDIT_EXHAUSTED_PATTERNS = [
   "credit limit reached",
   "reached your credit limit",
   "resource has been exhausted",
+  "no remaining credits",
+  "credits have been depleted",
+  "credits depleted",
+  "usage budget has been exceeded",
+  "usage limit for this billing period",
+  "requires billing to be enabled",
+  "used all your free credits",
+  "account is not active",
   "account is deactivated",
   "account has been deactivated",
   "payment required to",
@@ -62,6 +70,8 @@ const STRONG_CREDIT_EXHAUSTED_PATTERNS = [
   "剩余额度不足",
   "可用额度不足",
   "用户额度不足",
+  "预付费余额为 0",
+  "预付费余额为0",
   "额度已用尽",
   "额度已耗尽",
   "额度已用完",
@@ -149,15 +159,14 @@ const CREDIT_CODE_PATTERN =
 
 // 需要额外佐证时才判定的额度模式：这些词会作为参数名、字段名或取值范围出现，
 // 因此要求「同时出现额度语境词」且「不含参数校验特征」。
+// 弱特征：会作为普通词汇/参数名出现，需要额度语境词或陈述句形态佐证。
+// 注意不要收录已在强特征表里的词（强特征分支先返回，弱特征副本是死代码）。
 const WEAK_CREDIT_EXHAUSTED_PATTERNS = [
   "current quota",
   "quota exceeded",
   "额度用尽",
   "额度耗尽",
   "额度用完",
-  "额度不足",
-  "余额不足",
-  "欠费",
 ];
 
 // 额度语境词：确认谈的是余额/额度本身，而不是别的领域的同名字段。
@@ -186,7 +195,7 @@ const CREDIT_CONTEXT_PATTERNS = [
 // 「您的额度不足提醒开关为必填项」「未知参数: 额度不足阈值」「用户欠费率配置」。
 // 这类写法里额度词后面紧跟名词性成分，而真实报文是「当前额度不足，无法完成请求」这样的句子。
 const WEAK_CREDIT_AS_SETTING_PATTERNS = [
-  /(?:额度|余额|欠费|配额)(?:不足|用尽|耗尽|用完|不够)?(?:提醒|通知|告警|阈值|配置|文案|开关|设置|参数|长度|上限|规则|策略|率)/,
+  /(?:额度|余额|欠费|配额)(?:不足|用尽|耗尽|用完|不够)?(?:提醒|通知|告警|阈值|配置|文案|开关|设置|参数|长度|上限|规则|策略|率|提示|说明|描述)/,
 ];
 
 // 需要词边界的强特征：单纯用 includes 会命中取值范围、未绑卡、RBAC 角色名等无关文案，
@@ -208,17 +217,29 @@ const WEAK_CREDIT_SENTENCE_PATTERNS = [
 
 export function isChannelCreditExhausted(text: string | null | undefined): boolean {
   if (!text) return false;
-  const lower = text.toLowerCase();
-
-  // 纯机器码（insufficient_quota / insufficient_credits）是权威标记，不受其它特征影响。
-  if (CREDIT_CODE_PATTERN.test(lower)) return true;
+  // 归一化零宽字符与全角空格后再匹配：中转站 JSON 转义里偶有零宽字符，
+  // 会让 "insufficient_credits" 这类本该命中的报文整串失配。
+  // 只影响匹配，原文仍用于日志与错误透传。
+  const lower = text.toLowerCase().replace(/[\u200b-\u200f\ufeff\u3000]/g, "");
 
   // 额度词被当作参数名/字段名引用时，这是调用方的参数错误，不是渠道余额问题。
+  // 注意：这一步必须在机器码判定之前——"invalid value for field: ...insufficient credit history"
+  // 里也含机器码词形，但它明确是在指认调用方字段。
   const asIdentifier =
     REQUEST_VALIDATION_PATTERNS.some((pattern) => lower.includes(pattern)) ||
     CREDIT_TERM_AS_IDENTIFIER_PATTERNS.some((pattern) => pattern.test(lower)) ||
     WEAK_CREDIT_AS_SETTING_PATTERNS.some((pattern) => pattern.test(lower));
   if (asIdentifier) return false;
+
+  // 纯机器码（insufficient_quota / insufficient_credits）是权威标记。
+  // 归一化会去掉零宽字符与全角空格，可能把 "insufficient credits" 粘成
+  // "insufficientcredits"，因此额外匹配紧凑形态；半角空格由 \s* 覆盖。
+  if (
+    CREDIT_CODE_PATTERN.test(lower) ||
+    /\binsufficient\s*(?:quota|credit|credits|balance|funds)\b/.test(lower)
+  ) {
+    return true;
+  }
 
   // 强特征语义自足，命中即认定。
   const strong =
