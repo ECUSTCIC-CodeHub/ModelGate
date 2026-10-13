@@ -465,80 +465,175 @@ console.log("=== O. 熔断计入必须认模型级配置（运行时断言）===
   check("2xx 不计熔断", routeCountsAsChannelFailure(model400, 200, null), false);
 }
 
-console.log("=== P. 调用点必须把路由对象本身交给判定（AST 级守卫）===");
+console.log("=== P. 调用点必须把路由对象本身交给判定（TypeChecker 级守卫）===");
 {
-  // 覆盖面：gateway-handler.ts 的熔断闭包 + queued-upstream-response.ts 的 3 个熔断计入点
-  //         + upstream-routing.ts 的换渠道判定。
-  // 断言首参必须是「文件内确有绑定的路由标识符」（形参 / 局部声明 / 解构），
-  // 不得是对象字面量、临时构造对象或未绑定名 —— 这样遮蔽形参、内联重造都能被挡下。
+  // 覆盖面：gateway-handler.ts 的熔断闭包 + queued-upstream-response.ts 的 3 个熔断计入点。
+  // 断言语义（不是名字，也不是字面文本）：首参标识符最终必须绑定到
+  //   (a) 所在函数的形参（路由对象由调用方注入），或
+  //   (b) 从已知路由容器（如 picked）解构而来。
+  // 只要中途出现「本地重造的同名对象」（对象字面量、展开重造、别名二次解构、
+  // as any 等），绑定来源就不再是形参/已知容器，一律判失败 —— 不需要维护名字白名单。
   const { readFileSync } = await import("node:fs");
   const { fileURLToPath } = await import("node:url");
   const path = (await import("node:path")).default;
   const ts = (await import("typescript")).default;
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-  const ROUTE_NAMES = new Set(["route", "retryRoute", "candidate"]);
 
-  // 同名遮蔽检测：判定拿的是「名字」，名字后面是谁还得看绑定。
-  // 若文件里存在对白名单路由名的局部重声明（const route = {...route...} 之类），
-  // 调用点虽然写着 route，实际拿到的却是重造对象，模型级配置会被静默摘掉。
-  const findShadowedRouteNames = (sourceFile) => {
-    const shadowed = [];
-    const visit = (node) => {
-      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && ROUTE_NAMES.has(node.name.text)) {
-        shadowed.push(`${node.name.text} @ 行 ${sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1}`);
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(sourceFile);
-    return shadowed;
+  // 允许作为「路由来源」的容器名：这些标识符本身就是路由对象或其持有者，
+  // 从它们解构出路由名视为合法。新增路由容器时必须同步登记。
+  const ROUTE_CONTAINERS = new Set(["picked"]);
+
+  const cfg = ts.readConfigFile(path.join(root, "tsconfig.json"), ts.sys.readFile);
+  const parsed = ts.parseJsonConfigFileContent(cfg.config, ts.sys, root);
+  const parseSettings = { ...parsed.options, noEmit: true, skipLibCheck: true, incremental: false };
+
+  // 缓存 program，避免每个文件重复全量解析
+  const programCache = new Map();
+  const getProgram = (absFiles) => {
+    const key = absFiles.join("|");
+    if (!programCache.has(key)) {
+      programCache.set(key, ts.createProgram(absFiles, parseSettings));
+    }
+    return programCache.get(key);
   };
 
-  // 路由名的「合法来源」：形参或对象解构绑定（如 const { route } = picked）。
-  // 只认这种绑定，普通局部重声明即便同名也不算合法来源。
-  const collectRouteBindings = (sourceFile) => {
-    const names = new Set();
-    const addPattern = (pattern) => {
-      if (ts.isIdentifier(pattern) && ROUTE_NAMES.has(pattern.text)) names.add(pattern.text);
-      else if (ts.isObjectBindingPattern(pattern) || ts.isArrayBindingPattern(pattern)) {
-        for (const element of pattern.elements) {
-          if (ts.isBindingElement(element)) addPattern(element.name);
+  // 判断某个标识符 symbol 的「绑定来源」是否为合法路由来源。
+  // 返回 null 表示合法；返回字符串表示失败原因。
+  // 是否绑定在函数形参上：直接是 Parameter，或是形参解构模式里的 BindingElement
+  // （`{ picked }` 这种对象解构形参，符号声明落在 BindingElement 上，祖父才是 Parameter）。
+  const isParameterBinding = (decl) => {
+    if (ts.isParameter(decl)) return true;
+    if (ts.isBindingElement(decl)) {
+      const pattern = decl.parent;
+      const holder = pattern && pattern.parent;
+      return !!holder && ts.isParameter(holder);
+    }
+    return false;
+  };
+
+  const traceRouteOrigin = (checker, ident, sourceFile, seen) => {
+    const symbol = checker.getSymbolAtLocation(ident);
+    if (!symbol) return `${ident.text}（无绑定）`;
+    const decls = (symbol.declarations || []).filter((d) => d.getSourceFile() === sourceFile);
+    if (decls.length === 0) return `${ident.text}（非本文件绑定）`;
+    if (decls.length > 1) return `${ident.text}（同名多次绑定）`;
+    const decl = decls[0];
+
+    // (a) 函数形参：路由对象由调用方注入，合法
+    if (isParameterBinding(decl)) return null;
+
+    // (b) 解构绑定（`const { route } = X`）：符号落在 BindingElement 上，
+    // 要顺着 X 递归校验来源对象本身也是合法路由来源。
+    if (ts.isBindingElement(decl)) {
+      const bindingPattern = decl.parent;
+      const varDecl = bindingPattern && bindingPattern.parent;
+      if (!varDecl || !ts.isVariableDeclaration(varDecl)) return `${ident.text}（解构节点异常）`;
+      const initializer = varDecl.initializer;
+      if (!initializer) return `${ident.text}（解构无来源）`;
+      // 先跟随别名：来源自身若是中间标识符（picked2 / shadow），递归追溯。
+      // 已知容器名必须解析到「函数形参」，同名局部重声明不算通过 —— 否则
+      // `const picked = {...重造...}; const { route } = picked` 会按名字蒙混过关。
+      let source = initializer;
+      while (ts.isIdentifier(source)) {
+        if (seen.has(source.text)) return `${ident.text}（来源链自引用）`;
+        seen.add(source.text);
+        const srcSym = checker.getSymbolAtLocation(source);
+        const srcDecl = srcSym && (srcSym.declarations || []).find((d) => d.getSourceFile() === sourceFile);
+        if (srcDecl && isParameterBinding(srcDecl)) {
+          if (ROUTE_CONTAINERS.has(source.text)) return null;
+          return `${ident.text}（解构自形参 ${source.text}，来源不可信）`;
         }
+        if (ROUTE_CONTAINERS.has(source.text)) return `${ident.text}（来源名 ${source.text} 非形参，疑似遮蔽）`;
+        if (srcDecl && ts.isVariableDeclaration(srcDecl) && srcDecl.initializer) {
+          source = srcDecl.initializer;
+          continue;
+        }
+        return `${ident.text}（来源标识符 ${source.text} 未追溯到路由容器）`;
       }
-    };
-    const visit = (node) => {
-      if (ts.isParameter(node)) addPattern(node.name);
-      else if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name)) addPattern(node.name);
-      ts.forEachChild(node, visit);
-    };
-    visit(sourceFile);
-    return names;
+      // 来源是对象字面量（含展开重造）-> 视为重造
+      if (ts.isObjectLiteralExpression(source)) return `${ident.text}（解构自重造对象字面量）`;
+      return `${ident.text}（解构来源不可信：${source.getText(sourceFile).slice(0, 40)}）`;
+    }
+
+    return `${ident.text}（绑定节点非形参/解构）`;
   };
 
-  // 校验某个判定函数在该文件里的所有调用：首参必须是本文件里由形参/解构绑定的路由标识符
-  const checkCalls = (rel, calleeNames) => {
-    const source = readFileSync(path.join(root, rel), "utf8");
-    const sourceFile = ts.createSourceFile(rel, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-    const bindings = collectRouteBindings(sourceFile);
+  // 对单个源文件收集所有「首参未绑定到合法路由来源」的违规（返回违规描述数组）
+  const collectOffenders = (sourceFile, checker, calleeNames) => {
     const offenders = [];
-    let callCount = 0;
     const visit = (node) => {
       if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && calleeNames.includes(node.expression.text)) {
-        callCount += 1;
         const first = node.arguments[0];
         const line = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
-        if (!first || !ts.isIdentifier(first)) {
-          offenders.push(`${first ? first.getText(sourceFile) : "<无首参>"} @ 行 ${line}`);
-        } else if (!bindings.has(first.text)) {
-          offenders.push(`${first.text}（非路由标识符）@ 行 ${line}`);
+        if (!first) {
+          offenders.push(`<无首参> @ 行 ${line}`);
+        } else if (!ts.isIdentifier(first)) {
+          offenders.push(`${first.getText(sourceFile).slice(0, 40)}（非标识符）@ 行 ${line}`);
+        } else {
+          const reason = traceRouteOrigin(checker, first, sourceFile, new Set());
+          if (reason) offenders.push(`${reason} @ 行 ${line}`);
         }
       }
       ts.forEachChild(node, visit);
     };
     visit(sourceFile);
-    check(`${rel} ${calleeNames.join("/")} 首参为路由对象`, JSON.stringify(offenders), JSON.stringify([]));
-    check(`${rel} ${calleeNames.join("/")} 至少有一处调用`, callCount > 0, true);
-    check(`${rel} 路由标识符未被局部重声明`, JSON.stringify(findShadowedRouteNames(sourceFile)), JSON.stringify([]));
+    return offenders;
   };
+
+  // 校验某个判定函数在该文件里所有调用的首参，并断言至少存在一处调用
+  const checkCalls = (rel, calleeNames) => {
+    const abs = path.join(root, rel);
+    const program = getProgram([abs]);
+    const checker = program.getTypeChecker();
+    const sourceFile = program.getSourceFile(abs);
+    if (!sourceFile) {
+      check(`${rel} 可解析`, false, true);
+      return;
+    }
+    const offenders = collectOffenders(sourceFile, checker, calleeNames);
+    let callCount = 0;
+    const count = (node) => {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && calleeNames.includes(node.expression.text)) callCount += 1;
+      ts.forEachChild(node, count);
+    };
+    count(sourceFile);
+    check(`${rel} ${calleeNames.join("/")} 首参绑定到路由来源`, JSON.stringify(offenders), JSON.stringify([]));
+    check(`${rel} ${calleeNames.join("/")} 至少有一处调用`, callCount > 0, true);
+  };
+
+  // 1a) 守卫自检：把历史上绕过过的形态锁进回归清单。
+  //     在临时目录造合成源文件，用同一套 traceRouteOrigin 判定，
+  //     合法形态必须放行、重造形态必须拦下 —— 守卫本身退化会立刻失败。
+  {
+    const os = await import("node:os");
+    const fs = await import("node:fs");
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "route-guard-"));
+    const mk = (name, body) => {
+      const file = path.join(tmpDir, name);
+      fs.writeFileSync(file, body);
+      return file;
+    };
+
+    const CASES = [
+      ["合法：形参直传", `declare function verdict(route: RoutedModel, status: number): boolean;\nconst f = (route: RoutedModel) => verdict(route, 400);`, false],
+      ["合法：解构自受信任容器", `declare function verdict(route: RoutedModel, status: number): boolean;\nconst f = (picked: { route: RoutedModel }) => {\n  const { route } = picked;\n  return verdict(route, 400);\n};`, false],
+      ["M3 命名重造 + 解构（本轮主攻）", `declare function verdict(route: RoutedModel, status: number): boolean;\nconst picked = {} as { route: RoutedModel };\nconst picked2 = { ...picked, route: { ...picked.route, model: {} } };\nconst { route } = picked2 as { route: RoutedModel };\nconst r = verdict(route, 400);`, true],
+      ["M4 闭包入参改名 + 内部解构自重造", `declare function verdict(route: RoutedModel, status: number): boolean;\nconst f = (input: RoutedModel) => {\n  const shadow = { route: { ...input, model: {} } as RoutedModel };\n  const { route } = shadow;\n  return verdict(route, 400);\n};`, true],
+      ["M6 同名解构后再用同名解构重绑", `declare function verdict(route: RoutedModel, status: number): boolean;\ndeclare const picked: { route: RoutedModel };\nconst { route: rawRoute } = picked;\nconst { route } = { route: { ...rawRoute, model: {} } };\nconst r = verdict(route, 400);`, true],
+      ["对象字面量直传", `declare function verdict(route: RoutedModel, status: number): boolean;\nconst r = verdict({ ...({} as RoutedModel) }, 400);`, true],
+    ];
+
+    for (const [index, [label, body, shouldReject]] of CASES.entries()) {
+      const file = mk(`case-${index}.ts`, body + "\n");
+      const program = getProgram([file]);
+      const checker = program.getTypeChecker();
+      const sourceFile = program.getSourceFile(file);
+      const offenders = collectOffenders(sourceFile, checker, ["verdict"]);
+      const rejected = offenders.length > 0;
+      check(`守卫自检 · ${label}`, rejected, shouldReject);
+    }
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 
   // 1) 熔断计入点：gateway-handler 的闭包把判定注入给 queued，实际调用点在下游文件里
   checkCalls("lib/gateway/gateway-handler.ts", ["routeCountsAsChannelFailure"]);
