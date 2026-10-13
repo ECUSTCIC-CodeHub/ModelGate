@@ -417,22 +417,44 @@ console.log("=== N. 熔断计入点必须走渠道配置（源码级守卫）===
   }
 }
 
-console.log("=== O. 调用点必须把模型级配置传下去（源码级守卫）===");
+console.log("=== O. 调用点必须把模型级配置传在第 1 参（AST 级守卫）===");
 {
-  // 换渠道与熔断的判定都靠调用点把 route.model.retry_status_codes 传进解析函数。
-  // 只在 resolveRetryStatusCodes 内部测「模型优先」抓不到调用点写死 null 的回归，
-  // 这里按源码结构检查：所有 resolveRetryStatusCodes 调用都必须带 route.model 的模型值。
+  // 换渠道与熔断的判定都靠调用点把模型值传进 resolveRetryStatusCodes 的第一个形参。
+  // 只在函数内部测「模型优先」抓不到调用点写死 null 的回归；而字符串正则又会被
+  // 注释夹带、嵌套调用、参数顺序颠倒骗过，因此这里用 AST 取第 1 个实参的文本比对。
   const { readFileSync } = await import("node:fs");
   const { fileURLToPath } = await import("node:url");
   const path = (await import("node:path")).default;
+  const ts = (await import("typescript")).default;
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   for (const rel of ["lib/gateway/gateway-handler.ts", "lib/gateway/upstream-routing.ts"]) {
     const source = readFileSync(path.join(root, rel), "utf8");
-    const calls = source.match(/resolveRetryStatusCodes\([^)]*\)/g) ?? [];
-    const withoutModel = calls.filter((call) => !call.includes(".model.retry_status_codes"));
-    check(`${rel} 全部调用点带模型级配置`, JSON.stringify(withoutModel), JSON.stringify([]));
-    check(`${rel} 至少有一处调用`, calls.length > 0, true);
+    const sourceFile = ts.createSourceFile(rel, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const offenders = [];
+    let callCount = 0;
+    const visit = (node) => {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "resolveRetryStatusCodes") {
+        callCount += 1;
+        const first = node.arguments[0];
+        // 取第 1 个实参的去注释文本，要求形如 <x>.model.retry_status_codes
+        const text = first ? first.getText(sourceFile).replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "").trim() : "";
+        if (!/^[A-Za-z_$][\w$]*\.model\.retry_status_codes$/.test(text)) {
+          offenders.push(`${text || "<无第 1 参>"} @ 行 ${sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1}`);
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+    check(`${rel} 首参为模型级配置`, JSON.stringify(offenders), JSON.stringify([]));
+    check(`${rel} 至少有一处调用`, callCount > 0, true);
   }
+
+  // 运行时兜底：确认按首参传模型值时，模型级确实压过渠道级（顺序颠倒会在此暴露）
+  const route = { channel: { retry_status_codes: JSON.stringify([418]) }, model: { retry_status_codes: JSON.stringify([400]) } };
+  const { resolveRetryStatusCodes } = await import("@/lib/gateway/upstream-error");
+  check("首参为模型值时模型压过渠道", JSON.stringify(resolveRetryStatusCodes(route.model.retry_status_codes, route.channel.retry_status_codes, null)), JSON.stringify([400]));
+  // 反证：把两个参数颠倒（渠道塞进模型位）会得到完全不同的结果，说明顺序有意义、断言不是恒真
+  check("参数颠倒会改变结果（断言非恒真）", JSON.stringify(resolveRetryStatusCodes(route.channel.retry_status_codes, route.model.retry_status_codes, null)), JSON.stringify([418]));
 }
 
 console.log(`\n结果: ${passed} 通过, ${failed} 失败`);
