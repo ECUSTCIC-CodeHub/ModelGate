@@ -6,7 +6,7 @@ import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { isValidPublicBaseUrl } from "@/lib/auth/oidc";
-import { getGatewaySettings, setGatewaySettings } from "@/lib/core/settings";
+import { getGatewaySettings, setGatewaySettings, type GatewaySettings } from "@/lib/core/settings";
 import { normalizeRetryStatusCodes } from "@/lib/gateway/upstream-error";
 import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
 import { parseModelBrandGroups } from "@/lib/core/settings";
@@ -74,20 +74,21 @@ const schema = z.object({
   runtime_features: z.record(z.string(), z.boolean()).optional(),
 });
 
+// 落库是 JSON 文本，对外统一成状态码数组；未配置时回落到内置默认，便于前端直接展示与编辑。
+// GET 与 PUT 共用，避免两个端点返回形态不一致。
+function gatewaySettingsResponse(settings: GatewaySettings) {
+  return {
+    ...maskSettingsForEdition(settings),
+    upstream_retry_status_codes: normalizeRetryStatusCodes(settings.upstream_retry_status_codes),
+  };
+}
+
 export async function GET(request: Request) {
   const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
 
   const settings = await getGatewaySettings();
-  // 落库是 JSON 文本，对外统一成状态码数组；未配置时回落到内置默认，便于前端直接展示与编辑
-  const data = maskSettingsForEdition(settings);
-  return jsonOk({
-    message: "系统设置获取成功。",
-    data: {
-      ...data,
-      upstream_retry_status_codes: normalizeRetryStatusCodes(settings.upstream_retry_status_codes),
-    },
-  });
+  return jsonOk({ message: "系统设置获取成功。", data: gatewaySettingsResponse(settings) });
 }
 
 export async function PUT(request: Request) {
@@ -157,6 +158,6 @@ export async function PUT(request: Request) {
   const updated = await getGatewaySettings();
   return jsonOk({
     message: "系统设置更新成功。",
-    data: maskSettingsForEdition(updated),
+    data: gatewaySettingsResponse(updated),
   });
 }

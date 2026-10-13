@@ -50,12 +50,13 @@ function expiresAtFromInputValue(value: string): string {
   return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
 
-// 落库是 JSON 状态码数组文本，表单里按「逗号分隔」编辑
+// 落库是 JSON 状态码数组文本，表单里按「逗号分隔」编辑。
+// 用统一的归一化过滤，避免脏值（越界、非整数）被回显后在保存时静默收窄。
 function formatRetryStatusCodesInput(raw: unknown): string {
   if (typeof raw !== "string" || raw.trim() === "") return "";
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "number").join(",") : "";
+    const codes = normalizeRetryStatusCodes(JSON.parse(raw));
+    return codes ? codes.join(",") : "";
   } catch {
     return "";
   }
