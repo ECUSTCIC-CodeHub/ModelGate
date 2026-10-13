@@ -377,6 +377,7 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("models", "ua_restrictions", "ua_restrictions TEXT DEFAULT ''");
   await db.ensureColumn("models", "system_prompt", "system_prompt TEXT DEFAULT NULL");
   await db.ensureColumn("models", "expires_at", "expires_at DATETIME DEFAULT NULL");
+  await db.ensureColumn("models", "retry_status_codes", "retry_status_codes TEXT DEFAULT NULL");
   await db.ensureColumn("logs", "first_token_latency_ms", "first_token_latency_ms INTEGER");
   await db.ensureColumn("logs", "output_tps", "output_tps REAL");
   await db.ensureColumn("logs", "token_source", "token_source TEXT");

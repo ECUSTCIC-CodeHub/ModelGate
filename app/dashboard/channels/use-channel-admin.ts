@@ -24,6 +24,7 @@ import {
   type ModelRow,
   type ModelWithChannel,
   type Protocol,
+  formatRetryStatusCodesInput,
 } from "./channel-model";
 import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
 import { normalizeRetryStatusCodes } from "@/lib/gateway/upstream-error";
@@ -48,18 +49,6 @@ function expiresAtFromInputValue(value: string): string {
   if (!value.trim()) return "";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "" : date.toISOString();
-}
-
-// 落库是 JSON 状态码数组文本，表单里按「逗号分隔」编辑。
-// 用统一的归一化过滤，避免脏值（越界、非整数）被回显后在保存时静默收窄。
-function formatRetryStatusCodesInput(raw: unknown): string {
-  if (typeof raw !== "string" || raw.trim() === "") return "";
-  try {
-    const codes = normalizeRetryStatusCodes(JSON.parse(raw));
-    return codes ? codes.join(",") : "";
-  } catch {
-    return "";
-  }
 }
 
 // 表单里按「每行 Name: Value」编辑，落库是 JSON 字符串
@@ -550,6 +539,7 @@ export function useChannelAdmin() {
       ua_restrictions: row.ua_restrictions ?? "",
       expires_at: expiresAtToInputValue(row.expires_at),
       system_prompt: row.system_prompt ?? "",
+      retry_status_codes: formatRetryStatusCodesInput(row.retry_status_codes),
     });
     setModelDrawerOpen(true);
   }
@@ -702,6 +692,7 @@ export function useChannelAdmin() {
         ...modelForm,
         expires_at: expiresAtFromInputValue(modelForm.expires_at),
         ua_restrictions: modelForm.ua_restrictions,
+        retry_status_codes: normalizeRetryStatusCodes(modelForm.retry_status_codes),
         ...buildModelQuotaPayload(modelForm),
       }),
     });

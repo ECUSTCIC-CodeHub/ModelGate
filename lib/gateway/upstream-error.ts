@@ -22,7 +22,7 @@ function parseStatusCode(value: unknown): number | null {
   return code >= 400 && code <= 599 ? code : null;
 }
 
-// 归一化用户填写的状态码列表：去重、升序、只保留合法 4xx/5xx。
+// 归一化用户填写的状态码列表（模型级与渠道级共用）：去重、升序、只保留合法 4xx/5xx。
 // 输入可以是数组，也可以是逗号/空白/中文顿号分隔的字符串。
 export function normalizeRetryStatusCodes(input: unknown): number[] | null {
   if (input === null || input === undefined) return null;
@@ -52,12 +52,17 @@ export function parseStoredRetryStatusCodes(raw: string | null | undefined): num
   }
 }
 
-// 生效的状态码列表：先取渠道级配置，未配置再回落全局默认，全局也没配置就用内置默认。
+// 生效的状态码列表，按「模型级 → 渠道级 → 全局默认 → 内置默认」依次回落。
+// 模型级存在的原因：同一渠道下不同模型可能对应上游更上一级的不同子渠道，
+// 返回的状态码语义并不一致，只在渠道维度配置无法区分。
 // 换渠道判定与熔断判定共用这一处解析，避免两边口径漂移。
 export function resolveRetryStatusCodes(
-  channelValue: string | null | undefined,
+  modelValue: string | null | undefined,
+  channelValue?: string | null,
   globalDefault?: readonly number[] | null,
 ): readonly number[] {
+  const modelCodes = parseStoredRetryStatusCodes(modelValue);
+  if (modelCodes) return modelCodes;
   const channelCodes = parseStoredRetryStatusCodes(channelValue);
   if (channelCodes) return channelCodes;
   // 空数组与未配置同义，都视为「没有配置」，避免返回空列表让下游误判成「一律不换渠道」
@@ -92,6 +97,35 @@ export const shouldRetryUpstreamStatus = isRetryableUpstreamStatus;
 // 「配了 400 会换渠道、却不计熔断」的割裂。
 export function countsAsChannelFailure(status: number, retryStatusCodes?: readonly number[] | null) {
   return matchesRetryStatus(status, retryStatusCodes);
+}
+
+// 带路由上下文的熔断判定：按 模型级 → 渠道级 → 全局 解析出这条路由真正生效的状态码。
+// 抽成导出纯函数是为了让「模型级配置有没有被传到判定里」能被运行时断言覆盖，
+// 而不是只靠源码文本守卫（文本守卫无法证明传进去的就是路由自身的模型值）。
+export function routeCountsAsChannelFailure(
+  route: { model: { retry_status_codes: string | null }; channel: { retry_status_codes: string | null } },
+  status: number,
+  globalDefault?: readonly number[] | null,
+) {
+  return countsAsChannelFailure(
+    status,
+    resolveRetryStatusCodes(route.model.retry_status_codes, route.channel.retry_status_codes, globalDefault),
+  );
+}
+
+// 网关请求生命周期内使用的熔断判定器：绑定全局默认，供调用点直接喂路由对象。
+// 抽成工厂（而不是在 handler 里就地写闭包）是为了让「计入熔断时读的确实是这条路由
+// 自身的模型级配置」能被运行时覆盖：写成工厂后可以拿真实路由对象驱动它，
+// 一旦有调用点先在 route.model 上写回字段（如把 retry_status_codes 置空）再判定，
+// 运行时断言会立刻看见判定结果随写入而改变 —— 纯源码形态守卫看不见这种写入式变异。
+export type ChannelFailureJudge = (
+  route: { model: { retry_status_codes: string | null }; channel: { retry_status_codes: string | null } },
+  status: number,
+) => boolean;
+
+export function createChannelFailureJudge(globalDefault?: readonly number[] | null): ChannelFailureJudge {
+  const defaultCodes = globalDefault && globalDefault.length > 0 ? globalDefault : null;
+  return (route, status) => routeCountsAsChannelFailure(route, status, defaultCodes);
 }
 
 export function parseUpstreamError(text: string, status: number) {

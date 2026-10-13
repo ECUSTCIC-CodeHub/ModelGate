@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS models (
   system_prompt TEXT DEFAULT NULL,
   period_cycles TEXT DEFAULT NULL,
   multiplier_schedules TEXT DEFAULT NULL,
+  retry_status_codes TEXT DEFAULT NULL,
   FOREIGN KEY (channel_id) REFERENCES channels(id)
 );
 

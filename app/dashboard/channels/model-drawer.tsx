@@ -289,6 +289,18 @@ export function ModelDrawer({
                 <Checkbox checked={form.enabled} onCheckedChange={(checked) => onFormChange({ enabled: checked === true })} />
               </div>
               <div className="space-y-2 md:col-span-2">
+                <Label>触发换渠道的状态码</Label>
+                <Input
+                  placeholder="留空沿用所属渠道的配置"
+                  value={form.retry_status_codes}
+                  onChange={(e) => onFormChange({ retry_status_codes: e.target.value })}
+                />
+                <p className="text-xs text-[var(--color-foreground-muted)]">
+                  用逗号分隔，支持 400-599。同一渠道下不同模型可能来自上游更上一级的不同子渠道，返回的状态码语义不一致，可在此按模型单独声明。
+                  留空表示沿用所属渠道的配置，渠道也留空则用系统设置里的全局默认（401、402、403、429 与全部 5xx）。
+                </p>
+              </div>
+              <div className="space-y-2 md:col-span-2">
                 <Label>User-Agent 限制</Label>
                 <UaRestrictionsEditor
                   rules={jsonToRules(form.ua_restrictions)}
