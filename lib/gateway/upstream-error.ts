@@ -22,7 +22,7 @@ function parseStatusCode(value: unknown): number | null {
   return code >= 400 && code <= 599 ? code : null;
 }
 
-// 归一化用户填写的状态码列表：去重、升序、只保留合法 4xx/5xx。
+// 归一化用户填写的状态码列表（模型级与渠道级共用）：去重、升序、只保留合法 4xx/5xx。
 // 输入可以是数组，也可以是逗号/空白/中文顿号分隔的字符串。
 export function normalizeRetryStatusCodes(input: unknown): number[] | null {
   if (input === null || input === undefined) return null;
@@ -52,12 +52,17 @@ export function parseStoredRetryStatusCodes(raw: string | null | undefined): num
   }
 }
 
-// 生效的状态码列表：先取渠道级配置，未配置再回落全局默认，全局也没配置就用内置默认。
+// 生效的状态码列表，按「模型级 → 渠道级 → 全局默认 → 内置默认」依次回落。
+// 模型级存在的原因：同一渠道下不同模型可能对应上游更上一级的不同子渠道，
+// 返回的状态码语义并不一致，只在渠道维度配置无法区分。
 // 换渠道判定与熔断判定共用这一处解析，避免两边口径漂移。
 export function resolveRetryStatusCodes(
-  channelValue: string | null | undefined,
+  modelValue: string | null | undefined,
+  channelValue?: string | null,
   globalDefault?: readonly number[] | null,
 ): readonly number[] {
+  const modelCodes = parseStoredRetryStatusCodes(modelValue);
+  if (modelCodes) return modelCodes;
   const channelCodes = parseStoredRetryStatusCodes(channelValue);
   if (channelCodes) return channelCodes;
   // 空数组与未配置同义，都视为「没有配置」，避免返回空列表让下游误判成「一律不换渠道」

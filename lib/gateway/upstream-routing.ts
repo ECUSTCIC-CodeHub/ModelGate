@@ -296,7 +296,7 @@ export async function requestUpstreamWithFallback({
           lastUpstreamStatus = upstream.status;
           lastFailure = null;
           markUpstreamAttempted(retryRoute);
-          if (deps.shouldRetryUpstreamStatus(upstream.status, resolveRetryStatusCodes(retryRoute.channel.retry_status_codes, defaultRetryStatusCodes)) && attempt < maxRouteAttempts) {
+          if (deps.shouldRetryUpstreamStatus(upstream.status, resolveRetryStatusCodes(retryRoute.model.retry_status_codes, retryRoute.channel.retry_status_codes, defaultRetryStatusCodes)) && attempt < maxRouteAttempts) {
             lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
             continue;
           }
@@ -410,7 +410,7 @@ export async function requestUpstreamWithFallback({
         lastFailure = null;
         lastRequestedRoute = candidate;
         markUpstreamAttempted(candidate);
-        if (deps.shouldRetryUpstreamStatus(upstream.status, resolveRetryStatusCodes(candidate.channel.retry_status_codes, defaultRetryStatusCodes)) && attempt < maxRouteAttempts) {
+        if (deps.shouldRetryUpstreamStatus(upstream.status, resolveRetryStatusCodes(candidate.model.retry_status_codes, candidate.channel.retry_status_codes, defaultRetryStatusCodes)) && attempt < maxRouteAttempts) {
           lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
           continue;
         }
