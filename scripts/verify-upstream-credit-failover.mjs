@@ -86,6 +86,9 @@ const creditBodies = [
   ["账户欠费请充值", "您的账户欠费，请及时充值"],
   ["Insufficient account balance", "Insufficient account balance"],
   ["not enough credits", "You do not have enough credits"],
+  // 真实报文里也可能带 "expected"/"must be" 这类泛词，不能被校验排除误伤
+  ["insufficient credits + expected", "insufficient credits: expected at least 1, got 0"],
+  ["out of credit limit 之外的 out of credit", "You are out of credits"],
 ];
 for (const [label, body] of creditBodies) {
   check(`额度耗尽命中: ${label}`, isChannelCreditExhausted(body), true);
@@ -122,6 +125,14 @@ const validationBodies = [
   ["billing_address 参数校验", "Invalid value for billing_address: must be a string"],
   ["temperature", "Invalid value for temperature: must be <= 2"],
   ["model not found", "model not found"],
+  // 额度词做字段名 + 校验动词
+  ["field quota must be positive", "field quota: must be positive"],
+  ["parameter balance expected", "parameter balance: expected number"],
+  // 语境词 当前/您的 很泛，不能单独构成额度证据
+  ["当前模型不支持该参数", "当前模型不支持该参数"],
+  ["您的请求已受理", "您的请求已受理"],
+  ["当前并发已满", "当前并发已满，请稍后重试"],
+  ["您的输入过长", "您的输入过长，请缩短"],
 ];
 for (const [label, body] of validationBodies) {
   check(`不误判: ${label}`, isChannelCreditExhausted(body), false);

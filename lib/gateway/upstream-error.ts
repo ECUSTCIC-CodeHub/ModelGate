@@ -40,7 +40,6 @@ const STRONG_CREDIT_EXHAUSTED_PATTERNS = [
   "exceeded your current quota",
   "you exceeded your current quota",
   "credit balance is too low",
-  "out of credits",
   "account is deactivated",
   "account has been deactivated",
   "payment required to",
@@ -83,12 +82,13 @@ const REQUEST_VALIDATION_PATTERNS = [
   "应为",
 ];
 
-// 额度词被当作「参数名/字段名」引用的语法形态：紧跟冒号或等号等字段语法，
-// 或出现在 "for field"/"of field" 之类的说明里。这类才是真正的参数校验报文，
-// 而 "额度不足，无法完成请求" 这种陈述句不会命中。
+// 额度词被当作「参数名/字段名」引用的语法形态。
+// 只认「额度/余额」类名词（不含单独的 credit，否则会把
+// "insufficient credits: expected at least 1, got 0" 这种真实报文误判成参数校验）
+// 紧跟字段语法（冒号/等号 + 校验动词）的写法。
 const CREDIT_TERM_AS_IDENTIFIER_PATTERNS = [
-  /(?:parameter|field|参数|字段)[^,，。;；]{0,24}[:：=][^,，。;；]{0,24}(?:额度|余额|欠费|quota|credit|balance)/,
-  /(?:额度|余额|欠费|quota|credit|balance)[^,，。;；]{0,16}[:：=]\s*(?:must|should|expected|is |应为|不是)/,
+  /(?:parameter|field|参数|字段)[^,，。;；]{0,24}[:：=][^,，。;；]{0,24}(?:额度|余额|欠费|quota|balance)/,
+  /(?:额度|余额|欠费|quota|balance)[^,，。;；]{0,16}[:：=]\s*(?:must|should|expected|is |应为|不是)/,
 ];
 
 // 纯机器码：上游把 error.code/type 原样回显（如 insufficient_quota、insufficient_credits）。
@@ -126,14 +126,15 @@ const CREDIT_CONTEXT_PATTERNS = [
   "您的账",
 ];
 
-// 需要词边界的强特征：单纯用 includes 会把 "out of credit" 命中到
-// "out of credit range"（取值范围校验），因此用正则要求后面不是这些词。
+// 需要词边界的强特征：单纯用 includes 会命中取值范围、未绑卡、RBAC 角色名等无关文案，
+// 因此用正则限定后续词。
 const STRONG_CREDIT_EXHAUSTED_PATTERNS_BOUNDARY = [
-  /\bout of credit\b(?!\s+(?:range|limit|line|card))/,
-  /\bno credit(s)?\b(?!\s+card)/,
+  // "out of credit(s)" 后面若是 range/limit/line/card，说明是取值范围或未绑卡
+  /\bout of credits?\b(?!\s+(?:range|limit|line|card))/,
+  /\bno credits?\b(?!\s+card)/,
   // "enough credit(s)" 也会出现在 "enough credit card information"、
   // "enough credit role"（RBAC）里，因此排除这些后续词。
-  /\benough credit(s)?\b(?!\s+(?:card|role|score|history|information))/,
+  /\benough credits?\b(?!\s+(?:card|role|score|history|information))/,
 ];
 
 export function isChannelCreditExhausted(text: string | null | undefined): boolean {
