@@ -1,9 +1,12 @@
-// 运行时覆盖：真的执行到 lib/gateway/queued-upstream-response.ts 的 3 个熔断计入点。
+// 运行时覆盖：驱动真实 createQueuedUpstreamResponse，断言它对「注入进来的判定器」的
+// 消费结果由路由自身的模型级配置决定。
 //
 // 与 verify-gateway-handler-circuit.mjs 同一动机：AST 形态守卫挡不住「调用点文本不变、
-// 只在判定前写回 route.model.retry_status_codes」的写入式变异。这里直接把
-// createQueuedUpstreamResponse 跑到 4xx 计入那一刻，断言计入结果由路由自身的模型级
-// 配置决定；任何写回都会让运行时断言立刻失败。
+// 只在判定前写回 route.model.retry_status_codes」的写入式变异。这里把
+// createQueuedUpstreamResponse 跑到 4xx 计入那一刻，任何写回都会让运行时断言立刻失败。
+//
+// 覆盖边界：本脚本自己注入判定器，因此覆盖的是「queued-upstream-response.ts 的消费侧」，
+// 不覆盖 gateway-handler.ts:528 那次注入接线 —— 该接线的形态由 e2e 的 P 组守卫负责。
 //
 // 运行：
 //   node --experimental-transform-types \
