@@ -199,6 +199,13 @@ const validationBodies = [
   ["余额不足提示", "余额不足提示"],
   ["额度不足说明", "额度不足说明"],
   ["欠费描述", "欠费描述"],
+  // "insufficient credit" 后跟 score/rating/history/card/role/limit 时与渠道余额无关
+  ["insufficient credit score", "insufficient credit score"],
+  ["insufficient credit rating", "insufficient credit rating"],
+  ["insufficient credit history 无校验词", "insufficient credit history for this model"],
+  ["insufficient credit card information", "insufficient credit card information"],
+  ["insufficient credit role", "insufficient credit role for access"],
+  ["insufficient credit limit configured", "insufficient credit limit configured"],
 ];
 for (const [label, body] of validationBodies) {
   check(`不误判: ${label}`, isChannelCreditExhausted(body), false);

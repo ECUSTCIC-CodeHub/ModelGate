@@ -17,7 +17,6 @@ const RETRYABLE_UPSTREAM_STATUS = new Set([401, 429, 500, 502, 503, 504]);
 //
 // 强特征：语义自足，只可能出现在「渠道自身余额/额度耗尽」的报文里。
 const STRONG_CREDIT_EXHAUSTED_PATTERNS = [
-  "insufficient credit",
   "insufficient_quota",
   "insufficient quota",
   "insufficient balance",
@@ -205,6 +204,9 @@ const STRONG_CREDIT_EXHAUSTED_PATTERNS_BOUNDARY = [
   /\bout of credits?\b(?![\s,，。;；:：!！\-—]*(?:range|limit|line|card|value|expected|expecting|应为|取值|范围))/,
   /\bno credits?\b(?![\s,，。;；:：!！\-—]*(?:card|for))/,
   /\benough credits?\b(?![\s,，。;；:：!！\-—]*(?:card|role|score|history|information|for))/,
+  // "insufficient credit(s)" 后若跟 score/rating/history/card/role/limit，
+  // 谈的是信用分/信用记录/信用卡/权限/上限，与渠道余额无关。
+  /\binsufficient credits?\b(?![\s,，。;；:：!！\-—]*(?:score|rating|history|card|role|limit|line))/,
 ];
 
 // 弱特征以陈述句形式出现时的佐证：「当前额度不足，无法完成请求」「余额不足 请充值」。
@@ -233,10 +235,12 @@ export function isChannelCreditExhausted(text: string | null | undefined): boole
 
   // 纯机器码（insufficient_quota / insufficient_credits）是权威标记。
   // 归一化会去掉零宽字符与全角空格，可能把 "insufficient credits" 粘成
-  // "insufficientcredits"，因此额外匹配紧凑形态；半角空格由 \s* 覆盖。
+  // "insufficientcredits"，因此额外匹配紧凑形态。
+  // 注意这里不能用 \s* 放宽：那会命中 "insufficient credit score/history/card/role/limit/rating"
+  // 这类与余额无关的文案，正是 STRONG_CREDIT_EXHAUSTED_PATTERNS_BOUNDARY 要挡掉的东西。
   if (
     CREDIT_CODE_PATTERN.test(lower) ||
-    /\binsufficient\s*(?:quota|credit|credits|balance|funds)\b/.test(lower)
+    /\binsufficient(?:quota|credit|credits|balance|funds)\b/.test(lower)
   ) {
     return true;
   }
