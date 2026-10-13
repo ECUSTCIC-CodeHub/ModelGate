@@ -45,6 +45,80 @@ const defaultDeps: UpstreamRoutingDeps = {
 
 // attemptedChannels / attemptedChannelNames 只记录真正打到上游的渠道，route_attempts 以它为准。
 // skippedChannels / skippedChannelNames 记录预检被跳过、未发起请求的渠道，单独落到 skipped_channels 观测。
+const ERROR_PEEK_LIMIT = 8192;
+// 预读仅用于分类，不应拖住请求：上游 header 秒回但 body 滴流时也要有上界。
+const ERROR_PEEK_TIMEOUT_MS = 3000;
+// 极端情况下上游可能持续返回空块，为 while 加读次数上界避免无进展自旋。
+// 取值必须足够大：即便上游按 64 字节的极小分块发送，1024 次读也能覆盖 64KB，
+// 不会把仅 8K 字符的正常错误报文截断掉（真正的兜底是上面的超时）。
+const ERROR_PEEK_MAX_READS = 1024;
+
+// 读取响应体的前 ERROR_PEEK_LIMIT 个字符后即停止，避免为一个 4xx 把超大响应体整个读进内存。
+// 单次 read 可能返回远大于 limit 的 chunk（有的上游一口气推 4MB），因此每块只解码还需要的部分，
+// 否则「限制」只约束了保留量、没约束工作量。
+// 上限按「解码后字符数」计，纯中文时约 24KB 字节，内存仍然封顶。
+// 返回的字节可能截断在多字节字符中间，因此用 TextDecoder 的非 fatal 模式解码，
+// 截断处只会丢一个替换字符，不影响前面关键词的匹配。
+async function peekErrorPrefix(response: Response, limit: number): Promise<string | null> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    try {
+      return (await response.text()).slice(0, limit);
+    } catch {
+      return null;
+    }
+  }
+  const decoder = new TextDecoder();
+  const parts: string[] = [];
+  let length = 0;
+  let reads = 0;
+  const timer = setTimeout(() => {
+    reader.cancel().catch(() => {});
+  }, ERROR_PEEK_TIMEOUT_MS);
+  try {
+    while (length < limit && reads < ERROR_PEEK_MAX_READS) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      reads += 1;
+      if (value.length === 0) continue;
+      const remaining = limit - length;
+      const chunk = value.length > remaining ? value.subarray(0, remaining) : value;
+      const decoded = decoder.decode(chunk, { stream: true });
+      if (decoded.length > 0) {
+        parts.push(decoded);
+        length += decoded.length;
+      }
+    }
+  } catch {
+    // 读取中途出错或被超时取消时，已拿到的前缀仍可用于判定
+  } finally {
+    clearTimeout(timer);
+    reader.cancel().catch(() => {});
+  }
+  if (parts.length === 0) return null;
+  return parts.join("").slice(0, limit);
+}
+
+// 4xx 需要读响应文本才能区分「调用方参数错误」与「渠道额度耗尽」，
+// 因此用 clone() 预读前缀，不消耗原响应体（后续解析/透传仍读原 body）。
+async function shouldRetryResponse(
+  upstream: Response,
+  shouldRetry: typeof shouldRetryUpstreamStatus,
+): Promise<boolean> {
+  if (shouldRetry(upstream.status)) return true;
+  if (upstream.status < 400 || upstream.status >= 500) return false;
+  let text: string | null = null;
+  try {
+    text = await peekErrorPrefix(upstream.clone(), ERROR_PEEK_LIMIT);
+  } catch (error) {
+    // 本地调用点保证此处 body 未被读过、clone() 不会失败；真失败说明前提被破坏，
+    // 记为无法判定并让状态码语义接管，而不是静默当成普通业务错误。
+    console.error("[gateway] 预读上游错误响应体失败，按状态码处理:", summarizeError(error).message);
+    return false;
+  }
+  return shouldRetry(upstream.status, text);
+}
+
 export type UpstreamPickResult =
   | {
       ok: true;
@@ -293,7 +367,7 @@ export async function requestUpstreamWithFallback({
           lastUpstreamStatus = upstream.status;
           lastFailure = null;
           markUpstreamAttempted(retryRoute);
-          if (deps.shouldRetryUpstreamStatus(upstream.status) && attempt < maxRouteAttempts) {
+          if (await shouldRetryResponse(upstream, deps.shouldRetryUpstreamStatus) && attempt < maxRouteAttempts) {
             lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
             continue;
           }
@@ -407,7 +481,7 @@ export async function requestUpstreamWithFallback({
         lastFailure = null;
         lastRequestedRoute = candidate;
         markUpstreamAttempted(candidate);
-        if (deps.shouldRetryUpstreamStatus(upstream.status) && attempt < maxRouteAttempts) {
+        if (await shouldRetryResponse(upstream, deps.shouldRetryUpstreamStatus) && attempt < maxRouteAttempts) {
           lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
           continue;
         }
