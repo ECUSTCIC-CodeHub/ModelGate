@@ -121,7 +121,7 @@ export function createQueuedUpstreamResponse({
             if (upstream.status >= 400) {
               const text = await upstream.text().catch(() => "");
               const upstreamError = parseUpstreamError(text, upstream.status);
-              lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+              lease.complete({ ok: !countsAsChannelFailureFor(route, upstream.status), latencyMs: Date.now() - startedAt });
               insertChatLog({
                 user_id: auth.user.id,
                 key_id: auth.key.id,
@@ -347,7 +347,7 @@ export function createQueuedUpstreamResponse({
 
           if (upstream.status >= 400) {
             const upstreamError = parseUpstreamError(rawText, upstream.status);
-            lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+            lease.complete({ ok: !countsAsChannelFailureFor(route, upstream.status), latencyMs: Date.now() - startedAt });
             insertChatLog({
               user_id: auth.user.id,
               key_id: auth.key.id,

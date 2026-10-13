@@ -558,7 +558,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
     if (upstream.status >= 400) {
       const text = await upstream.text().catch(() => "");
       const upstreamError = parseUpstreamError(text, upstream.status);
-      lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+      lease.complete({ ok: !countsAsChannelFailureFor(route, upstream.status), latencyMs: Date.now() - startedAt });
       insertChatLog({
         user_id: auth.user.id,
         key_id: auth.key.id,
@@ -596,7 +596,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
       const rawText = await upstream.text().catch(() => "");
       if (upstream.status >= 400) {
         const upstreamError = parseUpstreamError(rawText, upstream.status);
-        lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+        lease.complete({ ok: !countsAsChannelFailureFor(route, upstream.status), latencyMs: Date.now() - startedAt });
         insertChatLog({
           user_id: auth.user.id,
           key_id: auth.key.id,
@@ -645,7 +645,8 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
           ? Number(((tokenUsage.outputTpsTokens * 1000) / Math.max(1, Date.now() - startedAt)).toFixed(2))
           : null;
 
-      lease.complete({ ok: !countsAsChannelFailureFor(route, upstream.status), latencyMs: Date.now() - startedAt });
+      // 该分支只在 status < 400 时可达，直接记成功
+      lease.complete({ ok: true, latencyMs: Date.now() - startedAt });
       addUsage(auth.user.id, auth.key.id, Math.max(1, tokenUsage.totalTokens), 1, route.model.token_multiplier, route.model.request_multiplier, route.channel.id, route.model.id, route.model.alias, redeemBalanceId);
       insertChatLog({
         user_id: auth.user.id,
@@ -768,7 +769,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
 
   if (upstream.status >= 400) {
     const upstreamError = parseUpstreamError(rawText, upstream.status);
-    lease.complete({ ok: false, latencyMs: Date.now() - startedAt });
+    lease.complete({ ok: !countsAsChannelFailureFor(route, upstream.status), latencyMs: Date.now() - startedAt });
     insertChatLog({
       user_id: auth.user.id,
       key_id: auth.key.id,
