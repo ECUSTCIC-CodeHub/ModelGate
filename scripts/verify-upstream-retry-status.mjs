@@ -152,6 +152,10 @@ checkJson("渠道未配置回落全局", resolveRetryStatusCodes(null, [400]), [
 checkJson("渠道脏数据回落全局", resolveRetryStatusCodes("{oops", [400]), [400]);
 checkJson("两者都没有用内置默认", resolveRetryStatusCodes(null, null), [401, 402, 403, 429]);
 checkJson("空串渠道回落全局", resolveRetryStatusCodes("", [429]), [429]);
+// 空数组与未配置同义，绝不能返回空列表让下游误判成「一律不换渠道」
+checkJson("空数组全局回落内置默认", resolveRetryStatusCodes(null, []), [401, 402, 403, 429]);
+checkJson("全局 undefined 回落内置默认", resolveRetryStatusCodes(null, undefined), [401, 402, 403, 429]);
+check("解析结果永不为空", resolveRetryStatusCodes(null, []).length > 0, true);
 
 console.log("=== 13. 落库序列化 ===");
 check("有值序列化", serializeRetryStatusCodes([429, 401, 429]), "[401,429]");

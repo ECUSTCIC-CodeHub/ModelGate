@@ -58,7 +58,11 @@ export function resolveRetryStatusCodes(
   channelValue: string | null | undefined,
   globalDefault?: readonly number[] | null,
 ): readonly number[] {
-  return parseStoredRetryStatusCodes(channelValue) ?? globalDefault ?? DEFAULT_RETRYABLE_STATUS;
+  const channelCodes = parseStoredRetryStatusCodes(channelValue);
+  if (channelCodes) return channelCodes;
+  // 空数组与未配置同义，都视为「没有配置」，避免返回空列表让下游误判成「一律不换渠道」
+  if (globalDefault && globalDefault.length > 0) return globalDefault;
+  return DEFAULT_RETRYABLE_STATUS;
 }
 
 // 落库形态：归一化后序列化为 JSON 文本；无有效值写 null（表示沿用全局默认）。
