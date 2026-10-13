@@ -113,6 +113,21 @@ export function routeCountsAsChannelFailure(
   );
 }
 
+// 网关请求生命周期内使用的熔断判定器：绑定全局默认，供调用点直接喂路由对象。
+// 抽成工厂（而不是在 handler 里就地写闭包）是为了让「计入熔断时读的确实是这条路由
+// 自身的模型级配置」能被运行时覆盖：写成工厂后可以拿真实路由对象驱动它，
+// 一旦有调用点先在 route.model 上写回字段（如把 retry_status_codes 置空）再判定，
+// 运行时断言会立刻看见判定结果随写入而改变 —— 纯源码形态守卫看不见这种写入式变异。
+export type ChannelFailureJudge = (
+  route: { model: { retry_status_codes: string | null }; channel: { retry_status_codes: string | null } },
+  status: number,
+) => boolean;
+
+export function createChannelFailureJudge(globalDefault?: readonly number[] | null): ChannelFailureJudge {
+  const defaultCodes = globalDefault && globalDefault.length > 0 ? globalDefault : null;
+  return (route, status) => routeCountsAsChannelFailure(route, status, defaultCodes);
+}
+
 export function parseUpstreamError(text: string, status: number) {
   try {
     const parsed = JSON.parse(text) as Record<string, unknown>;

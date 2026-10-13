@@ -465,6 +465,37 @@ console.log("=== O. 熔断计入必须认模型级配置（运行时断言）===
   check("2xx 不计熔断", routeCountsAsChannelFailure(model400, 200, null), false);
 }
 
+console.log("=== O2. gateway-handler 的熔断判定器必须读路由自身的实时配置（运行时覆盖）===");
+{
+  // 本组堵的是「写入式变异」：调用点文本完全不变、无任何对象构造，
+  // 只是在判定前把 route.model.retry_status_codes 写回（如置 null），
+  // 模型级配置就被静默摘掉 —— 静态形态守卫（AST 只认字面量/标识符形态）看不见。
+  // 因此必须给 gateway-handler 真正使用的判定器补运行时覆盖：
+  // 判定逻辑抽成工厂 createChannelFailureJudge 后，可以拿真实路由对象驱动，
+  // 断言「判定结果确实随 route.model 的实时值变化」，写入式变异会改变判定结果。
+  const { createChannelFailureJudge } = await import("@/lib/gateway/upstream-error");
+
+  // gateway-handler 的构造方式：绑定全局默认后直接喂路由对象
+  const judge = createChannelFailureJudge(null);
+
+  const route = { model: { retry_status_codes: JSON.stringify([400]) }, channel: { retry_status_codes: null } };
+  check("判定器认模型级配置：400 计熔断", judge(route, 400), true);
+  check("判定器认模型级配置：401 不越权计入", judge(route, 401), false);
+
+  // 关键：判定器读的是「判定时刻」的 route.model 值，不是构造时快照。
+  // 一旦调用点先写回 retry_status_codes=null，判定结果必须随之改变 —— 这就是
+  // 运行时覆盖能看见写入式变异的原因；静态守卫对同样的写入一无所知。
+  const writtenBack = { model: { retry_status_codes: JSON.stringify([400]) }, channel: { retry_status_codes: null } };
+  writtenBack.model.retry_status_codes = null;
+  check("写回模型级配置后判定器立刻改口（证明判的是实时值）", judge(writtenBack, 400), false);
+
+  // 全局默认也必须被绑定进判定器：未配置模型/渠道时回落
+  const withGlobal = createChannelFailureJudge([401, 402]);
+  const bare = { model: { retry_status_codes: null }, channel: { retry_status_codes: null } };
+  check("判定器绑定全局默认：401 计熔断", withGlobal(bare, 401), true);
+  check("判定器绑定全局默认：400 不计熔断", withGlobal(bare, 400), false);
+}
+
 console.log("=== P. 调用点必须把路由对象本身交给判定（TypeChecker 级守卫）===");
 {
   // 覆盖面：gateway-handler.ts 的熔断闭包 + queued-upstream-response.ts 的 3 个熔断计入点。

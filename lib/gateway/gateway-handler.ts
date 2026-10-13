@@ -24,7 +24,7 @@ import { resolveClientIp } from "@/lib/core/client-ip";
 import { requestContainsImage } from "@/lib/gateway/normalized-message/detect-image";
 import { resolveTokenUsage, tokenUsageMetadata } from "@/lib/gateway/token-usage";
 import { resolveTriState } from "@/lib/gateway/user-preferences";
-import { buildErrorResponseBody, normalizeRetryStatusCodes, parseUpstreamError, routeCountsAsChannelFailure } from "@/lib/gateway/upstream-error";
+import { buildErrorResponseBody, createChannelFailureJudge, normalizeRetryStatusCodes, parseUpstreamError } from "@/lib/gateway/upstream-error";
 import { addUsage } from "@/lib/gateway/usage-accounting";
 import { findMatchingRedeemBalance } from "@/lib/services/redeem-codes";
 import { redactUrlCredentials } from "@/lib/shared/redact";
@@ -348,8 +348,7 @@ export async function handleGatewayProtocolRequest(request: Request, inboundAdap
 
   // 换渠道与熔断共用同一份生效状态码：模型级优先，其次渠道级，未配置回落全局默认。
   const defaultRetryStatusCodes = normalizeRetryStatusCodes(settings.upstream_retry_status_codes);
-  const countsAsChannelFailureFor = (route: RoutedModel, status: number) =>
-    routeCountsAsChannelFailure(route, status, defaultRetryStatusCodes);
+  const countsAsChannelFailureFor = createChannelFailureJudge(defaultRetryStatusCodes);
   const retryEnabled = settings.upstream_retry_enabled === 1;
   const maxRouteAttempts = retryEnabled ? Math.max(1, settings.upstream_retry_max_attempts) : 1;
   const stream = inboundAdapter.getStreamFlag(body);
