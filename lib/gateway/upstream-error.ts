@@ -12,13 +12,18 @@ function isServerError(status: number) {
   return status >= 500 && status <= 599;
 }
 
-export function isRetryableUpstreamStatus(status: number, retryStatusCodes?: readonly number[] | null) {
-  if (isServerError(status)) return true;
-  const configured = retryStatusCodes && retryStatusCodes.length > 0 ? retryStatusCodes : DEFAULT_RETRYABLE_STATUS;
-  return configured.includes(status);
+// 严格解析单个状态码：只接受 400-599 的十进制整数。
+// 不用 parseInt —— 它会把 "400abc"、"401e2"、"400.9" 静默截成 400/401，
+// 让写错的值被当成合法配置，因此这里要求整串必须是纯数字。
+function parseStatusCode(value: unknown): number | null {
+  const text = typeof value === "string" ? value.trim() : String(value);
+  if (!/^\d+$/.test(text)) return null;
+  const code = Number(text);
+  return code >= 400 && code <= 599 ? code : null;
 }
 
 // 归一化用户填写的状态码列表：去重、升序、只保留合法 4xx/5xx。
+// 输入可以是数组，也可以是逗号/空白/中文顿号分隔的字符串。
 export function normalizeRetryStatusCodes(input: unknown): number[] | null {
   if (input === null || input === undefined) return null;
   const raw = Array.isArray(input)
@@ -31,11 +36,47 @@ export function normalizeRetryStatusCodes(input: unknown): number[] | null {
   if (!raw) return null;
   const codes = new Set<number>();
   for (const item of raw) {
-    const code = typeof item === "number" ? item : Number.parseInt(String(item).trim(), 10);
-    if (!Number.isInteger(code) || code < 400 || code > 599) continue;
-    codes.add(code);
+    const code = parseStatusCode(item);
+    if (code !== null) codes.add(code);
   }
   return codes.size > 0 ? [...codes].sort((a, b) => a - b) : null;
+}
+
+// 渠道列里存的是 JSON 数组文本；解析失败或为空按「未配置」处理，不让脏数据影响判定。
+export function parseStoredRetryStatusCodes(raw: string | null | undefined): number[] | null {
+  if (!raw) return null;
+  try {
+    return normalizeRetryStatusCodes(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+// 生效的状态码列表：先取渠道级配置，未配置再回落全局默认，全局也没配置就用内置默认。
+// 换渠道判定与熔断判定共用这一处解析，避免两边口径漂移。
+export function resolveRetryStatusCodes(
+  channelValue: string | null | undefined,
+  globalDefault?: readonly number[] | null,
+): readonly number[] {
+  return parseStoredRetryStatusCodes(channelValue) ?? globalDefault ?? DEFAULT_RETRYABLE_STATUS;
+}
+
+// 落库形态：归一化后序列化为 JSON 文本；无有效值写 null（表示沿用全局默认）。
+export function serializeRetryStatusCodes(input: unknown): string | null {
+  const codes = normalizeRetryStatusCodes(input);
+  return codes ? JSON.stringify(codes) : null;
+}
+
+// 5xx 恒为 true；4xx 只看生效的状态码列表是否包含它。
+function matchesRetryStatus(status: number, retryStatusCodes?: readonly number[] | null) {
+  if (isServerError(status)) return true;
+  if (status < 400) return false;
+  const configured = retryStatusCodes && retryStatusCodes.length > 0 ? retryStatusCodes : DEFAULT_RETRYABLE_STATUS;
+  return configured.includes(status);
+}
+
+export function isRetryableUpstreamStatus(status: number, retryStatusCodes?: readonly number[] | null) {
+  return matchesRetryStatus(status, retryStatusCodes);
 }
 
 // 是否换渠道（含 5xx 短路与配置回落），供路由与测试使用。
@@ -43,15 +84,11 @@ export const shouldRetryUpstreamStatus = isRetryableUpstreamStatus;
 
 // 计入熔断的上游状态：只有「渠道侧确实有问题」才算，业务 4xx（400/404/422 等）
 // 是调用方请求本身的问题，多用户连续触发会把健康渠道误熔断。
-// 判定同样只看状态码：5xx 恒计入，4xx 按配置（401/402/403/429 反映凭据失效、
-// 计费欠费或被限流）。
+// 口径与换渠道判定完全一致，因此调用方必须传同一个生效列表，否则会出现
+// 「配了 400 会换渠道、却不计熔断」的割裂。
 export function countsAsChannelFailure(status: number, retryStatusCodes?: readonly number[] | null) {
-  if (isServerError(status)) return true;
-  if (status < 400) return false;
-  const configured = retryStatusCodes && retryStatusCodes.length > 0 ? retryStatusCodes : DEFAULT_RETRYABLE_STATUS;
-  return configured.includes(status);
+  return matchesRetryStatus(status, retryStatusCodes);
 }
-
 
 export function parseUpstreamError(text: string, status: number) {
   try {
