@@ -634,10 +634,10 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 |:---|:---|:---|
 | registration_enabled | boolean | 是否允许注册 |
 | password_login_enabled | boolean | 是否允许密码登录 |
-| upstream_retry_enabled | boolean | 是否开启上游自动重试（上游返回 401/429/5xx 时换渠道）；仅影响上游报错后的换渠道，预检失败的换渠道始终生效 |
+| upstream_retry_enabled | boolean | 是否开启上游自动重试（上游返回 `upstream_retry_status_codes` 中的状态码或任意 5xx 时换渠道）；仅影响上游报错后的换渠道，预检失败的换渠道始终生效 |
 | upstream_retry_max_attempts | 1-10 | 最大重试次数，只统计真正打到上游的次数；渠道配额不足、并发已满、熔断等预检失败不消耗次数 |
 | upstream_retry_same_channel | boolean | 没有其他渠道时是否对当前渠道重试（429 场景） |
-| upstream_retry_status_codes | int[] | 全局触发换渠道的状态码列表，元素取值 400-599；5xx 无条件生效。为空数组或未配置时用内置默认 401/402/403/429。单个渠道可用 etry_status_codes 覆盖 |
+| upstream_retry_status_codes | int[] | 全局触发换渠道的状态码列表，元素取值 400-599，去重升序；5xx 无条件生效。留空或 `null` 时用内置默认 401/402/403/429。同一份列表也决定 `4xx` 是否计入熔断，保证「换渠道」与「计熔断」口径一致。单个渠道可用 `retry_status_codes` 覆盖 |
 | upstream_circuit_breaker_enabled | boolean | 是否开启上游熔断 |
 | oidc_enabled | boolean | 是否开启 OIDC 登录 |
 | oidc_issuer_url | string | OIDC Issuer URL |
@@ -3590,4 +3590,3 @@ curl https://your-domain:3000/api/v1/rerank \
 - **不再预读响应体:** 判定只看状态码，因此网关不再为 `4xx` 克隆并读取响应前缀。上游错误响应体仅在正常解析与透传时读取一次，既避免了慢速大响应体的额外等待，也避免了「预读 + 重读」的二次读取
 - **熔断机制:** 连续失败 3 次后暂停该渠道 15 秒，可通过设置开关关闭；被熔断的渠道在选路评分中得分归零并被跳过，自动使用其他候选渠道
 - **计入熔断的状态:** `5xx` 恒计入；`4xx` 按同一份状态码配置计入（默认 `401`/`402`/`403`/`429`，反映凭据失效、计费欠费或被限流）。调用方请求本身的问题（`400`/`404`/`422` 等，未配置时）不计入熔断，避免多用户连续触发把健康渠道误熔断。`2xx`/`3xx` 永不因状态码计入熔断
-

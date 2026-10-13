@@ -26,6 +26,7 @@ import {
   type Protocol,
 } from "./channel-model";
 import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
+import { normalizeRetryStatusCodes } from "@/lib/gateway/upstream-error";
 import { parseMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
 import { cyclesToDrafts, draftsToPayload } from "@/app/dashboard/period-cycle-fields";
 import { scheduleDraftsToPayload, schedulesToDrafts } from "@/app/dashboard/multiplier-schedule-fields";
@@ -49,7 +50,7 @@ function expiresAtFromInputValue(value: string): string {
   return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
 
-// 表单里按「每行 Name: Value」编辑，落库是 JSON 字符串
+// 落库是 JSON 状态码数组文本，表单里按「逗号分隔」编辑
 function formatRetryStatusCodesInput(raw: unknown): string {
   if (typeof raw !== "string" || raw.trim() === "") return "";
   try {
@@ -60,17 +61,7 @@ function formatRetryStatusCodesInput(raw: unknown): string {
   }
 }
 
-// 留空表示沿用全局默认，因此空数组要传 null 而不是 []，避免被当成「不换渠道」。
-function parseRetryStatusCodesForm(raw: string): number[] | null {
-  const codes = new Set<number>();
-  for (const part of raw.split(/[\s,，、]+/)) {
-    const code = Number.parseInt(part, 10);
-    if (!Number.isInteger(code) || code < 400 || code > 599) continue;
-    codes.add(code);
-  }
-  return codes.size > 0 ? [...codes].sort((a, b) => a - b) : null;
-}
-
+// 表单里按「每行 Name: Value」编辑，落库是 JSON 字符串
 function formatCustomHeadersInput(raw: unknown): string {
   if (typeof raw !== "string" || raw.trim() === "") return "";
   try {
@@ -371,7 +362,7 @@ export function useChannelAdmin() {
           custom_headers: customHeaders,
           request_body_omit: requestBodyOmit,
           group_name: channelForm.group_name.trim(),
-          retry_status_codes: parseRetryStatusCodesForm(channelForm.retry_status_codes),
+          retry_status_codes: normalizeRetryStatusCodes(channelForm.retry_status_codes),
           ...buildQuotaPayload(channelForm),
           models: draftModels,
         }),
@@ -404,7 +395,7 @@ export function useChannelAdmin() {
       custom_headers: customHeaders,
       request_body_omit: requestBodyOmit,
       group_name: channelForm.group_name.trim(),
-      retry_status_codes: parseRetryStatusCodesForm(channelForm.retry_status_codes),
+      retry_status_codes: normalizeRetryStatusCodes(channelForm.retry_status_codes),
       ...buildQuotaPayload(channelForm),
     };
     // 输入框留空表示不修改已保存的密钥：省略 api_key 字段，避免空串被当作清空

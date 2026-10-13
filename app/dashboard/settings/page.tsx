@@ -9,6 +9,7 @@ import { clampStatusLightHours } from "@/lib/shared/utils";
 import { getApiMessage } from "@/lib/shared/api-message";
 import { authedFetch, ensureAdmin } from "@/lib/auth/client-auth";
 import { modelGateFeatures } from "@/lib/core/features";
+import { normalizeRetryStatusCodes } from "@/lib/gateway/upstream-error";
 import {
   AccessGuideNoticeSettingsCard,
   AnnouncementSettingsCard,
@@ -47,15 +48,19 @@ function stringValue(value: unknown, fallback = "") {
   return typeof value === "string" ? value : fallback;
 }
 
-// 输入框是「逗号分隔」的自由文本，提交前解析成状态码数组；无有效项则传空数组表示沿用内置默认。
-function parseRetryStatusCodesInput(raw: string): number[] {
-  const codes = new Set<number>();
-  for (const part of raw.split(/[\s,，、]+/)) {
-    const code = Number.parseInt(part, 10);
-    if (!Number.isInteger(code) || code < 400 || code > 599) continue;
-    codes.add(code);
+// 接口返回状态码数组；兼容旧版把 JSON 文本直接透出的情况，避免滚动升级期间表单被清空。
+function retryStatusCodesInputValue(value: unknown): string {
+  if (Array.isArray(value)) return value.join(",");
+  if (typeof value === "string" && value.trim() !== "") {
+    try {
+      const parsed = normalizeRetryStatusCodes(JSON.parse(value));
+      if (parsed) return parsed.join(",");
+    } catch {
+      // 不是 JSON 文本，继续按分隔符解析
+    }
   }
-  return [...codes].sort((a, b) => a - b);
+  const codes = normalizeRetryStatusCodes(value);
+  return codes ? codes.join(",") : "";
 }
 
 export default function AdminSettingsPage() {
@@ -125,7 +130,7 @@ export default function AdminSettingsPage() {
     setUpstreamRetryEnabled(settings.upstream_retry_enabled !== 0);
     setUpstreamRetryMaxAttempts(Number(settings.upstream_retry_max_attempts ?? 3));
     setUpstreamRetrySameChannel(settings.upstream_retry_same_channel === 1);
-    setUpstreamRetryStatusCodes(stringValue(settings.upstream_retry_status_codes));
+    setUpstreamRetryStatusCodes(retryStatusCodesInputValue(settings.upstream_retry_status_codes));
     setCircuitBreakerEnabled(settings.upstream_circuit_breaker_enabled !== 0);
     setUpstreamStrictPriority(settings.upstream_strict_priority === 1);
     if (oidcFeatureEnabled) {
@@ -214,7 +219,7 @@ export default function AdminSettingsPage() {
         upstream_retry_enabled: upstreamRetryEnabled,
         upstream_retry_max_attempts: upstreamRetryMaxAttempts,
         upstream_retry_same_channel: upstreamRetrySameChannel,
-        upstream_retry_status_codes: parseRetryStatusCodesInput(upstreamRetryStatusCodes),
+        upstream_retry_status_codes: normalizeRetryStatusCodes(upstreamRetryStatusCodes) ?? [],
         upstream_circuit_breaker_enabled: circuitBreakerEnabled,
         upstream_strict_priority: upstreamStrictPriority,
         ...(oidcFeatureEnabled ? {

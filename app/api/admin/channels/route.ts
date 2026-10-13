@@ -19,6 +19,7 @@ import { stringifyCustomHeaders, validateCustomHeaders } from "@/lib/gateway/cus
 import { stringifyRequestBodyOmit, validateRequestBodyOmit } from "@/lib/gateway/request-body-omit";
 import { validatePeriodCycles, serializePeriodCycles } from "@/lib/gateway/period-cycles";
 import { validateMultiplierSchedules, normalizeMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
+import { serializeRetryStatusCodes } from "@/lib/gateway/upstream-error";
 
 const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
 
@@ -231,9 +232,7 @@ export async function POST(request: Request) {
           stringifyCustomHeaders(customHeadersResult.headers),
           stringifyRequestBodyOmit(requestBodyOmitResult.fields),
           parsed.data.group_name?.trim() || null,
-          parsed.data.retry_status_codes && parsed.data.retry_status_codes.length > 0
-            ? JSON.stringify([...new Set(parsed.data.retry_status_codes)].sort((a, b) => a - b))
-            : null,
+          serializeRetryStatusCodes(parsed.data.retry_status_codes),
           guard.auth.user.id,
           parsed.data.api_key_private === true ? 1 : 0,
         ],

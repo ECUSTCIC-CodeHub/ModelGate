@@ -13,6 +13,7 @@ import { disableExpiredChannels } from "@/lib/gateway/channel-expiry";
 import { disableExpiredModels } from "@/lib/gateway/model-expiry";
 import { stringifyCustomHeaders, validateCustomHeaders } from "@/lib/gateway/custom-headers";
 import { stringifyRequestBodyOmit, validateRequestBodyOmit } from "@/lib/gateway/request-body-omit";
+import { serializeRetryStatusCodes } from "@/lib/gateway/upstream-error";
 import { isMaskedApiKey, looksLikeMaskedApiKey, maskApiKey, resolveSubmittedApiKey } from "@/lib/shared/redact";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { resolveChannelOwnerId } from "@/lib/services/channel-ownership";
@@ -209,9 +210,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     retry_status_codes:
       parsed.data.retry_status_codes === undefined
         ? (existing as { retry_status_codes?: string | null }).retry_status_codes ?? null
-        : parsed.data.retry_status_codes && parsed.data.retry_status_codes.length > 0
-          ? JSON.stringify([...new Set(parsed.data.retry_status_codes)].sort((a, b) => a - b))
-          : null,
+        : serializeRetryStatusCodes(parsed.data.retry_status_codes),
     time_restrictions:
       timeRestrictions === null
         ? (existing as { time_restrictions?: string | null }).time_restrictions ?? ""

@@ -7,6 +7,7 @@ import { jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { isValidPublicBaseUrl } from "@/lib/auth/oidc";
 import { getGatewaySettings, setGatewaySettings } from "@/lib/core/settings";
+import { normalizeRetryStatusCodes } from "@/lib/gateway/upstream-error";
 import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
 import { parseModelBrandGroups } from "@/lib/core/settings";
 
@@ -78,7 +79,15 @@ export async function GET(request: Request) {
   if ("error" in guard) return guard.error;
 
   const settings = await getGatewaySettings();
-  return jsonOk({ message: "系统设置获取成功。", data: maskSettingsForEdition(settings) });
+  // 落库是 JSON 文本，对外统一成状态码数组；未配置时回落到内置默认，便于前端直接展示与编辑
+  const data = maskSettingsForEdition(settings);
+  return jsonOk({
+    message: "系统设置获取成功。",
+    data: {
+      ...data,
+      upstream_retry_status_codes: normalizeRetryStatusCodes(settings.upstream_retry_status_codes),
+    },
+  });
 }
 
 export async function PUT(request: Request) {
