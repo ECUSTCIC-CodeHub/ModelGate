@@ -1,4 +1,4 @@
-// 端到端验证「按状态码换渠道」：渠道级配置优先，未配置回落全局默认。
+// 端到端验证「按状态码换渠道」：模型级 > 渠道级 > 全局默认 > 内置默认。
 // 运行：
 //   node --experimental-transform-types --loader ./scripts/verify-retry-status-loader.mjs \
 //     scripts/verify-upstream-retry-status-e2e.mjs
@@ -17,7 +17,7 @@ function check(label, actual, expected) {
   console.log(`  FAIL  ${label}: got ${JSON.stringify(actual)}, want ${JSON.stringify(expected)}`);
 }
 
-function makeRoute({ channelId, modelId, retryStatusCodes = null }) {
+function makeRoute({ channelId, modelId, retryStatusCodes = null, modelRetryStatusCodes = null }) {
   return {
     channel: {
       id: channelId,
@@ -32,6 +32,7 @@ function makeRoute({ channelId, modelId, retryStatusCodes = null }) {
       real_model: `real-${modelId}`,
       quota_mode: "none",
       max_concurrency: 0,
+      retry_status_codes: modelRetryStatusCodes,
     },
     effective_upstream_protocol: "chat_completions",
   };
@@ -246,6 +247,77 @@ console.log("=== K. 大响应体不再被预读（无读放大）===");
 }
 
 
+console.log("=== L0. 模型级配置：同渠道下不同模型各自生效 ===");
+{
+  // 同一渠道(7)两个模型，101 配 400、102 不配；400 应只对 101 换渠道
+  const routesA = [
+    makeRoute({ channelId: 7, modelId: 101, modelRetryStatusCodes: JSON.stringify([400]) }),
+    makeRoute({ channelId: 8, modelId: 102 }),
+  ];
+  const rA = await run(failThenSucceed(400, routesA));
+  check("模型配 400 时换到 8", JSON.stringify(rA.attempted), JSON.stringify([7, 8]));
+  check("模型配 400 最终成功", rA.result.ok, true);
+
+  const routesB = [
+    makeRoute({ channelId: 7, modelId: 101 }),
+    makeRoute({ channelId: 8, modelId: 102 }),
+  ];
+  const rB = await run(failThenSucceed(400, routesB));
+  check("模型未配置时不换", JSON.stringify(rB.attempted), JSON.stringify([7]));
+  check("模型未配置时透传 400", rB.result.upstream?.status, 400);
+}
+
+console.log("=== L0b. 模型级优先于渠道级与全局 ===");
+{
+  // 渠道配 400 允许换，但模型自己只认 418：400 不该换
+  const routes = [
+    makeRoute({ channelId: 7, modelId: 101, retryStatusCodes: JSON.stringify([400]), modelRetryStatusCodes: JSON.stringify([418]) }),
+    makeRoute({ channelId: 8, modelId: 102 }),
+  ];
+  const r1 = await run(failThenSucceed(400, routes));
+  check("模型覆盖渠道：400 不换", JSON.stringify(r1.attempted), JSON.stringify([7]));
+  const r2 = await run(failThenSucceed(418, routes));
+  check("模型覆盖渠道：418 换", JSON.stringify(r2.attempted), JSON.stringify([7, 8]));
+
+  // 模型配 400、渠道未配：模型生效（渠道空则回落全局默认，400 默认不换）
+  const routes2 = [
+    makeRoute({ channelId: 7, modelId: 101, modelRetryStatusCodes: JSON.stringify([400]) }),
+    makeRoute({ channelId: 8, modelId: 102 }),
+  ];
+  const r3 = await run(failThenSucceed(400, routes2));
+  check("模型在渠道未配置时生效", JSON.stringify(r3.attempted), JSON.stringify([7, 8]));
+
+  // 模型与渠道都未配置，全局含 400 → 换
+  const bare = [
+    makeRoute({ channelId: 7, modelId: 101 }),
+    makeRoute({ channelId: 8, modelId: 102 }),
+  ];
+  const r4 = await run({ ...failThenSucceed(400, bare), defaultRetryStatusCodes: [400] });
+  check("模型渠道都未配置回落全局", JSON.stringify(r4.attempted), JSON.stringify([7, 8]));
+}
+
+console.log("=== L0c. 模型脏数据回落渠道/全局，不影响请求 ===");
+for (const dirty of ["not-json", "{oops", '{"a":1}', "[200,600]", "", "[]"]) {
+  const routes = [
+    makeRoute({ channelId: 7, modelId: 101, retryStatusCodes: JSON.stringify([400]), modelRetryStatusCodes: dirty }),
+    makeRoute({ channelId: 8, modelId: 102 }),
+  ];
+  const { attempted } = await run(failThenSucceed(400, routes));
+  check(`模型脏值 ${JSON.stringify(dirty)} 回落渠道仍换 400`, JSON.stringify(attempted), JSON.stringify([7, 8]));
+}
+
+console.log("=== L0d. 模型级配置不改变 5xx 与未配置 4xx 的默认行为 ===");
+{
+  const routes = [
+    makeRoute({ channelId: 7, modelId: 101, modelRetryStatusCodes: JSON.stringify([418]) }),
+    makeRoute({ channelId: 8, modelId: 102 }),
+  ];
+  const r1 = await run(failThenSucceed(503, routes));
+  check("模型配 418 时 503 仍换", JSON.stringify(r1.attempted), JSON.stringify([7, 8]));
+  const r2 = await run(failThenSucceed(404, routes));
+  check("模型配 418 时 404 不换", JSON.stringify(r2.attempted), JSON.stringify([7]));
+}
+
 console.log("=== L. 渠道写错的状态码不被当成合法配置（严格解析）===");
 {
   // 非 JSON 文本：按未配置处理并回落默认
@@ -273,7 +345,7 @@ console.log("=== M. 熔断口径与换渠道一致（渠道配置 [400]）===");
   // 配了 400 会换渠道，就必须同时计入熔断，否则渠道会被反复选中。
   // 断言写死期望值，不做「a === b」式别名比对，否则两边同时错也测不出来。
   const { countsAsChannelFailure, resolveRetryStatusCodes } = await import("@/lib/gateway/upstream-error");
-  const effective = resolveRetryStatusCodes(JSON.stringify([400]), null);
+  const effective = resolveRetryStatusCodes(null, JSON.stringify([400]), null);
   check("生效列表含 400", JSON.stringify(effective), JSON.stringify([400]));
   check("配置 400 计入熔断", countsAsChannelFailure(400, effective), true);
   check("配置 400 时 400 换渠道", shouldRetryUpstreamStatus(400, effective), true);

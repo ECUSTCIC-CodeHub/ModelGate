@@ -1,4 +1,4 @@
-// 验证上游换渠道判定：完全基于状态码，可由渠道/全局配置覆盖。
+// 验证上游换渠道判定：完全基于状态码，可由模型/渠道/全局配置覆盖。
 // 运行：node --experimental-transform-types --loader ./scripts/alias-loader.mjs scripts/verify-upstream-retry-status.mjs
 import {
   countsAsChannelFailure,
@@ -146,16 +146,23 @@ checkJson("脏 JSON 按未配置", parseStoredRetryStatusCodes("{oops"), null);
 checkJson("非数组 JSON 按未配置", parseStoredRetryStatusCodes('{"a":1}'), null);
 checkJson("全非法数组按未配置", parseStoredRetryStatusCodes("[200,600]"), null);
 
-console.log("=== 12. 生效列表优先级：渠道 > 全局 > 内置默认 ===");
-checkJson("渠道优先于全局", resolveRetryStatusCodes("[418]", [400]), [418]);
-checkJson("渠道未配置回落全局", resolveRetryStatusCodes(null, [400]), [400]);
-checkJson("渠道脏数据回落全局", resolveRetryStatusCodes("{oops", [400]), [400]);
-checkJson("两者都没有用内置默认", resolveRetryStatusCodes(null, null), [401, 402, 403, 429]);
-checkJson("空串渠道回落全局", resolveRetryStatusCodes("", [429]), [429]);
+console.log("=== 12. 生效列表优先级：模型 > 渠道 > 全局 > 内置默认 ===");
+// 参数顺序：模型级、渠道级、全局默认
+checkJson("模型优先于渠道与全局", resolveRetryStatusCodes("[400]", "[418]", [429]), [400]);
+checkJson("模型未配置回落渠道", resolveRetryStatusCodes(null, "[418]", [400]), [418]);
+checkJson("模型脏数据回落渠道", resolveRetryStatusCodes("{oops", "[418]", [400]), [418]);
+checkJson("模型空串回落渠道", resolveRetryStatusCodes("", "[418]", [400]), [418]);
+checkJson("模型与渠道都脏回落全局", resolveRetryStatusCodes("{oops", "{oops", [400]), [400]);
+checkJson("渠道优先于全局", resolveRetryStatusCodes(null, "[418]", [400]), [418]);
+checkJson("渠道未配置回落全局", resolveRetryStatusCodes(null, null, [400]), [400]);
+checkJson("渠道脏数据回落全局", resolveRetryStatusCodes(null, "{oops", [400]), [400]);
+checkJson("三者都没有用内置默认", resolveRetryStatusCodes(null, null, null), [401, 402, 403, 429]);
+checkJson("空串渠道回落全局", resolveRetryStatusCodes(null, "", [429]), [429]);
 // 空数组与未配置同义，绝不能返回空列表让下游误判成「一律不换渠道」
-checkJson("空数组全局回落内置默认", resolveRetryStatusCodes(null, []), [401, 402, 403, 429]);
-checkJson("全局 undefined 回落内置默认", resolveRetryStatusCodes(null, undefined), [401, 402, 403, 429]);
-check("解析结果永不为空", resolveRetryStatusCodes(null, []).length > 0, true);
+checkJson("空数组全局回落内置默认", resolveRetryStatusCodes(null, null, []), [401, 402, 403, 429]);
+checkJson("空数组模型回落渠道", resolveRetryStatusCodes("[]", "[418]", [400]), [418]);
+checkJson("全局 undefined 回落内置默认", resolveRetryStatusCodes(null, null, undefined), [401, 402, 403, 429]);
+check("解析结果永不为空", resolveRetryStatusCodes(null, null, []).length > 0, true);
 
 console.log("=== 13. 落库序列化 ===");
 check("有值序列化", serializeRetryStatusCodes([429, 401, 429]), "[401,429]");
