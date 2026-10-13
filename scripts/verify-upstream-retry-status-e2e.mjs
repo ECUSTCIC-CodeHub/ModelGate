@@ -62,13 +62,13 @@ function makeDeps({ routes, fetchImpl }) {
   };
 }
 
-async function run({ routes, fetchImpl, maxRouteAttempts = 3, defaultRetryStatusCodes = null }) {
+async function run({ routes, fetchImpl, maxRouteAttempts = 3, defaultRetryStatusCodes = null, sameChannelRetry = false }) {
   const h = makeDeps({ routes, fetchImpl });
   const result = await requestUpstreamWithFallback({
     resolvedAlias: "target",
     inboundProtocol: "chat_completions",
     maxRouteAttempts,
-    sameChannelRetry: false,
+    sameChannelRetry,
     defaultRetryStatusCodes,
     requestSignal: new AbortController().signal,
     inboundHeaders: new Headers(),
@@ -318,6 +318,40 @@ console.log("=== L0d. 模型级配置不改变 5xx 与未配置 4xx 的默认行
   check("模型配 418 时 404 不换", JSON.stringify(r2.attempted), JSON.stringify([7]));
 }
 
+console.log("=== L0e. 同渠道重试分支同样认模型级配置 ===");
+{
+  // 只有一个候选且开启同渠道重试时，走的是 lastRequestedRoute 那条分支。
+  // 模型级配 400 → 应在同一渠道(7)重试；上游始终 400，故重试满 maxRouteAttempts 次。
+  const routes = [makeRoute({ channelId: 7, modelId: 101, modelRetryStatusCodes: JSON.stringify([400]) })];
+  const r1 = await run({
+    routes,
+    sameChannelRetry: true,
+    maxRouteAttempts: 3,
+    fetchImpl: () => new Response(CREDIT_BODY, { status: 400 }),
+  });
+  check("模型配 400 时同渠道重试", JSON.stringify(r1.attempted), JSON.stringify([7, 7, 7]));
+
+  // 模型未配置 400 → 不重试，只打一次
+  const routes2 = [makeRoute({ channelId: 7, modelId: 101 })];
+  const r2 = await run({
+    routes: routes2,
+    sameChannelRetry: true,
+    maxRouteAttempts: 3,
+    fetchImpl: () => new Response(CREDIT_BODY, { status: 400 }),
+  });
+  check("模型未配置时同渠道不重试", JSON.stringify(r2.attempted), JSON.stringify([7]));
+
+  // 渠道级配 400、模型级未配置 → 模型回落渠道，仍应重试
+  const routes3 = [makeRoute({ channelId: 7, modelId: 101, retryStatusCodes: JSON.stringify([400]) })];
+  const r3 = await run({
+    routes: routes3,
+    sameChannelRetry: true,
+    maxRouteAttempts: 3,
+    fetchImpl: () => new Response(CREDIT_BODY, { status: 400 }),
+  });
+  check("模型未配置回落渠道后同渠道重试", JSON.stringify(r3.attempted), JSON.stringify([7, 7, 7]));
+}
+
 console.log("=== L. 渠道写错的状态码不被当成合法配置（严格解析）===");
 {
   // 非 JSON 文本：按未配置处理并回落默认
@@ -380,6 +414,24 @@ console.log("=== N. 熔断计入点必须走渠道配置（源码级守卫）===
       }
     }
     check(`${rel} 无硬编码 ok: false`, JSON.stringify(offenders), JSON.stringify([]));
+  }
+}
+
+console.log("=== O. 调用点必须把模型级配置传下去（源码级守卫）===");
+{
+  // 换渠道与熔断的判定都靠调用点把 route.model.retry_status_codes 传进解析函数。
+  // 只在 resolveRetryStatusCodes 内部测「模型优先」抓不到调用点写死 null 的回归，
+  // 这里按源码结构检查：所有 resolveRetryStatusCodes 调用都必须带 route.model 的模型值。
+  const { readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const path = (await import("node:path")).default;
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  for (const rel of ["lib/gateway/gateway-handler.ts", "lib/gateway/upstream-routing.ts"]) {
+    const source = readFileSync(path.join(root, rel), "utf8");
+    const calls = source.match(/resolveRetryStatusCodes\([^)]*\)/g) ?? [];
+    const withoutModel = calls.filter((call) => !call.includes(".model.retry_status_codes"));
+    check(`${rel} 全部调用点带模型级配置`, JSON.stringify(withoutModel), JSON.stringify([]));
+    check(`${rel} 至少有一处调用`, calls.length > 0, true);
   }
 }
 
