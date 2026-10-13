@@ -1,3 +1,4 @@
+import { normalizeRetryStatusCodes } from "@/lib/gateway/upstream-error";
 import type { PeriodCycleDraft } from "@/app/dashboard/period-cycle-fields";
 import type { MultiplierScheduleDraft } from "@/app/dashboard/multiplier-schedule-fields";
 
@@ -67,6 +68,7 @@ export type ModelRow = {
   system_prompt: string | null;
   period_cycles: string | null;
   multiplier_schedules: string | null;
+  retry_status_codes: string | null;
 };
 
 export type Channel = {
@@ -162,6 +164,7 @@ export type ModelForm = {
   ua_restrictions: string;
   expires_at: string;
   system_prompt: string;
+  retry_status_codes: string;
 };
 
 export type UpstreamModelOption = {
@@ -257,4 +260,17 @@ export const initialModelForm: ModelForm = {
   ua_restrictions: "",
   expires_at: "",
   system_prompt: "",
+  retry_status_codes: "",
 };
+
+// 落库是状态码 JSON 数组文本，表单里按「逗号分隔」编辑。
+// 模型级与渠道级共用：用统一归一化过滤脏值，避免越界/非整数回显后在保存时静默收窄。
+export function formatRetryStatusCodesInput(raw: unknown): string {
+  if (typeof raw !== "string" || raw.trim() === "") return "";
+  try {
+    const codes = normalizeRetryStatusCodes(JSON.parse(raw));
+    return codes ? codes.join(",") : "";
+  } catch {
+    return "";
+  }
+}
