@@ -61,7 +61,7 @@ export function ModelListRow({
       <TableCell className="max-w-48 truncate font-mono text-sm">{model.alias}</TableCell>
       <TableCell>
         <div className="flex items-center gap-1.5">
-          <span className="max-w-48 truncate text-sm text-[var(--color-foreground-muted)]">{model.real_model}</span>
+          <span className="min-w-0 max-w-48 flex-1 truncate text-sm text-[var(--color-foreground-muted)]">{model.real_model}</span>
           {model.supports_vision ? <Badge variant="default">识图</Badge> : null}
         </div>
       </TableCell>
