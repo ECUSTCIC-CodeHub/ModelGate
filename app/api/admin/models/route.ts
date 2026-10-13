@@ -11,6 +11,7 @@ import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
 import { toLocalDatetime } from "@/lib/gateway/channel-time";
 import { disableExpiredModels } from "@/lib/gateway/model-expiry";
 import { MODEL_SYSTEM_PROMPT_MAX_LENGTH } from "@/lib/gateway/model-system-prompt";
+import { serializeRetryStatusCodes } from "@/lib/gateway/upstream-error";
 import { validatePeriodCycles, serializePeriodCycles } from "@/lib/gateway/period-cycles";
 import { validateMultiplierSchedules, normalizeMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
 
@@ -38,6 +39,7 @@ const createSchema = z.object({
   ua_restrictions: z.string().max(20000).optional(),
   system_prompt: z.string().max(MODEL_SYSTEM_PROMPT_MAX_LENGTH).nullable().optional(),
   expires_at: z.string().max(32).nullable().optional(),
+  retry_status_codes: z.array(z.number().int().min(400).max(599)).max(64).nullable().optional(),
 });
 
 export async function GET(request: Request) {
@@ -117,8 +119,8 @@ export async function POST(request: Request) {
   const result = await gatewayDb.transaction(async (tx) => {
     const res = await tx
       .execute(
-        `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, supports_vision, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, period_cycles, multiplier_schedules, ua_restrictions, expires_at, system_prompt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO models (alias, real_model, channel_id, upstream_protocol, supported_protocols, copilot_compatibility, supports_vision, is_public, enabled, weight, token_multiplier, request_multiplier, max_concurrency, quota_mode, quota_tokens, quota_requests, period_cycles, multiplier_schedules, ua_restrictions, expires_at, system_prompt, retry_status_codes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           parsed.data.alias,
           parsed.data.real_model,
@@ -141,6 +143,7 @@ export async function POST(request: Request) {
           parsed.data.ua_restrictions?.trim() ?? "",
           expiresAt,
           parsed.data.system_prompt?.trim() || null,
+          serializeRetryStatusCodes(parsed.data.retry_status_codes),
         ],
       );
     await disableExpiredModels(tx);

@@ -100,6 +100,7 @@ const MODEL_ROW_COLUMNS = [
   "ua_restrictions",
   "expires_at",
   "system_prompt",
+  "retry_status_codes",
 ] as const satisfies readonly (keyof ModelRow & string)[];
 
 // 反向约束：ModelRow 的每个键都必须出现在列清单中，漏一个即编译失败
