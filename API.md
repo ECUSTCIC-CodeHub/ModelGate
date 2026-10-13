@@ -637,7 +637,7 @@ POST /api/ollama/sk-gw-xxxxx/v1/chat/completions
 | upstream_retry_enabled | boolean | 是否开启上游自动重试（上游返回 `upstream_retry_status_codes` 中的状态码或任意 5xx 时换渠道）；仅影响上游报错后的换渠道，预检失败的换渠道始终生效 |
 | upstream_retry_max_attempts | 1-10 | 最大重试次数，只统计真正打到上游的次数；渠道配额不足、并发已满、熔断等预检失败不消耗次数 |
 | upstream_retry_same_channel | boolean | 没有其他渠道时是否对当前渠道重试（429 场景） |
-| upstream_retry_status_codes | int[] | 全局触发换渠道的状态码列表，元素取值 400-599，去重升序；5xx 无条件生效。留空或 `null` 时用内置默认 401/402/403/429。同一份列表也决定 `4xx` 是否计入熔断，保证「换渠道」与「计熔断」口径一致。单个渠道可用 `retry_status_codes` 覆盖 |
+| upstream_retry_status_codes | int[] | 全局触发换渠道的状态码列表，元素取值 400-599，去重升序；5xx 无条件生效。留空或 `null` 时用内置默认 401/402/403/429。同一份列表也决定 `4xx` 是否计入熔断，保证「换渠道」与「计熔断」口径一致。生效列表按「模型级 `retry_status_codes` → 渠道级 `retry_status_codes` → 全局 `upstream_retry_status_codes` → 内置默认 401/402/403/429」依次回落 |
 | upstream_circuit_breaker_enabled | boolean | 是否开启上游熔断 |
 | oidc_enabled | boolean | 是否开启 OIDC 登录 |
 | oidc_issuer_url | string | OIDC Issuer URL |
@@ -1611,7 +1611,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | ua_restrictions | string | 否 | "" | 渠道级 User-Agent 限制规则 JSON 数组，留空表示不限制（完整版功能，最长 20000 字符） |
 | custom_headers | object\|null | 否 | null | 渠道级自定义 Header，键值对对象；会附加到该渠道的**所有**上游请求（真实转发、模型测试、模型列表探测、`/api/v1/images/edits` 图片编辑）。最多 20 对，名称最长 128 字符且须为 HTTP token 字符，值最长 2048 字符，名称与值的首尾空白会被修剪，值中不允许换行、控制字符或 Unicode 行分隔符（`U+2028`/`U+2029`）等会让 HTTP 头非法的字符（制表符与中文等可打印字符允许）。`Authorization`、`X-Api-Key`、`Api-Key`、`Host`、`Content-Length`、`Transfer-Encoding`、`Connection`、`Upgrade`、`Proxy-Authorization`、`Proxy-Authenticate`、`Via`、`TE`、`Trailer`、`Cookie`、`Content-Type`、`User-Agent`、`Anthropic-Version`、`Anthropic-Beta`、`Accept-Encoding` 不允许配置（大小写不敏感）。标准转发路径下网关托管字段（`Content-Type`、`User-Agent`、鉴权头等）始终覆盖同名自定义值；`other` 透传路径下自定义 Header 会覆盖客户端的同名透传值，但 `Authorization` / `X-Api-Key` 仍由网关最后设置。库中已存数据读取时逐键过滤：混入黑名单键或非法值时只丢弃该项，其余仍生效 |
 | group_name | string\|null | 否 | null | 渠道分组名，最长 64 字符，保存时去掉首尾空白；留空或 `null` 表示未分组。**仅用于前端列表组织，不参与请求路由**（既不影响模型选路，也不影响配额与并发统计口径） |
-| retry_status_codes | int[]\|null | 否 | null | 触发换渠道的状态码列表，元素取值 400-599，最多 64 个，保存时去重升序。上游返回这些状态码时改用同别名的其他候选渠道并计入熔断；`5xx` 无条件生效，不受此列表影响。留空或 `null` 表示沿用系统设置里的全局默认（内置默认 `401`/`402`/`403`/`429`）。判定只看状态码，不解析响应报文内容 |
+| retry_status_codes | int[]\|null | 否 | null | 渠道级触发换渠道的状态码列表，元素取值 400-599，最多 64 个，保存时去重升序。上游返回这些状态码时改用同别名的其他候选渠道并计入熔断；`5xx` 无条件生效，不受此列表影响。留空或 `null` 表示沿用系统设置里的全局默认（内置默认 `401`/`402`/`403`/`429`）。单个模型可用模型级 `retry_status_codes` 覆盖。判定只看状态码，不解析响应报文内容 |
 | expires_at | string\|null | 否 | null | 过期时间（本地 datetime，如 `2026-08-01T00:00`），null 或留空表示永不过期；到达该时间后渠道在路由中自动不可用，管理员对任意渠道执行操作后，已过期渠道会被彻底禁用并级联禁用其模型 |
 | time_restrictions | string | 否 | "" | 限制时段 JSON 数组，每个元素含 `days`（1-7，周一至周日）、`start`、`end`（HH:MM）；配置后渠道仅在该时段内可用（服务器本地时区），留空表示不限制；`start` 不可等于 `end`，`end` 早于 `start` 表示跨午夜 |
 | weight | int | 否 | 1 | 路由权重 |
@@ -1932,6 +1932,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | quota_mode | enum | 否 | follow_group | `follow_group`：跟随用户组限制；`bypass_group`：跳过用户组配额和速率限制；`independent`：跳过用户组限制，使用模型自身配额；`dual`：受用户组配额和速率限制，同时受模型自身配额限制 |
 | ua_restrictions | string | 否 | "" | 模型级 User-Agent 限制规则 JSON 数组，留空表示不限制（完整版功能，最长 20000 字符） |
 | system_prompt | string\|null | 否 | null | 模型级前置系统提示词，最长 20000 字符，留空或 `null` 表示不注入。转发前按上游协议**前置合并**并保留客户端已有内容：`chat_completions` 合并到首条 `system` 消息（无则头部插入；若该消息 `content` 为数组形态则另插一条，不破坏原有结构）；`responses` 合并到 `instructions`（`prompt + "\n\n" + existing`，**仅当 `instructions` 为字符串或缺席时生效**，数组/对象形态保持原样不注入）；`anthropic_messages` 合并到顶层 `system`（字符串直接前置拼接，blocks 形态前插一个纯文本块并保留原块 `cache_control` 等标注）；`embeddings`、`images` 与 `other` 无 system 概念，不注入。每次上游重试都按当前路由的模型配置重新计算，不修改客户端原始请求，因此重试切到其它模型时不会残留上一次的注入内容。注入内容计入上游 prompt tokens，本地 token 预估基于客户端原始请求、不含注入内容 |
+| retry_status_codes | int[]\|null | 否 | null | 模型级触发换渠道的状态码列表，元素取值 400-599，最多 64 个，保存时去重升序。用途与渠道级 `retry_status_codes` 相同，但**优先级更高**：同一渠道下不同模型可能来自上游更上一级的不同子渠道，返回的状态码语义不一致，可在此按模型单独声明。留空或 `null` 表示沿用所属渠道的配置，渠道也留空则用全局默认。判定只看状态码，不解析响应报文内容 |
 | expires_at | string\|null | 否 | null | 过期时间（本地 datetime，如 `2026-08-01T00:00`），null 或留空表示永不过期；到达该时间后该模型在路由中自动不可用，管理员对任意渠道或模型执行操作后，已过期模型会被自动禁用 |
 | quota_tokens | int\|null | 否 | null | 模型总 Token 配额（仅 `independent` / `dual` 模式生效），null 表示不限制 |
 | quota_requests | int\|null | 否 | null | 模型总请求配额（仅 `independent` / `dual` 模式生效），null 表示不限制 |
@@ -1944,7 +1945,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 **认证:** 管理员
 
-**请求体:** 各字段含义同 POST。`period_cycles` / `multiplier_schedules` 字段缺席时保持原值，传 `[]` 清空。
+**请求体:** 各字段含义同 POST。`period_cycles` / `multiplier_schedules` 字段缺席时保持原值，传 `[]` 清空；`retry_status_codes` 字段缺席时保持原值，传 `null` 或 `[]` 清空并回落渠道级配置。
 
 ### DELETE /api/admin/models/:id
 
