@@ -25,7 +25,7 @@ const STUBBED_MODULES = {
   "lib/gateway/channel-quota.ts": ["checkChannelQuota"],
   "lib/gateway/model-quota.ts": ["checkModelQuota"],
   "lib/gateway/proxy.ts": ["buildUpstreamUrl", "fetchUpstreamRequest"],
-  "lib/gateway/upstream-error.ts": ["shouldRetryUpstreamStatus"],
+  "lib/gateway/upstream-error.ts": ["shouldRetryUpstreamStatus", "normalizeRetryStatusCodes"],
   "lib/core/settings.ts": ["getGatewaySettings"],
   "lib/core/db/index.ts": ["gatewayDb"],
 };

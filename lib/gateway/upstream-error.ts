@@ -1,7 +1,6 @@
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 import { redactUrlCredentials } from "@/lib/shared/redact";
 
-
 // 上游返回哪些状态码时应当换下一个候选渠道。
 // 判定完全基于状态码，不依赖响应报文内容：
 // 关键词匹配无法同时满足「不误判调用方参数错误」与「不漏判真实额度文案」，
@@ -39,12 +38,8 @@ export function normalizeRetryStatusCodes(input: unknown): number[] | null {
   return codes.size > 0 ? [...codes].sort((a, b) => a - b) : null;
 }
 
-export function shouldRetryUpstreamStatus(
-  status: number,
-  retryStatusCodes?: readonly number[] | null,
-) {
-  return isRetryableUpstreamStatus(status, retryStatusCodes);
-}
+// 是否换渠道（含 5xx 短路与配置回落），供路由与测试使用。
+export const shouldRetryUpstreamStatus = isRetryableUpstreamStatus;
 
 // 计入熔断的上游状态：只有「渠道侧确实有问题」才算，业务 4xx（400/404/422 等）
 // 是调用方请求本身的问题，多用户连续触发会把健康渠道误熔断。
