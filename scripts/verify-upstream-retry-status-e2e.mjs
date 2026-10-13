@@ -533,6 +533,9 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（TypeCheck
     const decls = symbol.declarations || [];
     if (decls.length !== 1) return false;
     const decl = decls[0];
+    // 必须落在被检查的这份源文件里：否则来自别处（.d.ts / 另一个模块重导出）的
+    // ImportSpecifier 只要模块文本相同也会被放行，与「本文件 import」的口径不符。
+    if (decl.getSourceFile() !== sourceFile) return false;
     if (!ts.isImportSpecifier(decl)) return false;
     const imported = decl.propertyName ?? decl.name;
     if (!ROUTE_FACTORIES.has(imported.text)) return false;
@@ -834,6 +837,10 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（TypeCheck
       // 解析到本文件 VariableDeclaration/FunctionDeclaration，必须被拒。
       ["M7 同名遮蔽工厂名 + 出参解构（非字面量出参）", `declare function verdict(route: RoutedModel, status: number): boolean;\ndeclare const fake: { route: RoutedModel };\nconst requestUpstreamWithFallback = async (_o: unknown) => fake;\nconst picked = await requestUpstreamWithFallback({});\nconst { route } = picked;\nconst r = verdict(route, 400);`, true],
       ["M8 同名遮蔽工厂名（函数声明形态）", `declare function verdict(route: RoutedModel, status: number): boolean;\ndeclare const fake: { route: RoutedModel };\nfunction requestUpstreamWithFallback(_o: unknown) { return Promise.resolve(fake); }\nconst picked = await requestUpstreamWithFallback({});\nconst { route } = picked;\nconst r = verdict(route, 400);`, true],
+      // 本地二次绑定 import 进来的工厂：`const X = requestUpstreamWithFallback` 的符号
+      // 声明是本文件 VariableDeclaration，不是 ImportSpecifier，必须被拒 —— 否则
+      // 「转发一层再调用」就能把出参来源洗成不可追溯。
+      ["M9 工厂名经本地二次绑定后调用", `import { requestUpstreamWithFallback } from "@/lib/gateway/upstream-routing";\nimport type { RoutedModel } from "@/lib/gateway/router";\ndeclare function verdict(route: RoutedModel, status: number): boolean;\nexport const f = async () => {\n  const alias = requestUpstreamWithFallback;\n  const picked = await alias({} as never);\n  const { route } = picked;\n  return verdict(route, 400);\n};`, true],
       // 正例：从真实路由模块 import 的工厂出参必须放行 —— 证明信任判定不是死的。
       // 用真实相对路径 import，符号解析到 ImportSpecifier 且来源在受信任模块集合内。
       ["合法：import 的真实工厂出参解构", `import { requestUpstreamWithFallback } from "@/lib/gateway/upstream-routing";\nimport type { RoutedModel } from "@/lib/gateway/router";\ndeclare function verdict(route: RoutedModel, status: number): boolean;\nexport const f = async () => {\n  const picked = await requestUpstreamWithFallback({} as never);\n  const { route } = picked;\n  return verdict(route, 400);\n};`, false],
@@ -890,8 +897,12 @@ console.log("=== P. 调用点必须把路由对象本身交给判定（TypeCheck
   // 熔断判定器现由 createChannelFailureJudge 工厂产出（见 upstream-error.ts），
   // gateway-handler 内不再直接出现 routeCountsAsChannelFailure；真实调用点只剩 4 处，
   // 全用本地绑定名 countsAsChannelFailureFor。
-  checkCalls("lib/gateway/gateway-handler.ts", ["countsAsChannelFailureFor"], {
+  // 同时登记 routeCountsAsChannelFailure 且期望 0：handler 只能通过工厂产出的判定器
+  // 计入熔断，若有人把内联闭包改回直调裸判定函数，命中数会从 0 变成 N 而立刻失败 ——
+  // 只登记 countsAsChannelFailureFor 时这条回归是静默的。
+  checkCalls("lib/gateway/gateway-handler.ts", ["countsAsChannelFailureFor", "routeCountsAsChannelFailure"], {
     countsAsChannelFailureFor: 4,
+    routeCountsAsChannelFailure: 0,
   });
   checkCalls("lib/gateway/queued-upstream-response.ts", ["countsAsChannelFailureFor"], {
     countsAsChannelFailureFor: 3,

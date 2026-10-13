@@ -15,13 +15,18 @@ import { createChannelFailureJudge } from "@/lib/gateway/upstream-error";
 let passed = 0;
 let failed = 0;
 
+const show = (value) => (value === undefined ? "undefined" : JSON.stringify(value));
+
+// 用 Object.is 直接比较原始值，避免 JSON.stringify 在 undefined/NaN 上的坑
+// （JSON.stringify(undefined) 返回 undefined 而非字符串，undefined === undefined
+// 会让期望与实测都为 undefined 的用例静默通过）。
 function check(label, actual, expected) {
-  if (JSON.stringify(actual) === JSON.stringify(expected)) {
+  if (Object.is(actual, expected)) {
     passed += 1;
     return;
   }
   failed += 1;
-  console.log(`  FAIL  ${label}: got ${JSON.stringify(actual)}, want ${JSON.stringify(expected)}`);
+  console.log(`  FAIL  ${label}: got ${show(actual)}, want ${show(expected)}`);
 }
 
 const CREDIT_BODY = JSON.stringify({ error: { message: "insufficient credits" } });
@@ -83,8 +88,14 @@ async function drive({ route, upstreamStatus = 400, stream = true }) {
     countsAsChannelFailureFor: createChannelFailureJudge(null),
   });
 
-  // 消费流以触发 start() 里的熔断计入
-  await response.text().catch(() => "");
+  // 消费流以触发 start() 里的熔断计入。吞掉异常会让「内部抛错导致没走到计入点」
+  // 表现成 leaseOutcomes 为空而不是显式失败，定位困难；这里显式转成失败。
+  let bodyError = null;
+  await response.text().catch((error) => { bodyError = error; });
+  if (bodyError) {
+    failed += 1;
+    console.log(`  FAIL  queued：驱动响应体时抛错: ${bodyError && bodyError.message ? bodyError.message : bodyError}`);
+  }
   return { leaseOutcomes, response };
 }
 

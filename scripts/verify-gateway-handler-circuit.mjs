@@ -17,13 +17,18 @@ import { chatCompletionsGatewayAdapter } from "@/lib/gateway/protocol-adapters/c
 let passed = 0;
 let failed = 0;
 
+const show = (value) => (value === undefined ? "undefined" : JSON.stringify(value));
+
+// 用 Object.is 直接比较原始值，避免 JSON.stringify 在 undefined/NaN 上的坑
+// （JSON.stringify(undefined) 返回 undefined 而非字符串，undefined === undefined
+// 会让期望与实测都为 undefined 的用例静默通过）。
 function check(label, actual, expected) {
-  if (JSON.stringify(actual) === JSON.stringify(expected)) {
+  if (Object.is(actual, expected)) {
     passed += 1;
     return;
   }
   failed += 1;
-  console.log(`  FAIL  ${label}: got ${JSON.stringify(actual)}, want ${JSON.stringify(expected)}`);
+  console.log(`  FAIL  ${label}: got ${show(actual)}, want ${show(expected)}`);
 }
 
 const CREDIT_BODY = JSON.stringify({ error: { message: "insufficient credits" } });

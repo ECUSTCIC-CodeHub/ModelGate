@@ -31,26 +31,26 @@ export const gatewayDb = {
 };
 `,
   "lib/core/settings.ts": `
-export const getGatewaySettings = async () => globalThis.__HARNESS__.settings;
+export const getGatewaySettings = async () => h().settings;
 `,
   "lib/auth/api-key-auth.ts": `
-export const checkApiKeyAuth = async () => globalThis.__HARNESS__.authResult;
+export const checkApiKeyAuth = async () => h().authResult;
 `,
   "lib/gateway/channel-access.ts": `
-export const getUserAllowedChannelIds = async () => globalThis.__HARNESS__.allowedChannelIds ?? null;
+export const getUserAllowedChannelIds = async () => h().allowedChannelIds ?? null;
 `,
   "lib/gateway/chat-log.ts": `
-export const insertChatLog = (row) => { globalThis.__HARNESS__.chatLogs.push(row); };
+export const insertChatLog = (row) => { h().chatLogs.push(row); };
 export const withSubstitutionNote = (metadata) => metadata;
 `,
   "lib/gateway/router.ts": `
 export const listModelRoutes = async (alias, options) => {
-  const h = globalThis.__HARNESS__;
+  const harness = h();
   const exC = new Set(options?.excludeChannelIds ?? []);
-  const routes = h.routes.filter((r) => !exC.has(r.channel.id));
+  const routes = harness.routes.filter((r) => !exC.has(r.channel.id));
   return routes;
 };
-export const selectModelRoute = async () => globalThis.__HARNESS__.routes[0];
+export const selectModelRoute = async () => h().routes[0];
 export const findUaDenyMatchForAlias = () => null;
 export const findVisionFallbackRoute = () => null;
 export const findQuotaFallbackRoute = () => null;
@@ -69,7 +69,7 @@ export const appendModelQuotaHeaders = () => {};
 `,
   "lib/gateway/proxy.ts": `
 export const buildUpstreamUrl = () => "https://upstream.invalid/v1/chat/completions";
-export const fetchUpstreamRequest = async (route) => globalThis.__HARNESS__.fetchImpl(route);
+export const fetchUpstreamRequest = async (route) => h().fetchImpl(route);
 `,
   // channel-runtime 的 lease.complete 是熔断计入的唯一观测点，必须把 outcome 记进 harness。
   // 真实实现会读写模块级运行时状态，桩掉更利于断言隔离；导出面按真实模块补齐，
@@ -85,7 +85,7 @@ export class ChannelLease {
   complete(result) {
     if (this.released) return;
     this.released = true;
-    globalThis.__HARNESS__.leaseOutcomes.push(result);
+    h().leaseOutcomes.push(result);
   }
   abandon() { this.released = true; }
 }
@@ -141,12 +141,22 @@ export function resolve(specifier, context, nextResolve) {
   return nextResolve(specifier, context);
 }
 
+// 每个桩模块前置一个 harness 读取器：未安装 harness 或缺少所需键时显式抛错，
+// 避免桩静默返回 undefined 让被测代码走错分支却「看似通过」。
+const HARNESS_PRELUDE = `
+const h = () => {
+  const harness = globalThis.__HARNESS__;
+  if (!harness) throw new Error("测试 harness 未安装：请先设置 globalThis.__HARNESS__");
+  return harness;
+};
+`;
+
 export function load(url, context, nextLoad) {
   if (url.startsWith(ROOT_PREFIX)) {
     const rel = url.slice(ROOT_PREFIX.length).split(path.sep).join("/");
     const source = STUB_SOURCES[rel];
     if (source) {
-      return { format: "module", shortCircuit: true, source };
+      return { format: "module", shortCircuit: true, source: HARNESS_PRELUDE + source };
     }
   }
   return nextLoad(url, context);
