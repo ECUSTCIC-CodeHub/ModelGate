@@ -38,9 +38,39 @@
 #           -t ${IMAGE}:lite \
 #           --platform linux/amd64,linux/arm64 --push .
 
+# main push / 定时对账 / tag_push 三个入口共用这把锁，保证同一时刻只有一个镜像作业在写 GitHub
+.sync: &sync
+  name: sync to github
+  timeout: 10m
+  lock:
+    key: modelgate-github-mirror
+    expires: 900
+    wait: true
+    timeout: 1200
+  image: tencentcom/git-sync
+  settings:
+    target_url: https://github.com/ECUSTCIC-CodeHub/ModelGate.git
+    auth_type: https
+    username: ${GITHUB_USERNAME}
+    password: ${GITHUB_ACCESS_TOKEN}
+    branch: main
+    force: true
+    push_tags: true
+
+.sync-only: &sync-only
+  runner:
+    cpus: 1
+  imports: https://cnb.cool/ecustcic/key/-/blob/main/env.yml
+  stages:
+    - *sync
+
 .push: &push
+  runner:
+    cpus: 1
+  imports: https://cnb.cool/ecustcic/key/-/blob/main/env.yml
   stages:
     - name: auto-tag
+      allowFailure: true
       image: cnbcool/git-auto-tag:latest
       settings:
         blockWhenFail: false
@@ -49,24 +79,20 @@
       exports:
         tag: NEW_TAG
     - name: show tag
-      script: echo $NEW_TAG
+      script: |
+        if [ -z "${NEW_TAG:-}" ]; then
+          echo "WARN: auto-tag 未产出 tag"
+        else
+          echo "NEW_TAG=$NEW_TAG"
+        fi
+    - *sync
 
 main:
   push:
     - *push
-    - name: sync
-      runner:
-        cpus: 1
-      imports: https://cnb.cool/ecustcic/key/-/blob/main/env.yml
-      stages:
-        - name: sync to github
-          image: tencentcom/git-sync
-          settings:
-            target_url: https://github.com/ECUSTCIC-CodeHub/ModelGate.git
-            auth_type: https
-            username: ${GITHUB_USERNAME}
-            password: ${GITHUB_ACCESS_TOKEN}
-            force: true
+  # 兜底对账：push 事件漏触发或镜像失败时自动补同步
+  "crontab: */30 * * * *":
+    - *sync-only
 
 $:
   vscode:
@@ -77,4 +103,5 @@ $:
         - docker
   tag_push:
     - *build-full
+    - *sync-only
     # - *build-lite
