@@ -184,6 +184,29 @@ try {
   const redeem7 = await svc.redeemCodeForUser(outsider.id, code6);
   check("G7b 清空后组外用户可兑换", redeem7.ok === true, JSON.stringify(redeem7).slice(0, 200));
 
+  // G10（t21 回归）：非空全无效组 fail-closed 为 400；POST 空数组仍为不限
+  const gen10 = await adminRoute.POST(adminRequest("/api/admin/redeem-codes", "POST", {
+    count: 1, kind: "quota", token_quota: 100, allowed_group_ids: [ghostId], max_uses: 1,
+  }));
+  const gen10Body = await gen10.json();
+  check("G10a 非空但全部无效的用户组返回 400（不再静默落库为不限）", gen10.status === 400 && gen10Body.error?.message === "所有限定用户组均不存在，请检查用户组 ID", "status=" + gen10.status + " msg=" + gen10Body.error?.message);
+  const countBefore = (await db.queryOne("SELECT COUNT(*) AS n FROM redeem_codes")).n;
+  const patch10 = await detailRoute.PATCH(adminRequest("/api/admin/redeem-codes/" + row6id.id, "PATCH", { allowed_group_ids: [ghostId] }), patchCtx);
+  const patch10Body = await patch10.json();
+  check("G10b PATCH 非空全无效组同样返回 400", patch10.status === 400 && patch10Body.error?.message === "所有限定用户组均不存在，请检查用户组 ID", "status=" + patch10.status + " msg=" + patch10Body.error?.message);
+  const countAfter = (await db.queryOne("SELECT COUNT(*) AS n FROM redeem_codes")).n;
+  check("G10c 400 请求未落库任何新兑换码", countAfter === countBefore, "before=" + countBefore + " after=" + countAfter);
+  const stillCleared = await db.queryOne("SELECT allowed_group_ids FROM redeem_codes WHERE code = ?", [code6]);
+  check("G10d 400 后原码白名单保持 []（未被改动）", stillCleared.allowed_group_ids === "[]", "stored=" + stillCleared.allowed_group_ids);
+  const gen11 = await adminRoute.POST(adminRequest("/api/admin/redeem-codes", "POST", {
+    count: 1, kind: "quota", token_quota: 100, allowed_group_ids: [], max_uses: 1,
+  }));
+  const gen11Body = await gen11.json();
+  const code11 = gen11Body.data?.codes?.[0];
+  const row11 = await db.queryOne("SELECT allowed_group_ids FROM redeem_codes WHERE code = ?", [code11]);
+  const redeem11 = await svc.redeemCodeForUser(outsider.id, code11);
+  check("G10e POST 空数组 [] 仍表示不限（组外可兑换）", gen11.status === 201 && row11.allowed_group_ids === "[]" && redeem11.ok === true, "status=" + gen11.status + " stored=" + row11.allowed_group_ids + " redeem=" + JSON.stringify(redeem11).slice(0, 80));
+
   // G8（M1/L2 回归）：三类无效项共存时 warnings 三条齐发且顺序稳定；重复无效组只提示一次
   const ghostChannel = 888888;
   const ghostAlias = "verify-ghost-alias";
