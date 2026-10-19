@@ -17,7 +17,7 @@ import { authedFetch } from "@/lib/auth/client-auth";
 import { formatExpiresAt, formatNumber, formatTokenCount } from "@/lib/shared/utils";
 import { RedeemCodeDetailDialog, useRedeemCodeDetail } from "./redeem-code-detail-dialog";
 import { RedeemCodeEditDialog } from "./redeem-code-edit-dialog";
-import { redeemCodeKindLabel, type ChannelOption, type CodeRow, type ModelOption, type RedeemCodeKind } from "./redeem-code-types";
+import { formatGroupNames, parseGroupIds, redeemCodeKindLabel, type ChannelOption, type CodeRow, type GroupOption, type ModelOption, type RedeemCodeKind } from "./redeem-code-types";
 
 function parseChannelIds(raw: string | null | undefined): number[] {
   if (!raw) return [];
@@ -58,6 +58,7 @@ export default function AdminRedeemCodesPage() {
   const downloadAnchorRef = useRef<HTMLAnchorElement>(null);
   const [channels, setChannels] = useState<ChannelOption[]>([]);
   const [models, setModels] = useState<ModelOption[]>([]);
+  const [groups, setGroups] = useState<GroupOption[]>([]);
   const [rows, setRows] = useState<CodeRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -73,6 +74,7 @@ export default function AdminRedeemCodesPage() {
   const [requestQuota, setRequestQuota] = useState("");
   const [channelIds, setChannelIds] = useState<number[]>([]);
   const [aliases, setAliases] = useState<string[]>([]);
+  const [groupIds, setGroupIds] = useState<number[]>([]);
   const [expiresAt, setExpiresAt] = useState("");
   const [maxUses, setMaxUses] = useState(1);
   const [note, setNote] = useState("");
@@ -91,11 +93,35 @@ export default function AdminRedeemCodesPage() {
     setSelectedIds(new Set());
   }, [keyword]);
 
+  const loadGroupOptions = useCallback(async (): Promise<GroupOption[]> => {
+    const collected: GroupOption[] = [];
+    let offset = 0;
+    let total = 0;
+    do {
+      const params = new URLSearchParams({ limit: "100", offset: String(offset) });
+      const res = await authedFetch(`/api/admin/groups?${params.toString()}`);
+      if (!res.ok) break;
+      const data = await res.json().catch(() => null);
+      const items: unknown[] = Array.isArray(data?.data) ? data.data : [];
+      for (const item of items) {
+        const row = item as { id?: unknown; name?: unknown; enabled?: unknown };
+        if (typeof row.id !== "number" || typeof row.name !== "string") continue;
+        collected.push({ id: row.id, name: row.name, enabled: typeof row.enabled === "number" ? row.enabled : 1 });
+      }
+      total = typeof data?.paging?.total === "number" ? data.paging.total : collected.length;
+      offset += items.length;
+      if (items.length === 0) break;
+    } while (offset < total);
+    return collected;
+  }, []);
+
   const loadOptions = useCallback(async () => {
-    const [chRes, mRes] = await Promise.all([
+    const [chRes, mRes, groupOptions] = await Promise.all([
       authedFetch("/api/admin/channels"),
       authedFetch("/api/admin/models"),
+      loadGroupOptions(),
     ]);
+    setGroups(groupOptions);
     if (chRes.ok) {
       const data = await chRes.json().catch(() => null);
       if (data?.data) setChannels(data.data.map((c: { id: number; name: string }) => ({ id: c.id, name: c.name })));
@@ -118,7 +144,7 @@ export default function AdminRedeemCodesPage() {
         );
       }
     }
-  }, []);
+  }, [loadGroupOptions]);
 
   useEffect(() => {
     void (async () => {
@@ -133,6 +159,9 @@ export default function AdminRedeemCodesPage() {
   const toggleAlias = (alias: string) => {
     setAliases((prev) => (prev.includes(alias) ? prev.filter((a) => a !== alias) : [...prev, alias]));
   };
+  const toggleGroup = (id: number) => {
+    setGroupIds((prev) => (prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]));
+  };
 
   const generate = async () => {
     const payload: Record<string, unknown> = { count, kind };
@@ -143,6 +172,7 @@ export default function AdminRedeemCodesPage() {
     }
     if (channelIds.length > 0) payload.allowed_channel_ids = channelIds;
     if (aliases.length > 0) payload.allowed_model_aliases = aliases;
+    if (groupIds.length > 0) payload.allowed_group_ids = groupIds;
     if (expiresAt) payload.expires_at = new Date(expiresAt).toISOString();
     payload.max_uses = maxUses;
     if (note.trim()) payload.note = note;
@@ -173,6 +203,7 @@ export default function AdminRedeemCodesPage() {
       setRequestQuota("");
       setChannelIds([]);
       setAliases([]);
+      setGroupIds([]);
       setExpiresAt("");
       setMaxUses(1);
       setNote("");
@@ -287,7 +318,8 @@ export default function AdminRedeemCodesPage() {
               </div>
               <div>
                 <Label>生成数量</Label>
-                <Input type="number" min={1} max={500} value={count} onChange={(e) => setCount(Number(e.target.value))} />
+                <Input type="number" min={1} max={1000} value={count} onChange={(e) => setCount(Number(e.target.value))} />
+                <p className="mt-1 text-xs text-[var(--color-foreground-muted)]">单批最多 1000 个</p>
               </div>
               {kind === "quota" ? (
                 <>
@@ -360,11 +392,30 @@ export default function AdminRedeemCodesPage() {
                   )}
                 </div>
               </div>
+              <div className="md:col-span-2">
+                <Label>限定用户组（不选表示不限）</Label>
+                <div className="mt-1 flex max-h-40 flex-wrap gap-2 overflow-y-auto rounded-xl border border-[var(--color-border)] p-3">
+                  {groups.length === 0 ? (
+                    <span className="text-xs text-[var(--color-foreground-muted)]">暂无可用用户组</span>
+                  ) : (
+                    groups.map((g) => (
+                      <button
+                        key={g.id}
+                        type="button"
+                        onClick={() => toggleGroup(g.id)}
+                        className={`rounded-full px-3 py-1 text-xs transition-colors ${groupIds.includes(g.id) ? "bg-[var(--color-accent)] text-white" : "bg-[var(--color-surface-hover)] text-[var(--color-foreground-muted)]"}`}
+                      >
+                        {g.name}{g.enabled === 0 ? "（已停用）" : ""}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-[var(--color-foreground-muted)]">
-                已选渠道：{channelIds.length} 个，已选模型：{aliases.length} 个
+                已选渠道：{channelIds.length} 个，已选模型：{aliases.length} 个，已选用户组：{groupIds.length} 个
               </p>
               <Button onClick={() => void generate()} disabled={generating}>
                 {generating ? "生成中…" : "批量生成"}
@@ -399,7 +450,7 @@ export default function AdminRedeemCodesPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-              <Table className="min-w-[1000px]">
+              <Table className="min-w-[1100px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-10">
@@ -413,6 +464,7 @@ export default function AdminRedeemCodesPage() {
                     <TableHead>剩余额度</TableHead>
                     <TableHead>限定渠道</TableHead>
                     <TableHead>限定模型</TableHead>
+                    <TableHead>限定用户组</TableHead>
                     <TableHead>有效期</TableHead>
                     <TableHead>持有/兑换</TableHead>
                     <TableHead>创建人</TableHead>
@@ -431,6 +483,7 @@ export default function AdminRedeemCodesPage() {
                     rows.map((row) => {
                       const ch = parseChannelIds(row.allowed_channel_ids);
                       const al = parseAliases(row.allowed_model_aliases);
+                      const gp = formatGroupNames(parseGroupIds(row.allowed_group_ids), groups);
                       const isReset = row.kind === "reset";
                       return (
                         <TableRow key={row.id}>
@@ -465,6 +518,7 @@ export default function AdminRedeemCodesPage() {
                           )}
                           <TableCell>{ch.length === 0 ? "不限" : ch.join(",")}</TableCell>
                           <TableCell>{al.length === 0 ? "不限" : al.join(",")}</TableCell>
+                          <TableCell>{gp}</TableCell>
                           <TableCell>{formatExpiresAt(row.expires_at)}</TableCell>
                           <TableCell className="whitespace-nowrap text-xs">
                             {formatNumber(row.redeemed_users)} 人有效持有
@@ -508,6 +562,7 @@ export default function AdminRedeemCodesPage() {
           <RedeemCodeDetailDialog
             codeId={codeDetail.detailId}
             detail={codeDetail.detail}
+            groups={groups}
             page={codeDetail.detailPage}
             loading={codeDetail.loadingDetail}
             onPageChange={codeDetail.changeDetailPage}
@@ -518,6 +573,7 @@ export default function AdminRedeemCodesPage() {
           <RedeemCodeEditDialog
             key={editingRow.id}
             row={editingRow}
+            groups={groups}
             onClose={() => setEditingRow(null)}
             onSaved={() => void loadCodes(page)}
           />

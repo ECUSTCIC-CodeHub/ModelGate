@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { authedFetch } from "@/lib/auth/client-auth";
-import { redeemCodeKindLabel, type CodeRow } from "./redeem-code-types";
+import { parseGroupIds, redeemCodeKindLabel, type CodeRow, type GroupOption } from "./redeem-code-types";
 
 // 把存储的 UTC 裸字符串转成 datetime-local 需要的本地时间字符串。
 function toLocalInput(value: string | null): string {
@@ -28,13 +28,20 @@ function parseQuota(raw: string): number | null | undefined {
   return value;
 }
 
+// 去重升序后与原值比较，决定是否提交 allowed_group_ids。
+function normalizeGroupIds(ids: number[]): number[] {
+  return [...new Set(ids)].sort((a, b) => a - b);
+}
+
 // 用 key 重挂载来初始化表单，避免在 effect 里同步 setState。
 export function RedeemCodeEditDialog({
   row,
+  groups,
   onClose,
   onSaved,
 }: {
   row: CodeRow;
+  groups: GroupOption[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -44,6 +51,7 @@ export function RedeemCodeEditDialog({
   const isReset = row.kind === "reset";
   const [tokenQuotaInput, setTokenQuotaInput] = useState(row.token_quota === null ? "" : String(row.token_quota));
   const [requestQuotaInput, setRequestQuotaInput] = useState(row.request_quota === null ? "" : String(row.request_quota));
+  const [groupIds, setGroupIds] = useState<number[]>(() => parseGroupIds(row.allowed_group_ids));
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
@@ -121,6 +129,13 @@ export function RedeemCodeEditDialog({
     const nextNote = trimmedNote ? trimmedNote : null;
     if (nextNote !== (row.note ?? null)) payload.note = nextNote;
 
+    // 与原值（去重升序）相同则不提交；不同则整体替换，空选传 [] 表示清空为不限。
+    const currentGroupIds = normalizeGroupIds(parseGroupIds(row.allowed_group_ids));
+    const nextGroupIds = normalizeGroupIds(groupIds);
+    if (currentGroupIds.length !== nextGroupIds.length || currentGroupIds.some((id, index) => id !== nextGroupIds[index])) {
+      payload.allowed_group_ids = nextGroupIds;
+    }
+
     if (Object.keys(payload).length === 0) {
       toast.info("没有改动");
       return;
@@ -139,6 +154,9 @@ export function RedeemCodeEditDialog({
         return;
       }
       toast.success(data?.message ?? "已保存");
+      if (Array.isArray(data?.warnings)) {
+        for (const warning of data.warnings as string[]) toast.warning(warning);
+      }
       onSaved();
       onClose();
     } finally {
@@ -160,8 +178,8 @@ export function RedeemCodeEditDialog({
           <DialogTitle>编辑兑换码</DialogTitle>
           <DialogDescription>
             {isReset
-              ? "重置券不发放额度，只能调整备注、有效期与最多兑换次数。兑换码本身、批次与限定渠道/模型不可修改。"
-              : "额度与有效期「只增不减」，别让已兑换的用户凭空失效。兑换码本身、批次与限定渠道/模型不可修改。"}
+              ? "重置券不发放额度，只能调整备注、有效期与最多兑换次数。兑换码本身、批次与限定渠道/模型不可修改；限定用户组可调整。"
+              : "额度与有效期「只增不减」，别让已兑换的用户凭空失效。兑换码本身、批次与限定渠道/模型不可修改；限定用户组可调整。"}
           </DialogDescription>
         </DialogHeader>
 
@@ -213,6 +231,26 @@ export function RedeemCodeEditDialog({
                 </div>
               </>
             )}
+          </div>
+
+          <div>
+            <Label>限定用户组（不选表示不限）</Label>
+            <div className="mt-1 flex max-h-40 flex-wrap gap-2 overflow-y-auto rounded-xl border border-[var(--color-border)] p-3">
+              {groups.length === 0 ? (
+                <span className="text-xs text-[var(--color-foreground-muted)]">暂无可用用户组</span>
+              ) : (
+                groups.map((g) => (
+                  <button
+                    key={g.id}
+                    type="button"
+                    onClick={() => setGroupIds((prev) => (prev.includes(g.id) ? prev.filter((id) => id !== g.id) : [...prev, g.id]))}
+                    className={`rounded-full px-3 py-1 text-xs transition-colors ${groupIds.includes(g.id) ? "bg-[var(--color-accent)] text-white" : "bg-[var(--color-surface-hover)] text-[var(--color-foreground-muted)]"}`}
+                  >
+                    {g.name}{g.enabled === 0 ? "（已停用）" : ""}
+                  </button>
+                ))
+              )}
+            </div>
           </div>
         </div>
 

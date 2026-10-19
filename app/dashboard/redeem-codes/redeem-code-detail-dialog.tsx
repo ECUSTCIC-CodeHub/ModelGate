@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { PagePagination } from "@/components/dashboard/page-pagination";
 import { authedFetch } from "@/lib/auth/client-auth";
 import { formatExpiresAt, formatNumber, formatTokenCount } from "@/lib/shared/utils";
-import { redeemCodeKindLabel, type CodeRow } from "./redeem-code-types";
+import { formatGroupNames, parseGroupIds, redeemCodeKindLabel, type CodeRow, type GroupOption } from "./redeem-code-types";
 
 type RedemptionRow = {
   id: number;
@@ -47,6 +47,7 @@ function remainingRequest(quota: number | null, used: number | null): string {
 export function RedeemCodeDetailDialog({
   codeId,
   detail,
+  groups,
   page,
   loading,
   onPageChange,
@@ -54,6 +55,7 @@ export function RedeemCodeDetailDialog({
 }: {
   codeId: number;
   detail: DetailData | null;
+  groups: GroupOption[];
   page: number;
   loading: boolean;
   onPageChange: (page: number) => void;
@@ -99,6 +101,7 @@ export function RedeemCodeDetailDialog({
               <div>创建人：{code.created_by_username ?? "—"}</div>
               <div>创建时间：{new Date(code.created_at).toLocaleString()}</div>
               <div>有效期：{formatExpiresAt(code.expires_at)}</div>
+              <div className="sm:col-span-2">限定用户组：{formatGroupNames(parseGroupIds(code.allowed_group_ids), groups)}</div>
               <div className="sm:col-span-2">状态：{code.enabled === 1 ? "启用" : "停用"}</div>
               <div className="sm:col-span-2">备注：{code.note ?? "—"}</div>
             </div>
