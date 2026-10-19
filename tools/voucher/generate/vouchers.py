@@ -49,8 +49,8 @@ DEFAULT_MOCK_QUOTES = REPO_ROOT / "tools" / "voucher" / "mock" / "quotes.mock.tx
 CMYK_PACKED_MARKER = "CMYK-packed"
 
 # 兑换码格式：ModelGate 生成的是 XXXX-XXXX-XXXX（字母 A-Z + 数字 2-9，不含 0/O/1/I）
-CODE_PATTERN = re.compile(r"^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$")
-CODE_HINT = "格式应为 XXXX-XXXX-XXXX（大写字母 A-Z 与数字 2-9）"
+CODE_PATTERN = re.compile(r"^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$")
+CODE_HINT = "格式应为 XXXX-XXXX-XXXX（大写字母，排除 I/O；数字 2-9，排除 0/1）"
 
 # CSV 表头候选（归一化后比较：去空白、转小写、去括号内英文说明）
 HEADER_ALIASES = {

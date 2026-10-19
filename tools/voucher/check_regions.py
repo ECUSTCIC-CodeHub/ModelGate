@@ -39,8 +39,8 @@ NAVY = np.array([13, 43, 82])
 QR_ZONE = (2723, 427, 3403, 1107)        # 680x680, 中心 (3063,767)
 QR_BLOCK = (2748, 478, 3377, 1107)       # EC M 二维码连静默区占位（29+8 模块 x17px=0.602mm）
 QR_SYMBOL = (2816, 546, 3309, 1039)      # 内容方阵 493x493
-QR_HEADER_BBOX = (2830, 380, 3300, 474)  # 标题原样保留区（含两侧「—」装饰线；t19 平涂矩形顶 474，比对到 473）
-QR_FLAT_RECT = (2744, 474, 3381, 1111)   # t19：唯一平涂矩形 = QR_BLOCK 四边外扩 4px
+QR_HEADER_BBOX = (2830, 380, 3300, 478)  # 标题原样保留区（含两侧「—」装饰线与标题下沿墨迹，墨迹至 477）
+QR_FLAT_RECT = (2744, 478, 3381, 1111)   # 唯一平涂矩形；上沿 478 以避开标题墨迹（至 477）
 PANEL_CMP = (2640, 300, 3470, 1080)      # 面板比对区（框体外缘至桥段上沿）
 CODE_BODY = (2516, 1134, 3596, 1314)     # 1080x180 中心 (3056,1224)
 CODE_PILL = (2524, 1190, 3588, 1308)
@@ -169,7 +169,7 @@ def main():
           lf["qr_zone"]["px"] == list(QR_ZONE) and lf["qr_zone"]["center_px"] == [3063, 767],
           f'{lf["qr_zone"]["px"]} center={lf["qr_zone"]["center_px"]}')
     mr, sr = region_stats(fa, QR_FLAT_RECT)
-    check("平涂矩形收窄为 (2744,474)-(3381,1111) 且内部平涂",
+    check("平涂矩形收窄为 (2744,478)-(3381,1111) 且内部平涂",
           sr < 8 and mr >= 225 and lf.get("flat_rect", {}).get("px") == list(QR_FLAT_RECT),
           f"矩形内灰度 mean={mr:.2f} std={sr:.3f}；layout flat_rect={lf.get('flat_rect', {}).get('px')}")
     orig_f = np.array(load_src("front_orig.png")).astype(np.int16)
