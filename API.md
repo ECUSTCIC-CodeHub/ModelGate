@@ -2013,13 +2013,14 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 | 字段 | 类型 | 必填 | 说明 |
 |:---|:---|:---|:---|
-| count | int | 是 | 生成数量，1-500 |
+| count | int | 是 | 生成数量，1-1000 |
 | kind | string | 否 | `quota`（默认）或 `reset`，重置券不发放额度 |
 | token_quota | int | 否 | Token 额度，与 request_quota、period_cycles 至少填一项；`kind=reset` 时必须留空 |
 | request_quota | int | 否 | 请求额度；`kind=reset` 时必须留空 |
 | period_cycles | object[] | 否 | 重置周期额度，见「多档重置周期」一节；核销时随额度一起下发到用户持有的定向额度（仅完整版）。`kind=reset` 时忽略 |
 | allowed_channel_ids | int[] | 否 | 限定渠道 ID 列表，空表示不限制 |
 | allowed_model_aliases | string[] | 否 | 限定模型别名列表，空表示不限制 |
+| allowed_group_ids | int[] | 否 | 限定用户组 ID 列表，仅列表内用户组的成员可兑换；空表示不限制。不传与 `[]` 等价，均为不限制 |
 | expires_at | string \| null | 否 | 有效期，接受 `YYYY-MM-DD`、`YYYY-MM-DD HH:MM[:SS[.SSS]]` 以及 `T`/空格分隔的 ISO 写法（如 `2026-12-01T00:00:00Z`）；不带时区后缀按 UTC 解释；须晚于当前时间。不传、`null`、空串或纯空白串都表示长期有效 |
 | max_uses | int | 否 | 每个码最多兑换次数，0 表示不限（默认 1） |
 | note | string | 否 | 备注，最长 500 字符 |
@@ -2028,6 +2029,8 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 `kind=reset` 时若同时传入 `token_quota` 或 `request_quota`，返回 400（重置券与额度是两条独立的语义，混填会导致意图不明）。
 
+`allowed_channel_ids` / `allowed_model_aliases` / `allowed_group_ids` 中的无效项（不存在的渠道、模型别名或用户组）会被**丢弃而非报错**，落库只保留有效项；响应的 `warnings` 数组按「渠道 → 模型别名 → 用户组」顺序列出被忽略的项。三类来源均去重：同一无效渠道 ID、同一无效模型别名、同一无效用户组 ID 重复出现时，各只提示一次。
+
 **响应 (201):**
 ```json
 {
@@ -2035,9 +2038,12 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
   "data": {
     "batch_id": "1725000000000-a1b2c3d4",
     "codes": ["XXXX-XXXX-XXXX", "..."]
-  }
+  },
+  "warnings": ["以下用户组不存在，已忽略: 3, 5"]
 }
 ```
+
+> `warnings` 为可选字段，无被忽略项时不出现。`count` 超过 1000 返回 400 `请求参数不正确`。
 
 ### GET /api/admin/redeem-codes
 
@@ -2072,6 +2078,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
       "period_cycles": "[{\"id\":\"c1\",\"seconds\":86400,\"quota_tokens\":100000,\"quota_requests\":null,\"used_tokens\":0,\"used_requests\":0,\"reset_at\":null}]",
       "allowed_channel_ids": "[1]",
       "allowed_model_aliases": "[\"gpt-4o\"]",
+      "allowed_group_ids": "[2]",
       "expires_at": null,
       "enabled": 1,
       "max_uses": 1,
@@ -2090,6 +2097,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 ```
 
 > `created_by_username` 来自 `users` 左连接，创建人已被删除时为 null。
+> `allowed_channel_ids` / `allowed_model_aliases` / `allowed_group_ids` 为原样返回的 JSON 字符串（非数组）；`allowed_group_ids` 存限定用户组 ID，历史数据为 null 时表示未设置（即不限制），空数组字符串 `"[]"` 同样表示不限制。
 > 分页按 `GROUP BY redeem_codes.id` 聚合，一个码对应多条额度不会放大 `paging.total`。
 
 ### PUT /api/admin/redeem-codes
@@ -2146,6 +2154,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
     "request_quota": null,
     "max_uses": 5,
     "used_count": 2,
+    "allowed_group_ids": "[2]",
     "created_by_username": "admin",
     "redeemed_users": 2,
     "used_tokens_sum": 300,
@@ -2189,6 +2198,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 - `max_uses`：只允许放宽（`0` 为不限，属最宽），且不能小于 `used_count`
 - `expires_at`：格式与 POST 相同（不带时区后缀按 UTC 解释）；只允许延长、且必须晚于当前时间（避免设出一个立刻失效的码）；不能早于已发放额度的过期时间，已发放额度的有效期无法解析时同样拒绝；已发放额度为长期有效（null）时不允许改为有限期；不允许改为 `null`、空串或纯空白串（`null` 会让 SQL 原子核销的过期判定被豁免，等于给额度开了永久有效口子；空串是非法时间值，SQLite 下会让核销条件恒不成立、码永远兑换不了，MySQL 严格模式下直接写入失败）
 - `code` / `batch_id` / `kind` / `period_cycles` / `allowed_channel_ids` / `allowed_model_aliases` **不在白名单**，传入会返回 400；其余未列出的字段同样按未知字段拒绝
+- `allowed_group_ids`：可编辑。不传该字段表示**不修改**；传 `[]` 表示清空限定（恢复为不限）；传非空数组则整体替换为列表内有效用户组（可增可减，只影响之后的兑换，不影响已发放额度）。无效组 ID 会被丢弃并在响应 `warnings` 中提示（与 POST 相同，同一无效 ID 重复出现只提示一次），落库只保留有效项
 - 不传任何字段返回 400
 
 `period_cycles` 不再可编辑：兑换码的周期档改为只在创建时配置（且仅额度券可配），已发放额度上的周期档不再随码行调整。类型 `kind` 亦不可修改，需要另一种类型请停用旧码并重新生成。
@@ -2205,14 +2215,18 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | max_uses | int | 最多兑换次数，0 表示不限 |
 | token_quota | int \| null | Token 额度，null 表示不限 |
 | request_quota | int \| null | 请求额度，null 表示不限 |
+| allowed_group_ids | int[] | 限定用户组 ID 列表；不传不改，传 `[]` 清空为不限，非空整体替换（无效组 ID 丢弃并在 warnings 提示） |
 
 **响应 (200):**
 ```json
 {
   "message": "兑换码已更新。",
-  "data": { "...": "更新后的兑换码详情（同 GET 详情）" }
+  "data": { "...": "更新后的兑换码详情（同 GET 详情）" },
+  "warnings": ["以下用户组不存在，已忽略: 3"]
 }
 ```
+
+> `warnings` 为可选字段，仅在 `allowed_group_ids` 含被丢弃的无效组时出现。
 
 **错误 (400):** `{ "error": { "message": "Token 额度只能上调，不能下调；如需下调请停用旧码并重新生成" } }`、`{ "error": { "message": "有效期不能为空；如需永久有效请重新生成兑换码" } }`
 
@@ -2441,12 +2455,18 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 ## 用户接口 - 兑换码
 
 > 兑换码功能为完整版专属（`redeemCode`），且受系统设置 `runtime_features.redeemCode` 运行时开关控制，关闭时接口返回 404。用户兑换后获得「定向额度」，仅当请求命中所限定的渠道与模型时才从该额度扣减，不占用账户全局配额。兑换码明确限定的渠道/模型同时作为用户访问授权来源（兑换即授权），额度失效后授权自动回收；未限定部分保持用户原有权限。
+>
+> 管理员可给兑换码配置**限定用户组**（`allowed_group_ids`）：仅列表内用户组的成员可兑换该码，额度券与重置券同样受限；不限定时任何登录用户可兑换。兑换时在兑换码启用、未过期、未达次数上限之后立即校验用户组，不属于限定组的用户返回 400 `该兑换码仅限指定用户组兑换`，且不消耗兑换次数。兑换码归一化容错：去除首尾及内部空白、转大写，12 位无连字符的裸码自动补全为 `XXXX-XXXX-XXXX`。
+>
+> 扫码直达：兑换券二维码指向 `https://ai.ecustcic.com/r/<CODE>`，公开路由 `GET /r/{code}` 未登录时跳转 `/login?next=/r/{code}`（登录后原路返回），已登录时转发 `/dashboard/redeem?code={code}`；兑换页读取 `?code=` 自动预填并兑换一次，完成后移除该参数（刷新不重复兑换）。
 
 ### POST /api/user/redeem
 
 兑换兑换码，为当前用户创建一条定向额度。
 
 **认证:** 用户
+
+**限流:** 按 IP 维度限流（在鉴权之前生效，未登录请求同样计数）：60 秒滑动窗口内每 IP 最多 10 次，第 11 次起返回 429 并携带 `retry-after` 响应头（剩余等待秒数）。仅限本接口的 POST 方法。
 
 **请求体:**
 
@@ -2505,6 +2525,21 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 重置券的效果是把核销者自己的多档周期用量清零，使各档位重新起算：用户自有档位（`period_cycles`）与继承自用户组的档位计数（`group_period_cycles`）都被归零，档位定义与周期长度保持不变，因此不影响组的继承关系。它不产生 `redeem_balances` 记录，也不影响用户的总请求/总 Token 配额。
 
+**错误响应:**
+
+- 400（业务失败，中文提示）：`兑换码不存在`、`该兑换码已停用`、`该兑换码使用次数已达上限`、`该兑换码已过期`、`您已兑换过该兑换码`、`该兑换码仅限指定用户组兑换`（用户不在兑换码的 `allowed_group_ids` 限定组内，此时**不消耗**兑换次数）、`请求参数不正确` 等
+- 429（触发限流）：响应头含 `retry-after`（剩余等待秒数）
+```json
+{
+  "error": {
+    "message": "兑换请求过于频繁，请稍后再试",
+    "type": "rate_limit_error",
+    "param": "None",
+    "code": "429"
+  }
+}
+```
+
 ### GET /api/user/redeem
 
 获取当前用户的定向额度列表与兑换记录。
@@ -2554,6 +2589,20 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 ```
 
 `active` 与 `inactive_reason` 由服务端按授权、计费侧同一口径计算（兑换码启用、未过期、总额度与所有周期额度均未耗尽），失效原因取值：`来源兑换码缺失`、`兑换码已停用`、`有效期数据异常`、`已过期`、`Token 额度已用尽`、`请求额度已用尽`，以及周期档耗尽时的 `每日 Token 额度已用尽` 等按档位描述的文案。
+
+### GET /r/{code}（页面路由）
+
+兑换券扫码直达入口，公开访问（无需认证），始终以 307 重定向响应，不渲染页面、不调用兑换接口、不校验兑换码是否存在（避免未登录探测枚举）。
+
+**重定向规则:**
+
+| 条件 | 目标 |
+|:---|:---|
+| 已登录 | `/dashboard/redeem?code={code}`（code 经 URL 编码；兑换页自动预填并兑换一次） |
+| 未登录 | `/login?next=/r/{code}`（登录成功后原路返回本路由，此时已登录再转兑换页） |
+| `code` 为纯空白（URL 编码可达，如 `/r/%20`）或长度 > 64 | `/dashboard/redeem`（无参数） |
+
+> `code` 仅做 trim，不做大小写与连字符归一化；归一化由兑换页统一处理（去空白、转大写、12 位裸码补连字符）。该路由属完整版兑换码功能，功能关闭时跳转目标不受影响（登录后兑换接口按开关返回 404）。
 
 ---
 
