@@ -267,13 +267,13 @@ def default_layout() -> Layout:
     return Layout(
         # 二维码整体（含 4 模块静默区）：直接落在原稿面板内膛正中，不做任何平涂。
         # 原稿面板内膛实测 (2760,500)-(3399,1029) 共 639x529；518x518 居中于 (3079,764)。
-        front_qr=Region("front_qr", 2820, 505, 3338, 1023),
+        front_qr=Region("front_qr", 2806, 534, 3324, 1052),
         # 内容方阵：29 模块 × 14px = 406px，四边各 56px = 4 模块静默区
-        front_qr_content=Region("front_qr_content", 2876, 561, 3282, 967),
+        front_qr_content=Region("front_qr_content", 2862, 590, 3268, 996),
         # 兑换码：沿用原稿自带的深蓝标签带与米色胶囊条，不重绘
         front_code_bar=Region("front_code_bar", 2604, 1134, 3500, 1314),
-        front_code_text=Region("front_code_text", 2716, 1178, 3405, 1269),
-        front_code_area=Region("front_code_area", 2724, 1184, 3397, 1263),
+        front_code_text=Region("front_code_text", 2716, 1183, 3405, 1277),
+        front_code_area=Region("front_code_area", 2724, 1189, 3397, 1271),
         # 序列号：沿用原稿左下铭牌
         front_serial_band=Region("front_serial_band", 440, 1440, 1106, 1558),
         front_serial_text=Region("front_serial_text", 452, 1452, 1094, 1546),
