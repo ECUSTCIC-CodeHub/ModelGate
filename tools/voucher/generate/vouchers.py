@@ -11,10 +11,12 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import re
 import time
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlparse
 
 from PIL import Image, ImageFont
 
@@ -45,6 +47,18 @@ DEFAULT_MOCK_QUOTES = REPO_ROOT / "tools" / "voucher" / "mock" / "quotes.mock.tx
 # t6 的 CMYK 底图用 RGBA 打包（R=C、G=M、B=Y、A=K），PNG 文本标记形如
 # "CMYK-packed: R=C,G=M,B=Y,A=K"，按前缀识别即可
 CMYK_PACKED_MARKER = "CMYK-packed"
+
+# 兑换码格式：ModelGate 生成的是 XXXX-XXXX-XXXX（字母 A-Z + 数字 2-9，不含 0/O/1/I）
+CODE_PATTERN = re.compile(r"^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$")
+CODE_HINT = "格式应为 XXXX-XXXX-XXXX（大写字母 A-Z 与数字 2-9）"
+
+# CSV 表头候选（归一化后比较：去空白、转小写、去括号内英文说明）
+HEADER_ALIASES = {
+    "兑换码", "code", "codes", "redeemcode", "redeem_code", "redeem-code",
+    "兑换码codes", "兑换码code", "兑换码(codes)", "兑换码（codes）",
+}
+
+DEFAULT_BASE_URL = "https://ai.ecustcic.com"
 
 ICC_IDENTIFIER = "JapanColor2001Coated"
 ICC_REGISTRY = "http://www.japan-color.com"
@@ -158,6 +172,7 @@ class GenerateConfig:
     mono_path: str | None = None
     icc_path: str | None = None
     layout: Layout = field(default_factory=layout_mod.default_layout)
+    base_url: str = DEFAULT_BASE_URL
     on_overflow: str = "error"
     zlib_level: int = 6
     front_rgb: Path | None = None
@@ -176,33 +191,54 @@ def sha1_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def load_codes(path: Path) -> list[CodeRow]:
-    """读取「兑换码,批次」CSV。mock 与真实数据共用这一条路径，并按行号定序列号。"""
+def _normalize_header(cell: str) -> str:
+    return re.sub(r"\s+", "", cell).lower()
+
+
+def load_codes(path: Path, log=print) -> list[CodeRow]:
+    """读取「兑换码,批次」CSV。
+
+    mock 与真实导出走同一条路径：文件句柄 + csv 模块（引号内换行不会被吞），
+    表头可选，逐行做格式校验与「大小写归一化后」查重，非 UTF-8 文件给出中文报错。
+    """
     path = Path(path)
     if not path.exists():
         raise VoucherError(f"找不到兑换码 CSV：{path}")
-    text = path.read_text(encoding="utf-8-sig")
     rows: list[CodeRow] = []
-    for raw in csv.reader(text.splitlines()):
-        if not raw:
-            continue
-        cells = [cell.strip() for cell in raw]
-        if not any(cells):
-            continue
-        code = cells[0]
-        batch = cells[1] if len(cells) > 1 else ""
-        if not rows and code.lower() in {"兑换码", "code", "redeem_code", "redeem-code"}:
-            continue
-        if not code:
-            raise VoucherError(f"兑换码 CSV 第 {len(rows) + 1} 行兑换码为空")
-        rows.append(CodeRow(code=code, batch=batch))
+    seen: dict[str, int] = {}
+    header_checked = False
+    try:
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
+            reader = csv.reader(handle)
+            for cells in reader:
+                # reader.line_num 是该条记录的最后一个物理行号，报错行号与文件实际行号一致
+                line = reader.line_num
+                if not any(cell.strip() for cell in cells):
+                    continue
+                code = cells[0].strip()
+                batch = cells[1].strip() if len(cells) > 1 else ""
+                if not header_checked:
+                    header_checked = True
+                    if _normalize_header(code) in HEADER_ALIASES:
+                        continue
+                    log(f"提示：{path} 第一行不是可识别的表头（{code}），按无表头处理")
+                normalized = code.upper()
+                if not CODE_PATTERN.match(normalized):
+                    raise VoucherError(
+                        f"兑换码格式不正确：{path} 第 {line} 行「{code}」，{CODE_HINT}"
+                    )
+                if normalized in seen:
+                    raise VoucherError(
+                        f"兑换码重复（大小写归一化后）：{path} 第 {seen[normalized]} 行与第 {line} 行都是 {normalized}"
+                    )
+                seen[normalized] = line
+                rows.append(CodeRow(code=normalized, batch=batch))
+    except UnicodeDecodeError:
+        raise VoucherError(
+            f"兑换码 CSV 不是 UTF-8 编码：{path}；请用 Excel/编辑器另存为「CSV UTF-8」后重试"
+        ) from None
     if not rows:
         raise VoucherError(f"兑换码 CSV 没有数据行：{path}")
-    seen: dict[str, int] = {}
-    for index, row in enumerate(rows, start=1):
-        if row.code in seen:
-            raise VoucherError(f"兑换码重复：{row.code}（第 {seen[row.code]} 行与第 {index} 行）")
-        seen[row.code] = index
     return rows
 
 
@@ -402,13 +438,15 @@ def _reference_decodes(mask_image: Image.Image, payload: str, module_px: int) ->
     return decoded == payload
 
 
-def render_qr_overlay(base: Image.Image, layout: Layout, code_text: str) -> tuple[compose.Overlay, qr.QrCode, int, int, str]:
+def render_qr_overlay(
+    base: Image.Image, layout: Layout, code_text: str, base_url: str = DEFAULT_BASE_URL
+) -> tuple[compose.Overlay, qr.QrCode, int, int, str]:
     """画出二维码叠加层。
 
     掩码策略：按惩罚函数给出候选顺序（安全掩码优先），再用参考解码器逐候选试读，
     读得出来的第一个才用；一个都读不出来时退回偏好序第一的掩码。
     """
-    payload = f"https://ai.ecustcic.com/r/{code_text}"
+    payload = f"{base_url.rstrip('/')}/r/{code_text}"
     content = layout.front_qr_content
     ranked = qr.rank_masks(payload, ec_level=layout.qr.ec_level, mask_policy=layout.qr.mask_policy)
     matrix = None
@@ -448,33 +486,57 @@ def render_qr_overlay(base: Image.Image, layout: Layout, code_text: str) -> tupl
 
 
 def render_code_overlay(base: Image.Image, layout: Layout, code_text: str, font_paths: list[str]) -> tuple[compose.Overlay, dict]:
-    """明文兑换码：在候选字体里挑字高最大的一个，保证实测字高不低于冻结要求。"""
-    region = layout.front_code_text
-    best: tuple[float, str, ImageFont.FreeTypeFont] | None = None
+    """明文兑换码：按实际字形宽度自适应字号。
+
+    约束：总宽 ≤ CODE_AREA 可用宽的 code_width_ratio（96%）；文字像素外接框落在胶囊条内且四边各 ≥8px；
+    字高（大写字母高度）≥ code_min_ink_mm。三条任一不满足都直接报错，不静默印小字或印出界。
+    """
+    pill = layout.front_code_text
+    area = layout.front_code_area
+    width_limit = area.width * layout.code_width_ratio
+    best: tuple[float, str, ImageFont.FreeTypeFont, int, int] | None = None
     for path in font_paths:
-        font, cap_px = compose.fit_font_by_ink(
-            path, code_text, (region.width, region.height), 0.0,
-            layout.code_padding_px, layout.code_padding_y_px,
+        font, cap_px, text_width, ink_height = compose.fit_code_font(
+            path, code_text, (pill.width, pill.height), width_limit, layout.code_pill_margin_px
         )
         if best is None or cap_px > best[0]:
-            best = (cap_px, path, font)
+            best = (cap_px, path, font, text_width, ink_height)
     if best is None:
         raise VoucherError("没有可用的等宽/中文字体来渲染明文兑换码")
-    cap_px, path, font = best
+    cap_px, path, font, text_width, ink_height = best
     min_cap_px = layout.code_min_ink_mm * PX_PER_MM
     if cap_px < min_cap_px - 0.5:
         raise VoucherError(
-            f"明文兑换码 {code_text} 在 {region.width}×{region.height}px 的可用区里最多只能排到 "
-            f"{cap_px / PX_PER_MM:.2f}mm 字高（大写字母高度），低于契约要求的 {layout.code_min_ink_mm}mm；请加宽白条或换更窄的字体"
+            f"明文兑换码 {code_text} 在 {pill.width}×{pill.height}px 的胶囊条里最多只能排到 "
+            f"{cap_px / PX_PER_MM:.2f}mm 字高（大写字母高度），低于契约要求的 {layout.code_min_ink_mm}mm；请加宽胶囊条或换更窄的字体"
         )
-    text_ink = compose.text_mask(code_text, font, (region.width, region.height), align="center")
-    overlay = compose.overlay_from_region(base, region, text_ink)
+    if text_width > width_limit + 0.5:
+        raise VoucherError(
+            f"明文兑换码 {code_text} 总宽 {text_width}px 超过可用宽 {width_limit:.0f}px"
+            f"（CODE_AREA {area.width}px 的 {layout.code_width_ratio:.0%}）"
+        )
+    text_ink = compose.text_mask(code_text, font, (pill.width, pill.height), align="center")
+    bbox = text_ink.getbbox()
+    if bbox is None:
+        raise VoucherError(f"明文兑换码 {code_text} 没有产生任何文字像素")
+    margin = layout.code_pill_margin_px
+    if bbox[0] < margin or bbox[1] < margin or bbox[2] > pill.width - margin or bbox[3] > pill.height - margin:
+        raise VoucherError(
+            f"明文兑换码 {code_text} 的文字外接框 {bbox} 未能在胶囊条 {pill.width}×{pill.height}px 内四边各留 {margin}px"
+        )
+    overlay = compose.overlay_from_region(base, pill, text_ink)
     overlay.name = "code"
     metrics = {
         "font": path,
         "em_px": round(font.size, 2),
         "cap_height_px": round(cap_px, 2),
         "cap_height_mm": round(cap_px / PX_PER_MM, 3),
+        "text_width_px": int(text_width),
+        "text_width_mm": round(text_width / PX_PER_MM, 3),
+        "text_width_limit_px": int(width_limit),
+        "ink_height_px": int(ink_height),
+        "pill_margin_px": margin,
+        "pill_px": [pill.width, pill.height],
     }
     return overlay, metrics
 
@@ -548,7 +610,12 @@ def generate(config: GenerateConfig) -> Report:
     if problems:
         raise VoucherError("版式自检失败：" + "；".join(problems))
 
-    codes = load_codes(config.csv_path)
+    base_url = str(config.base_url or DEFAULT_BASE_URL).rstrip("/")
+    parsed_url = urlparse(base_url)
+    if parsed_url.scheme not in ("http", "https") or not parsed_url.netloc:
+        raise VoucherError(f"--base-url 不是合法的 http(s) 地址：{config.base_url}")
+
+    codes = load_codes(config.csv_path, log=log)
     quotes = load_quotes(config.quotes_path)
     quote_font_label, quote_font_path = discover_font(config.font_path)
     mono_label, mono_path = discover_mono_font(config.mono_path)
@@ -633,12 +700,14 @@ def generate(config: GenerateConfig) -> Report:
                     quote_index = assignment[voucher]
                     quote_line = quotes[quote_index]
                     if side == "front":
-                        qr_overlay, matrix, module_px, flattened, mask_reason = render_qr_overlay(base, layout, code)
+                        qr_overlay, matrix, module_px, flattened, mask_reason = render_qr_overlay(
+                            base, layout, code, base_url
+                        )
                         code_overlay, code_metrics = render_code_overlay(base, layout, code, [mono_path, quote_font_path])
                         serial_overlay = render_serial_overlay(base, layout, serial_text, mono_path)
                         overlays = [qr_overlay, code_overlay, serial_overlay]
                         extra = {
-                            "qr_payload": f"https://ai.ecustcic.com/r/{code}",
+                            "qr_payload": f"{base_url}/r/{code}",
                             "qr_version": matrix.version,
                             "qr_modules": matrix.size,
                             "qr_ec_level": matrix.ec_level,
@@ -703,6 +772,7 @@ def generate(config: GenerateConfig) -> Report:
     manifest = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "flip": config.flip,
+        "base_url": base_url,
         "vouchers": voucher_count,
         "sheets": len(sheets),
         "serials": {"first": serials[0], "last": serials[-1], "unique": len(set(serials))},

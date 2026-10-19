@@ -135,6 +135,34 @@ def fit_font_by_ink(
     return font, cap_height(font)
 
 
+def fit_code_font(
+    font_path: str,
+    text: str,
+    pill_px: tuple[int, int],
+    width_limit_px: float,
+    margin_px: int,
+) -> tuple[ImageFont.FreeTypeFont, float, int, int]:
+    """明文兑换码专用排版：总宽 ≤ width_limit，且文字外接框在胶囊条内四边各留 margin。
+
+    返回 (字体, 大写字母高度 px, 文本总宽 px, 文字外接框高 px)。
+    """
+    limit_w = min(float(width_limit_px), float(pill_px[0] - 2 * margin_px))
+    limit_h = float(pill_px[1] - 2 * margin_px)
+    probe = ImageFont.truetype(font_path, 100)
+    probe_box = probe.getbbox(text)
+    width_at_100 = max(1.0, probe_box[2] - probe_box[0])
+    height_at_100 = max(1.0, probe_box[3] - probe_box[1])
+    em = min(limit_w * 100.0 / width_at_100, limit_h * 100.0 / height_at_100)
+    font = ImageFont.truetype(font_path, max(8.0, em))
+    for _ in range(64):
+        box = font.getbbox(text)
+        if (box[2] - box[0]) <= limit_w and (box[3] - box[1]) <= limit_h:
+            break
+        font = ImageFont.truetype(font_path, max(8.0, font.size * 0.99))
+    box = font.getbbox(text)
+    return font, cap_height(font), int(box[2] - box[0]), int(box[3] - box[1])
+
+
 def text_mask(text: str, font: ImageFont.FreeTypeFont, box_px: tuple[int, int], align: str = "center") -> Image.Image:
     """把文字画成遮罩，并按实际着墨范围对齐（横向居中/居左/居右，纵向居中）。"""
     mask = ink_mask(box_px)

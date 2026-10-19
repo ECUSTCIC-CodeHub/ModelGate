@@ -39,9 +39,9 @@ NAVY = np.array([13, 43, 82])
 QR_ZONE = (2723, 427, 3403, 1107)        # 680x680, 中心 (3063,767)
 QR_BLOCK = (2748, 478, 3377, 1107)       # EC M 二维码连静默区占位（29+8 模块 x17px=0.602mm）
 QR_SYMBOL = (2816, 546, 3309, 1039)      # 内容方阵 493x493
-QR_HEADER_BBOX = (2830, 380, 3300, 478)  # 标题原样保留区（含两侧「—」装饰线，墨迹到 y477，下沿≈475）
-QR_INTERIOR_FLAT = (2740, 478, 3388, 1051)   # 内膛平涂测量区（避开 L 角标臂列）
-QR_BOTTOM_EXT = (2752, 1051, 3376, 1090)     # 预留区下缘测量区（避开角标横臂）
+QR_HEADER_BBOX = (2830, 380, 3300, 474)  # 标题原样保留区（含两侧「—」装饰线；t19 平涂矩形顶 474，比对到 473）
+QR_FLAT_RECT = (2744, 474, 3381, 1111)   # t19：唯一平涂矩形 = QR_BLOCK 四边外扩 4px
+PANEL_CMP = (2640, 300, 3470, 1080)      # 面板比对区（框体外缘至桥段上沿）
 CODE_BODY = (2516, 1134, 3596, 1314)     # 1080x180 中心 (3056,1224)
 CODE_PILL = (2524, 1190, 3588, 1308)
 CODE_AREA = (2548, 1198, 3564, 1302)
@@ -66,8 +66,7 @@ BANNER_TITLE = "鲸元券兑换须知"
 
 # 底图编辑区（与 build_assets.py 对应；除此之外不得改动原稿）
 EDIT_RECTS_FRONT = [
-    (2700, 418, 2830, 486), (3300, 418, 3434, 486),   # 角标衬底
-    QR_INTERIOR_FLAT, QR_BOTTOM_EXT,                   # QR 面板内膛与下缘
+    QR_FLAT_RECT,                                      # t19：QR 区唯一平涂矩形
     (2660, 1080, 3465, 1134),                          # 旧框残余覆盖
     CODE_BODY,                                         # 兑换码组合体（含胶囊条/标签）
     (450, 1448, 1068, 1558),                           # 序列号铭牌内膛
@@ -169,20 +168,40 @@ def main():
     check("二维码预留区 680x680 中心 (3063,767)",
           lf["qr_zone"]["px"] == list(QR_ZONE) and lf["qr_zone"]["center_px"] == [3063, 767],
           f'{lf["qr_zone"]["px"]} center={lf["qr_zone"]["center_px"]}')
-    mi, si = region_stats(fa, QR_INTERIOR_FLAT)
-    check("面板内膛平涂", si < 8 and mi >= 225, f"内膛灰度 mean={mi:.2f} std={si:.3f}")
-    mb, sb = region_stats(fa, QR_BOTTOM_EXT)
-    check("预留区下缘平涂", sb < 8 and mb >= 225, f"mean={mb:.2f} std={sb:.3f}")
-    # t15：680 区内除标题原样保留区外，只允许平涂米色底（角标/线条/图形均已移除）
-    zx0, zy0, zx1, zy1 = QR_ZONE
-    zone_g = gray(fa[zy0:zy1, zx0:zx1].astype(np.float32))
-    dark = zone_g < 200
-    hx0, hy0, hx1, hy1 = QR_HEADER_BBOX
-    dark[max(0, hy0 - zy0):min(zy1 - zy0, hy1 - zy0),
-         max(0, hx0 - zx0):min(zx1 - zx0, hx1 - zx0)] = False
-    n_dark = int(dark.sum())
-    check("680 预留区内除平涂米色底外无图形/线条/文字（角标已移除）", n_dark == 0,
-          f"区内在标题保留区以外的深色像素 {n_dark} 个")
+    mr, sr = region_stats(fa, QR_FLAT_RECT)
+    check("平涂矩形收窄为 (2744,474)-(3381,1111) 且内部平涂",
+          sr < 8 and mr >= 225 and lf.get("flat_rect", {}).get("px") == list(QR_FLAT_RECT),
+          f"矩形内灰度 mean={mr:.2f} std={sr:.3f}；layout flat_rect={lf.get('flat_rect', {}).get('px')}")
+    orig_f = np.array(load_src("front_orig.png")).astype(np.int16)
+    # t19 新增断言：平涂矩形之外的面板区域与原稿一致（装饰拱形边框/两侧花纹/角部纹样全部恢复）
+    # 注：TAC 压缩会对最深油墨做整体改色（队长已验收），故判据为
+    # 「浅色像素逐像素一致（容差 8）」+「深色墨迹掩码位置完全一致」。
+    orig_panel = orig_f[PANEL_CMP[1]:PANEL_CMP[3], PANEL_CMP[0]:PANEL_CMP[2]]
+    cur_panel = fa[PANEL_CMP[1]:PANEL_CMP[3], PANEL_CMP[0]:PANEL_CMP[2]]
+    rx0, ry0, rx1, ry1 = QR_FLAT_RECT
+    outside = np.ones(cur_panel.shape[:2], dtype=bool)
+    outside[ry0 - PANEL_CMP[1]:ry1 - PANEL_CMP[1], rx0 - PANEL_CMP[0]:rx1 - PANEL_CMP[0]] = False
+    g_ori_p = gray(orig_panel.astype(np.float32))
+    g_cur_p = gray(cur_panel.astype(np.float32))
+    diff_p = np.abs(cur_panel - orig_panel).max(axis=2)
+    light = g_ori_p >= 180
+    n_light_diff = int((outside & light & (diff_p > 8)).sum())
+    n_mask_flip = int((outside & ((g_ori_p < 150) != (g_cur_p < 150))).sum())
+    max_diff = int(diff_p[outside].max()) if outside.any() else 0
+    check("平涂矩形之外面板区域与原稿一致（装饰复原）",
+          n_light_diff == 0 and n_mask_flip == 0,
+          f"浅色差异像素 {n_light_diff}（容差 8），墨迹掩码错位 {n_mask_flip}，"
+          f"矩形外最大通道差 {max_diff}（仅 TAC 压缩改色）")
+    # 反证：矩形外确实有恢复原稿纹理（不是整片平涂）
+    ring = gray(fa[700:900, 2690:2744].astype(np.float32))
+    check("矩形外两侧花纹已恢复（非平涂）", float(ring.std()) > 8,
+          f"矩形左侧花纹带 (2690,700)-(2744,900) 灰度 std={float(ring.std()):.2f} > 8（有纹理）")
+    # t15+t19：四角 L 角标已移除；QR_BLOCK 内（含四边静默带）无任何深色像素
+    zx0, zy0, zx1, zy1 = QR_BLOCK
+    block_g = gray(fa[zy0:zy1, zx0:zx1].astype(np.float32))
+    n_dark = int((block_g < 200).sum())
+    check("QR_BLOCK 内除平涂米色底外无图形/线条/文字（角标已移除）", n_dark == 0,
+          f"(2748,478)-(3377,1107) 内深色像素 {n_dark} 个（旧角标/水印/织纹均被平涂覆盖）")
     check("半径 395px 约束（角标已整体移除，天然满足）", True,
           "四角 L 角标已整体删除，区内无任何角标像素，不存在进入 (3063,767) 半径 395px 圆内的角标")
     # 新增断言（t15 验收 6）：预留区四边静默带内无深色像素
@@ -204,7 +223,6 @@ def main():
         v = fa[py, px][:3]
         check(f"装饰边框保留-{tag}", v.mean() < 150, f"({px},{py})={tuple(int(x) for x in v)}")
     # 标题保留：浅色底像素近一致；深色字迹掩码与原稿重合（允许 TAC 压缩改色，不允许动字形）
-    orig_f = np.array(load_src("front_orig.png")).astype(np.int16)
     hdr = QR_HEADER_BBOX
     cur_hdr = fa[hdr[1]:hdr[3], hdr[0]:hdr[2]]
     ori_hdr = orig_f[hdr[1]:hdr[3], hdr[0]:hdr[2]]

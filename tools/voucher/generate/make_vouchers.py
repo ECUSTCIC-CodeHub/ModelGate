@@ -29,6 +29,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sets", default="rgb,cmyk", help="输出哪几套：rgb、cmyk 或两者逗号分隔")
     parser.add_argument("--sheets", type=int, default=None, help="只排前 N 张纸（调试用，默认全部）")
     parser.add_argument("--flip", default="h", choices=("h", "v"), help="双面翻转方向：h 左右、v 上下")
+    parser.add_argument("--base-url", dest="base_url", default=vouchers.DEFAULT_BASE_URL,
+                        help="二维码里使用的站点地址（拼成 <base-url>/r/<CODE>）")
     parser.add_argument("--font", default=None, help="中文文案字体（TTF/TTC）")
     parser.add_argument("--mono-font", dest="mono_font", default=None, help="兑换码与序列号等宽字体")
     parser.add_argument("--icc", default=None, help="JapanColor2001Coated ICC 路径")
@@ -63,6 +65,7 @@ def main(argv: "list[str] | None" = None) -> int:
         mono_path=args.mono_font,
         icc_path=args.icc,
         layout=layout,
+        base_url=args.base_url,
         on_overflow=args.on_overflow,
         zlib_level=args.zlib_level,
         front_rgb=Path(args.front_rgb) if args.front_rgb else None,

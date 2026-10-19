@@ -1,0 +1,221 @@
+{
+  "profile": "JapanColor2001Coated",
+  "intent": "relative-colorimetric",
+  "pairs": [
+    {
+      "pair": [
+        "front_rgb.png",
+        "front_cmyk.png"
+      ],
+      "dE00": {
+        "mean": 0.8644,
+        "p95": 2.1984,
+        "max": 3.0,
+        "thresholds": {
+          "mean": 2.5,
+          "p95": 5.0,
+          "max": 8.0
+        }
+      },
+      "TAC": {
+        "max_pct": 275.69,
+        "mean_pct": 113.31,
+        "over_limit_ratio_pct": 0.0,
+        "limit_pct": 280.0
+      },
+      "out_of_gamut_ratio_pct": 6.28895,
+      "out_of_gamut_definition": "roundtrip dE00 > 2.0",
+      "worst_patches": [
+        {
+          "rect_px": [
+            640,
+            960,
+            960,
+            1280
+          ],
+          "mean_dE00": 1.021,
+          "max_dE00": 3.0,
+          "src_rgb": [
+            148,
+            159,
+            169
+          ]
+        },
+        {
+          "rect_px": [
+            1600,
+            0,
+            1920,
+            320
+          ],
+          "mean_dE00": 1.02,
+          "max_dE00": 3.0,
+          "src_rgb": [
+            119,
+            127,
+            138
+          ]
+        },
+        {
+          "rect_px": [
+            1600,
+            960,
+            1920,
+            1280
+          ],
+          "mean_dE00": 1.007,
+          "max_dE00": 3.0,
+          "src_rgb": [
+            118,
+            129,
+            157
+          ]
+        },
+        {
+          "rect_px": [
+            2880,
+            640,
+            3200,
+            960
+          ],
+          "mean_dE00": 0.994,
+          "max_dE00": 0.994,
+          "src_rgb": [
+            245,
+            240,
+            228
+          ]
+        },
+        {
+          "rect_px": [
+            1920,
+            0,
+            2240,
+            320
+          ],
+          "mean_dE00": 0.988,
+          "max_dE00": 3.0,
+          "src_rgb": [
+            125,
+            132,
+            141
+          ]
+        }
+      ],
+      "vs_original_drift": {
+        "mean": 3.1716,
+        "p95": 15.2106,
+        "max": 95.5703,
+        "note": "交付 RGB 与原稿的 dE00 漂移（TAC 压缩所致，仅供参考不卡阈值）"
+      }
+    },
+    {
+      "pair": [
+        "back_rgb.png",
+        "back_cmyk.png"
+      ],
+      "dE00": {
+        "mean": 0.841,
+        "p95": 2.1882,
+        "max": 3.0,
+        "thresholds": {
+          "mean": 2.5,
+          "p95": 5.0,
+          "max": 8.0
+        }
+      },
+      "TAC": {
+        "max_pct": 275.69,
+        "mean_pct": 102.42,
+        "over_limit_ratio_pct": 0.0,
+        "limit_pct": 280.0
+      },
+      "out_of_gamut_ratio_pct": 6.18339,
+      "out_of_gamut_definition": "roundtrip dE00 > 2.0",
+      "worst_patches": [
+        {
+          "rect_px": [
+            2240,
+            960,
+            2560,
+            1280
+          ],
+          "mean_dE00": 0.978,
+          "max_dE00": 3.0,
+          "src_rgb": [
+            161,
+            170,
+            181
+          ]
+        },
+        {
+          "rect_px": [
+            1920,
+            960,
+            2240,
+            1280
+          ],
+          "mean_dE00": 0.964,
+          "max_dE00": 3.0,
+          "src_rgb": [
+            129,
+            150,
+            174
+          ]
+        },
+        {
+          "rect_px": [
+            1600,
+            960,
+            1920,
+            1280
+          ],
+          "mean_dE00": 0.958,
+          "max_dE00": 3.0,
+          "src_rgb": [
+            135,
+            155,
+            179
+          ]
+        },
+        {
+          "rect_px": [
+            1280,
+            960,
+            1600,
+            1280
+          ],
+          "mean_dE00": 0.955,
+          "max_dE00": 3.0,
+          "src_rgb": [
+            161,
+            170,
+            180
+          ]
+        },
+        {
+          "rect_px": [
+            0,
+            0,
+            320,
+            320
+          ],
+          "mean_dE00": 0.94,
+          "max_dE00": 3.0,
+          "src_rgb": [
+            153,
+            161,
+            168
+          ]
+        }
+      ],
+      "vs_original_drift": {
+        "mean": 1.9865,
+        "p95": 12.6881,
+        "max": 95.7327,
+        "note": "交付 RGB 与原稿的 dE00 漂移（TAC 压缩所致，仅供参考不卡阈值）"
+      }
+    }
+  ],
+  "verdict": "pass"
+}

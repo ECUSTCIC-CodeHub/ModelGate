@@ -349,8 +349,10 @@ $RECYCLE.BIN/
 data/*
 
 ### 兑换券印制物料 ###
-# 底图与生成物体积大且可复现，只入库生成器、mock 数据与文案清单
-tools/voucher/assets/
+# 底图只入库脚本、版面 JSON 与说明，大体积的 PNG/ICC 不入库（可用 git add -f 强制入库某一版）
+tools/voucher/assets/**/*.png
+tools/voucher/assets/**/*.icc
+tools/voucher/assets/**/*.icm
 tools/voucher/out/
 
 ### Python（兑换券生成器） ###

@@ -131,6 +131,7 @@ class Layout:
     front_qr_content: Region
     front_code_bar: Region
     front_code_text: Region
+    front_code_area: Region
     front_serial_band: Region
     front_serial_text: Region
     back_quote_bar: Region
@@ -140,9 +141,10 @@ class Layout:
     qr: QrSpec = field(default_factory=QrSpec)
     quote_em_mm: float = 1.5
     serial_em_mm: float = 1.4
-    code_min_ink_mm: float = 3.0
-    code_padding_px: int = 8
-    code_padding_y_px: int = 2
+    # 明文码：总宽 ≤ 可用宽 CODE_AREA 的 96%，文字外接框落在胶囊条内且四边各 ≥8px，字高 ≥2.6mm
+    code_min_ink_mm: float = 2.6
+    code_width_ratio: float = 0.96
+    code_pill_margin_px: int = 8
     serial_padding_px: int = 6
 
     def regions(self) -> dict[str, Region]:
@@ -151,6 +153,7 @@ class Layout:
             "front_qr_content": self.front_qr_content,
             "front_code_bar": self.front_code_bar,
             "front_code_text": self.front_code_text,
+            "front_code_area": self.front_code_area,
             "front_serial_band": self.front_serial_band,
             "front_serial_text": self.front_serial_text,
             "back_quote_bar": self.back_quote_bar,
@@ -184,8 +187,8 @@ class Layout:
             quote_em_mm=float(data.get("quote_em_mm", self.quote_em_mm)),
             serial_em_mm=float(data.get("serial_em_mm", self.serial_em_mm)),
             code_min_ink_mm=float(data.get("code_min_ink_mm", self.code_min_ink_mm)),
-            code_padding_px=int(data.get("code_padding_px", self.code_padding_px)),
-            code_padding_y_px=int(data.get("code_padding_y_px", self.code_padding_y_px)),
+            code_width_ratio=float(data.get("code_width_ratio", self.code_width_ratio)),
+            code_pill_margin_px=int(data.get("code_pill_margin_px", self.code_pill_margin_px)),
             serial_padding_px=int(data.get("serial_padding_px", self.serial_padding_px)),
         )
 
@@ -202,6 +205,8 @@ class Layout:
             "quote_em_mm": self.quote_em_mm,
             "serial_em_mm": self.serial_em_mm,
             "code_min_ink_mm": self.code_min_ink_mm,
+            "code_width_ratio": self.code_width_ratio,
+            "code_pill_margin_px": self.code_pill_margin_px,
         }
 
     def validate(self) -> list[str]:
@@ -216,6 +221,8 @@ class Layout:
                 problems.append(f"区域 {name} 尺寸非正：{region.box()}")
         if not self.front_code_text.within(self.front_code_bar):
             problems.append("兑换码文本可用区必须落在兑换码白条内")
+        if not self.front_code_area.within(self.front_code_text):
+            problems.append("兑换码可用排版区必须落在胶囊条内")
         if not self.front_serial_text.within(self.front_serial_band):
             problems.append("序列号文本区必须落在正面左下横带内")
         if self.front_qr_content.overlaps(self.front_code_bar):
@@ -259,6 +266,8 @@ def default_layout() -> Layout:
         front_code_bar=Region("front_code_bar", 2516, 1134, 3596, 1314),
         # 明文码叠加区 = t6 的米色胶囊条；标签带在胶囊上方，不进入
         front_code_text=Region("front_code_text", 2524, 1190, 3588, 1308),
+        # 胶囊条内的可用排版区（96% 宽度上限与 ≥8px 边距都以此为准）
+        front_code_area=Region("front_code_area", 2548, 1198, 3564, 1302),
         front_serial_band=Region("front_serial_band", 464, 1456, 1056, 1536),
         front_serial_text=Region("front_serial_text", 470, 1462, 1050, 1530),
         # 背面顶部横幅：第 1 行标题（t6 固定），第 2 行玩梗留给生成器

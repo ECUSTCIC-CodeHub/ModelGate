@@ -502,6 +502,78 @@ def main(argv=None) -> int:
 
     checks.run("CSV：mock 与真实同一路径、600 行、序列号 0001-0600 唯一", csv_variants)
 
+    def csv_robustness():
+        """真实导出 CSV 的各种异常写法：引号内换行、表头变体、格式错误、大小写重复、非 UTF-8。"""
+        import csv as csv_module
+
+        root = work / "csv_cases"
+        root.mkdir(parents=True, exist_ok=True)
+
+        def write(name: str, content: str, encoding: str = "utf-8") -> "Path":
+            path = root / name
+            path.write_text(content, encoding=encoding)
+            return path
+
+        # 引号内换行：批次字段里带换行，不能被拆成两行
+        quoted = write("quoted_newline.csv", '兑换码,批次\nABCD-EFGH-JKLM,"张三\n备注"\nCD45-EF67-GH89,B1\n')
+        rows = vouchers.load_codes(quoted, log=lambda *a, **k: None)
+        assert len(rows) == 2 and rows[0].code == "ABCD-EFGH-JKLM" and "\n" in rows[0].batch, (
+            f"引号内换行被吞了：{[(r.code, r.batch) for r in rows]}"
+        )
+
+        # 表头变体
+        for index, header in enumerate(("兑换码,批次", "Codes,Batch", "code,batch", "Code,Batch")):
+            path = write(f"header_{index}.csv", f"{header}\nABCD-EFGH-JKLM,B1\n")
+            rows = vouchers.load_codes(path, log=lambda *a, **k: None)
+            assert len(rows) == 1 and rows[0].code == "ABCD-EFGH-JKLM", f"表头 {header!r} 未被识别"
+
+        # 无表头：要出提示但不能报错
+        hints: list[str] = []
+        path = write("no_header.csv", "ABCD-EFGH-JKLM,B1\nCD45-EF67-GH89,B2\n")
+        rows = vouchers.load_codes(path, log=lambda message, *a, **k: hints.append(str(message)))
+        assert len(rows) == 2, "无表头 CSV 解析行数不对"
+        assert any("按无表头处理" in hint for hint in hints), f"无表头时没有打印提示：{hints}"
+
+        # 格式错误：中文报错 + 与实际文件一致的行号
+        path = write("bad_row.csv", "兑换码,批次\nABCD-EFGH-JKLM,B1\nABCD-EFGH-JKL,B2\n")
+        try:
+            vouchers.load_codes(path, log=lambda *a, **k: None)
+            raise AssertionError("格式错误的行没有报错")
+        except vouchers.VoucherError as error:
+            assert "第 3 行" in str(error), f"报错行号不对：{error}"
+            assert "ABCD-EFGH-JKL" in str(error), f"报错没带上原值：{error}"
+
+        # 大小写归一化后查重
+        path = write("dup_case.csv", "兑换码,批次\nabcd-efgh-jklm,B1\nABCD-EFGH-JKLM,B2\n")
+        try:
+            vouchers.load_codes(path, log=lambda *a, **k: None)
+            raise AssertionError("大小写不同的重复码没有报错")
+        except vouchers.VoucherError as error:
+            assert "重复" in str(error) and "第 2 行" in str(error) and "第 3 行" in str(error), f"重复报错内容不对：{error}"
+
+        # 非 UTF-8：中文报错，不抛 traceback
+        gbk = root / "gbk.csv"
+        gbk.write_bytes("兑换码,批次\nABCD-EFGH-JKLM,B1\n".encode("gbk"))
+        try:
+            vouchers.load_codes(gbk, log=lambda *a, **k: None)
+            raise AssertionError("GBK 文件没有报错")
+        except vouchers.VoucherError as error:
+            assert "UTF-8" in str(error), f"GBK 报错文案不对：{error}"
+
+        # 空文件
+        try:
+            vouchers.load_codes(write("empty.csv", "\n\n"), log=lambda *a, **k: None)
+            raise AssertionError("空 CSV 没有报错")
+        except vouchers.VoucherError as error:
+            assert "没有数据行" in str(error), f"空文件报错文案不对：{error}"
+
+        return (
+            "引号内换行保留为一条记录、4 种表头（兑换码/Codes/code/Code）识别、无表头打印提示、"
+            "格式错误报第 3 行、大小写重复报第 2/3 行、GBK 中文报错、空文件报错"
+        )
+
+    checks.run("CSV 健壮性：引号换行/表头变体/格式校验/大小写去重/编码报错", csv_robustness)
+
     # 4. 生成
     assets_dir = REAL_ASSETS if args.use_real_assets else ensure_mock_assets(work / "mock_assets")
     labels = ["front_rgb", "back_rgb", "front_cmyk", "back_cmyk"]
@@ -514,6 +586,31 @@ def main(argv=None) -> int:
             with Image.open(assets_dir / f"{name}.png") as image:
                 sizes.append(f"{name}={image.size[0]}×{image.size[1]}")
         checks.add("底图：4 张 3840×1648", all("3840×1648" in item for item in sizes), "，".join(sizes))
+
+    def base_url_check():
+        assert vouchers.DEFAULT_BASE_URL == "https://ai.ecustcic.com", f"默认域名被改成了 {vouchers.DEFAULT_BASE_URL}"
+        bad = vouchers.GenerateConfig(
+            csv_path=MOCK_CSV, quotes_path=MOCK_QUOTES, assets_dir=assets_dir, out_dir=work / "base_url_bad",
+            sheets=1, base_url="ftp://voucher.example.com", log=lambda *a, **k: None,
+        )
+        try:
+            vouchers.generate(bad)
+            raise AssertionError("非法 base URL 没有报错")
+        except vouchers.VoucherError as error:
+            assert "base-url" in str(error), f"非法 URL 报错文案不对：{error}"
+        custom_dir = work / "base_url_ok"
+        custom = vouchers.GenerateConfig(
+            csv_path=MOCK_CSV, quotes_path=MOCK_QUOTES, assets_dir=assets_dir, out_dir=custom_dir,
+            sheets=1, base_url="https://mg.example.cn/", log=lambda *a, **k: None,
+        )
+        vouchers.generate(custom)
+        custom_manifest = json.loads((custom_dir / "vouchers.manifest.json").read_text(encoding="utf-8"))
+        slot = [s for p in custom_manifest["pages"]["rgb"] if p["side"] == "front" for s in p["slots"]][0]
+        assert custom_manifest["base_url"] == "https://mg.example.cn", f"清单 base_url={custom_manifest['base_url']}"
+        assert slot["qr_payload"].startswith("https://mg.example.cn/r/"), f"二维码内容没带自定义域名：{slot['qr_payload']}"
+        return f"默认 {vouchers.DEFAULT_BASE_URL}；自定义 https://mg.example.cn 生效（{slot['qr_payload']}）；非法 URL 中文报错"
+
+    checks.run("二维码域名：--base-url 参数（默认值/自定义/非法报错）", base_url_check)
 
     def base_region_report():
         """把四个可变位在底图上的明暗统计打出来：既验证底图可用，也能发现底图还是旧几何。"""
@@ -540,7 +637,7 @@ def main(argv=None) -> int:
     checks.run("底图可变位明暗统计（用于发现底图与冻结坐标不一致）", base_region_report)
 
     def qr_quiet_report():
-        """r4 专项：四边静默区逐边实测；下静默区到深蓝带的间距；四角 L 角标是否已移除。"""
+        """四边静默区逐边实测；下静默区到深蓝带的间距；静默区是否完全落在底图平涂区内。"""
         path = assets_dir / "front_rgb.png"
         with Image.open(path) as handle:
             gray = handle.convert("L")
@@ -571,27 +668,32 @@ def main(argv=None) -> int:
         # 左右静默区不得越出装饰边框线
         assert quiet.x0 >= 2724, f"左静默区外沿 {quiet.x0} 越出了装饰边框线 x2723"
         assert quiet.x1 <= 3402, f"右静默区外沿 {quiet.x1} 越出了装饰边框线 x3403"
-        # 四角 L 角标必须已移除（原角标臂 100×14）
-        corner_dark = 0
-        for box in (
-            (2723, 427, 2823, 441),
-            (2723, 427, 2737, 527),
-            (3303, 427, 3403, 441),
-            (3303, 427, 3317, 527),
-            (2723, 1007, 2823, 1107),
-            (2723, 1007, 2737, 1107),
-            (3303, 1007, 3403, 1107),
-            (3303, 1007, 3317, 1107),
-        ):
-            patch = gray.crop(box)
-            corner_dark += sum(1 for value in patch.getdata() if value < 150)
-        assert corner_dark == 0, f"二维码区四角仍有 {corner_dark} 个暗像素，L 角标未移除干净"
+        # r7 起底图只保证「平涂区」内干净：静默区必须完全落在平涂区内（有 layout_front.json 时校验）
+        flat_note = "（未提供 layout_front.json，跳过平涂区校验）"
+        flat_json = assets_dir / "layout_front.json"
+        if flat_json.exists():
+            flat_data = json.loads(flat_json.read_text(encoding="utf-8"))
+            raw_flat = flat_data.get("flat_rect") or {}
+            if isinstance(raw_flat.get("px"), list) and len(raw_flat["px"]) == 4:
+                fx0, fy0, fx1, fy1 = (int(value) for value in raw_flat["px"])
+            elif {"x0", "y0", "x1", "y1"} <= set(raw_flat):
+                fx0, fy0, fx1, fy1 = (int(raw_flat[key]) for key in ("x0", "y0", "x1", "y1"))
+            else:
+                fx0 = fy0 = fx1 = fy1 = None
+            if fx0 is not None:
+                assert quiet.x0 >= fx0 and quiet.y0 >= fy0, (
+                    f"静默区 ({quiet.x0},{quiet.y0}) 越出平涂区左上角 ({fx0},{fy0})"
+                )
+                assert quiet.x1 <= fx1 and quiet.y1 <= fy1, (
+                    f"静默区 ({quiet.x1},{quiet.y1}) 越出平涂区右下角 ({fx1},{fy1})"
+                )
+                flat_note = f"静默区完全落在底图平涂区 ({fx0},{fy0})-({fx1},{fy1}) 内"
         return (
             f"四边静默区逐边纯留白（{'；'.join(notes)}）；下静默区到深蓝带 {gap if gap is not None else '>60'}px；"
-            f"左右外沿 {quiet.x0}/{quiet.x1} 在装饰边框线内侧；四角 L 角标已移除"
+            f"左右外沿 {quiet.x0}/{quiet.x1} 在装饰边框线内侧；{flat_note}"
         )
 
-    checks.run("二维码静默区：四边留白实测、下边到深蓝带间距、四角 L 角标已移除", qr_quiet_report)
+    checks.run("二维码静默区：四边留白实测、下边到深蓝带间距、落在平涂区内", qr_quiet_report)
 
     smoke_dir = work / "smoke"
     sheets = 100 if args.full_size else 2
@@ -783,7 +885,7 @@ def main(argv=None) -> int:
                     )
                     if checked == 0:
                         quiet_notes.append(f"{label}{stat.mean[0]:.0f}/{stat.stddev[0]:.1f}")
-                # 明文兑换码：实测字高 ≥ 3mm
+                # 明文兑换码：总宽 ≤ 96% 可用宽、像素外接框在胶囊条内四边 ≥8px、字高 ≥2.6mm
                 code_rect = slot["rects"]["code"]
                 code_image = doc.images[slot["objects"]["code"]]
                 code_base = front_base.crop((code_rect["x0"], code_rect["y0"], code_rect["x1"], code_rect["y1"]))
@@ -795,8 +897,25 @@ def main(argv=None) -> int:
                 assert cap_px >= min_ink_px - 0.5, (
                     f"兑换码字高 {cap_px}px = {cap_px / layout_mod.PX_PER_MM:.3f}mm < {layout.code_min_ink_mm}mm"
                 )
-                assert (code_bbox[2] - code_bbox[0]) <= code_rect["x1"] - code_rect["x0"], "兑换码横向溢出可用区"
-                assert abs((code_bbox[0] + code_bbox[2]) / 2 - (code_rect["x1"] - code_rect["x0"]) / 2) <= 2, "兑换码未水平居中"
+                area = layout.front_code_area
+                width_limit = area.width * layout.code_width_ratio
+                assert code_metrics["text_width_px"] <= width_limit + 1, (
+                    f"清单记录的总宽 {code_metrics['text_width_px']}px 超过 96% 可用宽 {width_limit:.0f}px"
+                )
+                assert (code_bbox[2] - code_bbox[0]) <= width_limit + 1, (
+                    f"兑换码像素外接框宽 {code_bbox[2] - code_bbox[0]}px 超过 96% 可用宽 {width_limit:.0f}px"
+                )
+                margin = layout.code_pill_margin_px
+                pill_w = code_rect["x1"] - code_rect["x0"]
+                pill_h = code_rect["y1"] - code_rect["y0"]
+                assert code_bbox[0] >= margin and code_bbox[1] >= margin, (
+                    f"兑换码左/上留白不足 {margin}px：外接框 {code_bbox}"
+                )
+                assert code_bbox[2] <= pill_w - margin and code_bbox[3] <= pill_h - margin, (
+                    f"兑换码右/下留白不足 {margin}px：外接框 {code_bbox}（胶囊条 {pill_w}×{pill_h}）"
+                )
+                assert "text_width_mm" in code_metrics and "cap_height_mm" in code_metrics, "清单缺少实测字高/总宽记录"
+                assert abs((code_bbox[0] + code_bbox[2]) / 2 - pill_w / 2) <= 2, "兑换码未水平居中"
                 # 序列号：像素与「该券券号」逐像素一致
                 serial_rect = slot["rects"]["serial"]
                 serial_region = layout_mod.Region("serial", serial_rect["x0"], serial_rect["y0"], serial_rect["x1"], serial_rect["y1"])
@@ -813,12 +932,13 @@ def main(argv=None) -> int:
                 checked += 1
         return (
             f"{checked} 张券：二维码中心与跨度、模块 {module_px}px={module_mm:.3f}mm、"
-            f"兑换码字高 {cap_px / layout_mod.PX_PER_MM:.2f}mm、序列号逐像素一致、"
+            f"兑换码字高 {cap_px / layout_mod.PX_PER_MM:.2f}mm / 总宽 {code_metrics['text_width_px']}px"
+            f"（≤96%×{area.width}={width_limit:.0f}px，胶囊条内四边 ≥{margin}px）、序列号逐像素一致、"
             f"二维码 {expect_span}px 方阵 @({rect['x0']},{rect['y0']})、"
             f"二维码像素偏差 {info['ratio']:.2%}、静默区均值/标准差（{' '.join(quiet_notes)}）"
         )
 
-    checks.run("正面可变位：二维码几何/模块尺寸、兑换码字高 ≥3mm、序列号格式", front_variable_geometry)
+    checks.run("正面可变位：二维码几何/模块尺寸、兑换码 96%/≥8px/≥2.6mm、序列号格式", front_variable_geometry)
 
     def qr_from_pdf():
         doc = docs["rgb"]
@@ -1083,17 +1203,33 @@ def main(argv=None) -> int:
     def gitignore_check():
         script = REPO_ROOT / ".git"
         assert script.exists(), "不是 git 仓库"
-        targets = ["tools/voucher/assets/front_rgb.png", "tools/voucher/out/vouchers_rgb.pdf"]
+        targets = [
+            "tools/voucher/assets/front_rgb.png",
+            "tools/voucher/assets/icc/JapanColor2001Coated.icc",
+            "tools/voucher/assets/src/front_orig.png",
+            "tools/voucher/out/vouchers_rgb.pdf",
+        ]
         completed = subprocess.run(
             ["git", "check-ignore", "-v", *targets],
             cwd=str(REPO_ROOT), capture_output=True, text=True,
         )
         assert completed.returncode == 0, f"git check-ignore 未命中：{completed.stdout}{completed.stderr}"
         lines = [line for line in completed.stdout.splitlines() if line.strip()]
-        assert len(lines) >= 2, f"应有两个路径被忽略，实际 {len(lines)}"
-        return "；".join(lines)
+        assert len(lines) == len(targets), f"应有 {len(targets)} 个路径被忽略，实际 {len(lines)}：{lines}"
+        keep = [
+            "tools/voucher/assets/build_assets.py",
+            "tools/voucher/assets/layout_front.json",
+            "tools/voucher/assets/layout_back.json",
+            "tools/voucher/assets/README.md",
+        ]
+        still = subprocess.run(
+            ["git", "check-ignore", "-v", *keep],
+            cwd=str(REPO_ROOT), capture_output=True, text=True,
+        )
+        assert not still.stdout.strip(), f"这些文件应保持入库却被忽略：{still.stdout}"
+        return "PNG/ICC 已忽略（含 src 与 icc 子目录）、out/ 忽略；build_assets.py / layout_*.json / README 保持入库"
 
-    checks.run(".gitignore 排除 tools/voucher/assets 与 tools/voucher/out", gitignore_check)
+    checks.run(".gitignore：assets 下 PNG/ICC 忽略，脚本/版面 JSON/README 入库", gitignore_check)
 
     print("")
     print(f"自检结束：{len(checks.items)} 项，失败 {checks.failures()} 项，耗时 {time.time() - started:.1f}s")
