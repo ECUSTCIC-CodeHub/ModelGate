@@ -80,6 +80,10 @@ export async function POST(request: Request) {
   const groupIds = parsed.data.allowed_group_ids ?? [];
   const existingGroups = await listExistingGroupIds(groupIds);
   const droppedGroups = groupIds.filter((id) => !existingGroups.includes(id));
+  // 非空但全部无效时拒绝而非静默落库 "[]"：那会让「限定这些组」变成「对所有人开放」。
+  if (groupIds.length > 0 && existingGroups.length === 0) {
+    return jsonError("所有限定用户组均不存在，请检查用户组 ID", 400);
+  }
 
   // 空串与纯空白串按「不设有效期」处理：空串本身就是非法时间值，落库后会让核销 SQL 的
   // `expires_at IS NULL OR expires_at > ?` 失去意义（SQLite 下恒不成立、码永远兑换不了，

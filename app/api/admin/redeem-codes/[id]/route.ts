@@ -80,6 +80,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const droppedGroups: number[] = [];
   if (parsed.data.allowed_group_ids !== undefined) {
     const existingGroups = await listExistingGroupIds(parsed.data.allowed_group_ids);
+    // 与 POST 同款防放空：非空但全部无效时拒绝，[] 仍表示清空为不限。
+    if (parsed.data.allowed_group_ids.length > 0 && existingGroups.length === 0) {
+      return jsonError("所有限定用户组均不存在，请检查用户组 ID", 400);
+    }
     allowedGroupIds = existingGroups;
     for (const id of parsed.data.allowed_group_ids) {
       if (!existingGroups.includes(id)) droppedGroups.push(id);
