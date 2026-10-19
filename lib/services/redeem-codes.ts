@@ -317,6 +317,26 @@ export async function setRedeemCodesEnabled(codes: string[], enabled: boolean): 
   return result.changes;
 }
 
+// 按批次批量启用/停用，返回该批次内的兑换码数量；批次不存在时返回 0。
+// 停用即召回：授权与计费侧都按 redeem_codes.enabled 过滤，已发放但未用完的定向额度会同时失效。
+export async function setRedeemBatchEnabled(batchId: string, enabled: boolean): Promise<number> {
+  return gatewayDb.transaction(async (tx) => {
+    // 先更新再判断存在性：SQLite 与 mysql2 默认配置（CLIENT_FOUND_ROWS）下 changes 是匹配行数，
+    // 只有零匹配才需要再查一次；若驱动未启用 FOUND_ROWS，零 changes 也可能是「全部已是目标状态」，
+    // 因此用 COUNT 同时兜底这两种情况。
+    const result = await tx.execute(
+      "UPDATE redeem_codes SET enabled = ? WHERE batch_id = ?",
+      [enabled ? 1 : 0, batchId],
+    );
+    if (result.changes > 0) return result.changes;
+    const row = await tx.queryOne<{ total: number }>(
+      "SELECT COUNT(*) AS total FROM redeem_codes WHERE batch_id = ?",
+      [batchId],
+    );
+    return row?.total ?? 0;
+  });
+}
+
 // 批量删除兑换码及其定向额度与核销记录，返回实际删除数量。
 export async function deleteRedeemCodes(codes: string[]): Promise<number> {
   if (codes.length === 0) return 0;
@@ -334,6 +354,23 @@ export async function deleteRedeemCodes(codes: string[]): Promise<number> {
     await tx.execute(`DELETE FROM redeem_codes WHERE id IN (${idPlaceholders})`, ids);
   });
   return ids.length;
+}
+
+// 按批次删除兑换码及其定向额度与核销记录，返回删除数量；批次不存在时返回 0。
+// 用子查询避免把整批 code_id 拼进 IN 列表，批次上限 1000 也不会触碰占位符上限。
+export async function deleteRedeemBatch(batchId: string): Promise<number> {
+  return gatewayDb.transaction(async (tx) => {
+    await tx.execute(
+      "DELETE FROM redeem_redemptions WHERE code_id IN (SELECT id FROM redeem_codes WHERE batch_id = ?)",
+      [batchId],
+    );
+    await tx.execute(
+      "DELETE FROM redeem_balances WHERE code_id IN (SELECT id FROM redeem_codes WHERE batch_id = ?)",
+      [batchId],
+    );
+    const result = await tx.execute("DELETE FROM redeem_codes WHERE batch_id = ?", [batchId]);
+    return result.changes;
+  });
 }
 
 // 用户兑换：校验有效性、限定渠道/模型是否存在，创建定向额度并登记核销。

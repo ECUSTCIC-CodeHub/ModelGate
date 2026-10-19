@@ -8,7 +8,7 @@ import { jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { listExistingChannelIds } from "@/lib/gateway/channel-access";
 import { listExistingModelAliases } from "@/lib/gateway/model-access";
-import { parseExpiresInput, EXPIRES_FUTURE_HINT, generateRedeemCodes, listCodes, getCodeByCode, setRedeemCodesEnabled, deleteRedeemCodes, listExistingGroupIds } from "@/lib/services/redeem-codes";
+import { parseExpiresInput, EXPIRES_FUTURE_HINT, generateRedeemCodes, listCodes, getCodeByCode, setRedeemCodesEnabled, setRedeemBatchEnabled, deleteRedeemCodes, deleteRedeemBatch, listExistingGroupIds } from "@/lib/services/redeem-codes";
 import { validatePeriodCycles } from "@/lib/gateway/period-cycles";
 
 const generateSchema = z.object({
@@ -128,6 +128,7 @@ type RedeemCodesBody = {
   enabled?: unknown;
   codes?: unknown;
   code?: unknown;
+  batch_id?: unknown;
 };
 
 function normalizeCodes(body: unknown): string[] {
@@ -136,6 +137,29 @@ function normalizeCodes(body: unknown): string[] {
   return Array.isArray(raw)
     ? raw.filter((c): c is string => typeof c === "string").map((c) => c.trim().toUpperCase()).filter(Boolean)
     : [];
+}
+
+function normalizeBatchId(body: unknown): string {
+  if (!body || typeof body !== "object") return "";
+  const raw = (body as Record<string, unknown>).batch_id;
+  return typeof raw === "string" ? raw.trim() : "";
+}
+
+// PUT/DELETE 的目标三选一：codes、code、batch_id，避免一次请求里混用导致语义不明。
+function parseRedeemTargets(body: RedeemCodesBody | null):
+  | { ok: true; codes: string[]; singleCode: string; batchId: string }
+  | { ok: false; message: string } {
+  const codes = normalizeCodes(body);
+  const singleCode = typeof body?.code === "string" ? body.code.trim().toUpperCase() : "";
+  const batchId = normalizeBatchId(body);
+
+  if (batchId.length > 64) return { ok: false, message: "请求参数不正确" };
+  const targetKinds = Number(codes.length > 0) + Number(singleCode.length > 0) + Number(batchId.length > 0);
+  if (targetKinds === 0) return { ok: false, message: "请求参数不正确" };
+  if (targetKinds > 1) return { ok: false, message: "codes、code、batch_id 只能三选一" };
+  if (codes.length > 500) return { ok: false, message: "一次最多操作 500 个兑换码" };
+
+  return { ok: true, codes, singleCode, batchId };
 }
 
 export async function PUT(request: Request) {
@@ -151,10 +175,15 @@ export async function PUT(request: Request) {
   const enabled = body?.enabled;
   if (typeof enabled !== "boolean") return jsonError("请求参数不正确", 400);
 
-  const codes = normalizeCodes(body);
-  const singleCode = typeof body?.code === "string" ? body.code.trim().toUpperCase() : "";
-  if (codes.length === 0 && !singleCode) return jsonError("请求参数不正确", 400);
-  if (codes.length > 500) return jsonError("一次最多操作 500 个兑换码", 400);
+  const targetsResult = parseRedeemTargets(body);
+  if (!targetsResult.ok) return jsonError(targetsResult.message, 400);
+  const { codes, singleCode, batchId } = targetsResult;
+
+  if (batchId) {
+    const changed = await setRedeemBatchEnabled(batchId, enabled);
+    if (changed === 0) return jsonError("批次不存在", 404);
+    return jsonOk({ message: enabled ? `已启用 ${changed} 个兑换码。` : `已停用 ${changed} 个兑换码。` });
+  }
 
   const targets = codes.length > 0 ? codes : [singleCode];
   if (codes.length === 0) {
@@ -177,10 +206,15 @@ export async function DELETE(request: Request) {
   const bodyResult = await readJsonBodyCapped(request);
   if (!bodyResult.ok) return jsonError("请求体过大", 413);
   const body = bodyResult.data as RedeemCodesBody | null;
-  const codes = normalizeCodes(body);
-  const singleCode = typeof body?.code === "string" ? body.code.trim().toUpperCase() : "";
-  if (codes.length === 0 && !singleCode) return jsonError("请求参数不正确", 400);
-  if (codes.length > 500) return jsonError("一次最多操作 500 个兑换码", 400);
+  const targetsResult = parseRedeemTargets(body);
+  if (!targetsResult.ok) return jsonError(targetsResult.message, 400);
+  const { codes, singleCode, batchId } = targetsResult;
+
+  if (batchId) {
+    const deleted = await deleteRedeemBatch(batchId);
+    if (deleted === 0) return jsonError("批次不存在", 404);
+    return jsonOk({ message: `已删除 ${deleted} 个兑换码。` });
+  }
 
   const targets = codes.length > 0 ? codes : [singleCode];
   if (codes.length === 0) {
