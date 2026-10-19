@@ -19,11 +19,13 @@ const redeemSchema = z.object({
 });
 
 // 兑换限流状态放在进程内存：IP 维度、60 秒滑动窗口 10 次，第 11 次起拒绝。
+// Map 设键数上界并按插入序淘汰最旧键：伪造 IP 洪泛时内存有界，正常流量不受影响。
 const attempts = new Map<string, number[]>();
 
 const MAX_ATTEMPTS = 10;
 const WINDOW_MS = 60_000;
 const CLEANUP_INTERVAL_MS = 300_000;
+const MAX_KEYS = 10_000;
 
 setInterval(() => {
   const now = Date.now();
@@ -33,6 +35,14 @@ setInterval(() => {
     else attempts.set(key, alive);
   }
 }, CLEANUP_INTERVAL_MS).unref();
+
+function evictOldestKeys() {
+  while (attempts.size > MAX_KEYS) {
+    const oldest = attempts.keys().next().value as string | undefined;
+    if (oldest === undefined) break;
+    attempts.delete(oldest);
+  }
+}
 
 function checkRedeemRateLimit(request: Request): { ok: true } | { ok: false; retryAfterSeconds: number } {
   const key = resolveClientIp(request.headers) ?? "unknown";
@@ -44,7 +54,9 @@ function checkRedeemRateLimit(request: Request): { ok: true } | { ok: false; ret
   }
 
   recent.push(now);
+  attempts.delete(key);
   attempts.set(key, recent);
+  evictOldestKeys();
   return { ok: true };
 }
 
