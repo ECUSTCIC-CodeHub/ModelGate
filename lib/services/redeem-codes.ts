@@ -63,9 +63,8 @@ export function parseAllowedGroupIds(raw: string | null | undefined): number[] {
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((item) => (typeof item === "number" ? item : Number(item)))
-      .filter((id) => Number.isInteger(id) && id > 0);
+    // 只认 number：true/false/null 等不再被 Number() 容错成 1/0，重复项直接去重。
+    return [...new Set(parsed.filter((item): item is number => typeof item === "number" && Number.isInteger(item) && item > 0))];
   } catch {
     return [];
   }
