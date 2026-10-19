@@ -93,14 +93,18 @@ export default function AdminRedeemCodesPage() {
     setSelectedIds(new Set());
   }, [keyword]);
 
-  const loadGroupOptions = useCallback(async (): Promise<GroupOption[]> => {
+  const loadGroupOptions = useCallback(async (): Promise<{ options: GroupOption[]; failed: boolean }> => {
     const collected: GroupOption[] = [];
+    let failed = false;
     let offset = 0;
     let total = 0;
     do {
       const params = new URLSearchParams({ limit: "100", offset: String(offset) });
       const res = await authedFetch(`/api/admin/groups?${params.toString()}`);
-      if (!res.ok) break;
+      if (!res.ok) {
+        failed = true;
+        break;
+      }
       const data = await res.json().catch(() => null);
       const items: unknown[] = Array.isArray(data?.data) ? data.data : [];
       for (const item of items) {
@@ -112,16 +116,19 @@ export default function AdminRedeemCodesPage() {
       offset += items.length;
       if (items.length === 0) break;
     } while (offset < total);
-    return collected;
+    return { options: collected, failed };
   }, []);
 
   const loadOptions = useCallback(async () => {
-    const [chRes, mRes, groupOptions] = await Promise.all([
+    const [chRes, mRes, groupResult] = await Promise.all([
       authedFetch("/api/admin/channels"),
       authedFetch("/api/admin/models"),
       loadGroupOptions(),
     ]);
-    setGroups(groupOptions);
+    setGroups(groupResult.options);
+    if (groupResult.failed) {
+      toast.error("用户组选项加载失败，限定用户组列表可能不完整，请刷新重试");
+    }
     if (chRes.ok) {
       const data = await chRes.json().catch(() => null);
       if (data?.data) setChannels(data.data.map((c: { id: number; name: string }) => ({ id: c.id, name: c.name })));
