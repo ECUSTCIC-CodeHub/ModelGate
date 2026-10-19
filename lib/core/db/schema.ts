@@ -197,6 +197,7 @@ CREATE TABLE IF NOT EXISTS redeem_codes (
   period_cycles TEXT DEFAULT NULL,
   allowed_channel_ids TEXT DEFAULT '[]',
   allowed_model_aliases TEXT DEFAULT '[]',
+  allowed_group_ids TEXT DEFAULT '[]',
   expires_at DATETIME DEFAULT NULL,
   enabled INTEGER DEFAULT 1,
   max_uses INTEGER DEFAULT 1,

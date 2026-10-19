@@ -7,7 +7,7 @@ import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { gatewayDb } from "@/lib/core/db";
-import { parseExpiresInput, getCodeById, getCodeDetail, listRedemptions, updateRedeemCode } from "@/lib/services/redeem-codes";
+import { parseExpiresInput, getCodeById, getCodeDetail, listRedemptions, updateRedeemCode, listExistingGroupIds } from "@/lib/services/redeem-codes";
 
 const patchSchema = z
   .strictObject({
@@ -18,6 +18,7 @@ const patchSchema = z
     token_quota: z.number().int().min(1).nullable().optional(),
     request_quota: z.number().int().min(1).nullable().optional(),
     period_cycles: z.unknown().optional(),
+    allowed_group_ids: z.array(z.number().int().positive()).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, { message: "没有需要更新的字段" });
 
@@ -75,6 +76,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
   }
 
+  let allowedGroupIds: number[] | undefined;
+  const droppedGroups: number[] = [];
+  if (parsed.data.allowed_group_ids !== undefined) {
+    const existingGroups = await listExistingGroupIds(parsed.data.allowed_group_ids);
+    allowedGroupIds = existingGroups;
+    for (const id of parsed.data.allowed_group_ids) {
+      if (!existingGroups.includes(id)) droppedGroups.push(id);
+    }
+  }
+
   const result = await updateRedeemCode(codeId, {
     note: parsed.data.note,
     enabled: parsed.data.enabled,
@@ -82,11 +93,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     maxUses: parsed.data.max_uses,
     tokenQuota: parsed.data.token_quota,
     requestQuota: parsed.data.request_quota,
+    allowedGroupIds,
   });
   if (!result.ok) return jsonError(result.reason, 400);
 
   const detail = await getCodeDetail(codeId);
-  return jsonOk({ message: "兑换码已更新。", data: detail });
+  return jsonOk({
+    message: "兑换码已更新。",
+    data: detail,
+    ...(droppedGroups.length > 0 ? { warnings: [`以下用户组不存在，已忽略: ${[...new Set(droppedGroups)].join(", ")}`] } : {}),
+  });
 }
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {

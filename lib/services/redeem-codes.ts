@@ -30,6 +30,7 @@ export type RedeemCodeRow = {
   period_cycles: string | null;
   allowed_channel_ids: string;
   allowed_model_aliases: string;
+  allowed_group_ids: string | null;
   expires_at: string | null;
   enabled: number;
   max_uses: number;
@@ -57,6 +58,31 @@ export type RedeemBalanceRow = {
 // 周期档定义（兑换码上只存定义值，运行时计数存在 redeem_balances 里）。
 export type { PeriodCycle, PeriodCycleInput, PeriodQuotaEntry };
 
+export function parseAllowedGroupIds(raw: string | null | undefined): number[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => (typeof item === "number" ? item : Number(item)))
+      .filter((id) => Number.isInteger(id) && id > 0);
+  } catch {
+    return [];
+  }
+}
+
+export function stringifyAllowedGroupIds(ids: number[]): string {
+  const normalized = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))].sort((a, b) => a - b);
+  return JSON.stringify(normalized);
+}
+
+export async function listExistingGroupIds(ids: number[]): Promise<number[]> {
+  if (ids.length === 0) return [];
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = await gatewayDb.query<{ id: number }>(`SELECT id FROM \`groups\` WHERE id IN (${placeholders}) AND deleted_at IS NULL`, ids);
+  return rows.map((row) => row.id);
+}
+
 // 批量生成 N 个不重复兑换码，归入同一 batch_id。
 export async function generateRedeemCodes(input: {
   count: number;
@@ -67,12 +93,13 @@ export async function generateRedeemCodes(input: {
   periodCycles: PeriodCycleInput[];
   allowedChannelIds: number[];
   allowedModelAliases: string[];
+  allowedGroupIds: number[];
   expiresAt: string | null;
   maxUses: number;
   note?: string;
   createdBy: number;
 }): Promise<{ codes: string[]; batchId: string }> {
-  const count = Math.min(500, Math.max(1, Math.floor(input.count)));
+  const count = Math.min(1000, Math.max(1, Math.floor(input.count)));
   const batchId = `${Date.now()}-${randomBytes(4).toString("hex")}`;
   const now = toMysqlDatetime(new Date());
   const isReset = input.kind === "reset";
@@ -102,9 +129,9 @@ export async function generateRedeemCodes(input: {
       await tx.execute(
         `INSERT INTO redeem_codes (
            code, batch_id, kind, token_quota, request_quota, period_cycles,
-           allowed_channel_ids, allowed_model_aliases,
+           allowed_channel_ids, allowed_model_aliases, allowed_group_ids,
            expires_at, enabled, max_uses, used_count, note, created_by, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?, ?, ?)`,
         [
           code,
           batchId,
@@ -114,6 +141,7 @@ export async function generateRedeemCodes(input: {
           periodCycles,
           stringifyAllowedChannelIds(input.allowedChannelIds),
           stringifyAllowedModelAliases(input.allowedModelAliases),
+          stringifyAllowedGroupIds(input.allowedGroupIds),
           input.expiresAt ?? null,
           input.maxUses,
           input.note?.trim() || null,
@@ -351,6 +379,17 @@ export async function redeemCodeForUser(userId: number, code: string): Promise<R
   const validity = isCodeValid(row);
   if (!validity.ok) {
     return { ok: false, reason: validity.reason ?? "兑换码不可用" };
+  }
+
+  const allowedGroupIds = parseAllowedGroupIds(row.allowed_group_ids);
+  if (allowedGroupIds.length > 0) {
+    const user = await gatewayDb.queryOne<{ group_id: number | null }>(
+      "SELECT group_id FROM users WHERE id = ?",
+      [userId],
+    );
+    if (user?.group_id == null || !allowedGroupIds.includes(user.group_id)) {
+      return { ok: false, reason: "该兑换码仅限指定用户组兑换" };
+    }
   }
 
   let result: RedeemResult | undefined;
@@ -594,6 +633,7 @@ export type UpdateRedeemCodeInput = {
   maxUses?: number;
   tokenQuota?: number | null;
   requestQuota?: number | null;
+  allowedGroupIds?: number[];
 };
 
 // 管理员编辑单个兑换码。遵循「只增不减」：额度类字段只允许上调，
@@ -617,6 +657,11 @@ export async function updateRedeemCode(
   if (input.enabled !== undefined) {
     sets.push("enabled = ?");
     args.push(input.enabled ? 1 : 0);
+  }
+
+  if (input.allowedGroupIds !== undefined) {
+    sets.push("allowed_group_ids = ?");
+    args.push(stringifyAllowedGroupIds(input.allowedGroupIds));
   }
 
   if (input.maxUses !== undefined) {

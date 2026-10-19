@@ -8,11 +8,11 @@ import { jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { listExistingChannelIds } from "@/lib/gateway/channel-access";
 import { listExistingModelAliases } from "@/lib/gateway/model-access";
-import { parseExpiresInput, EXPIRES_FUTURE_HINT, generateRedeemCodes, listCodes, getCodeByCode, setRedeemCodesEnabled, deleteRedeemCodes } from "@/lib/services/redeem-codes";
+import { parseExpiresInput, EXPIRES_FUTURE_HINT, generateRedeemCodes, listCodes, getCodeByCode, setRedeemCodesEnabled, deleteRedeemCodes, listExistingGroupIds } from "@/lib/services/redeem-codes";
 import { validatePeriodCycles } from "@/lib/gateway/period-cycles";
 
 const generateSchema = z.object({
-  count: z.number().int().min(1).max(500),
+  count: z.number().int().min(1).max(1000),
   // 额度券发放定向额度；重置券只清零用户周期用量，不接受额度与周期档配置。
   kind: z.enum(["quota", "reset"]).default("quota"),
   token_quota: z.number().int().min(1).nullable().optional(),
@@ -20,6 +20,7 @@ const generateSchema = z.object({
   period_cycles: z.unknown().optional(),
   allowed_channel_ids: z.array(z.number().int().positive()).optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
+  allowed_group_ids: z.array(z.number().int().positive()).optional(),
   expires_at: z.string().nullable().optional(),
   max_uses: z.number().int().min(0).default(1),
   note: z.string().max(500).optional(),
@@ -76,6 +77,10 @@ export async function POST(request: Request) {
   const existingAliases = await listExistingModelAliases(aliases);
   const droppedAliases = aliases.filter((a) => !existingAliases.includes(a));
 
+  const groupIds = parsed.data.allowed_group_ids ?? [];
+  const existingGroups = await listExistingGroupIds(groupIds);
+  const droppedGroups = groupIds.filter((id) => !existingGroups.includes(id));
+
   // 空串与纯空白串按「不设有效期」处理：空串本身就是非法时间值，落库后会让核销 SQL 的
   // `expires_at IS NULL OR expires_at > ?` 失去意义（SQLite 下恒不成立、码永远兑换不了，
   // MySQL 严格模式下直接拒写），因此这里与不传该字段等价。
@@ -96,17 +101,22 @@ export async function POST(request: Request) {
     periodCycles,
     allowedChannelIds: existingChannels,
     allowedModelAliases: existingAliases,
+    allowedGroupIds: existingGroups,
     expiresAt,
     maxUses: parsed.data.max_uses,
     note: parsed.data.note,
     createdBy: guard.auth.user.id,
   });
 
+  const warnings: string[] = [];
+  if (droppedChannels.length > 0) warnings.push(`以下渠道不存在，已忽略: ${[...new Set(droppedChannels)].join(", ")}`);
+  if (droppedAliases.length > 0) warnings.push(`以下模型别名不存在，已忽略: ${[...new Set(droppedAliases)].join(", ")}`);
+  if (droppedGroups.length > 0) warnings.push(`以下用户组不存在，已忽略: ${[...new Set(droppedGroups)].join(", ")}`);
+
   return jsonOk({
     message: `已生成 ${codes.length} 个兑换码。`,
     data: { batch_id: batchId, codes },
-    ...(droppedChannels.length > 0 ? { warnings: [`以下渠道不存在，已忽略: ${droppedChannels.join(", ")}`] } : {}),
-    ...(droppedAliases.length > 0 ? { warnings: [`以下模型别名不存在，已忽略: ${droppedAliases.join(", ")}`] } : {}),
+    ...(warnings.length > 0 ? { warnings } : {}),
   }, 201);
 }
 

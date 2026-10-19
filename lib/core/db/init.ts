@@ -406,6 +406,8 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("redeem_codes", "period_cycles", "period_cycles TEXT DEFAULT NULL");
   // 兑换码类型：quota 为额度券（原行为），reset 为重置券（只重置周期用量，不发额度）。
   await db.ensureColumn("redeem_codes", "kind", "kind VARCHAR(16) NOT NULL DEFAULT 'quota'");
+  // 兑换码限定用户组白名单，空数组或缺省为不限（t1 契约 C3）。
+  await db.ensureColumn("redeem_codes", "allowed_group_ids", "allowed_group_ids TEXT DEFAULT NULL");
   await db.ensureColumn("redeem_balances", "period_cycles", "period_cycles TEXT DEFAULT NULL");
 
   // 存量单档周期（quota_period + period_quota_* + period_used_* + period_reset_at）迁移进多档列。
