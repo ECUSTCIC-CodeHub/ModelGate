@@ -475,7 +475,7 @@ export default function AdminRedeemCodesPage() {
                 <TableBody>
                   {rows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={13} className="py-8 text-center text-sm text-[var(--color-foreground-muted)]">
+                      <TableCell colSpan={15} className="py-8 text-center text-sm text-[var(--color-foreground-muted)]">
                         暂无兑换码
                       </TableCell>
                     </TableRow>
