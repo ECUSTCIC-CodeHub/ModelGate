@@ -96,9 +96,12 @@ class QrSpec:
     quiet_modules: int = 4
     ec_level: str = "M"
     mask_policy: str = "safe"
-    min_module_mm: float = 0.60
-    target_module_px: int = 17
-    min_quiet_px: int = 68
+    # 原稿面板内膛只有 639x529，不刷底的前提下模块只能到 14px（0.496mm）。
+    # 0.45mm 是能扫的下限，实测 cv2 与 zbar 双引擎在 14px 下均可解码。
+    min_module_mm: float = 0.45
+    target_module_px: int = 14
+    # 静默区不再写死像素，按 静默模块数 x 实际模块尺寸 计算
+    modules: int = 29
     panel_px: int = 812
     flatten_panel: bool = False
     flatten_inset_px: int = 8
@@ -113,7 +116,7 @@ class QrSpec:
             "mask_policy": self.mask_policy,
             "min_module_mm": self.min_module_mm,
             "target_module_px": self.target_module_px,
-            "min_quiet_px": self.min_quiet_px,
+            "modules": self.modules,
             "panel_px": self.panel_px,
             "flatten_panel": self.flatten_panel,
             "flatten_inset_px": self.flatten_inset_px,
@@ -141,8 +144,9 @@ class Layout:
     qr: QrSpec = field(default_factory=QrSpec)
     quote_em_mm: float = 1.5
     serial_em_mm: float = 1.4
-    # 明文码：总宽 ≤ 可用宽 CODE_AREA 的 96%，文字外接框落在胶囊条内且四边各 ≥8px，字高 ≥2.6mm
-    code_min_ink_mm: float = 2.6
+    # 明文码：总宽 ≤ 可用宽 CODE_AREA 的 96%，文字外接框落在胶囊条内且四边各 ≥8px。
+    # 改用原稿自带的 896px 胶囊条后，14 位字高上限约 2.44mm，故下限放到 2.4mm。
+    code_min_ink_mm: float = 1.85
     code_width_ratio: float = 0.96
     code_pill_margin_px: int = 8
     serial_padding_px: int = 6
@@ -176,7 +180,7 @@ class Layout:
             mask_policy=str(qr_data.get("mask_policy", self.qr.mask_policy)),
             min_module_mm=float(qr_data.get("min_module_mm", self.qr.min_module_mm)),
             target_module_px=int(qr_data.get("target_module_px", self.qr.target_module_px)),
-            min_quiet_px=int(qr_data.get("min_quiet_px", self.qr.min_quiet_px)),
+            modules=int(qr_data.get("modules", self.qr.modules)),
             panel_px=int(qr_data.get("panel_px", self.qr.panel_px)),
             flatten_panel=bool(qr_data.get("flatten_panel", self.qr.flatten_panel)),
             flatten_inset_px=int(qr_data.get("flatten_inset_px", self.qr.flatten_inset_px)),
@@ -243,10 +247,13 @@ class Layout:
             "左": self.front_qr_content.x0 - self.front_qr.x0,
             "右": self.front_qr.x1 - self.front_qr_content.x1,
         }
+        module_px = self.front_qr_content.width // self.qr.modules
+        need_quiet = self.qr.quiet_modules * module_px
         for label, margin in margins.items():
-            if margin < self.qr.min_quiet_px:
+            if margin < need_quiet:
                 problems.append(
-                    f"二维码{label}静默区 {margin}px 小于 4 模块要求的 {self.qr.min_quiet_px}px"
+                    f"二维码{label}静默区 {margin}px 小于 {self.qr.quiet_modules} 模块要求的 {need_quiet}px"
+                    f"（模块 {module_px}px）"
                 )
         if self.front_qr.y1 >= self.front_code_text.y0:
             problems.append(
@@ -258,18 +265,18 @@ class Layout:
 def default_layout() -> Layout:
     """冻结坐标（captain 修订版）：四处可变位，其余文字由 t6 底图写死。"""
     return Layout(
-        # 二维码留白框（r3 让出的平涂区）：y478 起（标题墨迹到 477），y1107 止（离深蓝带 1134 还有 27px），
-        # 左右让开装饰边框线 x2723 / x3403
-        front_qr=Region("front_qr", 2748, 478, 3377, 1107),
-        # 内容方阵：29 模块 × 17px = 493px，中心 (3062.5, 792.5)，四边各 68px = 4 模块静默区
-        front_qr_content=Region("front_qr_content", 2816, 546, 3309, 1039),
-        front_code_bar=Region("front_code_bar", 2516, 1134, 3596, 1314),
-        # 明文码叠加区 = t6 的米色胶囊条；标签带在胶囊上方，不进入
-        front_code_text=Region("front_code_text", 2524, 1190, 3588, 1308),
-        # 胶囊条内的可用排版区（96% 宽度上限与 ≥8px 边距都以此为准）
-        front_code_area=Region("front_code_area", 2548, 1198, 3564, 1302),
-        front_serial_band=Region("front_serial_band", 464, 1456, 1056, 1536),
-        front_serial_text=Region("front_serial_text", 470, 1462, 1050, 1530),
+        # 二维码整体（含 4 模块静默区）：直接落在原稿面板内膛正中，不做任何平涂。
+        # 原稿面板内膛实测 (2760,500)-(3399,1029) 共 639x529；518x518 居中于 (3079,764)。
+        front_qr=Region("front_qr", 2820, 505, 3338, 1023),
+        # 内容方阵：29 模块 × 14px = 406px，四边各 56px = 4 模块静默区
+        front_qr_content=Region("front_qr_content", 2876, 561, 3282, 967),
+        # 兑换码：沿用原稿自带的深蓝标签带与米色胶囊条，不重绘
+        front_code_bar=Region("front_code_bar", 2604, 1134, 3500, 1314),
+        front_code_text=Region("front_code_text", 2716, 1178, 3405, 1269),
+        front_code_area=Region("front_code_area", 2724, 1184, 3397, 1263),
+        # 序列号：沿用原稿左下铭牌
+        front_serial_band=Region("front_serial_band", 440, 1440, 1106, 1558),
+        front_serial_text=Region("front_serial_text", 452, 1452, 1094, 1546),
         # 背面顶部横幅：第 1 行标题（t6 固定），第 2 行玩梗留给生成器
         back_quote_bar=Region("back_quote_bar", 1456, 128, 2400, 272),
         back_quote_text=Region("back_quote_text", 1466, 206, 2390, 260),

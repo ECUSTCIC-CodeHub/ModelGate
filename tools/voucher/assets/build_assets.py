@@ -260,23 +260,9 @@ def repair_front():
     im = Image.open(os.path.join(SRC, "front_orig.png")).convert("RGB")
     d = ImageDraw.Draw(im)
 
-    # QR 面板：装饰拱形边框、两侧花纹、标题全部原样保留；
-    # 平涂仅限 QR_BLOCK 外扩 4px（清鲸鱼水印/斜纹/旧角标，静默区全净）
-    fill(d, QR_FLAT_RECT, PAPER)
-    fill(d, STRIP_BRIDGE, PAPER)
-
-    # 兑换码组合体：深蓝标签带 + 米色胶囊条（保留原形制，仅加宽），中心 (3056,1224)
-    # 深蓝带顶 1134 距 QR 占位底 1107 留 27px，不侵入静默区（t15 队长裁定保留）
-    d.rounded_rectangle((CODE_BODY[0], CODE_BODY[1], CODE_BODY[2] - 1, CODE_BODY[3] - 1),
-                        radius=14, fill=NAVY)
-    f_lab = font(30)
-    draw_centered(d, 3056, CODE_LABEL_Y, CODE_LABEL, f_lab, PAPER,
-                  CODE_BODY[2] - CODE_BODY[0] - 80, "兑换码标签")
-    d.rounded_rectangle((CODE_PILL[0], CODE_PILL[1], CODE_PILL[2] - 1, CODE_PILL[3] - 1),
-                        radius=58, fill=PAPER, outline=NAVY, width=2)
-
-    # 序列号铭牌：只铺平内膛留白，不放字
-    fill(d, SERIAL_FILL, PAPER)
+    # 正面不做任何平涂或重绘：二维码、兑换码、序列号全部直接叠加在原稿上。
+    # 实测（cv2 + zbar 双引擎）证明原稿面板的亮度与对比足以承载 29x14px 的二维码，
+    # 无需清除水印或斜纹；任何平涂都会盖住原稿的装饰拱形边框与两侧花纹。
     return im
 
 
@@ -284,8 +270,7 @@ def repair_back():
     im = Image.open(os.path.join(SRC, "back_orig.png")).convert("RGB")
     d = ImageDraw.Draw(im)
 
-    # 顶部横幅：丝带内膛铺平，第1行写定稿标题，第2行留空（玩梗位）
-    fill(d, BACK_BANNER_FILL, PAPER)
+    # 顶部横幅：不铺平，第1行直接写在原稿丝带上，第2行留空（玩梗位）
     f_title = font(STRIP_FONT_PX)
     draw_centered(d, (BACK_BANNER[0] + BACK_BANNER[2]) / 2, BANNER_TITLE_Y,
                   BANNER_TITLE, f_title, NAVY,
@@ -295,7 +280,7 @@ def repair_back():
     f_line = font(STRIP_FONT_PX)
     for rect, fl, lines in ((BACK_LEFT, BACK_LEFT_FILL, LEFT_LINES),
                             (BACK_RIGHT, BACK_RIGHT_FILL, RIGHT_LINES)):
-        fill(d, fl, PAPER)
+        # 不铺平：文字直接写在原稿横幅的浅色内膛上，保留描花框与罗盘端饰
         cx = (rect[0] + rect[2]) / 2
         for i, line in enumerate(lines):
             draw_centered(d, cx, STRIP_FIRST_TOP + i * STRIP_PITCH, line, f_line,
