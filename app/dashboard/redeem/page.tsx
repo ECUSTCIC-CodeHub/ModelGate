@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SectionTitle } from "@/components/dashboard/section-title";
@@ -17,6 +19,22 @@ import { modelGateFeatures } from "@/lib/core/features";
 import type { PeriodQuotaEntry } from "@/lib/gateway/quota";
 
 const periodQuotaEnabled = modelGateFeatures.periodQuota;
+
+// 扫码与手输共用的唯一归一化规则：去首尾空白 → 去内部空白 → 大写 → 12 位裸码补连字符。
+export function normalizeRedeemCodeInput(raw: string): string {
+  const cleaned = raw.trim().replace(/\s+/g, "").toUpperCase();
+  return /^[A-Z0-9]{12}$/.test(cleaned)
+    ? `${cleaned.slice(0, 4)}-${cleaned.slice(4, 8)}-${cleaned.slice(8)}`
+    : cleaned;
+}
+
+// 自动兑换完成后移除 ?code=，刷新页面不会重复核销。
+function clearRedeemQueryParam() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("code")) return;
+  url.searchParams.delete("code");
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
 
 type Balance = {
   id: number;
@@ -38,12 +56,15 @@ type Balance = {
 type Redemption = { id: number; code: string; redeemed_at: string };
 
 export default function RedeemPage() {
+  const searchParams = useSearchParams();
+  const autoRedeemRef = useRef(false);
   const initialProfile = useAuthProfile();
   const [role] = useState<"admin" | "user">(() => (initialProfile?.role as "admin" | "user" | undefined) ?? (getCachedProfile()?.role as "admin" | "user" | undefined) ?? "user");
   const [code, setCode] = useState("");
   const [redeeming, setRedeeming] = useState(false);
   const [balances, setBalances] = useState<Balance[]>([]);
   const [redemptions, setRedemptions] = useState<Redemption[]>([]);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await authedFetch("/api/user/redeem");
@@ -64,14 +85,16 @@ export default function RedeemPage() {
     })();
   }, [load]);
 
-  const redeem = async () => {
-    if (!code.trim()) return;
+  const redeem = useCallback(async (rawCode: string, options?: { clearQuery?: boolean }) => {
+    const normalized = normalizeRedeemCodeInput(rawCode);
+    if (!normalized) return;
     setRedeeming(true);
+    setSuccessMessage(null);
     try {
       const res = await authedFetch("/api/user/redeem", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ code: code.trim() }),
+        body: JSON.stringify({ code: normalized }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
@@ -80,14 +103,35 @@ export default function RedeemPage() {
       }
       // 重置券不发放额度，响应体里没有额度对象，只有重置回执。
       const isReset = data?.data?.kind === "reset";
-      toast.success(data?.message ?? (isReset ? "周期用量已重置。" : "兑换成功"));
+      const message = data?.message ?? (isReset ? "周期用量已重置。" : "兑换成功");
+      toast.success(message);
+      setSuccessMessage(message);
       setCode("");
       if (isReset) return;
       await load();
     } finally {
       setRedeeming(false);
+      if (options?.clearQuery) clearRedeemQueryParam();
     }
-  };
+  }, [load]);
+
+  // 扫码直达：?code= 预填并自动兑换一次；完成后清掉参数，刷新不重兑。
+  useEffect(() => {
+    const deepLinkCode = searchParams.get("code");
+    if (!deepLinkCode || autoRedeemRef.current) return;
+    autoRedeemRef.current = true;
+    void (async () => {
+      // 先让出同步阶段再写 state，避免 effect 内的同步 setState 触发级联渲染告警。
+      await Promise.resolve();
+      const normalized = normalizeRedeemCodeInput(deepLinkCode);
+      setCode(normalized);
+      if (!normalized) {
+        clearRedeemQueryParam();
+        return;
+      }
+      await redeem(normalized, { clearQuery: true });
+    })();
+  }, [redeem, searchParams]);
 
   return (
     <DashboardShell role={role} title="兑换码" subtitle="输入兑换码获取定向额度或重置周期用量，额度可限定渠道与模型使用。">
@@ -96,20 +140,33 @@ export default function RedeemPage() {
           <CardHeader>
             <SectionTitle title="兑换" description="输入管理员发放的兑换码：额度券用于获取限定渠道与模型的定向额度，重置券用于把周期用量清零。" />
           </CardHeader>
-          <CardContent className="flex items-end gap-3">
-            <div className="flex-1">
-              <Label>兑换码</Label>
-              <Input
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="XXXX-XXXX-XXXX"
-                className="font-mono uppercase"
-                onKeyDown={(e) => { if (e.key === "Enter") void redeem(); }}
-              />
+          <CardContent className="space-y-3">
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <Label>兑换码</Label>
+                <Input
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  placeholder="XXXX-XXXX-XXXX"
+                  className="font-mono uppercase"
+                  onKeyDown={(e) => { if (e.key === "Enter") void redeem(code); }}
+                />
+              </div>
+              <Button onClick={() => void redeem(code)} disabled={redeeming || !code.trim()}>
+                {redeeming ? "兑换中…" : "兑换"}
+              </Button>
             </div>
-            <Button onClick={() => void redeem()} disabled={redeeming || !code.trim()}>
-              {redeeming ? "兑换中…" : "兑换"}
-            </Button>
+            {successMessage ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-3 text-sm">
+                <span>{successMessage}</span>
+                <Link
+                  href="/dashboard/keys"
+                  className="text-[var(--color-accent)] underline-offset-4 transition-colors hover:text-[var(--color-accent-hover)] hover:underline"
+                >
+                  去创建 API Key
+                </Link>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 

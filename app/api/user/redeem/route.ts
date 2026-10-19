@@ -7,6 +7,7 @@ import { ensureUser } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { gatewayDb } from "@/lib/core/db";
+import { resolveClientIp } from "@/lib/core/client-ip";
 import { redeemCodeForUser, listUserBalances } from "@/lib/services/redeem-codes";
 import { parseAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { parseAllowedModelAliases } from "@/lib/gateway/model-access";
@@ -16,6 +17,36 @@ import { toPeriodQuotaEntry } from "@/lib/gateway/quota";
 const redeemSchema = z.object({
   code: z.string().min(1).max(64),
 });
+
+// 兑换限流状态放在进程内存：IP 维度、60 秒滑动窗口 10 次，第 11 次起拒绝。
+const attempts = new Map<string, number[]>();
+
+const MAX_ATTEMPTS = 10;
+const WINDOW_MS = 60_000;
+const CLEANUP_INTERVAL_MS = 300_000;
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, timestamps] of attempts) {
+    const alive = timestamps.filter((ts) => now - ts < WINDOW_MS);
+    if (alive.length === 0) attempts.delete(key);
+    else attempts.set(key, alive);
+  }
+}, CLEANUP_INTERVAL_MS).unref();
+
+function checkRedeemRateLimit(request: Request): { ok: true } | { ok: false; retryAfterSeconds: number } {
+  const key = resolveClientIp(request.headers) ?? "unknown";
+  const now = Date.now();
+  const recent = (attempts.get(key) ?? []).filter((ts) => now - ts < WINDOW_MS);
+
+  if (recent.length >= MAX_ATTEMPTS) {
+    return { ok: false, retryAfterSeconds: Math.max(1, Math.ceil((recent[0] + WINDOW_MS - now) / 1000)) };
+  }
+
+  recent.push(now);
+  attempts.set(key, recent);
+  return { ok: true };
+}
 
 export async function GET(request: Request) {
   const settings = await getGatewaySettings();
@@ -47,6 +78,12 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
   if (unavailable) return unavailable;
+
+  // 限流先于鉴权：未认证的穷举探测同样消耗额度。
+  const rate = checkRedeemRateLimit(request);
+  if (!rate.ok) {
+    return jsonError("兑换请求过于频繁，请稍后再试", 429, {}, { "retry-after": String(rate.retryAfterSeconds) });
+  }
 
   const guard = await ensureUser(request);
   if ("error" in guard) return guard.error;
