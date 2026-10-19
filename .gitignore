@@ -348,6 +348,19 @@ $RECYCLE.BIN/
 
 data/*
 
+### 兑换券印制物料 ###
+# 底图与生成物体积大且可复现，只入库生成器、mock 数据与文案清单
+tools/voucher/assets/
+tools/voucher/out/
+
+### Python（兑换券生成器） ###
+__pycache__/
+*.py[cod]
+
+### AgentTeams 运行态 ###
+# 团队会话状态由 .agent-teams 维护，属本机运行时数据，不入库
+.agent-teams/
+
 # 守卫自检临时目录（verify-upstream-retry-status-e2e.mjs 在仓库根 mkdtemp，用后即删；
 # 加忽略以防中断残留被误提交）
 .tmp-route-guard-*
