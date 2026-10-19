@@ -57,3 +57,15 @@ export function formatGroupNames(ids: number[], groups: GroupOption[]): string {
   const names = new Map(groups.map((group) => [group.id, group.name]));
   return ids.map((id) => names.get(id) ?? `#${id}`).join("、");
 }
+
+// 批次号由生成时间戳与随机串组成（如 1725000000000-a1b2c3d4）。
+// 展示成可读时间 + 短后缀；格式不符时原样返回，避免解析失败把批次号吞掉。
+export function formatBatchLabel(batchId: string): string {
+  const match = /^(\d{10,})-[0-9a-z]+$/i.exec(batchId);
+  if (!match) return batchId;
+  const date = new Date(Number(match[1]));
+  if (Number.isNaN(date.getTime())) return batchId;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const stamp = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return `${stamp} · ${batchId.slice(batchId.lastIndexOf("-") + 1)}`;
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Copy } from "lucide-react";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SectionTitle } from "@/components/dashboard/section-title";
@@ -17,7 +18,7 @@ import { authedFetch } from "@/lib/auth/client-auth";
 import { formatExpiresAt, formatNumber, formatTokenCount } from "@/lib/shared/utils";
 import { RedeemCodeDetailDialog, useRedeemCodeDetail } from "./redeem-code-detail-dialog";
 import { RedeemCodeEditDialog } from "./redeem-code-edit-dialog";
-import { formatGroupNames, parseGroupIds, redeemCodeKindLabel, type ChannelOption, type CodeRow, type GroupOption, type ModelOption, type RedeemCodeKind } from "./redeem-code-types";
+import { formatBatchLabel, formatGroupNames, parseGroupIds, redeemCodeKindLabel, type ChannelOption, type CodeRow, type GroupOption, type ModelOption, type RedeemCodeKind } from "./redeem-code-types";
 
 function parseChannelIds(raw: string | null | undefined): number[] {
   if (!raw) return [];
@@ -63,9 +64,23 @@ export default function AdminRedeemCodesPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const pageSize = 20;
-  const [keyword, setKeyword] = useState("");
+  const [keyword, setKeywordState] = useState("");
+  const [batchFilter, setBatchFilterState] = useState("");
+  const [batchTotal, setBatchTotal] = useState(0);
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [batchTotalError, setBatchTotalError] = useState(false);
+  const [listLoading, setListLoading] = useState(false);
+  const [appliedKeyword, setAppliedKeyword] = useState("");
+  const [batchActionPending, setBatchActionPending] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [editingRow, setEditingRow] = useState<CodeRow | null>(null);
+  const keywordRef = useRef("");
+  const appliedKeywordRef = useRef("");
+  const batchFilterRef = useRef("");
+  const pageRef = useRef(1);
+  const loadSeq = useRef(0);
+  const batchTotalSeq = useRef(0);
+  const batchActionPendingRef = useRef(false);
   const codeDetail = useRedeemCodeDetail();
 
   const [count, setCount] = useState(10);
@@ -80,18 +95,90 @@ export default function AdminRedeemCodesPage() {
   const [note, setNote] = useState("");
   const [generating, setGenerating] = useState(false);
 
+  // 输入框内容只写 draft ref；真正生效的关键字在回车/搜索时写入 applied ref，
+  // 避免「输入了但没提交」的关键字被翻页、行操作等后续 reload 静默带上。
+  const setKeyword = useCallback((value: string) => {
+    keywordRef.current = value;
+    setKeywordState(value);
+  }, []);
+
+  const setBatchFilter = useCallback((value: string) => {
+    batchFilterRef.current = value;
+    setBatchFilterState(value);
+  }, []);
+
   const loadCodes = useCallback(async (targetPage: number) => {
+    const seq = ++loadSeq.current;
+    pageRef.current = targetPage;
+    const nextKeyword = appliedKeywordRef.current;
+    const nextBatchFilter = batchFilterRef.current;
     const params = new URLSearchParams({ limit: String(pageSize), offset: String((targetPage - 1) * pageSize) });
-    if (keyword) params.set("keyword", keyword);
-    const res = await authedFetch(`/api/admin/redeem-codes?${params.toString()}`);
-    if (!res.ok) return;
-    const data = await res.json().catch(() => null);
-    if (!data) return;
-    setRows(data.data ?? []);
-    setTotal(data.paging?.total ?? 0);
-    setPage(targetPage);
-    setSelectedIds(new Set());
-  }, [keyword]);
+    if (nextKeyword) params.set("keyword", nextKeyword);
+    if (nextBatchFilter) params.set("batch_id", nextBatchFilter);
+    setListLoading(true);
+    try {
+      const res = await authedFetch(`/api/admin/redeem-codes?${params.toString()}`);
+      if (seq !== loadSeq.current) return;
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        toast.error(data?.error?.message ?? "加载兑换码失败");
+        setRows([]);
+        setTotal(0);
+        setSelectedIds(new Set());
+        return;
+      }
+      const data = await res.json().catch(() => null);
+      if (!data || seq !== loadSeq.current) return;
+      const nextTotal = typeof data.paging?.total === "number" ? data.paging.total : 0;
+      setRows(data.data ?? []);
+      setTotal(nextTotal);
+      setPage(targetPage);
+      setSelectedIds(new Set());
+    } finally {
+      if (seq === loadSeq.current) setListLoading(false);
+    }
+  }, []);
+
+  // 批次数量单独拉一次：即使叠加关键字搜索，确认整批操作时仍以真实整批数量为准。
+  const loadBatchTotal = useCallback(async (batchId: string) => {
+    const seq = ++batchTotalSeq.current;
+    if (!batchId) {
+      setBatchTotal(0);
+      setBatchLoading(false);
+      setBatchTotalError(false);
+      return;
+    }
+    setBatchLoading(true);
+    setBatchTotalError(false);
+    try {
+      const params = new URLSearchParams({ batch_id: batchId, limit: "1", offset: "0" });
+      const res = await authedFetch(`/api/admin/redeem-codes?${params.toString()}`);
+      if (seq !== batchTotalSeq.current) return;
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        toast.error(data?.error?.message ?? "加载批次信息失败");
+        setBatchTotal(0);
+        setBatchTotalError(true);
+        return;
+      }
+      const data = await res.json().catch(() => null);
+      if (seq !== batchTotalSeq.current) return;
+      if (!data) {
+        setBatchTotal(0);
+        setBatchTotalError(true);
+        return;
+      }
+      setBatchTotal(typeof data.paging?.total === "number" ? data.paging.total : 0);
+    } finally {
+      if (seq === batchTotalSeq.current) setBatchLoading(false);
+    }
+  }, []);
+
+  const applyKeyword = () => {
+    appliedKeywordRef.current = keywordRef.current;
+    setAppliedKeyword(keywordRef.current);
+    void loadCodes(1);
+  };
 
   const loadGroupOptions = useCallback(async (): Promise<{ options: GroupOption[]; failed: boolean }> => {
     const collected: GroupOption[] = [];
@@ -155,8 +242,11 @@ export default function AdminRedeemCodesPage() {
 
   useEffect(() => {
     void (async () => {
+      // 首屏先加载渠道/模型/用户组选项，避免列表先渲染出 #id 再被组名替换。
       await loadOptions();
-      await loadCodes(1);
+      // 选项加载期间用户可能已经搜索、进入批次或翻页；此时由那次请求决定视图，
+      // 首屏不要再补一次 page=1 的加载把页码重置。
+      if (loadSeq.current === 0) await loadCodes(1);
     })();
   }, [loadOptions, loadCodes]);
 
@@ -196,12 +286,16 @@ export default function AdminRedeemCodesPage() {
         toast.error(data?.error?.message ?? "生成失败");
         return;
       }
-      if (data?.data?.codes?.length && downloadAnchorRef.current) {
-        const { codes, batch_id: rawBatchId } = data.data as { codes: string[]; batch_id?: unknown };
-        const batchId = typeof rawBatchId === "string" ? rawBatchId : "";
+      const generated = data?.data as { codes?: unknown; batch_id?: unknown } | undefined;
+      const codes = Array.isArray(generated?.codes)
+        ? generated.codes.filter((code): code is string => typeof code === "string")
+        : [];
+      const batchId = typeof generated?.batch_id === "string" ? generated.batch_id : "";
+      if (codes.length > 0 && downloadAnchorRef.current) {
         downloadRedeemCodesCsv(downloadAnchorRef.current, codes, batchId);
         const copyOk = (await window.navigator.clipboard?.writeText(codes.join("\n")).then(() => true).catch(() => false)) ?? false;
-        toast.success(`${data.message ?? "生成成功"}。已导出 CSV${copyOk ? "，并已复制到剪贴板。" : "；剪贴板复制失败，请从 CSV 文件获取。"}`);
+        const copyHint = copyOk ? "，并已复制到剪贴板" : "；剪贴板复制失败，请从 CSV 文件获取";
+        toast.success(`${data.message ?? "生成成功"}。已导出 CSV${copyHint}${batchId ? "；列表已切换到该批次" : ""}。`);
       } else {
         toast.success(data?.message ?? "生成成功");
       }
@@ -214,7 +308,13 @@ export default function AdminRedeemCodesPage() {
       setExpiresAt("");
       setMaxUses(1);
       setNote("");
-      await loadCodes(1);
+      if (batchId) {
+        enterBatch(batchId);
+      } else {
+        appliedKeywordRef.current = "";
+        setAppliedKeyword("");
+        await loadCodes(1);
+      }
     } finally {
       setGenerating(false);
     }
@@ -232,7 +332,7 @@ export default function AdminRedeemCodesPage() {
       return;
     }
     toast.success(data?.message ?? "操作成功");
-    await loadCodes(page);
+    await loadCodes(pageRef.current);
   };
 
   const remove = async (row: CodeRow) => {
@@ -244,7 +344,9 @@ export default function AdminRedeemCodesPage() {
       return;
     }
     toast.success(data?.message ?? "删除成功");
-    await loadCodes(page);
+    const listLoad = loadCodes(pageRef.current);
+    if (batchFilterRef.current) void loadBatchTotal(batchFilterRef.current);
+    await listLoad;
   };
 
   const toggleSelect = (id: number) => {
@@ -264,6 +366,36 @@ export default function AdminRedeemCodesPage() {
 
   const selectedCodes = () => rows.filter((r) => selectedIds.has(r.id)).map((r) => r.code);
 
+  const enterBatch = useCallback((batchId: string) => {
+    appliedKeywordRef.current = "";
+    setAppliedKeyword("");
+    setKeyword("");
+    setBatchFilter(batchId);
+    setBatchTotal(0);
+    setBatchTotalError(false);
+    setBatchLoading(true);
+    void loadBatchTotal(batchId);
+    void loadCodes(1);
+  }, [loadBatchTotal, loadCodes, setBatchFilter, setKeyword]);
+
+  const clearBatchFilter = () => {
+    batchTotalSeq.current += 1;
+    appliedKeywordRef.current = "";
+    setAppliedKeyword("");
+    setKeyword("");
+    setBatchFilter("");
+    setBatchTotal(0);
+    setBatchTotalError(false);
+    setBatchLoading(false);
+    void loadCodes(1);
+  };
+
+  const copyBatchId = async (batchId: string) => {
+    const copied = (await navigator.clipboard?.writeText(batchId).then(() => true).catch(() => false)) ?? false;
+    if (copied) toast.success("批次号已复制。");
+    else toast.error("复制失败，请手动选择批次号。");
+  };
+
   const batchToggle = async (enabled: boolean) => {
     const codes = selectedCodes();
     if (codes.length === 0) return;
@@ -279,7 +411,7 @@ export default function AdminRedeemCodesPage() {
     }
     toast.success(data?.message ?? "操作成功");
     setSelectedIds(new Set());
-    await loadCodes(page);
+    await loadCodes(pageRef.current);
   };
 
   const batchRemove = async () => {
@@ -298,7 +430,77 @@ export default function AdminRedeemCodesPage() {
     }
     toast.success(data?.message ?? "删除成功");
     setSelectedIds(new Set());
-    await loadCodes(page);
+    const listLoad = loadCodes(pageRef.current);
+    if (batchFilterRef.current) void loadBatchTotal(batchFilterRef.current);
+    await listLoad;
+  };
+
+  // 按批次操作不受当前分页与关键字影响：目标始终是整批，确认文案里的数量用 batchTotal。
+  const batchToggleByBatch = async (enabled: boolean) => {
+    const batchId = batchFilterRef.current;
+    if (!batchId || batchTotal === 0 || batchActionPendingRef.current) return;
+    const hint = enabled
+      ? "启用后该批次兑换码恢复可兑换，未过期且未用尽的定向额度同时恢复。"
+      : "停用后该批次兑换码立即不可兑换，已发放但未用完的定向额度同时失效；核销记录保留，可重新启用。";
+    if (!window.confirm(`确定${enabled ? "启用" : "停用"}批次 ${formatBatchLabel(batchId)} 的 ${formatNumber(batchTotal)} 个兑换码？${hint}`)) return;
+    batchActionPendingRef.current = true;
+    setBatchActionPending(true);
+    try {
+      const res = await authedFetch("/api/admin/redeem-codes", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ batch_id: batchId, enabled }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(data?.error?.message ?? "操作失败");
+        return;
+      }
+      toast.success(data?.message ?? "操作成功");
+      await loadCodes(pageRef.current);
+    } finally {
+      batchActionPendingRef.current = false;
+      setBatchActionPending(false);
+      if (batchFilterRef.current === batchId) void loadBatchTotal(batchId);
+    }
+  };
+
+  const batchRemoveByBatch = async () => {
+    const batchId = batchFilterRef.current;
+    if (!batchId || batchTotal === 0 || batchActionPendingRef.current) return;
+    if (!window.confirm(`确定删除批次 ${formatBatchLabel(batchId)} 的 ${formatNumber(batchTotal)} 个兑换码？相关定向额度与核销记录将一并删除，操作不可恢复。`)) return;
+    batchActionPendingRef.current = true;
+    setBatchActionPending(true);
+    try {
+      const res = await authedFetch("/api/admin/redeem-codes", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ batch_id: batchId }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(data?.error?.message ?? "删除失败");
+        return;
+      }
+      toast.success(data?.message ?? "删除成功");
+      if (batchFilterRef.current === batchId) {
+        batchTotalSeq.current += 1;
+        appliedKeywordRef.current = "";
+        setAppliedKeyword("");
+        setKeyword("");
+        setBatchFilter("");
+        setBatchTotal(0);
+        setBatchTotalError(false);
+        setBatchLoading(false);
+        await loadCodes(1);
+      } else {
+        await loadCodes(pageRef.current);
+      }
+    } finally {
+      batchActionPendingRef.current = false;
+      setBatchActionPending(false);
+      if (batchFilterRef.current === batchId) void loadBatchTotal(batchId);
+    }
   };
 
   return (
@@ -445,17 +647,48 @@ export default function AdminRedeemCodesPage() {
                   </>
                 ) : null}
                 <Input
-                  placeholder="搜索兑换码"
+                  placeholder={batchFilter ? "在批次内搜索兑换码" : "搜索兑换码"}
                   value={keyword}
                   onChange={(e) => setKeyword(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") void loadCodes(1); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") applyKeyword(); }}
                   className="w-full sm:w-56"
                 />
-                <Button variant="outline" onClick={() => void loadCodes(1)}>搜索</Button>
+                <Button variant="outline" onClick={applyKeyword}>搜索</Button>
               </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {batchFilter ? (
+              <div className="space-y-2 rounded-xl border border-[var(--color-border)] p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-[var(--color-foreground-muted)]">当前批次</span>
+                  <span className="break-all font-mono text-xs">{batchFilter}</span>
+                  <span className="text-xs text-[var(--color-foreground-muted)]">{formatBatchLabel(batchFilter)}</span>
+                  <Badge variant={batchTotalError ? "destructive" : "outline"}>
+                    {batchLoading
+                      ? "加载中…"
+                      : batchTotalError
+                        ? "批次数量加载失败"
+                        : batchTotal > 0
+                          ? `本批 ${formatNumber(batchTotal)} 个`
+                          : "批次为空"}
+                  </Badge>
+                  {!batchLoading && !listLoading && !batchTotalError && appliedKeyword && batchTotal !== total ? (
+                    <span className="text-xs text-[var(--color-foreground-muted)]">当前筛选 {formatNumber(total)} 个</span>
+                  ) : null}
+                  <div className="ml-auto flex flex-wrap items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => void copyBatchId(batchFilter)}>复制批次号</Button>
+                    <Button variant="outline" size="sm" disabled={batchLoading || batchTotalError || batchTotal === 0 || batchActionPending} onClick={() => void batchToggleByBatch(false)}>停用整批</Button>
+                    <Button variant="outline" size="sm" disabled={batchLoading || batchTotalError || batchTotal === 0 || batchActionPending} onClick={() => void batchToggleByBatch(true)}>启用整批</Button>
+                    <Button variant="ghost" size="sm" disabled={batchLoading || batchTotalError || batchTotal === 0 || batchActionPending} onClick={() => void batchRemoveByBatch()}>删除整批</Button>
+                    <Button variant="ghost" size="sm" onClick={clearBatchFilter}>退出批次筛选</Button>
+                  </div>
+                </div>
+                <p className="text-xs text-[var(--color-foreground-muted)]">
+                  停用即召回：整批码立即不可兑换，已发放但未用完的定向额度同时失效；核销记录保留，可重新启用。删除会连带清除额度与核销记录，不可恢复。
+                </p>
+              </div>
+            ) : null}
             <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
               <Table className="min-w-[1100px]">
                 <TableHeader>
@@ -483,7 +716,7 @@ export default function AdminRedeemCodesPage() {
                   {rows.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={15} className="py-8 text-center text-sm text-[var(--color-foreground-muted)]">
-                        暂无兑换码
+                        {listLoading ? "加载中…" : "暂无兑换码"}
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -503,7 +736,26 @@ export default function AdminRedeemCodesPage() {
                           </TableCell>
                           <TableCell className="font-mono text-sm">{row.code}</TableCell>
                           <TableCell>
-                            <Badge variant="outline" className="font-mono text-xs">{row.batch_id.slice(-8)}</Badge>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => enterBatch(row.batch_id)}
+                                title={`按批次筛选：${row.batch_id}`}
+                                className={`inline-flex cursor-pointer items-center whitespace-nowrap rounded-md border px-2 py-0.5 font-mono text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/35 ${batchFilter === row.batch_id ? "border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] text-[var(--color-accent)]" : "border-[var(--color-border)] text-[var(--color-foreground-muted)] hover:bg-[var(--color-surface-hover)]"}`}
+                              >
+                                {formatBatchLabel(row.batch_id)}
+                              </button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() => void copyBatchId(row.batch_id)}
+                                aria-label={`复制批次号 ${row.batch_id}`}
+                                title="复制批次号"
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
                           </TableCell>
                           <TableCell>
                             <Badge variant={isReset ? "secondary" : "default"}>{redeemCodeKindLabel(row.kind)}</Badge>
@@ -582,7 +834,7 @@ export default function AdminRedeemCodesPage() {
             row={editingRow}
             groups={groups}
             onClose={() => setEditingRow(null)}
-            onSaved={() => void loadCodes(page)}
+            onSaved={() => void loadCodes(pageRef.current)}
           />
         ) : null}
       </div>

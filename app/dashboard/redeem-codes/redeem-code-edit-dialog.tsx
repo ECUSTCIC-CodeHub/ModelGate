@@ -188,6 +188,8 @@ export function RedeemCodeEditDialog({
             <span className="text-[var(--color-foreground-muted)]">兑换码：</span>
             <span className="font-mono">{row.code}</span>
             <Badge variant={isReset ? "secondary" : "default"}>{redeemCodeKindLabel(row.kind)}</Badge>
+            <span className="text-[var(--color-foreground-muted)]">批次：</span>
+            <span className="break-all font-mono text-xs">{row.batch_id}</span>
           </div>
           <div>
             <Label>备注</Label>

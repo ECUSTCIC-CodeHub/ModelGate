@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { PagePagination } from "@/components/dashboard/page-pagination";
 import { authedFetch } from "@/lib/auth/client-auth";
 import { formatExpiresAt, formatNumber, formatTokenCount } from "@/lib/shared/utils";
-import { formatGroupNames, parseGroupIds, redeemCodeKindLabel, type CodeRow, type GroupOption } from "./redeem-code-types";
+import { formatBatchLabel, formatGroupNames, parseGroupIds, redeemCodeKindLabel, type CodeRow, type GroupOption } from "./redeem-code-types";
 
 type RedemptionRow = {
   id: number;
@@ -100,6 +100,10 @@ export function RedeemCodeDetailDialog({
               </div>
               <div>创建人：{code.created_by_username ?? "—"}</div>
               <div>创建时间：{new Date(code.created_at).toLocaleString()}</div>
+              <div className="sm:col-span-2">
+                批次：<span className="font-mono">{code.batch_id}</span>
+                <span className="text-[var(--color-foreground-muted)]">（{formatBatchLabel(code.batch_id)}）</span>
+              </div>
               <div>有效期：{formatExpiresAt(code.expires_at)}</div>
               <div className="sm:col-span-2">限定用户组：{formatGroupNames(parseGroupIds(code.allowed_group_ids), groups)}</div>
               <div className="sm:col-span-2">状态：{code.enabled === 1 ? "启用" : "停用"}</div>
