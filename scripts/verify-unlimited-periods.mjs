@@ -85,7 +85,7 @@ try {
   const { signAccessToken } = await import("@/lib/auth/auth");
   const detailRoute = await import("@/app/api/admin/users/[id]/route");
   const groupDetailRoute = await import("@/app/api/admin/groups/[id]/route");
-  const { checkQuota, resolveEffectivePeriods } = await import("@/lib/gateway/quota");
+  const { appendQuotaHeaders, checkQuota, resolveEffectivePeriods } = await import("@/lib/gateway/quota");
   const { getEffectiveLimits } = await import("@/lib/gateway/effective-limits");
   const { addUsage } = await import("@/lib/gateway/usage-accounting");
   const { parsePeriodCycles } = await import("@/lib/gateway/period-cycles");
@@ -152,7 +152,8 @@ try {
   const submitInherit = await setUserCycles(alice.id, [{ seconds: DAY, quota_tokens: null, quota_requests: null }]);
   check("S4 提交留空档位被接受（留空 = 继承）", submitInherit.status === 200, "status=" + submitInherit.status + " body=" + JSON.stringify(submitInherit.body).slice(0, 200));
   const afterInherit = await storedUser(alice.id);
-  check("S5 留空档位落成「沿用组档额度」的覆盖档", dayCycles(afterInherit.period_cycles)[0]?.quota_requests === 10, "period_cycles=" + afterInherit.period_cycles);
+  // 留空必须原样保留 null：抄组档额度进自有档就等于把组档物化，组后续调整对该用户失效。
+  check("S5 留空档位不落成组档额度（保留 null 以便跟随组档）", dayCycles(afterInherit.period_cycles)[0]?.quota_requests === null, "period_cycles=" + afterInherit.period_cycles);
   const stillBlocked = await checkQuota(alice.id, 0);
   // 用户自有的覆盖档从 0 起算（不搬组档历史用量），因此这条档位重新给满额度
   check("S6 留空后仍受同一条每日档约束", stillBlocked.ok === true && stillBlocked.quota.periods.find((p) => p.period_seconds === DAY)?.quota_requests === 10, JSON.stringify(stillBlocked.quota.periods).slice(0, 200));
@@ -246,6 +247,44 @@ try {
   );
   const weekAll = graceAll.find((c) => c.seconds === 604800);
   check("S23 未配置的常见周期以未配置档位出现（额度为 null）", weekAll !== undefined && weekAll.quota_requests === null && weekAll.quota_tokens === null, JSON.stringify(graceAll.map((c) => c.seconds)));
+
+  // 组档调整必须持续对用户生效（审计 M1）：自有档只覆盖一侧时，另一侧跟随组档增删改。
+  await setGroupCycles(G, [{ seconds: DAY, quota_requests: 10, quota_tokens: null }]);
+  const heidi = await createUser("verifyheidi");
+  await setUserCycles(heidi.id, [{ seconds: DAY, quota_tokens: 1000, quota_requests: null }]);
+  const heidiStored = parsePeriodCycles((await storedUser(heidi.id)).period_cycles).find((c) => c.seconds === DAY);
+  check("S24 只覆盖 Token 时请求额度以 null 落库（不物化组档）", heidiStored?.quota_requests === null, JSON.stringify(heidiStored));
+  await setGroupCycles(G, [{ seconds: DAY, quota_requests: 20, quota_tokens: null }]);
+  const heidiWiden = await checkQuota(heidi.id, 0);
+  check("S25 组档放宽后用户跟随", heidiWiden.quota.periods.find((p) => p.period_seconds === DAY)?.quota_requests === 20, JSON.stringify(heidiWiden.quota.periods[0]));
+  await setGroupCycles(G, [{ seconds: DAY, quota_requests: 3, quota_tokens: null }]);
+  const heidiTight = await checkQuota(heidi.id, 0);
+  check("S26 组档收紧后用户跟随", heidiTight.quota.periods.find((p) => p.period_seconds === DAY)?.quota_requests === 3, JSON.stringify(heidiTight.quota.periods[0]));
+  await setGroupCycles(G, []);
+  const heidiGone = await checkQuota(heidi.id, 0);
+  check("S27 组档删除后回落到不限制", heidiGone.quota.periods.find((p) => p.period_seconds === DAY)?.quota_requests === -1, JSON.stringify(heidiGone.quota.periods[0]));
+
+  // 占位档不得污染响应头（审计 H1）：每个 key 都带非空档位 id 且互不覆盖。
+  await setGroupCycles(G, [{ seconds: DAY, quota_requests: 10, quota_tokens: null }]);
+  const ivan = await createUser("verifyivan");
+  const ivanRow = await db.queryOne("SELECT * FROM users WHERE id = ?", [ivan.id]);
+  const ivanLimits = await getEffectiveLimits(ivanRow);
+  const ivanPeriods = await resolveEffectivePeriods(ivan.id, ivanLimits.period_cycles, ivanRow.period_cycles);
+  const ivanHeaders = {};
+  appendQuotaHeaders(ivanHeaders, { remaining_requests: null, remaining_tokens: null, periods: ivanPeriods });
+  const periodHeaderKeys = Object.keys(ivanHeaders).filter((key) => key.includes("Remaining-"));
+  check("S28 周期响应头不出现空后缀 key", periodHeaderKeys.every((key) => !key.endsWith("-")), JSON.stringify(periodHeaderKeys));
+  check("S29 周期响应头 key 唯一", new Set(periodHeaderKeys).size === periodHeaderKeys.length, JSON.stringify(periodHeaderKeys));
+  check("S30 占位档不写入 group_period_cycles", (await storedUser(ivan.id)).group_period_cycles === null, "group_period_cycles=" + (await storedUser(ivan.id)).group_period_cycles);
+
+  // 打开抽屉不改直接保存（审计 M3）：按 row.period_cycles 回填后原样提交，用户档不得变形。
+  const judy = await createUser("verifyjudy");
+  const judyBefore = (await storedUser(judy.id)).period_cycles;
+  const judyRow = await db.queryOne("SELECT * FROM users WHERE id = ?", [judy.id]);
+  const judyDrafts = parsePeriodCycles(judyRow.period_cycles)
+    .map((cycle) => ({ seconds: cycle.seconds, quota_tokens: cycle.quota_tokens, quota_requests: cycle.quota_requests }));
+  await setUserCycles(judy.id, judyDrafts);
+  check("S31 抽屉不改直接保存不新增假档", (await storedUser(judy.id)).period_cycles === judyBefore, "before=" + judyBefore + " after=" + (await storedUser(judy.id)).period_cycles);
 
   console.log("");
   console.log(passed + "/" + (passed + failed) + " 通过" + (failed > 0 ? "，存在失败" : ""));
