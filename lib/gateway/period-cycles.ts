@@ -363,6 +363,23 @@ export function resolveUserPeriodCycles(
     // 留空落成 -1 只在「开着继承、组里却没有这一档」时发生：留空既没有上游可继承、
     // 又说不清含义，落成不限制才是明确的。关掉总开关时另有收口，见函数末尾。
     const needsExplicitUnlimited = inheritGroup && !groupSeconds.has(cycle.seconds);
+    // 从「显式额度」（-1 或数值）切回「两侧都留空」时，这一档的计数不属于它了：
+    // 遗留的 used_* 是在自有档语义下攒的分，接上组档额度会让用户凭空被自己的历史用量
+    // 压住（-1 档已用 150 次、组档给 100，切过去立刻超额）。因此切回继承时计数归零，
+    // 由 group_period_cycles 从 0 起算，语义上等于「这一档重新交回组档」。
+    // 额度仍原样保留 null（= 跟着组档走），与「提交留空」的落库形态保持一致。
+    const backToInherit = needsExplicitUnlimited === false
+      && isInheritedQuota(cycle.quota_tokens, cycle.quota_requests)
+      && prior !== undefined
+      && !isInheritedQuota(prior.quota_tokens, prior.quota_requests);
+    if (backToInherit) {
+      return {
+        ...toCycleFromInput({ ...cycle, quota_tokens: null, quota_requests: null }, prior?.id, `p${index + 1}`),
+        used_tokens: 0,
+        used_requests: 0,
+        reset_at: null,
+      };
+    }
     return {
       ...toCycleFromInput({
         ...cycle,
