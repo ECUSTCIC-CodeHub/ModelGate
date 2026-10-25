@@ -114,13 +114,12 @@ export function resolveEnforcedCycles(
     };
   });
 
-  // 两侧都留空的档位在 inherited 里那条才是生效口径（额度来自组档、计数也记在组档），
-  // 自有档那条只是用户提交形状的残留，必须从 all 里剔掉 —— 否则同秒数会出现两条：
-  // 判定各算一遍、响应头按 id 写出两份互相冲突的值、前端列表撞 key。
-  const all = [
-    ...enforcedOwn.filter((cycle) => !(inheritCountSeconds.has(cycle.seconds) && groupBySeconds.has(cycle.seconds))),
-    ...inherited,
-  ];
+  // 同秒数在 all 里只能有一条：额度可能一侧来自自有档、另一侧来自组档，而计数分存两列
+  // （自有档记 users.period_cycles，继承档记 users.group_period_cycles）。两条并存时判定
+  // 只命中先出现的那条，另一列的用量永远读不到 —— 组档限额于是形同虚设。
+  // 因此统一由自有档那条承载（enforcedOwn 已逐侧让位），继承档那条只补自有档没有的秒数。
+  const enforcedSeconds = new Set(enforcedOwn.map((cycle) => cycle.seconds));
+  const all = [...enforcedOwn, ...inherited.filter((cycle) => !enforcedSeconds.has(cycle.seconds))];
   const coveredSeconds = new Set(all.map((cycle) => cycle.seconds));
   const resolvedAll = [...all, ...unconfiguredSeconds(coveredSeconds).map(placeholderCycle)]
     .sort((a, b) => a.seconds - b.seconds);

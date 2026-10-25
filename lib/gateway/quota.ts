@@ -63,6 +63,21 @@ export function appendQuotaHeaders(headers: Record<string, string>, quota: Quota
   }
 }
 
+// 生效档位的额度与计数来自两处：额度是让位后的值，计数分存 period_cycles / group_period_cycles。
+// 同一个秒数下，自有档与继承档两边的计数都可能非零（一侧额度由用户写、另一侧沿用组档），
+// 因此逐侧取两边的较大值 —— 只认其中一边会让另一边的用量消失，那一侧的限额就失效了。
+function mergeCycleState(
+  cycle: PeriodCycle,
+  own: PeriodCycle | undefined,
+  inherited: PeriodCycle | undefined,
+): PeriodCycle {
+  if (!own && !inherited) return cycle;
+  const usedTokens = Math.max(own?.used_tokens ?? 0, inherited?.used_tokens ?? 0);
+  const usedRequests = Math.max(own?.used_requests ?? 0, inherited?.used_requests ?? 0);
+  const resetAt = own?.reset_at ?? inherited?.reset_at ?? null;
+  return { ...cycle, used_tokens: usedTokens, used_requests: usedRequests, reset_at: resetAt };
+}
+
 // 自有档 → 库里真实存在的行：只保留 ownRaw 里出现过的秒数。
 // 额度沿用 sql 里的用户形状（不含组档让位值），计数与窗口锚点取库里的
 // （不能拿内存里的 0 去覆盖用户已用量）。
@@ -98,12 +113,10 @@ export async function resolveEffectivePeriods(
   const ownBySeconds = new Map(own.map((cycle) => [cycle.seconds, cycle]));
   const inheritedBySeconds = new Map(inherited.map((cycle) => [cycle.seconds, cycle]));
   // 额度取生效值（可能是从组档让位来的），计数与锚点取各自键空间的实时值。
-  const effective = (enforced.all ?? [...enforced.own, ...enforced.inherited]).flatMap((cycle) => {
-    const state = ownBySeconds.get(cycle.seconds) ?? inheritedBySeconds.get(cycle.seconds);
-    return state
-      ? [{ ...cycle, used_tokens: state.used_tokens, used_requests: state.used_requests, reset_at: state.reset_at }]
-      : [cycle];
-  });
+  // 两条键空间都要并进来：一个档位可能一侧由自有档限定（计数记 period_cycles）、
+  // 另一侧沿用组档（计数记 group_period_cycles），只取其中一侧会让另一侧的用量凭空消失。
+  const effective = (enforced.all ?? [...enforced.own, ...enforced.inherited])
+    .map((cycle) => mergeCycleState(cycle, ownBySeconds.get(cycle.seconds), inheritedBySeconds.get(cycle.seconds)));
   return effective.map(toPeriodQuotaEntry).sort((a, b) => a.period_seconds - b.period_seconds);
 }
 
@@ -206,12 +219,10 @@ export async function checkQuota(userId: number, estimatedTokens: number): Promi
       ? await loadGroupCycleState(userId, enforced.inherited)
       : [];
     // 判定用生效档位（自有档让位给组档后的额度），计数取各自键空间的实时值。
+    // 同秒数可能同时存在两条键空间的计数（跨侧覆盖），按侧取大值，不能只认自有档那条。
     const ownBySeconds = new Map(own.map((cycle) => [cycle.seconds, cycle]));
     const inheritedBySeconds = new Map(inherited.map((cycle) => [cycle.seconds, cycle]));
-    const all = enforced.all.flatMap((cycle) => {
-      const state = ownBySeconds.get(cycle.seconds) ?? inheritedBySeconds.get(cycle.seconds);
-      return state ? [{ ...cycle, used_tokens: state.used_tokens, used_requests: state.used_requests, reset_at: state.reset_at }] : [cycle];
-    });
+    const all = enforced.all.map((cycle) => mergeCycleState(cycle, ownBySeconds.get(cycle.seconds), inheritedBySeconds.get(cycle.seconds)));
     quota.periods = all.map(toPeriodQuotaEntry);
     const exceeded = findExceededCycle(all, estimatedTokens);
     if (exceeded) {
