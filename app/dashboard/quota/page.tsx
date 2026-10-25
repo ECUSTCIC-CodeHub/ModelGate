@@ -72,7 +72,7 @@ function TokenQuotaBar({ used, total }: { used: number; total: number | null }) 
 
 // 额度 -1 是显式不限制（没有进度条），null 是该周期未配置。
 function limitedEntries(cycles: PeriodQuotaEntry[], key: "quota_requests" | "quota_tokens") {
-  return cycles.filter((entry) => entry[key] !== null && entry[key]! >= 0);
+  return cycles.filter((entry) => entry[key] !== null && entry[key] >= 0);
 }
 
 function ModelPeriodRequests({ model }: { model: ModelQuota }) {

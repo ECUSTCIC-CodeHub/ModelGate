@@ -6,7 +6,7 @@ import { formatLimit } from "@/lib/shared/formatters";
 import { formatPeriodLabel } from "@/lib/shared/period-format";
 import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
 import { QuotaAmountField } from "./quota-amount-field";
-import { PeriodCycleFields, draftSeconds } from "@/app/dashboard/period-cycle-fields";
+import { PeriodCycleFields } from "@/app/dashboard/period-cycle-fields";
 import {
   type UserForm,
   type UserGroupLimits,
@@ -14,6 +14,8 @@ import {
 
 type UserQuotaFieldsProps = {
   form: UserForm;
+  // 已保存的用户自有周期档原文（不是表单草稿），用于判定「哪一侧正在继承组档」。
+  ownPeriodCycles: string | null | undefined;
   editingGroupLimits: UserGroupLimits | null;
   periodQuotaEnabled: boolean;
   onChange: (patch: Partial<UserForm>) => void;
@@ -39,26 +41,29 @@ function inheritedCycleLabels(limits: UserGroupLimits): string[] {
   });
 }
 
-// 周期档的继承状态没有单独开关：组里有档位、且这些档位上没有用户自己的显式额度，
-// 就是这个用户在继承组档。档位本身由 use-user-admin 按「继承/预填」生成，这里只做展示。
-function inheritingSeconds(form: UserForm, limits: UserGroupLimits | null): number[] {
+// 哪些周期的哪一侧正在继承组档：逐档按「用户档该侧留空」判定。
+// 只看已保存的用户档（row.period_cycles），不看表单草稿 ——
+// 表单里刚填的额度还没落库，拿它当「已生效的继承」会让提示与实际状态不符。
+function inheritingParts(ownRaw: string | null | undefined, limits: UserGroupLimits | null): string[] {
   if (!limits) return [];
-  const own = new Set(
-    form.period_cycles
-      .filter((draft) => draft.quota_requests.trim() !== "" || draft.quota_tokens.trim() !== "")
-      .map((draft) => draftSeconds(draft)),
-  );
-  return parsePeriodCycles(limits.period_cycles)
-    .filter((cycle) => !own.has(cycle.seconds))
-    .map((cycle) => cycle.seconds);
+  const ownBySeconds = new Map(parsePeriodCycles(ownRaw).map((cycle) => [cycle.seconds, cycle]));
+  return parsePeriodCycles(limits.period_cycles).flatMap((groupCycle) => {
+    const own = ownBySeconds.get(groupCycle.seconds);
+    const parts: string[] = [];
+    if (own?.quota_tokens === null && groupCycle.quota_tokens !== null) parts.push("Token");
+    if (own?.quota_requests === null && groupCycle.quota_requests !== null) parts.push("请求");
+    return parts.length === 0 ? [] : [`${formatPeriodLabel(groupCycle.seconds)} ${parts.join("/")}`];
+  });
 }
 
 export function UserQuotaFields({
   form,
+  ownPeriodCycles,
   editingGroupLimits,
   periodQuotaEnabled,
   onChange,
 }: UserQuotaFieldsProps) {
+  const inheritedParts = inheritingParts(ownPeriodCycles, editingGroupLimits);
   return (
     <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
       <p className="text-sm font-medium text-[var(--color-foreground)]">配额配置</p>
@@ -123,8 +128,8 @@ export function UserQuotaFields({
           {editingGroupLimits && inheritedCycleLabels(editingGroupLimits).length > 0 ? (
             <p className="mt-2 text-xs text-[var(--color-foreground-muted)]">
               ← 组周期档: {inheritedCycleLabels(editingGroupLimits).join(" / ")}
-              {inheritingSeconds(form, editingGroupLimits).length > 0
-                ? "（额度留空的档位正在继承上述组档）"
+              {inheritedParts.length > 0
+                ? `（正在继承组档：${inheritedParts.join("、")}）`
                 : null}
             </p>
           ) : null}
