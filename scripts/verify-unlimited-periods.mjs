@@ -406,7 +406,9 @@ try {
   await patchUser(owen.id, { inherit_group_periods: false });
   const owenSubmit = await patchUser(owen.id, { period_cycles: [{ seconds: DAY, quota_tokens: null, quota_requests: 5 }] });
   const owenCycles = parsePeriodCycles((await storedUser(owen.id)).period_cycles).find((c) => c.seconds === DAY);
-  check("S47 关闭状态提交的自有档不落成 -1（没有上游可继承）", owenSubmit.status === 200 && owenCycles?.quota_requests === 5 && owenCycles?.quota_tokens === null, JSON.stringify(owenCycles) + " inheritStored=" + JSON.stringify((await storedUser(owen.id)).inherit_group_periods));
+  // 关闭继承时没有上游可继承，留空侧固化成 -1（而不是留在 null 上等着重新指向组档），
+  // 与「关闭开关」这条路径落库形态一致；提交的数值侧原样保留。
+  check("S47 关闭状态提交的留空侧固化成 -1、数值侧原样保留", owenSubmit.status === 200 && owenCycles?.quota_requests === 5 && owenCycles?.quota_tokens === -1, JSON.stringify(owenCycles) + " inheritStored=" + JSON.stringify((await storedUser(owen.id)).inherit_group_periods));
   const owenQuota = await checkQuota(owen.id, 0);
   const owenDay = owenQuota.quota.periods.find((p) => p.period_seconds === DAY);
   check("S48 关闭状态自有档按提交形状生效", owenDay?.quota_requests === 5 && owenDay?.quota_tokens === -1, JSON.stringify(owenDay));
@@ -433,6 +435,97 @@ try {
   const quinnQuota = await checkQuota(peterRow.id, 0);
   check("S53 组新增档位不会套到关闭继承的用户身上", quinnQuota.ok === true && quinnQuota.quota.periods.every((p) => p.quota_requests !== 1), JSON.stringify(quinnQuota.quota.periods.map((p) => [p.period_seconds, p.quota_requests])));
   check("S54 关闭用户的周期配额响应里不含组档", quinnQuota.quota.periods.every((p) => !p.id.startsWith("group")), JSON.stringify(quinnQuota.quota.periods.map((p) => p.id)));
+
+  // ---- 关闭继承后提交档位：显式 -1 不能被「原样保存」抹回 null（审计中危 1） ----
+  await setGroupCycles(G, [{ seconds: DAY, quota_requests: 50, quota_tokens: null }]);
+  const zoe = await createUser("verifyzoe");
+  await patchUser(zoe.id, { period_cycles: [{ seconds: DAY, quota_tokens: null, quota_requests: null }] });
+  await patchUser(zoe.id, { inherit_group_periods: false });
+  const zoeDetached = parsePeriodCycles((await storedUser(zoe.id)).period_cycles).find((c) => c.seconds === DAY);
+  check("S55 关闭继承把存量留空档固化成 -1", zoeDetached?.quota_requests === -1 && zoeDetached?.quota_tokens === -1, JSON.stringify(zoeDetached));
+  // 管理端打开抽屉、原样再保存一次：显式 -1 是意图，不能被抹回 null（那会变成「跟着组走」）
+  const zoeResave = await patchUser(zoe.id, { period_cycles: [{ seconds: DAY, quota_tokens: null, quota_requests: null }] });
+  const zoeResaved = parsePeriodCycles((await storedUser(zoe.id)).period_cycles).find((c) => c.seconds === DAY);
+  check("S56 关闭状态原样再保存不把 -1 抹回 null", zoeResave.status === 200 && zoeResaved?.quota_requests === -1 && zoeResaved?.quota_tokens === -1, JSON.stringify(zoeResaved));
+  // 关闭期间提交的留空档不会「等着重新指向组档」：固化是显式意图，重开开关也不自动复活继承
+  const zoeGrouped = await createUser("verifyzoeg");
+  await patchUser(zoeGrouped.id, { inherit_group_periods: false });
+  await patchUser(zoeGrouped.id, { period_cycles: [{ seconds: DAY, quota_tokens: null, quota_requests: null }] });
+  const zoeGroupedDay = parsePeriodCycles((await storedUser(zoeGrouped.id)).period_cycles).find((c) => c.seconds === DAY);
+  check("S57 组有同周期档位时关闭继承提交的留空档仍固化成 -1", zoeGroupedDay?.quota_requests === -1 && zoeGroupedDay?.quota_tokens === -1, JSON.stringify(zoeGroupedDay));
+  const zoeGroupedOn = await patchUser(zoeGrouped.id, { inherit_group_periods: true });
+  const zoeGroupedQuota = await checkQuota(zoeGrouped.id, 0);
+  check("S58 重新打开开关不把固化的 -1 自动恢复成继承", zoeGroupedOn.status === 200 && zoeGroupedQuota.quota.periods.find((p) => p.period_seconds === DAY)?.quota_requests === -1, JSON.stringify(zoeGroupedQuota.quota.periods).slice(0, 200));
+
+  // ---- 关闭继承时不得清空已过量：固化前先推进过期窗口（审计低危 1） ----
+  const yuri = await createUser("verifyyuri");
+  await db.execute("INSERT INTO `keys` (`key`, name, user_id, enabled) VALUES (?, 'k', ?, 1)", ["verify-yuri-key", yuri.id]);
+  const yuriKey = await db.queryOne("SELECT id FROM `keys` WHERE user_id = ?", [yuri.id]);
+  await patchUser(yuri.id, { period_cycles: [{ seconds: DAY, quota_tokens: null, quota_requests: null }] });
+  await primeWindows(yuri.id);
+  await addUsage(yuri.id, yuriKey.id, 0, 3);
+  const yuriBefore = parsePeriodCycles((await storedUser(yuri.id)).period_cycles).find((c) => c.seconds === DAY);
+  // 锚点未过期：固化后已用量必须原样保留，不能被计数路径当成过期窗口清零
+  const yuriOff = await patchUser(yuri.id, { inherit_group_periods: false });
+  const yuriAfter = parsePeriodCycles((await storedUser(yuri.id)).period_cycles).find((c) => c.seconds === DAY);
+  check("S59 关闭继承后已用量不清零", yuriOff.status === 200 && yuriAfter?.used_requests === yuriBefore.used_requests, "before=" + JSON.stringify(yuriBefore) + " after=" + JSON.stringify(yuriAfter));
+  check("S60 关闭继承不重置仍在有效期内的窗口", yuriAfter?.reset_at === yuriBefore.reset_at, "before=" + yuriBefore?.reset_at + " after=" + yuriAfter?.reset_at);
+  // 锚点已过期：固化时当场推进窗口，而不是等下一次计费顺手清掉
+  await db.execute("UPDATE users SET period_cycles = ? WHERE id = ?", [
+    JSON.stringify(parsePeriodCycles((await storedUser(yuri.id)).period_cycles).map((c) => ({ ...c, reset_at: "2000-01-01 00:00:00", used_requests: 9 }))),
+    yuri.id,
+  ]);
+  await patchUser(yuri.id, { inherit_group_periods: true });
+  await patchUser(yuri.id, { inherit_group_periods: false });
+  const yuriExpired = parsePeriodCycles((await storedUser(yuri.id)).period_cycles).find((c) => c.seconds === DAY);
+  check("S61 关闭继承时过期的窗口锚点被推进（不会留到下次计费）", yuriExpired?.reset_at !== "2000-01-01 00:00:00" && yuriExpired?.quota_requests === -1, JSON.stringify(yuriExpired));
+  // 已过期窗口的用量在推进时被清零，属于「窗口已经换了一轮」的事实，而不是「关闭」动作清掉的。
+  // 关键在于：推进后立刻计费不会再清一次，usage 从 0 起算并正常累加。
+  check("S61b 过期窗口推进后用量按新窗口从 0 起算", yuriExpired?.used_requests === 0, JSON.stringify(yuriExpired));
+
+  // ---- 关闭继承即清掉 group_period_cycles 残留（审计低危 5） ----
+  const xena = await createUser("verifyxena");
+  await db.execute("INSERT INTO `keys` (`key`, name, user_id, enabled) VALUES (?, 'k', ?, 1)", ["verify-xena-key", xena.id]);
+  const xenaKey = await db.queryOne("SELECT id FROM `keys` WHERE user_id = ?", [xena.id]);
+  await primeWindows(xena.id);
+  await addUsage(xena.id, xenaKey.id, 0, 2);
+  const xenaBefore = await storedUser(xena.id);
+  check("S62 关闭继承前继承计数已存在", parsePeriodCycles(xenaBefore.group_period_cycles).length > 0, "group_period_cycles=" + xenaBefore.group_period_cycles);
+  // 关闭后不再产生用量：残留计数必须已经清掉，不能依赖「下一次计费」
+  const xenaOff = await patchUser(xena.id, { inherit_group_periods: false });
+  const xenaAfter = await storedUser(xena.id);
+  check("S63 关闭继承当次就清掉 group_period_cycles 残留", xenaOff.status === 200 && xenaAfter.group_period_cycles === null, "before=" + xenaBefore.group_period_cycles + " after=" + xenaAfter.group_period_cycles);
+  // 只改别的字段不能顺手清计数（避免把「无关编辑」变成隐式重置）
+  await patchUser(xena.id, { inherit_group_periods: true });
+  await primeWindows(xena.id);
+  await addUsage(xena.id, xenaKey.id, 0, 2);
+  await patchUser(xena.id, { note: "只改备注" });
+  check("S64 只改其它字段不清 group_period_cycles", (await storedUser(xena.id)).group_period_cycles !== null, "group_period_cycles=" + (await storedUser(xena.id)).group_period_cycles);
+  // 同一次提交里既关开关又改档位：残留计数同样要清
+  const xenaCombo = await patchUser(xena.id, {
+    inherit_group_periods: false,
+    period_cycles: [{ seconds: DAY, quota_tokens: 7, quota_requests: 7 }],
+  });
+  const xenaComboRow = await storedUser(xena.id);
+  check("S64b 同时关开关并提交档位也清掉 group_period_cycles", xenaCombo.status === 200 && xenaComboRow.group_period_cycles === null, "group_period_cycles=" + xenaComboRow.group_period_cycles);
+  check("S64c 同时提交的档位按提交形状落库", parsePeriodCycles(xenaComboRow.period_cycles).find((c) => c.seconds === DAY)?.quota_requests === 7, "period_cycles=" + xenaComboRow.period_cycles);
+  // reset_usage 分支在事务之后重新读库，与本次新增的清计数不能互相打架
+  const xenaReset = await patchUser(xena.id, { inherit_group_periods: false, reset_usage: "period" });
+  const xenaResetRow = await storedUser(xena.id);
+  // reset_at 被置为 null 是重置的中间态：下一次读取（响应里的 resolveEffectivePeriods）会正常开窗并回填锚点，
+  // 因此这里只断言「用量归零且残留计数已清」，不断言锚点形态。
+  check("S64d 同一次提交里 reset_usage 与关闭开关共存", xenaReset.status === 200 && xenaResetRow.group_period_cycles === null && parsePeriodCycles(xenaResetRow.period_cycles).every((c) => c.used_requests === 0 && c.used_tokens === 0), "group=" + xenaResetRow.group_period_cycles + " period=" + xenaResetRow.period_cycles);
+
+  // ---- /api/dashboard/profile 与 /api/user/quota 的 periods 形状一致（审计低危 4） ----
+  const profileRoute = await import("@/app/api/dashboard/profile/route");
+  const walter = await createUser("verifywalter");
+  await patchUser(walter.id, { inherit_group_periods: false });
+  const walterProfile = await (await profileRoute.GET(userRequest("/api/dashboard/profile", walter.id))).json();
+  const walterQuota = await (await userQuotaRoute.GET(userRequest("/api/user/quota", walter.id))).json();
+  const profileShape = (walterProfile.user?.periods ?? []).map((p) => p.period_seconds + ":" + p.quota_requests).sort();
+  const quotaShape = (walterQuota.periods ?? []).map((p) => p.period_seconds + ":" + p.quota_requests).sort();
+  check("S65 profile 与 user/quota 的 periods 形状一致", JSON.stringify(profileShape) === JSON.stringify(quotaShape), "profile=" + JSON.stringify(profileShape) + " quota=" + JSON.stringify(quotaShape));
+  check("S66 profile 的 periods 含未配置占位档", profileShape.some((entry) => entry.startsWith("2592000:")), JSON.stringify(profileShape));
 
   console.log("");
   console.log(passed + "/" + (passed + failed) + " 通过" + (failed > 0 ? "，存在失败" : ""));
