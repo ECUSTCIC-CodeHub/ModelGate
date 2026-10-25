@@ -286,6 +286,31 @@ try {
   await setUserCycles(judy.id, judyDrafts);
   check("S31 抽屉不改直接保存不新增假档", (await storedUser(judy.id)).period_cycles === judyBefore, "before=" + judyBefore + " after=" + (await storedUser(judy.id)).period_cycles);
 
+  // 两条键空间不能重复计数：留空档的用量只记继承档，显式额度档只记自有档。
+  await setGroupCycles(G, [{ seconds: DAY, quota_requests: 100, quota_tokens: null }]);
+  const karl = await createUser("verifykarl");
+  await setUserCycles(karl.id, [{ seconds: DAY, quota_tokens: null, quota_requests: null }]);
+  await db.execute("INSERT INTO `keys` (`key`, name, user_id, enabled) VALUES (?, 'k', ?, 1)", ["verify-karl-key", karl.id]);
+  await addUsage(karl.id, (await db.queryOne("SELECT id FROM `keys` WHERE user_id = ?", [karl.id])).id, 10, 3);
+  const karlStored = await storedUser(karl.id);
+  check("S32 留空档计费不写自有档计数", dayCycles(karlStored.period_cycles)[0]?.used_requests === 0, "period_cycles=" + karlStored.period_cycles);
+  check("S33 留空档计费写继承档计数", dayCycles(karlStored.group_period_cycles)[0]?.used_requests === 3, "group_period_cycles=" + karlStored.group_period_cycles);
+
+  // 同一次用量在两条键空间里只能出现一次
+  const lena = await createUser("verifylena");
+  await setUserCycles(lena.id, [{ seconds: DAY, quota_tokens: -1, quota_requests: -1 }]);
+  await db.execute("INSERT INTO `keys` (`key`, name, user_id, enabled) VALUES (?, 'k', ?, 1)", ["verify-lena-key", lena.id]);
+  await addUsage(lena.id, (await db.queryOne("SELECT id FROM `keys` WHERE user_id = ?", [lena.id])).id, 10, 1);
+  const lenaStored = await storedUser(lena.id);
+  const lenaUsed = (dayCycles(lenaStored.period_cycles)[0]?.used_requests ?? 0) + (dayCycles(lenaStored.group_period_cycles)[0]?.used_requests ?? 0);
+  check("S34 同一次用量只计一次", lenaUsed === 1, "used_requests=" + lenaUsed);
+
+  // 额度类型必须严格：字符串/小数不再被隐式归一成「继承」
+  const badString = await setUserCycles(lena.id, [{ seconds: DAY, quota_tokens: "-1", quota_requests: null }]);
+  check("S35 字符串额度被拒", badString.status === 400, "status=" + badString.status);
+  const badFloat = await setUserCycles(lena.id, [{ seconds: DAY, quota_tokens: -1.4, quota_requests: null }]);
+  check("S36 小数额度被拒", badFloat.status === 400, "status=" + badFloat.status);
+
   console.log("");
   console.log(passed + "/" + (passed + failed) + " 通过" + (failed > 0 ? "，存在失败" : ""));
 } catch (err) {

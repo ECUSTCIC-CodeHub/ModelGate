@@ -76,13 +76,21 @@ export function resolveEnforcedCycles(userCycles: PeriodCycle[], groupCycles: Pe
 
   const own = userCycles.slice();
 
-  const passThrough = userCycles
-    .filter((cycle) => isInheritedQuota(cycle.quota_tokens, cycle.quota_requests) && !groupBySeconds.has(cycle.seconds))
-    .map((cycle) => cycle.seconds);
+  // 哪些秒数该按「继承档」计数：用户档两侧都留空的周期。
+  // 有同周期组档时它要让位、计数跟着组档走（否则用户行和 group_period_cycles 各记一份）；
+  // 组里也没有时它就是个空占位，同样不该在 own 里计费。
+  const inheritCountSeconds = new Set(
+    userCycles
+      .filter((cycle) => isInheritedQuota(cycle.quota_tokens, cycle.quota_requests))
+      .map((cycle) => cycle.seconds),
+  );
+  const passThrough = [...inheritCountSeconds].filter((seconds) => !groupBySeconds.has(seconds));
 
+  // 组档里用户没写过显式额度的周期作为继承档生效：既包括用户没提过的周期，
+  // 也包括用户写了但两侧留空的周期（那种情况下额度全来自组档）。
   const ownSeconds = new Set(own.map((cycle) => cycle.seconds));
   const inherited = groupCycles
-    .filter((cycle) => !ownSeconds.has(cycle.seconds))
+    .filter((cycle) => !ownSeconds.has(cycle.seconds) || inheritCountSeconds.has(cycle.seconds))
     .map((cycle) => definitionOnly([cycle])[0]);
 
   const enforcedOwn = own.map((cycle) => {

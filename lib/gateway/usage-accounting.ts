@@ -4,6 +4,7 @@ import { getGatewaySettings } from "@/lib/core/settings";
 import { parseStoredUtc, toMysqlDatetime } from "@/lib/core/db/datetime";
 import {
   applyCycleUsage,
+  isInheritedQuota,
   parsePeriodCycles,
   serializePeriodCycleState,
   type PeriodCycle,
@@ -67,10 +68,13 @@ async function accumulateCycles(
   // 因此回写 users.period_cycles 时额度天然不会被物化。
   const enforced = resolveEnforcedCycles(ownCycles, inherited);
 
-  // 自有档里真正参与计费的秒数：用户显式写了额度的那几档，以及
-  // 组档把额度让位过来的那几档（让位只发生在读取时，回写仍用原形状）。
+  // 自有档里真正归属 own 的秒数：只有用户自己写了额度的档位。
+  // 两侧留空的档位额度全来自组档（或根本没有上游），计数一律走继承档那一列：
+  // 两边都记会让同一次请求被算两遍，界面上的「不限制」档也会莫名涨用量。
   const passThroughSeconds = new Set(enforced.passThrough);
-  const billableOwn = enforced.own.filter((cycle) => !passThroughSeconds.has(cycle.seconds));
+  const billableOwn = enforced.own.filter((cycle) => (
+    !passThroughSeconds.has(cycle.seconds) && !isInheritedQuota(cycle.quota_tokens, cycle.quota_requests)
+  ));
   if (billableOwn.length > 0) {
     const ownSeconds = new Set(billableOwn.map((cycle) => cycle.seconds));
     const nextOwn = ownCycles.map((cycle) => (
