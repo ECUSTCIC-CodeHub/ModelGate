@@ -96,16 +96,17 @@ export function resolveEnforcedCycles(
   const passThrough = [...inheritCountSeconds].filter((seconds) => !groupBySeconds.has(seconds));
 
   // 组档里用户没写过显式额度的周期作为继承档生效：既包括用户没提过的周期，
-  // 也包括用户写了但两侧留空的周期（那种情况下额度全来自组档）。
+  // 也包括用户写了但两侧留空的周期（那种情况下额度全来自组档，计数也必须记在
+  // group_period_cycles 上）。因此这两类都进 inherited。
   const ownSeconds = new Set(own.map((cycle) => cycle.seconds));
   const inherited = effectiveGroupCycles
     .filter((cycle) => !ownSeconds.has(cycle.seconds) || inheritCountSeconds.has(cycle.seconds))
     .map((cycle) => definitionOnly([cycle])[0]);
 
+  // 自有档在 all 里的形态：某一侧留空就沿用组档该侧的额度，-1 与数值则覆盖组档。
+  // 逐侧判断而不是看整个档位，否则「只填 Token」会把组的请求上限一起抹掉。
   const enforcedOwn = own.map((cycle) => {
     const fromGroup = groupBySeconds.get(cycle.seconds);
-    // 留空一侧：有组档可继承就跟着组档，否则算不限制。
-    // 逐侧判断而不是看整个档位，否则「只填 Token」会把组的请求上限一起抹掉。
     return {
       ...cycle,
       quota_tokens: cycle.quota_tokens ?? fromGroup?.quota_tokens ?? -1,
@@ -113,14 +114,18 @@ export function resolveEnforcedCycles(
     };
   });
 
-  const coveredSeconds = new Set([...enforcedOwn, ...inherited].map((cycle) => cycle.seconds));
+  // 两侧都留空的档位在 inherited 里那条才是生效口径（额度来自组档、计数也记在组档），
+  // 自有档那条只是用户提交形状的残留，必须从 all 里剔掉 —— 否则同秒数会出现两条：
+  // 判定各算一遍、响应头按 id 写出两份互相冲突的值、前端列表撞 key。
   const all = [
-    ...enforcedOwn,
+    ...enforcedOwn.filter((cycle) => !(inheritCountSeconds.has(cycle.seconds) && groupBySeconds.has(cycle.seconds))),
     ...inherited,
-    ...unconfiguredSeconds(coveredSeconds).map(placeholderCycle),
-  ].sort((a, b) => a.seconds - b.seconds);
+  ];
+  const coveredSeconds = new Set(all.map((cycle) => cycle.seconds));
+  const resolvedAll = [...all, ...unconfiguredSeconds(coveredSeconds).map(placeholderCycle)]
+    .sort((a, b) => a.seconds - b.seconds);
 
-  return { own, inherited, all, passThrough };
+  return { own, inherited, all: resolvedAll, passThrough };
 }
 
 // 常见周期里，用户与组都没配置、但需要让管理员能显式写 -1 的那几档。
