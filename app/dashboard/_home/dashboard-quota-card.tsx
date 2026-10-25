@@ -47,8 +47,9 @@ function PeriodQuotaBlock({
   remainingTokens: number | null;
   resetAt: string | null;
 }) {
-  const showRequests = quotaRequests !== null;
-  const showTokens = quotaTokens !== null;
+  // -1 是「显式不限制」，不是一条可展示的额度：画出来会变成「0 / -1」和 0% 进度条。
+  const showRequests = quotaRequests !== null && quotaRequests >= 0;
+  const showTokens = quotaTokens !== null && quotaTokens >= 0;
 
   return (
     <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
