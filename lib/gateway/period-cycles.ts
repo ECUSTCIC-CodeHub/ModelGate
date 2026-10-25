@@ -297,12 +297,24 @@ export function parseInheritGroupPeriods(value: unknown): boolean {
 // 关闭总开关时用户自有档的落库形态：原本继承组档的那一侧固化成 -1。
 // 这是逐档覆盖的写法，不是把组档额度抄进用户档 —— 组档仍只提供定义，
 // 重新打开继承或改成数值都能立刻恢复。
-export function detachGroupCycles(cycles: PeriodCycle[]): PeriodCycle[] {
-  return cycles.map((cycle) => ({
-    ...cycle,
-    quota_tokens: cycle.quota_tokens ?? -1,
-    quota_requests: cycle.quota_requests ?? -1,
-  }));
+//
+// 固化会让原本「两侧留空」的档位退出 passThrough、进入计费键空间（见 billableOwn），
+// 而这类档位读进来时可能已经过了窗口锚点。若原样回写，下一次计费会把 used_* 归零、
+// 重新锚定窗口，等于管理员点一下「关闭继承」就顺手清掉了已过量。
+// 因此固化前先按 now 推进一次窗口，让「关闭」本身不改变任何用量事实。
+export function detachGroupCycles(cycles: PeriodCycle[], now: Date = new Date()): PeriodCycle[] {
+  return cycles.map((cycle) => {
+    const resetDate = cycle.reset_at ? parseStoredUtc(cycle.reset_at) : null;
+    const expired = !resetDate || resetDate <= now;
+    return {
+      ...cycle,
+      quota_tokens: cycle.quota_tokens ?? -1,
+      quota_requests: cycle.quota_requests ?? -1,
+      ...(expired
+        ? { used_tokens: 0, used_requests: 0, reset_at: toMysqlDatetime(new Date(now.getTime() + cycle.seconds * 1000)) }
+        : {}),
+    };
+  });
 }
 
 // 覆盖式写入档位（含运行时状态）。供计费侧在同一事务内累加后回写。
@@ -321,8 +333,8 @@ export function applyCycleUsage(
 
 // 用户周期档的落库形态（新建与编辑共用，保证同一个输入只有一种落库形态）。
 //
-// inheritGroup=false（关掉「继承用户组周期配额」总开关）时留空侧保持 null：
-// 没有上游可继承，读取时 resolveEnforcedCycles 会把它算作不限制。
+// inheritGroup=false（关掉「继承用户组周期配额」总开关）时没有上游可继承：
+// 提交的留空侧固化成 -1，读取时 resolveEnforcedCycles 同样算作不限制。
 //
 // 用户档只存「用户自己的意图」，绝不抄组档额度：
 // - 某一侧留空 = 这一侧跟着组档走。读取时由 resolveEnforcedCycles 按秒数让位给组档，
@@ -333,18 +345,23 @@ export function applyCycleUsage(
 // 界面上又说不清含义，落成 -1 才是一条明确的「不限制」。
 //
 // 运行时计数按秒数从库里保留，否则管理员改额度会把已用量清零、窗口重新锚定。
+//
+// 提交档位是「重新声明这一档的意图」：只要写进库的形状是 -1 或数值，
+// 就必须收口成和 detachGroupCycles 一致的结果，否则「关闭继承时被固化成 -1 的档」
+// 会被一次「打开抽屉原样保存」悄悄改回 null，显式不限制的意图随之丢失。
 export function resolveUserPeriodCycles(
   submitted: PeriodCycleInput[],
   existing: PeriodCycle[],
   groupCycles: PeriodCycle[],
   inheritGroup = true,
+  now: Date = new Date(),
 ): PeriodCycle[] {
   const groupSeconds = new Set(groupCycles.map((cycle) => cycle.seconds));
   const existingBySeconds = new Map(existing.map((cycle) => [cycle.seconds, cycle]));
-  return submitted.map((cycle, index) => {
+  const resolved = submitted.map((cycle, index) => {
     const prior = existingBySeconds.get(cycle.seconds);
     // 留空落成 -1 只在「开着继承、组里却没有这一档」时发生：留空既没有上游可继承、
-    // 又说不清含义，落成不限制才是明确的。关掉总开关时本来就没有上游，留空保持 null。
+    // 又说不清含义，落成不限制才是明确的。关掉总开关时另有收口，见函数末尾。
     const needsExplicitUnlimited = inheritGroup && !groupSeconds.has(cycle.seconds);
     return {
       ...toCycleFromInput({
@@ -357,6 +374,10 @@ export function resolveUserPeriodCycles(
       reset_at: prior?.reset_at ?? null,
     };
   });
+  if (inheritGroup) return resolved;
+  // 关掉继承时组档整体不参与：没有任何上游可继承，留空侧一律固化成 -1，
+  // 与「关闭开关」这条路径的落库形态保持一致，重新打开后也不会凭空复活继承。
+  return detachGroupCycles(resolved, now);
 }
 
 // 管理员提交的定义值合并到库里已有的运行时状态上，按秒数对齐。

@@ -219,8 +219,8 @@ export async function POST(request: Request) {
     if (!group) return jsonError("用户组不存在", 400);
   }
 
-  // 新建用户没有「原值」可继承：提交的档位原样落库，某一侧留空就表示跟着组档走
-  // （读取时让位给组档），组里没有该周期时才落成 -1。与编辑接口同一口径。
+  // 新建用户没有「原值」可继承：开着继承时留空侧表示跟着组档走（读取时让位给组档），
+  // 组里没有该周期、或关掉了总开关时一律落成 -1。与编辑接口同一口径。
   const inheritGroup = parsed.data.inherit_group_periods ?? true;
   const groupCycles = parsePeriodCycles((await getUserGroup(groupId))?.period_cycles);
   const periodCycles = modelGateFeatures.periodQuota

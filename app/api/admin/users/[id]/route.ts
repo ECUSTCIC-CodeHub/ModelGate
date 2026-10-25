@@ -131,11 +131,14 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const nextGroupCycles = parsePeriodCycles((await getUserGroup(nextGroupId))?.period_cycles);
 
   // 周期档落库有三种情况，彼此互斥、都必须显式判断：
-  // 1. 提交了档位：按提交形状落库（留空侧保留 null，等读取时让位给组档）；
+  // 1. 提交了档位：按提交形状落库。留空侧在开着继承时保留 null，等读取时让位给组档；
+  //    关掉继承时收口成 -1（含存量已固化的档位原样再保存），显式意图不会在一次
+  //    「打开抽屉直接保存」里被抹回 null；
   // 2. 没提交档位但关掉了总开关：把现在的档位里「还在继承组档」的那一侧固化成 -1。
   //    不这么做的话，档位留着 null 会让用户「看起来关了开关，实际还挂在组档上」；
   //    固化 -1 是逐档覆盖的写法，重新打开开关或改成数值都能立刻恢复；
   // 3. 其余情况保持原值。
+  const cycleNow = new Date();
   const nextPeriodCycles = !modelGateFeatures.periodQuota
     ? existing.period_cycles
     : cycleValidation.cycles !== undefined
@@ -144,10 +147,18 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         existingCycles,
         nextGroupCycles,
         nextInheritGroup,
+        cycleNow,
       )) || null
       : nextInheritGroup === false && existingCycles.some((cycle) => cycle.quota_tokens === null || cycle.quota_requests === null)
-        ? serializePeriodCycleState(detachGroupCycles(existingCycles)) || null
+        ? serializePeriodCycleState(detachGroupCycles(existingCycles, cycleNow)) || null
         : existing.period_cycles;
+
+  // 关掉总开关后组档整体不参与计费，group_period_cycles 里的残留计数已经没有读者。
+  // 计费侧只会在「这个用户下一次产生用量」时顺手清掉，再也不用量的用户会一直留着，
+  // 所以在这里跟着「关闭」这个动作一起收干净，与 API.md 的承诺对齐。
+  const clearInheritedCounts = modelGateFeatures.periodQuota
+    && !nextInheritGroup
+    && parsed.data.inherit_group_periods === false;
 
   const merged = {
     ...existing,
@@ -203,65 +214,71 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     ? await hashPassword(parsed.data.new_password)
     : null;
 
-  if (nextPasswordHash) {
-    await gatewayDb
-      .execute(
-        `UPDATE users
-         SET username = ?, email = ?, role = ?, group_id = ?, enabled = ?, group_locked = ?, rpm = ?, qps = ?, tpm = ?,
-             quota_tokens = ?, quota_requests = ?,
-             period_cycles = ?, inherit_group_periods = ?,
-             allowed_model_aliases = ?, note = ?, password_hash = ?,
-             token_version = COALESCE(token_version, 0) + 1
-         WHERE id = ?`,
-        [
-          merged.username,
-          merged.email,
-          merged.role,
-          merged.group_id,
-          merged.enabled,
-          merged.group_locked,
-          merged.rpm,
-          merged.qps,
-          merged.tpm,
-          merged.quota_tokens,
-          merged.quota_requests,
-          merged.period_cycles,
-          merged.inherit_group_periods,
-          merged.allowed_model_aliases,
-          merged.note,
-          nextPasswordHash,
-          id,
-        ],
-      );
-  } else {
-    await gatewayDb
-      .execute(
-        `UPDATE users
-         SET username = ?, email = ?, role = ?, group_id = ?, enabled = ?, group_locked = ?, rpm = ?, qps = ?, tpm = ?,
-             quota_tokens = ?, quota_requests = ?,
-             period_cycles = ?, inherit_group_periods = ?,
-             allowed_model_aliases = ?, note = ?
-         WHERE id = ?`,
-        [
-          merged.username,
-          merged.email,
-          merged.role,
-          merged.group_id,
-          merged.enabled,
-          merged.group_locked,
-          merged.rpm,
-          merged.qps,
-          merged.tpm,
-          merged.quota_tokens,
-          merged.quota_requests,
-          merged.period_cycles,
-          merged.inherit_group_periods,
-          merged.allowed_model_aliases,
-          merged.note,
-          id,
-        ],
-      );
-  }
+  await gatewayDb.transaction(async (tx) => {
+    if (nextPasswordHash) {
+      await tx
+        .execute(
+          `UPDATE users
+           SET username = ?, email = ?, role = ?, group_id = ?, enabled = ?, group_locked = ?, rpm = ?, qps = ?, tpm = ?,
+               quota_tokens = ?, quota_requests = ?,
+               period_cycles = ?, inherit_group_periods = ?,
+               allowed_model_aliases = ?, note = ?, password_hash = ?,
+               token_version = COALESCE(token_version, 0) + 1
+           WHERE id = ?`,
+          [
+            merged.username,
+            merged.email,
+            merged.role,
+            merged.group_id,
+            merged.enabled,
+            merged.group_locked,
+            merged.rpm,
+            merged.qps,
+            merged.tpm,
+            merged.quota_tokens,
+            merged.quota_requests,
+            merged.period_cycles,
+            merged.inherit_group_periods,
+            merged.allowed_model_aliases,
+            merged.note,
+            nextPasswordHash,
+            id,
+          ],
+        );
+    } else {
+      await tx
+        .execute(
+          `UPDATE users
+           SET username = ?, email = ?, role = ?, group_id = ?, enabled = ?, group_locked = ?, rpm = ?, qps = ?, tpm = ?,
+               quota_tokens = ?, quota_requests = ?,
+               period_cycles = ?, inherit_group_periods = ?,
+               allowed_model_aliases = ?, note = ?
+           WHERE id = ?`,
+          [
+            merged.username,
+            merged.email,
+            merged.role,
+            merged.group_id,
+            merged.enabled,
+            merged.group_locked,
+            merged.rpm,
+            merged.qps,
+            merged.tpm,
+            merged.quota_tokens,
+            merged.quota_requests,
+            merged.period_cycles,
+            merged.inherit_group_periods,
+            merged.allowed_model_aliases,
+            merged.note,
+            id,
+          ],
+        );
+    }
+
+    if (clearInheritedCounts) {
+      await tx.execute("UPDATE users SET group_period_cycles = NULL WHERE id = ?", [id]);
+    }
+  });
 
   if (parsed.data.reset_usage === "all" || parsed.data.reset_usage === "total") {
     await gatewayDb
