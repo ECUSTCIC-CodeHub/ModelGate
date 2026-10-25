@@ -346,6 +346,21 @@ export function applyCycleUsage(
 //
 // 运行时计数按秒数从库里保留，否则管理员改额度会把已用量清零、窗口重新锚定。
 //
+// 交回组档的秒数：提交为两侧留空、且库里这一档原本是显式额度（-1 或数值）。
+// 这些秒数在原语义下攒的用量既可能在 period_cycles（显式额度期间）、也可能在
+// group_period_cycles（更早的继承期间），两处都得清 —— 只清一处时，另一处的历史用量
+// 会在交回后立刻生效，判定与展示还会各读一列、各说一套。
+export function resolveHandedBackSeconds(submitted: PeriodCycleInput[], existing: PeriodCycle[]): number[] {
+  const existingBySeconds = new Map(existing.map((cycle) => [cycle.seconds, cycle]));
+  return submitted.flatMap((cycle) => {
+    const prior = existingBySeconds.get(cycle.seconds);
+    const backToInherit = isInheritedQuota(cycle.quota_tokens, cycle.quota_requests)
+      && prior !== undefined
+      && !isInheritedQuota(prior.quota_tokens, prior.quota_requests);
+    return backToInherit ? [cycle.seconds] : [];
+  });
+}
+
 // 提交档位是「重新声明这一档的意图」：只要写进库的形状是 -1 或数值，
 // 就必须收口成和 detachGroupCycles 一致的结果，否则「关闭继承时被固化成 -1 的档」
 // 会被一次「打开抽屉原样保存」悄悄改回 null，显式不限制的意图随之丢失。

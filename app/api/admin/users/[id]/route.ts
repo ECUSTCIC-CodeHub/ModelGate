@@ -17,6 +17,7 @@ import {
   detachGroupCycles,
   parseInheritGroupPeriods,
   parsePeriodCycles,
+  resolveHandedBackSeconds,
   resolveUserPeriodCycles,
   serializePeriodCycleState,
   validatePeriodCycles,
@@ -153,6 +154,15 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         ? serializePeriodCycleState(detachGroupCycles(existingCycles, cycleNow)) || null
         : existing.period_cycles;
 
+  // 把档位交回组档（两侧留空）时，这一档在继承档那边留下的计数同样属于上一种语义：
+  // 不清掉的话，交回瞬间它会立刻生效，判定（读 group_period_cycles）与展示各说一套。
+  // 只在这个用户确实有继承计数时才清，避免无谓写入。
+  const handedBackSeconds = modelGateFeatures.periodQuota
+    && cycleValidation.cycles !== undefined
+    && nextInheritGroup
+    ? resolveHandedBackSeconds(cycleValidation.cycles, existingCycles)
+    : [];
+
   // 关掉总开关后组档整体不参与计费，group_period_cycles 里的残留计数已经没有读者。
   // 计费侧只会在「这个用户下一次产生用量」时顺手清掉，再也不用量的用户会一直留着，
   // 所以在这里跟着「关闭」这个动作一起收干净，与 API.md 的承诺对齐。
@@ -277,6 +287,21 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
     if (clearInheritedCounts) {
       await tx.execute("UPDATE users SET group_period_cycles = NULL WHERE id = ?", [id]);
+    }
+    if (handedBackSeconds.length > 0) {
+      // 只清涉及的那几档，其余档位的继承计数照旧（它们仍在生效）。
+      const inheritedRow = await tx
+        .queryOne<{ group_period_cycles: string | null }>(
+          "SELECT group_period_cycles FROM users WHERE id = ?",
+          [id],
+        );
+      const handedBack = new Set(handedBackSeconds);
+      const remainingInherited = parsePeriodCycles(inheritedRow?.group_period_cycles)
+        .filter((cycle) => !handedBack.has(cycle.seconds));
+      await tx.execute(
+        "UPDATE users SET group_period_cycles = ? WHERE id = ?",
+        [remainingInherited.length > 0 ? serializePeriodCycleState(remainingInherited) : null, id],
+      );
     }
   });
 

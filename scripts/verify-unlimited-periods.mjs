@@ -157,8 +157,9 @@ try {
   // 留空必须原样保留 null：抄组档额度进自有档就等于把组档物化，组后续调整对该用户失效。
   check("S5 留空档位不落成组档额度（保留 null 以便跟随组档）", dayCycles(afterInherit.period_cycles)[0]?.quota_requests === null, "period_cycles=" + afterInherit.period_cycles);
   const stillBlocked = await checkQuota(alice.id, 0);
-  // 用户自有的覆盖档从 0 起算（不搬组档历史用量），因此这条档位重新给满额度
-  check("S6 留空后仍受同一条每日档约束", stillBlocked.ok === true && stillBlocked.quota.periods.find((p) => p.period_seconds === DAY)?.quota_requests === 10, JSON.stringify(stillBlocked.quota.periods).slice(0, 200));
+  // 组的每日 10 次请求已被前面用满，而留空档的用量记在 group_period_cycles，
+  // 判定必须读到那份计数并拦住，不能因为自有档那条计 0 就放行。
+  check("S6 留空后仍受组档已用尽的每日请求约束", stillBlocked.ok === false, JSON.stringify(stillBlocked.quota.periods.filter((p) => p.period_seconds === DAY)));
 
   // -1 = 不限制（覆盖组）
   const submitUnlimited = await setUserCycles(alice.id, [{ seconds: DAY, quota_tokens: -1, quota_requests: -1 }]);
@@ -565,6 +566,51 @@ try {
   await addUsage(yves.id, yvesKey.id, 0, 1);
   const yvesStored = await storedUser(yves.id);
   check("S72 切回留空后计费写继承档计数", dayCycles(yvesStored.group_period_cycles)[0]?.used_requests === 1, "group_period_cycles=" + yvesStored.group_period_cycles);
+
+  // ---- 跨侧覆盖：一侧自有额度、另一侧沿用组档，两条键空间的计数必须都进判定 ----
+  // 组只限每日请求、用户只填每日 Token 时，请求用量记在 group_period_cycles、
+  // Token 用量记在 period_cycles。判定若只读自有档那份，组档限额就永远拦不住。
+  await setGroupCycles(G, [{ seconds: DAY, quota_tokens: null, quota_requests: 5 }]);
+  const zack = await createUser("verifyzack");
+  await db.execute("INSERT INTO `keys` (`key`, name, user_id, enabled) VALUES (?, 'k', ?, 1)", ["verify-zack-key", zack.id]);
+  const zackKey = await db.queryOne("SELECT id FROM `keys` WHERE user_id = ?", [zack.id]);
+  await setUserCycles(zack.id, [{ seconds: DAY, quota_tokens: 100000, quota_requests: null }]);
+  for (let i = 0; i < 5; i += 1) {
+    await primeWindows(zack.id);
+    await addUsage(zack.id, zackKey.id, 10, 1);
+  }
+  const zackQuota = await checkQuota(zack.id, 0);
+  const zackDay = zackQuota.quota.periods.filter((p) => p.period_seconds === DAY);
+  check("S73 跨侧覆盖时判定读得到组档请求用量", zackDay.length === 1 && zackDay[0]?.used_requests === 5, JSON.stringify(zackDay));
+  check("S74 跨侧覆盖时组档请求额度仍能拦住", zackQuota.ok === false && String(zackQuota.reason).includes("周期请求配额已用尽"), JSON.stringify(zackQuota).slice(0, 200));
+
+  // ---- 交回组档：留空攒量 -> -1 -> 切回留空，两套键空间的旧计数都不能复活 ----
+  await setGroupCycles(G, [{ seconds: DAY, quota_tokens: null, quota_requests: 100 }]);
+  const zara = await createUser("verifyzara");
+  await db.execute("INSERT INTO `keys` (`key`, name, user_id, enabled) VALUES (?, 'k', ?, 1)", ["verify-zara-key", zara.id]);
+  const zaraKey = await db.queryOne("SELECT id FROM `keys` WHERE user_id = ?", [zara.id]);
+  await patchUser(zara.id, { period_cycles: [{ seconds: DAY, quota_tokens: null, quota_requests: null }] });
+  for (let i = 0; i < 3; i += 1) {
+    await primeWindows(zara.id);
+    await addUsage(zara.id, zaraKey.id, 0, 1);
+  }
+  await patchUser(zara.id, { period_cycles: [{ seconds: DAY, quota_tokens: -1, quota_requests: -1 }] });
+  for (let i = 0; i < 2; i += 1) {
+    await primeWindows(zara.id);
+    await addUsage(zara.id, zaraKey.id, 0, 1);
+  }
+  await patchUser(zara.id, { period_cycles: [{ seconds: DAY, quota_tokens: null, quota_requests: null }] });
+  const zaraAfter = await storedUser(zara.id);
+  check("S75 切回留空时清掉继承档旧计数", zaraAfter.group_period_cycles === null, "group_period_cycles=" + zaraAfter.group_period_cycles);
+  const zaraQuota = await checkQuota(zara.id, 0);
+  check("S76 切回留空后判定从 0 起算", zaraQuota.quota.periods.find((p) => p.period_seconds === DAY)?.used_requests === 0, JSON.stringify(zaraQuota.quota.periods.filter((p) => p.period_seconds === DAY)));
+  await primeWindows(zara.id);
+  await addUsage(zara.id, zaraKey.id, 0, 1);
+  const zaraStored = await storedUser(zara.id);
+  const zaraGroupUsed = parsePeriodCycles(zaraStored.group_period_cycles).find((c) => c.seconds === DAY)?.used_requests;
+  check("S77 切回留空后计费写继承档且不复用历史用量", zaraGroupUsed === 1, "group_period_cycles=" + zaraStored.group_period_cycles);
+  const zaraQuotaAfter = await checkQuota(zara.id, 0);
+  check("S78 切回留空后判定与计费同口径", zaraQuotaAfter.quota.periods.find((p) => p.period_seconds === DAY)?.used_requests === zaraGroupUsed, JSON.stringify(zaraQuotaAfter.quota.periods.filter((p) => p.period_seconds === DAY)) + " group=" + zaraGroupUsed);
 
   console.log("");
   console.log(passed + "/" + (passed + failed) + " 通过" + (failed > 0 ? "，存在失败" : ""));
