@@ -76,11 +76,17 @@ export async function ensureCycleResets<Table extends "users" | "channels" | "mo
   if ((await guardedUpdate(next, guardRaw ?? null)).changes > 0) return next;
 
   // 未命中说明并发下已被他人改写：采信库里的最新值。
-  const row = await db.queryOne<{ period_cycles: string | null }>(
-    `SELECT ${column} FROM ${table} WHERE id = ?`,
-    [id],
-  );
-  const current = parsePeriodCycles(row?.period_cycles);
+  // 列名必须按 column 动态取值：SQL 已经选的是 column，读值时再写死 period_cycles
+  // 会让 group_period_cycles 这条路径永远读到 undefined，从而绕过下面的兜底推进。
+  const readColumn = async (): Promise<string | null> => {
+    const row = await db.queryOne<Record<string, string | null>>(
+      `SELECT ${column} AS value FROM ${table} WHERE id = ?`,
+      [id],
+    );
+    return row?.value ?? null;
+  };
+  const firstRead = await readColumn();
+  const current = parsePeriodCycles(firstRead);
   if (current.length === 0) return next;
 
   const stillExpired = current.some((cycle) => {
@@ -103,14 +109,10 @@ export async function ensureCycleResets<Table extends "users" | "channels" | "mo
       reset_at: toMysqlDatetime(new Date(now.getTime() + cycle.seconds * 1000)),
     };
   });
-  if ((await guardedUpdate(forced, row?.period_cycles ?? null)).changes > 0) return forced;
+  if ((await guardedUpdate(forced, firstRead)).changes > 0) return forced;
 
   // 仍未命中：并发方刚刚又改过，采信它的值而非覆盖。
-  const latest = await db.queryOne<{ period_cycles: string | null }>(
-    `SELECT ${column} FROM ${table} WHERE id = ?`,
-    [id],
-  );
-  const parsedLatest = parsePeriodCycles(latest?.period_cycles);
+  const parsedLatest = parsePeriodCycles(await readColumn());
   return parsedLatest.length > 0 ? parsedLatest : forced;
 }
 
