@@ -12,7 +12,7 @@ import { listExistingModelAliases, parseAllowedModelAliases, stringifyAllowedMod
 import { USERNAME_SCHEMA } from "@/lib/auth/username";
 import { friendlyCredentialPayloadError, passwordSchema } from "@/lib/auth/validation";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
-import { isInheritedQuota, parsePeriodCycles, serializePeriodCycles, validatePeriodCycles } from "@/lib/gateway/period-cycles";
+import { parsePeriodCycles, resolveUserPeriodCycles, serializePeriodCycleState, validatePeriodCycles } from "@/lib/gateway/period-cycles";
 
 const createSchema = z.object({
   username: USERNAME_SCHEMA,
@@ -214,16 +214,13 @@ export async function POST(request: Request) {
     if (!group) return jsonError("用户组不存在", 400);
   }
 
-  // 新建用户没有「原值」可继承：提交的档位里额度为 null 的项，组内有同秒数档位则继承组档，
-  // 否则落成 -1（显式不限制）。与编辑接口同一口径，避免新建的用户档位空转。
-  const targetGroup = await getUserGroup(groupId);
-  const groupSeconds = new Set(parsePeriodCycles(targetGroup?.period_cycles).map((cycle) => cycle.seconds));
+  // 新建用户没有「原值」可继承：提交的档位原样落库，某一侧留空就表示跟着组档走
+  // （读取时让位给组档），组里没有该周期时才落成 -1。与编辑接口同一口径。
+  const groupCycles = parsePeriodCycles((await getUserGroup(groupId))?.period_cycles);
   const periodCycles = modelGateFeatures.periodQuota
-    ? serializePeriodCycles((cycleValidation.cycles ?? []).map((cycle) => (
-      isInheritedQuota(cycle.quota_tokens, cycle.quota_requests) && !groupSeconds.has(cycle.seconds)
-        ? { ...cycle, quota_tokens: -1, quota_requests: -1 }
-        : cycle
-    ))) || null
+    ? serializePeriodCycleState(
+      resolveUserPeriodCycles(cycleValidation.cycles ?? [], [], groupCycles),
+    ) || null
     : null;
 
   const passwordHash = await hashPassword(parsed.data.password);

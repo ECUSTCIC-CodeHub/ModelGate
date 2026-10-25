@@ -4,7 +4,6 @@ import { getGatewaySettings } from "@/lib/core/settings";
 import { parseStoredUtc, toMysqlDatetime } from "@/lib/core/db/datetime";
 import {
   applyCycleUsage,
-  isInheritedQuota,
   parsePeriodCycles,
   serializePeriodCycleState,
   type PeriodCycle,
@@ -64,16 +63,32 @@ async function accumulateCycles(
   }
   // 生效口径只在这里算一次：判定侧、展示侧、计费侧共用 resolveEnforcedCycles，
   // 保证「哪些档在管这个用户」只有一份真值。
+  // 注意 enforced.own 是**用户自己写下的形状**（不含从组档让位来的额度），
+  // 因此回写 users.period_cycles 时额度天然不会被物化。
   const enforced = resolveEnforcedCycles(ownCycles, inherited);
-  const billableOwn = billableOwnCycles(enforced.own);
+
+  // 自有档里真正参与计费的秒数：用户显式写了额度的那几档，以及
+  // 组档把额度让位过来的那几档（让位只发生在读取时，回写仍用原形状）。
+  const passThroughSeconds = new Set(enforced.passThrough);
+  const billableOwn = enforced.own.filter((cycle) => !passThroughSeconds.has(cycle.seconds));
   if (billableOwn.length > 0) {
+    const ownSeconds = new Set(billableOwn.map((cycle) => cycle.seconds));
+    const nextOwn = ownCycles.map((cycle) => (
+      ownSeconds.has(cycle.seconds) ? applyCycleUsage([cycle], deltaTokens, deltaRequests)[0] : cycle
+    ));
     await tx.execute(
       "UPDATE users SET period_cycles = ? WHERE id = ?",
-      [serializePeriodCycleState(applyCycleUsage(billableOwn, deltaTokens, deltaRequests)), id],
+      [serializePeriodCycleState(nextOwn), id],
     );
   }
+
+  // 生效口径里落到自有档的秒数不再属于继承档：用户写了显式额度覆盖组档，
+  // 必须把 group_period_cycles 里同秒数的残留计数清掉，否则切回「覆盖」后
+  // 内存里的旧计数会被下一次累加写回来，组档的用量继续在后台叠加。
+  const ownSecondsSet = new Set(billableOwn.map((cycle) => cycle.seconds));
   const effectiveInherited = enforced.inherited;
-  const storedInherited = parsePeriodCycles(row.group_period_cycles);
+  const storedInherited = parsePeriodCycles(row.group_period_cycles)
+    .filter((cycle) => !ownSecondsSet.has(cycle.seconds));
   // 组已清空周期档（或全部被自有档覆盖）时清掉残留计数：
   // 这些档位不再参与判定，留着只会占空间。
   if (effectiveInherited.length === 0) {
@@ -103,13 +118,6 @@ async function loadUserGroupCycles(tx: TransactionContextLike, userId: number): 
     [userId],
   );
   return parsePeriodCycles(row?.period_cycles);
-}
-
-// 计费侧要写的自有档：用户档里额度全为 null 的档位按生效口径已被组档顶替，
-// 它们只占位置不带额度，计费时没有可累加的对象，也不能留在 period_cycles 里
-// 继续干扰「自有档是否覆盖组档」的判断。
-function billableOwnCycles(own: PeriodCycle[]): PeriodCycle[] {
-  return own.filter((cycle) => !isInheritedQuota(cycle.quota_tokens, cycle.quota_requests));
 }
 
 // 事务内查找匹配当前渠道+模型的用户有效定向额度。

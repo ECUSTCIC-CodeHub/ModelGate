@@ -14,12 +14,10 @@ import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { type EffectiveLimitsInput, getEffectiveLimits, getUserGroup } from "@/lib/gateway/effective-limits";
 import { resolveEffectivePeriods } from "@/lib/gateway/quota";
 import {
-  isInheritedQuota,
-  mergeDefinitionOntoState,
   parsePeriodCycles,
+  resolveUserPeriodCycles,
   serializePeriodCycleState,
   validatePeriodCycles,
-  type PeriodCycleInput,
 } from "@/lib/gateway/period-cycles";
 
 const updateSchema = z.object({
@@ -45,30 +43,6 @@ function normalizeQuota(value: number | null | undefined) {
   if (value === null || value === undefined) return null;
   if (value < 0) return -1;
   return value;
-}
-
-// 用户周期档的落库形态。
-// - 未提交（undefined）：保持原值；
-// - 原有档位上的运行时计数按秒数保留，否则管理员改额度会把已用量清零、窗口重新锚定；
-// - 组里没有可继承的周期时，白值档位落成 -1：契约上 null 是「继承」，
-//   而用户组本来就没配置，留给 null 会让这条档位永远不生效，也不能让人显式覆盖。
-async function resolveUserPeriodCycles(input: {
-  submitted: PeriodCycleInput[] | undefined;
-  existingRaw: string | null;
-  groupId: number | null;
-}): Promise<string | null> {
-  if (!modelGateFeatures.periodQuota) return input.existingRaw;
-  if (input.submitted === undefined) return input.existingRaw;
-
-  const group = await getUserGroup(input.groupId);
-  const groupSeconds = new Set(parsePeriodCycles(group?.period_cycles).map((cycle) => cycle.seconds));
-  const definitions = input.submitted.map((cycle) => (
-    isInheritedQuota(cycle.quota_tokens, cycle.quota_requests) && !groupSeconds.has(cycle.seconds)
-      ? { ...cycle, quota_tokens: -1, quota_requests: -1 }
-      : cycle
-  ));
-
-  return serializePeriodCycleState(mergeDefinitionOntoState(input.existingRaw, definitions)) || null;
 }
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -147,11 +121,14 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const existingAliases = await listExistingModelAliases(inputAliases);
   const droppedAliases = inputAliases.filter((a) => !existingAliases.includes(a));
 
-  const nextPeriodCycles = await resolveUserPeriodCycles({
-    submitted: cycleValidation.cycles,
-    existingRaw: existing.period_cycles,
-    groupId: parsed.data.group_id === undefined ? existing.group_id : parsed.data.group_id,
-  });
+  const nextGroupId = parsed.data.group_id === undefined ? existing.group_id : parsed.data.group_id;
+  const nextPeriodCycles = cycleValidation.cycles !== undefined && modelGateFeatures.periodQuota
+    ? serializePeriodCycleState(resolveUserPeriodCycles(
+      cycleValidation.cycles,
+      parsePeriodCycles(existing.period_cycles),
+      parsePeriodCycles((await getUserGroup(nextGroupId))?.period_cycles),
+    )) || null
+    : existing.period_cycles;
 
   const merged = {
     ...existing,

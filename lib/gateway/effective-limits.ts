@@ -1,6 +1,6 @@
 import { gatewayDb, type DbGroup, type DbUser } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
-import { inheritedCycleTemplate, parsePeriodCycles, type PeriodCycle } from "@/lib/gateway/period-cycles";
+import { isInheritedQuota, parsePeriodCycles, placeholderCycle, type PeriodCycle } from "@/lib/gateway/period-cycles";
 
 export type EffectiveLimits = {
   qps: number;
@@ -48,61 +48,67 @@ function definitionOnly(cycles: PeriodCycle[]): PeriodCycle[] {
 // 组后续收紧/放宽/删除对该用户永久失效，甚至已删除的组限制会继续拦人。
 // 因此这里只做「定义合并」，计数由调用方按各自的键空间读写。
 export type EnforcedCycles = {
-  // 用户自有档（计数存 users.period_cycles）
+  // 用户自有档：**只含用户自己写的额度**，不含从组档让位来的值。
+  // 计数存 users.period_cycles，回写库时必须用这里的形状，否则组档额度会被物化。
   own: PeriodCycle[];
-  // 继承自用户组的档位，定义来自组、计数按用户+秒数独立存储
+  // 继承自用户组的档位，定义来自组、计数按用户+秒数独立存储（users.group_period_cycles）
   inherited: PeriodCycle[];
-  // own + inherited，供逐档判定使用
+  // 生效档位 = 自有档按秒数让位给组档后的结果 + 继承档 + 占位档。
+  // 只用于判定与展示，绝不回写库里。
   all: PeriodCycle[];
+  // 用户档里两侧都留空、组里也没有可继承额度的秒数：不限制、不计数，只占位。
+  passThrough: number[];
 };
 
-// 周期档的生效规则（与整体配额同构，留空都是「继承上游」）：
+// 周期档的生效规则：
 //
-// 1. 自有档按秒数在组档基础上合并：用户档某一侧额度留空时沿用组档该周期的额度，
-//    写 -1 或具体数值则覆盖组档。因此「某一档只填 Token、请求留空」不再静默作废
-//    组档的请求上限。两侧都没配时留空落成 -1，不放行空额度档位。
-// 2. 组档里用户没写过自有档的周期，作为继承档直接生效。
-// 3. 两边都没有的常见周期补一条额度为 null 的档位（继承但无上游 = 不限制），
-//    用户可以在那条上填 -1，使「这一周期不限制」成为显式配置。
+// 1. 自有档按秒数让位给组档：某一侧留空就用组档同周期该侧的额度，-1 或数值则覆盖。
+//    让位结果只出现在 all 里，用户档本身（own）保持原样 —— 一旦把组档额度写进
+//    users.period_cycles，组后续放宽/收紧/删除对该周期永久失效，
+//    正是 group_period_cycles 这套双键空间要避免的「静默物化」。
+// 2. 组档里用户没写过自有档的周期，作为继承档直接生效（计数在 group_period_cycles）。
+// 3. 两边都没有的常见周期补一条额度为 null 的占位档，只用于展示「这一周期还没配」。
 //
-// 自有档的运行时计数记在 users.period_cycles，继承档记在 users.group_period_cycles，
-// 两条键空间不能混。
+// 两侧都留空、组里也没有可继承额度的档位记为 passThrough：不构成限制、不产生计数，
+// 既不进判定也不进 group_period_cycles（否则界面上的「不限制」档会偷偷涨用量）。
 export function resolveEnforcedCycles(userCycles: PeriodCycle[], groupCycles: PeriodCycle[]): EnforcedCycles {
   const groupBySeconds = new Map(groupCycles.map((cycle) => [cycle.seconds, cycle]));
-  const own: PeriodCycle[] = [];
 
-  // 自有档与组档按同一周期合并：自有额度为 null 的那一侧沿用组档，-1 或数值则覆盖组档。
-  // 两侧都没配该周期时，自有额度为 null 属「继承但无上游」，直接落成 -1，
-  // 与「留空即继承、-1 即不限制」的契约一致，不留下永远不生效的空额度档位。
-  for (const cycle of userCycles) {
-    const fromGroup = groupBySeconds.get(cycle.seconds);
-    own.push({
-      ...cycle,
-      quota_tokens: fromGroup && cycle.quota_tokens === null ? fromGroup.quota_tokens : (cycle.quota_tokens ?? -1),
-      quota_requests: fromGroup && cycle.quota_requests === null ? fromGroup.quota_requests : (cycle.quota_requests ?? -1),
-    });
-  }
+  const own = userCycles.slice();
+
+  const passThrough = userCycles
+    .filter((cycle) => isInheritedQuota(cycle.quota_tokens, cycle.quota_requests) && !groupBySeconds.has(cycle.seconds))
+    .map((cycle) => cycle.seconds);
 
   const ownSeconds = new Set(own.map((cycle) => cycle.seconds));
   const inherited = groupCycles
     .filter((cycle) => !ownSeconds.has(cycle.seconds))
     .map((cycle) => definitionOnly([cycle])[0]);
 
+  const enforcedOwn = own.map((cycle) => {
+    const fromGroup = groupBySeconds.get(cycle.seconds);
+    return {
+      ...cycle,
+      quota_tokens: cycle.quota_tokens ?? fromGroup?.quota_tokens ?? -1,
+      quota_requests: cycle.quota_requests ?? fromGroup?.quota_requests ?? -1,
+    };
+  });
+
+  const coveredSeconds = new Set([...enforcedOwn, ...inherited].map((cycle) => cycle.seconds));
   const all = [
-    ...own,
+    ...enforcedOwn,
     ...inherited,
-    ...unconfiguredSeconds(own, inherited).map(inheritedCycleTemplate),
+    ...unconfiguredSeconds(coveredSeconds).map(placeholderCycle),
   ].sort((a, b) => a.seconds - b.seconds);
 
-  return { own, inherited, all };
+  return { own, inherited, all, passThrough };
 }
 
-// 常见周期里，用户与组都没配置、但需要让用户能显式写 -1 的那几档。
+// 常见周期里，用户与组都没配置、但需要让管理员能显式写 -1 的那几档。
 // 只补常见档位（小时/天/周/月），自定义秒数仍以两边已有配置为准。
 const COMMON_PERIOD_SECONDS = [3600, 86400, 604800, 2592000];
 
-function unconfiguredSeconds(own: PeriodCycle[], inherited: PeriodCycle[]): number[] {
-  const covered = new Set([...own, ...inherited].map((cycle) => cycle.seconds));
+function unconfiguredSeconds(covered: Set<number>): number[] {
   return COMMON_PERIOD_SECONDS.filter((seconds) => !covered.has(seconds));
 }
 
@@ -120,7 +126,9 @@ export async function getEffectiveLimits(user: EffectiveLimitsInput): Promise<Ef
   // 因此判定、计费、展示三处共用这一个口径。
   const userCycles = parsePeriodCycles(user.period_cycles);
   const groupCycles = parsePeriodCycles(group?.period_cycles);
-  const merged = modelGateFeatures.periodQuota ? mergePeriodCycles(userCycles, groupCycles) : { own: [], inherited: [], all: [] };
+  const merged = modelGateFeatures.periodQuota
+    ? mergePeriodCycles(userCycles, groupCycles)
+    : { own: [], inherited: [], all: [], passThrough: [] };
 
   return {
     qps: pickRate(user.qps, group?.qps ?? -1),

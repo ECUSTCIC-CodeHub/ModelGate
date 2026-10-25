@@ -52,6 +52,14 @@ function cleanQuota(value: unknown): number | null {
   return Math.min(Math.round(num), Number.MAX_SAFE_INTEGER);
 }
 
+// 提交体里的额度只接受 null / undefined / 整数（-1 与 >= 0）。
+// 不做隐式数字转换：JSON 里的 "1000" 多半是调用方拼错了类型。
+function isQuotaInput(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value !== "number") return false;
+  return Number.isInteger(value) && (value === -1 || value >= 0);
+}
+
 // 档位 id 仅在单对象内唯一，用于响应头与前端定位；缺省时按序生成，保证稳定。
 function normalizeId(raw: unknown, index: number, seen: Set<string>): string {
   const candidate = typeof raw === "string" ? raw.trim() : "";
@@ -142,9 +150,10 @@ export function parsePeriodCycles(raw: unknown): PeriodCycle[] {
 }
 
 // 定义值 → 带运行时状态的档位（初始计数为 0）。
-export function toCycleFromInput(input: PeriodCycleInput, id?: string): PeriodCycle {
+// id 缺省时按秒数生成：空串会写出 `...-Remaining-` 这种无名响应头，前端列表也会撞 key。
+export function toCycleFromInput(input: PeriodCycleInput, id?: string, fallbackId?: string): PeriodCycle {
   return {
-    id: id ?? input.id ?? "",
+    id: typeof id === "string" && id !== "" ? id : input.id || fallbackId || `p${input.seconds}`,
     seconds: input.seconds,
     quota_tokens: input.quota_tokens,
     quota_requests: input.quota_requests,
@@ -202,6 +211,11 @@ export function validatePeriodCycles(
     if (!isValidPeriodSeconds(record.seconds)) {
       return { valid: false, error: `第 ${i + 1} 档重置周期需为 ${MIN_PERIOD_SECONDS} 到 ${MAX_PERIOD_SECONDS} 之间的整数秒。` };
     }
+    // 额度只接受数字或 null：字符串 "-1"、小数 -1.4 一律拒绝，
+    // 否则会被 cleanQuota 静默归一成「继承」，把「不限制」悄悄变成「跟着组走」。
+    if (!isQuotaInput(record.quota_tokens) || !isQuotaInput(record.quota_requests)) {
+      return { valid: false, error: `第 ${i + 1} 档周期的额度需为整数、-1 或留空（null）。` };
+    }
     const tokens = record.quota_tokens === undefined ? null : cleanQuota(record.quota_tokens);
     const requests = record.quota_requests === undefined ? null : cleanQuota(record.quota_requests);
     // 两项都为 null 的档位是合法的：表示该周期继承上游（无上游即不限制）。
@@ -249,11 +263,14 @@ export function legacyToPeriodCycle(row: {
 // 周期配额的懒重置需要访问数据库，已拆到 period-cycles-reset.ts，
 // 让本模块保持无副作用，可供前端组件直接复用解析与校验逻辑。
 
-// 周期档两边都是「继承」时的占位档：只带周期与运行时状态，额度为 null 表示该周期不限制。
-// 组档未配置某周期时由用户侧补出来，保证用户能显式写 -1 覆盖它。
-export function inheritedCycleTemplate(seconds: number): PeriodCycle {
+// 用户与组都没配置某周期时补出来的占位档：额度为 null，表示「继承但上游没有配置」，
+// 也就是这一周期不限制。补出来只是为了让管理员能在界面上给这条周期显式写 -1。
+//
+// id 必须稳定且非空：它要作为响应头 `X-Period-Quota-*-Remaining-{id}` 的后缀，
+// 以及前端列表的 key。空串会让多条占位档互相覆盖、React 报重复 key。
+export function placeholderCycle(seconds: number): PeriodCycle {
   return {
-    id: "",
+    id: `unconfigured-${seconds}`,
     seconds,
     quota_tokens: null,
     quota_requests: null,
@@ -280,6 +297,40 @@ export function applyCycleUsage(
     used_tokens: cycle.used_tokens + deltaTokens,
     used_requests: cycle.used_requests + deltaRequests,
   }));
+}
+
+// 用户周期档的落库形态（新建与编辑共用，保证同一个输入只有一种落库形态）。
+//
+// 用户档只存「用户自己的意图」，绝不抄组档额度：
+// - 某一侧留空 = 这一侧跟着组档走。读取时由 resolveEnforcedCycles 按秒数让位给组档，
+//   写库时原样保留 null，组后续放宽/收紧/删除因此始终生效；
+// - -1 = 显式不限制，>= 0 = 具体额度，二者都覆盖组档。
+//
+// 只有一种情况要把留空落成 -1：组里没有该周期的档位。那时留空既没有上游可继承，
+// 界面上又说不清含义，落成 -1 才是一条明确的「不限制」。
+//
+// 运行时计数按秒数从库里保留，否则管理员改额度会把已用量清零、窗口重新锚定。
+export function resolveUserPeriodCycles(
+  submitted: PeriodCycleInput[],
+  existing: PeriodCycle[],
+  groupCycles: PeriodCycle[],
+): PeriodCycle[] {
+  const groupSeconds = new Set(groupCycles.map((cycle) => cycle.seconds));
+  const existingBySeconds = new Map(existing.map((cycle) => [cycle.seconds, cycle]));
+  return submitted.map((cycle, index) => {
+    const prior = existingBySeconds.get(cycle.seconds);
+    const inheritable = groupSeconds.has(cycle.seconds);
+    return {
+      ...toCycleFromInput({
+        ...cycle,
+        quota_tokens: cycle.quota_tokens ?? (inheritable ? null : -1),
+        quota_requests: cycle.quota_requests ?? (inheritable ? null : -1),
+      }, prior?.id, `p${index + 1}`),
+      used_tokens: prior?.used_tokens ?? 0,
+      used_requests: prior?.used_requests ?? 0,
+      reset_at: prior?.reset_at ?? null,
+    };
+  });
 }
 
 // 管理员提交的定义值合并到库里已有的运行时状态上，按秒数对齐。

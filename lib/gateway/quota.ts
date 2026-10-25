@@ -1,6 +1,6 @@
 import { gatewayDb } from "@/lib/core/db";
 import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
-import { isInheritedQuota, type PeriodCycle } from "@/lib/gateway/period-cycles";
+import { parsePeriodCycles, type PeriodCycle } from "@/lib/gateway/period-cycles";
 import { ensureCycleResets, loadGroupCycleState } from "@/lib/gateway/period-cycles-reset";
 import { formatPeriodLabel } from "@/lib/shared/period-format";
 
@@ -48,6 +48,9 @@ export function appendQuotaHeaders(headers: Record<string, string>, quota: Quota
     }
   }
   for (const period of quota.periods) {
+    // 后缀就是档位 id，空串会写出 `...-Remaining-` 这种无名头，多档之间互相覆盖。
+    // 正常路径上 id 一定非空（占位档也带 unconfigured-<seconds>），这里只是兜底。
+    if (!period.id) continue;
     if (period.remaining_requests !== null) {
       headers[`X-Period-Quota-Requests-Remaining-${period.id}`] = String(period.remaining_requests);
     }
@@ -60,24 +63,48 @@ export function appendQuotaHeaders(headers: Record<string, string>, quota: Quota
   }
 }
 
+// 自有档 → 库里真实存在的行：只保留 ownRaw 里出现过的秒数。
+// 额度沿用 sql 里的用户形状（不含组档让位值），计数与窗口锚点取库里的
+// （不能拿内存里的 0 去覆盖用户已用量）。
+export function storedOwnShape(own: PeriodCycle[], ownRaw: string | null): PeriodCycle[] {
+  const storedBySeconds = new Map(parsePeriodCycles(ownRaw).map((cycle) => [cycle.seconds, cycle]));
+  return own.flatMap((cycle) => {
+    const stored = storedBySeconds.get(cycle.seconds);
+    if (!stored) return [];
+    return [{ ...cycle, id: stored.id, used_tokens: stored.used_tokens, used_requests: stored.used_requests, reset_at: stored.reset_at }];
+  });
+}
+
 // 生效档位的当前状态：自有档的计数在 users.period_cycles，继承档的计数在
 // users.group_period_cycles，两处分开存放，因此必须分别推进窗口再合并。
 // 只读 getEffectiveLimits 的 period_cycles 会漏掉继承档的实际用量（组表只有定义值），
 // 与判定、计费口径不一致。
 //
-// enforced 必须来自 resolveEnforcedCycles：自有档里额度全为 null 的档位只是
-// 「不动组档」的占位，计数应当落在继承档上，不能在自有档里另起一份。
+// enforced 必须来自 resolveEnforcedCycles：own 是用户自己写的形状，inherited 是
+// 组档没被覆盖的部分，all 是让位后的生效值（展示与判定都用它）。
 export async function resolveEffectivePeriods(
   userId: number,
-  enforced: { own: PeriodCycle[]; inherited: PeriodCycle[] },
+  enforced: { own: PeriodCycle[]; inherited: PeriodCycle[]; all?: PeriodCycle[] },
   ownRaw: string | null,
 ): Promise<PeriodQuotaEntry[]> {
-  const billableOwn = enforced.own.filter((cycle) => !isInheritedQuota(cycle.quota_tokens, cycle.quota_requests));
-  const own = billableOwn.length > 0
-    ? await ensureCycleResets("users", userId, billableOwn, undefined, ownRaw)
+  // 自有档只推进**库里原有的**那些档位的窗口：enforced.own 只含用户自己写的额度，
+  // 但 id / 计数 / 锚点必须以库里的为准，否则会把未落库的形状写进去。
+  const own = enforced.own.length > 0
+    ? await ensureCycleResets("users", userId, storedOwnShape(enforced.own, ownRaw), undefined, ownRaw)
     : [];
-  const inherited = await loadGroupCycleState(userId, enforced.inherited);
-  return [...own, ...inherited].map(toPeriodQuotaEntry);
+  const inherited = enforced.inherited.length > 0
+    ? await loadGroupCycleState(userId, enforced.inherited, undefined, false)
+    : [];
+  const ownBySeconds = new Map(own.map((cycle) => [cycle.seconds, cycle]));
+  const inheritedBySeconds = new Map(inherited.map((cycle) => [cycle.seconds, cycle]));
+  // 额度取生效值（可能是从组档让位来的），计数与锚点取各自键空间的实时值。
+  const effective = (enforced.all ?? [...enforced.own, ...enforced.inherited]).flatMap((cycle) => {
+    const state = ownBySeconds.get(cycle.seconds) ?? inheritedBySeconds.get(cycle.seconds);
+    return state
+      ? [{ ...cycle, used_tokens: state.used_tokens, used_requests: state.used_requests, reset_at: state.reset_at }]
+      : [cycle];
+  });
+  return effective.map(toPeriodQuotaEntry).sort((a, b) => a.period_seconds - b.period_seconds);
 }
 
 // -1 是「显式不限制」的哨兵值：没有可用量，也不是「未配置」。
@@ -177,7 +204,13 @@ export async function checkQuota(userId: number, estimatedTokens: number): Promi
     const inherited = enforced.inherited.length > 0
       ? await loadGroupCycleState(userId, enforced.inherited)
       : [];
-    const all = [...own, ...inherited];
+    // 判定用生效档位（自有档让位给组档后的额度），计数取各自键空间的实时值。
+    const ownBySeconds = new Map(own.map((cycle) => [cycle.seconds, cycle]));
+    const inheritedBySeconds = new Map(inherited.map((cycle) => [cycle.seconds, cycle]));
+    const all = enforced.all.flatMap((cycle) => {
+      const state = ownBySeconds.get(cycle.seconds) ?? inheritedBySeconds.get(cycle.seconds);
+      return state ? [{ ...cycle, used_tokens: state.used_tokens, used_requests: state.used_requests, reset_at: state.reset_at }] : [cycle];
+    });
     quota.periods = all.map(toPeriodQuotaEntry);
     const exceeded = findExceededCycle(all, estimatedTokens);
     if (exceeded) {

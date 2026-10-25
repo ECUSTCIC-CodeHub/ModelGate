@@ -122,10 +122,15 @@ export async function ensureCycleResets<Table extends "users" | "channels" | "mo
 // 传入的 definitions 是组当前的档位定义（已被自有档按秒数覆盖过滤），
 // 这里把同一秒数已存在的计数接上，未存在的从 0 起算；
 // 组里删掉的档位不会被带回来，因此组配置变更立即生效。
+// persist=false 用于纯读取场景（管理端列表/详情/用户自查）：那里只是把生效档位
+// 渲染出来，不产生用量，推进窗口的活儿留给判定侧和计费侧。
+// 缺省 true 时，这里会把「原样回写的旧状态」也写进 group_period_cycles，
+// 于是「用户档显式覆盖组档」之后，残留的继承计数会在下一次查看时被复活。
 export async function loadGroupCycleState(
   userId: number,
   definitions: PeriodCycle[],
   db: CycleResetExecutor = gatewayDb,
+  persist = true,
 ): Promise<PeriodCycle[]> {
   if (definitions.length === 0) return [];
   const row = await db.queryOne<{ group_period_cycles: string | null }>(
@@ -144,5 +149,6 @@ export async function loadGroupCycleState(
       reset_at: prior.reset_at,
     };
   });
+  if (!persist) return merged;
   return ensureCycleResets("users", userId, merged, db, row?.group_period_cycles ?? null, "group_period_cycles");
 }
