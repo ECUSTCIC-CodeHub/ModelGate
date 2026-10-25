@@ -61,7 +61,10 @@ export async function POST(request: Request) {
     return jsonError("重置券不发放额度，请留空 Token 额度与请求额度", 400);
   }
 
-  const cyclesResult = validatePeriodCycles(kind === "reset" ? null : parsed.data.period_cycles ?? null);
+  // 这里是新建：未提交与留空等价，都表示「这张券不限制周期」。
+  // 编辑接口（[id]/route.ts）不能沿用这个写法 —— 那里未提交必须保持原值，
+  // 直接把 undefined 折成 null 会清空已有档位。
+  const cyclesResult = validatePeriodCycles(kind === "reset" ? null : parsed.data.period_cycles);
   if (!cyclesResult.valid) return jsonError(cyclesResult.error, 400);
   const periodCycles = cyclesResult.cycles ?? [];
 
