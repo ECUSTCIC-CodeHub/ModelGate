@@ -288,16 +288,6 @@ try {
   await setUserCycles(judy.id, judyDrafts);
   check("S31 抽屉不改直接保存不新增假档", (await storedUser(judy.id)).period_cycles === judyBefore, "before=" + judyBefore + " after=" + (await storedUser(judy.id)).period_cycles);
 
-  // 两条键空间不能重复计数：留空档的用量只记继承档，显式额度档只记自有档。
-  await setGroupCycles(G, [{ seconds: DAY, quota_requests: 100, quota_tokens: null }]);
-  const karl = await createUser("verifykarl");
-  await setUserCycles(karl.id, [{ seconds: DAY, quota_tokens: null, quota_requests: null }]);
-  await db.execute("INSERT INTO `keys` (`key`, name, user_id, enabled) VALUES (?, 'k', ?, 1)", ["verify-karl-key", karl.id]);
-  await addUsage(karl.id, (await db.queryOne("SELECT id FROM `keys` WHERE user_id = ?", [karl.id])).id, 10, 3);
-  const karlStored = await storedUser(karl.id);
-  check("S32 留空档计费不写自有档计数", dayCycles(karlStored.period_cycles)[0]?.used_requests === 0, "period_cycles=" + karlStored.period_cycles);
-  check("S33 留空档计费写继承档计数", dayCycles(karlStored.group_period_cycles)[0]?.used_requests === 3, "group_period_cycles=" + karlStored.group_period_cycles);
-
   // 同一次用量在两条键空间里只能出现一次
   const lena = await createUser("verifylena");
   await setUserCycles(lena.id, [{ seconds: DAY, quota_tokens: -1, quota_requests: -1 }]);
@@ -340,6 +330,18 @@ try {
       headers: { cookie: "vlm-access-token=" + signAccessToken({ id: userId, role: "user" }) },
     });
   }
+
+  // 两条键空间不能重复计数：留空档的用量只记继承档，显式额度档只记自有档。
+  await setGroupCycles(G, [{ seconds: DAY, quota_requests: 100, quota_tokens: null }]);
+  const karl = await createUser("verifykarl");
+  await setUserCycles(karl.id, [{ seconds: DAY, quota_tokens: null, quota_requests: null }]);
+  await db.execute("INSERT INTO `keys` (`key`, name, user_id, enabled) VALUES (?, 'k', ?, 1)", ["verify-karl-key", karl.id]);
+  await primeWindows(karl.id);
+  await addUsage(karl.id, (await db.queryOne("SELECT id FROM `keys` WHERE user_id = ?", [karl.id])).id, 10, 3);
+  const karlStored = await storedUser(karl.id);
+  // 留空档保留在用户行里（额度为 null），但计数一律走继承档，两次键空间不能各记一份。
+  check("S32 留空档计费不写自有档计数", dayCycles(karlStored.period_cycles)[0]?.used_requests === 0, "period_cycles=" + karlStored.period_cycles);
+  check("S33 留空档计费写继承档计数", dayCycles(karlStored.group_period_cycles)[0]?.used_requests === 3, "group_period_cycles=" + karlStored.group_period_cycles);
 
   // ensureColumn 的缺省值对存量行不生效（ALTER TABLE ADD COLUMN 里 NULL 仍是 NULL），
   // 老用户与直接 INSERT 出来的行读到的都是 null，必须按「继承」处理。
@@ -526,6 +528,43 @@ try {
   const quotaShape = (walterQuota.periods ?? []).map((p) => p.period_seconds + ":" + p.quota_requests).sort();
   check("S65 profile 与 user/quota 的 periods 形状一致", JSON.stringify(profileShape) === JSON.stringify(quotaShape), "profile=" + JSON.stringify(profileShape) + " quota=" + JSON.stringify(quotaShape));
   check("S66 profile 的 periods 含未配置占位档", profileShape.some((entry) => entry.startsWith("2592000:")), JSON.stringify(profileShape));
+
+  // ---- 生效档位里同秒数只能有一条（判定/响应头/前端 key 都按它分组） ----
+  // 用户两侧留空 + 组档有额度时，自有档那条与继承档那条曾同时在 all 里出现：
+  // 判定各算一遍、响应头按 id 写出两份互相冲突的值、前端列表撞 key。
+  await setGroupCycles(G, [{ seconds: DAY, quota_requests: 30, quota_tokens: null }]);
+  const xavi = await createUser("verifyxavi");
+  await patchUser(xavi.id, { period_cycles: [{ seconds: DAY, quota_tokens: null, quota_requests: null }] });
+  const xaviQuota = await checkQuota(xavi.id, 0);
+  const xaviDay = xaviQuota.quota.periods.filter((p) => p.period_seconds === DAY);
+  check("S67 生效档位里同秒数只有一条", xaviDay.length === 1, JSON.stringify(xaviQuota.quota.periods.map((p) => [p.period_seconds, p.id])));
+  // 生效值必须来自组档（30），不能是自有档那条的 -1（留空被落成 -1 的残留）
+  check("S68 同秒数那条取组档额度", xaviDay[0]?.quota_requests === 30, JSON.stringify(xaviDay));
+  const xaviHeaders = {};
+  appendQuotaHeaders(xaviHeaders, { remaining_requests: null, remaining_tokens: null, periods: xaviQuota.quota.periods });
+  const xaviDayHeaders = Object.keys(xaviHeaders).filter((key) => key.startsWith("X-Period-Quota-Requests-Remaining-") && key.includes("p1"));
+  check("S69 同秒数只写一份周期余量头", xaviDayHeaders.length === 1, JSON.stringify(xaviHeaders));
+
+  // ---- -1 切回留空：遗留的 used_* 不能压住新的组档额度 ----
+  const yves = await createUser("verifyyves");
+  await db.execute("INSERT INTO `keys` (`key`, name, user_id, enabled) VALUES (?, 'k', ?, 1)", ["verify-yves-key", yves.id]);
+  const yvesKey = await db.queryOne("SELECT id FROM `keys` WHERE user_id = ?", [yves.id]);
+  await patchUser(yves.id, { period_cycles: [{ seconds: DAY, quota_tokens: -1, quota_requests: -1 }] });
+  for (let i = 0; i < 5; i += 1) {
+    await primeWindows(yves.id);
+    await addUsage(yves.id, yvesKey.id, 0, 1);
+  }
+  const yvesUnlimited = await checkQuota(yves.id, 0);
+  check("S70 -1 档累积用量后仍放行", yvesUnlimited.ok === true, JSON.stringify(yvesUnlimited).slice(0, 160));
+  // 切回留空 = 这一档交回组档（组档额度 30），已用 5 次的历史用量不该继续压着
+  await patchUser(yves.id, { period_cycles: [{ seconds: DAY, quota_tokens: null, quota_requests: null }] });
+  const yvesBack = await checkQuota(yves.id, 0);
+  const yvesDay = yvesBack.quota.periods.find((p) => p.period_seconds === DAY);
+  check("S71 切回留空后用量从组档重新起算", yvesBack.ok === true && yvesDay?.quota_requests === 30 && yvesDay?.used_requests === 0, JSON.stringify(yvesDay));
+  await primeWindows(yves.id);
+  await addUsage(yves.id, yvesKey.id, 0, 1);
+  const yvesStored = await storedUser(yves.id);
+  check("S72 切回留空后计费写继承档计数", dayCycles(yvesStored.group_period_cycles)[0]?.used_requests === 1, "group_period_cycles=" + yvesStored.group_period_cycles);
 
   console.log("");
   console.log(passed + "/" + (passed + failed) + " 通过" + (failed > 0 ? "，存在失败" : ""));
