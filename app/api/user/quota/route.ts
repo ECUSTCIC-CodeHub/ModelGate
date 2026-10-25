@@ -4,10 +4,9 @@ import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
 import { ensureUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
-import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
-import { resolveEnforcedCycles } from "@/lib/gateway/effective-limits";
 import { ensureCycleResets, loadGroupCycleState } from "@/lib/gateway/period-cycles-reset";
 import { toPeriodQuotaEntry } from "@/lib/gateway/quota";
+import { parseInheritGroupPeriods } from "@/lib/gateway/period-cycles";
 
 export async function GET(request: Request) {
   const guard = await ensureUser(request);
@@ -24,17 +23,23 @@ export async function GET(request: Request) {
   const limits = await getEffectiveLimits(user);
 
   // 多档周期：先按档懒重置，再输出。
-  // 自有档与继承自组的档位计数分开存放（period_cycles / group_period_cycles），
-  // 因此这里分别推进窗口再合并展示，与判定、计费口径一致。
-  const userCycles = parsePeriodCycles(user.period_cycles);
-  const enforced = resolveEnforcedCycles(userCycles, limits.group_cycles);
+  // 直接复用 getEffectiveLimits 算好的生效口径（已按总开关决定要不要让位给组档），
+  // 自有档与继承档的计数分开存放，因此分别推进窗口再合并，与判定、计费口径一致。
+  const enforced = limits.period_cycles;
   const ownState = enforced.own.length > 0
     ? await ensureCycleResets("users", userId, enforced.own, undefined, user.period_cycles)
     : [];
   const inheritedState = enforced.inherited.length > 0
     ? await loadGroupCycleState(userId, enforced.inherited)
     : [];
-  const periods = [...ownState, ...inheritedState].map(toPeriodQuotaEntry);
+  const ownBySeconds = new Map(ownState.map((cycle) => [cycle.seconds, cycle]));
+  const inheritedBySeconds = new Map(inheritedState.map((cycle) => [cycle.seconds, cycle]));
+  const periods = enforced.all.map((cycle) => {
+    const state = ownBySeconds.get(cycle.seconds) ?? inheritedBySeconds.get(cycle.seconds);
+    return toPeriodQuotaEntry(state
+      ? { ...cycle, used_tokens: state.used_tokens, used_requests: state.used_requests, reset_at: state.reset_at }
+      : cycle);
+  });
 
   return jsonOk({
     total: {
@@ -51,6 +56,8 @@ export async function GET(request: Request) {
         : null,
     },
     periods,
+    // 周期配额总开关的当前值。
+    inherit_group_periods: parseInheritGroupPeriods(user.inherit_group_periods),
     rate: {
       rpm: limits.rpm,
       qps: limits.qps,

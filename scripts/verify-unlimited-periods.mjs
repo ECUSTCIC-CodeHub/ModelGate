@@ -94,13 +94,15 @@ try {
   const adminGroup = await db.queryOne("SELECT id FROM `groups` WHERE is_default = 1 AND deleted_at IS NULL");
   const G = adminGroup.id;
 
+  // 显式带上 group_id 与 inherit_group_periods：INSERT 不带 group_id 时，数据库触发器/默认值
+  // 可能给出一个新建的组，那个组没有周期档，继承相关的断言会整片失真。
   async function createUser(username, { role = "user", groupId = G } = {}) {
     const hash = await bcrypt.hash("Verify1234", 4);
     await db.execute(
-      "INSERT INTO users (username, password_hash, role, group_id, rpm, qps, tpm, enabled) VALUES (?, ?, ?, ?, -1, -1, -1, 1)",
+      "INSERT INTO users (username, password_hash, role, group_id, rpm, qps, tpm, enabled, inherit_group_periods) VALUES (?, ?, ?, ?, -1, -1, -1, 1, 1)",
       [username, hash, role, groupId],
     );
-    return db.queryOne("SELECT id, username, role, token_version FROM users WHERE username = ?", [username]);
+    return db.queryOne("SELECT id, username, role, group_id, token_version FROM users WHERE username = ?", [username]);
   }
 
   const adminRow = await createUser("verifyadmin", { role: "admin" });
@@ -124,7 +126,7 @@ try {
   }
 
   async function storedUser(userId) {
-    return db.queryOne("SELECT period_cycles, group_period_cycles FROM users WHERE id = ?", [userId]);
+    return db.queryOne("SELECT period_cycles, group_period_cycles, inherit_group_periods FROM users WHERE id = ?", [userId]);
   }
 
   function dayCycles(raw) {
@@ -310,6 +312,127 @@ try {
   check("S35 字符串额度被拒", badString.status === 400, "status=" + badString.status);
   const badFloat = await setUserCycles(lena.id, [{ seconds: DAY, quota_tokens: -1.4, quota_requests: null }]);
   check("S36 小数额度被拒", badFloat.status === 400, "status=" + badFloat.status);
+
+  // ---- 周期配额总开关（inherit_group_periods）：关掉即不受组档约束 ----
+  const createRoute = await import("@/app/api/admin/users/route");
+  const listRoute = await import("@/app/api/admin/users/route");
+  const userQuotaRoute = await import("@/app/api/user/quota/route");
+
+  async function patchUser(userId, body) {
+    const res = await detailRoute.PUT(
+      adminRequest("/api/admin/users/" + userId, "PUT", body),
+      { params: Promise.resolve({ id: String(userId) }) },
+    );
+    return { status: res.status, body: await res.json() };
+  }
+
+  // accumulateCycles 只往 group_period_cycles 里写计数，reset_at 仍是 null；
+  // 下一次读取会把它当成「还没开窗」，把 used_* 归零重来。真实链路上判定侧
+  // （checkQuota）在计费之前已经把窗口推进过，这里用一次 GET 复现同样的顺序，
+  // 否则断言会看到「用量莫名清零」而误判。
+  async function primeWindows(userId) {
+    await userQuotaRoute.GET(userRequest("/api/user/quota", userId));
+  }
+
+  function userRequest(pathname, userId) {
+    return new Request("https://verify.invalid" + pathname, {
+      method: "GET",
+      headers: { cookie: "vlm-access-token=" + signAccessToken({ id: userId, role: "user" }) },
+    });
+  }
+
+  // ensureColumn 的缺省值对存量行不生效（ALTER TABLE ADD COLUMN 里 NULL 仍是 NULL），
+  // 老用户与直接 INSERT 出来的行读到的都是 null，必须按「继承」处理。
+  const legacy = await createUser("verifylegacy");
+  await db.execute("UPDATE users SET inherit_group_periods = NULL WHERE id = ?", [legacy.id]);
+  await setGroupCycles(G, [{ seconds: DAY, quota_requests: 100, quota_tokens: null }]);
+  const legacyQuota = await checkQuota(legacy.id, 0);
+  check("S37 总开关为 NULL 的存量行按继承处理", legacyQuota.quota.periods.find((p) => p.period_seconds === DAY)?.quota_requests === 100, JSON.stringify(legacyQuota.quota.periods).slice(0, 200));
+
+  // 组配「每天 3 请求」，先把档位用满
+  await setGroupCycles(G, [{ seconds: DAY, quota_requests: 3, quota_tokens: null }]);
+  const mia = await createUser("verifymia");
+  await setUserCycles(mia.id, []);
+  await db.execute("INSERT INTO `keys` (`key`, name, user_id, enabled) VALUES (?, 'k', ?, 1)", ["verify-mia-key", mia.id]);
+  const miaKey = await db.queryOne("SELECT id FROM `keys` WHERE user_id = ?", [mia.id]);
+  for (let i = 0; i < 3; i += 1) {
+    await primeWindows(mia.id);
+    await addUsage(mia.id, miaKey.id, 0, 1);
+  }
+  const miaBlocked = await checkQuota(mia.id, 0);
+  check("S38 关闭开关前受组档约束", miaBlocked.ok === false, JSON.stringify({ ok: miaBlocked.ok, reason: miaBlocked.reason }));
+
+  const miaOff = await patchUser(mia.id, { inherit_group_periods: false });
+  const miaRow = await storedUser(mia.id);
+  check("S39 关闭总开关被接受并落库", miaOff.status === 200 && Number(miaRow.inherit_group_periods) === 0 && miaOff.body?.data?.inherit_group_periods === 0, "status=" + miaOff.status + " inherit=" + miaRow.inherit_group_periods + " body=" + JSON.stringify(miaOff.body).slice(0, 200));
+  const miaAllow = await checkQuota(mia.id, 0);
+  check("S40 关闭总开关后组档不再拦人", miaAllow.ok === true && miaAllow.quota.periods.every((p) => p.quota_requests !== 3), "ok=" + miaAllow.ok + " periods=" + JSON.stringify(miaAllow.quota.periods.map((p) => [p.period_seconds, p.quota_requests])));
+  await primeWindows(mia.id);
+  await addUsage(mia.id, miaKey.id, 0, 1);
+  await primeWindows(mia.id);
+  const miaAfterStored = await storedUser(mia.id);
+  // 关闭后组档不再参与，残留的继承计数会被一次计费顺带清掉；
+  // 关键断言是「不再增长」，因此允许为空。
+  check("S41 关闭后用量不再写继承档计数", miaAfterStored.group_period_cycles === null, "before=" + miaRow.group_period_cycles + " after=" + miaAfterStored.group_period_cycles);
+
+  // 重新打开：组档恢复参与判定，档位原文不受开关影响。
+  // 注意关闭期间继承计数已被清掉（组档当时不参与，留着只会让重新打开后凭空带着旧用量），
+  // 所以这里断言的是「组档重新参与判定」而不是「立刻被用完的历史量拦住」。
+  const miaOn = await patchUser(mia.id, { inherit_group_periods: true });
+  const miaOnStored = await storedUser(mia.id);
+  const miaRestored = await checkQuota(mia.id, 0);
+  check("S42 重新打开开关后组档重新参与判定", miaOn.status === 200 && miaRestored.quota.periods.find((p) => p.period_seconds === DAY)?.quota_requests === 3, "status=" + miaOn.status + " periods=" + JSON.stringify(miaRestored.quota.periods.map((p) => [p.period_seconds, p.quota_requests])));
+  check("S43 开关只改标志不动档位原文", miaOnStored.period_cycles === null, "period_cycles=" + miaOnStored.period_cycles);
+  await primeWindows(mia.id);
+  await addUsage(mia.id, miaKey.id, 0, 3);
+  await primeWindows(mia.id);
+  const miaRefill = await checkQuota(mia.id, 0);
+  check("S43b 重新打开后组档用量重新累计并拦人", miaRefill.ok === false, "ok=" + miaRefill.ok + " used=" + JSON.stringify(miaRefill.quota.periods.find((p) => p.period_seconds === DAY)?.used_requests));
+
+  // 关掉开关时，用户档里还留着「继承」形态的 null 必须固化成 -1，
+  // 否则界面上看着关了开关，读取时还会挂在组档上。
+  const nina = await createUser("verifynina");
+  await patchUser(nina.id, { period_cycles: [{ seconds: DAY, quota_tokens: null, quota_requests: null }] });
+  const ninaBefore = parsePeriodCycles((await storedUser(nina.id)).period_cycles).find((c) => c.seconds === DAY);
+  check("S44 开着开关时留空档位保留 null（继续继承组档）", ninaBefore?.quota_requests === null, JSON.stringify(ninaBefore));
+  const ninaOff = await patchUser(nina.id, { inherit_group_periods: false });
+  const ninaAfter = parsePeriodCycles((await storedUser(nina.id)).period_cycles).find((c) => c.seconds === DAY);
+  check("S45 关闭开关把留空侧固化成 -1", ninaOff.status === 200 && ninaAfter?.quota_requests === -1 && ninaAfter?.quota_tokens === -1, JSON.stringify(ninaAfter));
+  const ninaQuota = await checkQuota(nina.id, 0);
+  check("S46 固化后不再受组档约束", ninaQuota.ok === true, JSON.stringify(ninaQuota).slice(0, 160));
+
+  // 关闭状态下提交留空额度：不抄组档额度，留空侧按不限制处理
+  const owen = await createUser("verifyowen");
+  await patchUser(owen.id, { inherit_group_periods: false });
+  const owenSubmit = await patchUser(owen.id, { period_cycles: [{ seconds: DAY, quota_tokens: null, quota_requests: 5 }] });
+  const owenCycles = parsePeriodCycles((await storedUser(owen.id)).period_cycles).find((c) => c.seconds === DAY);
+  check("S47 关闭状态提交的自有档不落成 -1（没有上游可继承）", owenSubmit.status === 200 && owenCycles?.quota_requests === 5 && owenCycles?.quota_tokens === null, JSON.stringify(owenCycles) + " inheritStored=" + JSON.stringify((await storedUser(owen.id)).inherit_group_periods));
+  const owenQuota = await checkQuota(owen.id, 0);
+  const owenDay = owenQuota.quota.periods.find((p) => p.period_seconds === DAY);
+  check("S48 关闭状态自有档按提交形状生效", owenDay?.quota_requests === 5 && owenDay?.quota_tokens === -1, JSON.stringify(owenDay));
+
+  // 新建接口同样支持总开关
+  const peterRes = await createRoute.POST(adminRequest("/api/admin/users", "POST", {
+    username: "verifypeter", password: "Verify1234", group_id: G, inherit_group_periods: false,
+  }));
+  const peterRow = (await peterRes.json())?.data;
+  check("S49 新建用户可关闭总开关", peterRes.status === 201 && Number(peterRow?.inherit_group_periods) === 0, "status=" + peterRes.status + " inherit=" + JSON.stringify(peterRow?.inherit_group_periods));
+
+  // 管理端列表 / 用户自查接口都要回传开关的生效值
+  const listRes = await listRoute.GET(adminRequest("/api/admin/users?limit=100", "GET"));
+  const listBody = await listRes.json();
+  const miaListed = (listBody.data ?? []).find((row) => row.id === mia.id);
+  check("S50 管理端列表回传总开关", Number(miaListed?.inherit_group_periods) === 1, "inherit=" + miaListed?.inherit_group_periods);
+  const peterListed = (listBody.data ?? []).find((row) => row.id === peterRow?.id);
+  check("S51 管理端列表对关闭用户不展示组档", Number(peterListed?.inherit_group_periods) === 0 && peterListed?.group_period_cycles === null, JSON.stringify({ inherit: peterListed?.inherit_group_periods, group: peterListed?.group_period_cycles }));
+  const owenQuotaBody = await (await userQuotaRoute.GET(userRequest("/api/user/quota", owen.id))).json();
+  check("S52 用户自查接口回传总开关", owenQuotaBody.inherit_group_periods === false, "inherit=" + owenQuotaBody.inherit_group_periods);
+
+  // 关掉开关的用户不受「组后续新增档位」影响（这正是开关相对逐档 -1 的价值）
+  await setGroupCycles(G, [{ seconds: DAY, quota_requests: 1, quota_tokens: null }, { seconds: 3600, quota_requests: 1, quota_tokens: null }]);
+  const quinnQuota = await checkQuota(peterRow.id, 0);
+  check("S53 组新增档位不会套到关闭继承的用户身上", quinnQuota.ok === true && quinnQuota.quota.periods.every((p) => p.quota_requests !== 1), JSON.stringify(quinnQuota.quota.periods.map((p) => [p.period_seconds, p.quota_requests])));
+  check("S54 关闭用户的周期配额响应里不含组档", quinnQuota.quota.periods.every((p) => !p.id.startsWith("group")), JSON.stringify(quinnQuota.quota.periods.map((p) => p.id)));
 
   console.log("");
   console.log(passed + "/" + (passed + failed) + " 通过" + (failed > 0 ? "，存在失败" : ""));

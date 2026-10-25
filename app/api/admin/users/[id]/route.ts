@@ -14,6 +14,8 @@ import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { type EffectiveLimitsInput, getEffectiveLimits, getUserGroup } from "@/lib/gateway/effective-limits";
 import { resolveEffectivePeriods } from "@/lib/gateway/quota";
 import {
+  detachGroupCycles,
+  parseInheritGroupPeriods,
   parsePeriodCycles,
   resolveUserPeriodCycles,
   serializePeriodCycleState,
@@ -32,6 +34,7 @@ const updateSchema = z.object({
   quota_tokens: z.number().int().min(-1).nullable().optional(),
   quota_requests: z.number().int().min(-1).nullable().optional(),
   period_cycles: z.unknown().optional(),
+  inherit_group_periods: z.boolean().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
   note: z.string().max(500).nullable().optional(),
   new_password: passwordSchema().optional(),
@@ -80,12 +83,13 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         quota_tokens: number | null;
         quota_requests: number | null;
         period_cycles: string | null;
+        inherit_group_periods: number | null;
         allowed_model_aliases: string;
         note: string | null;
       }>(
         `SELECT id, username, email, role, group_id, enabled, group_locked, rpm, qps, tpm,
                 quota_tokens, quota_requests,
-                period_cycles,
+                period_cycles, inherit_group_periods,
                 allowed_model_aliases, note
          FROM users WHERE id = ? AND deleted_at IS NULL`,
         [id],
@@ -122,13 +126,28 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const droppedAliases = inputAliases.filter((a) => !existingAliases.includes(a));
 
   const nextGroupId = parsed.data.group_id === undefined ? existing.group_id : parsed.data.group_id;
-  const nextPeriodCycles = cycleValidation.cycles !== undefined && modelGateFeatures.periodQuota
-    ? serializePeriodCycleState(resolveUserPeriodCycles(
-      cycleValidation.cycles,
-      parsePeriodCycles(existing.period_cycles),
-      parsePeriodCycles((await getUserGroup(nextGroupId))?.period_cycles),
-    )) || null
-    : existing.period_cycles;
+  const nextInheritGroup = parsed.data.inherit_group_periods ?? parseInheritGroupPeriods(existing.inherit_group_periods);
+  const existingCycles = parsePeriodCycles(existing.period_cycles);
+  const nextGroupCycles = parsePeriodCycles((await getUserGroup(nextGroupId))?.period_cycles);
+
+  // 周期档落库有三种情况，彼此互斥、都必须显式判断：
+  // 1. 提交了档位：按提交形状落库（留空侧保留 null，等读取时让位给组档）；
+  // 2. 没提交档位但关掉了总开关：把现在的档位里「还在继承组档」的那一侧固化成 -1。
+  //    不这么做的话，档位留着 null 会让用户「看起来关了开关，实际还挂在组档上」；
+  //    固化 -1 是逐档覆盖的写法，重新打开开关或改成数值都能立刻恢复；
+  // 3. 其余情况保持原值。
+  const nextPeriodCycles = !modelGateFeatures.periodQuota
+    ? existing.period_cycles
+    : cycleValidation.cycles !== undefined
+      ? serializePeriodCycleState(resolveUserPeriodCycles(
+        cycleValidation.cycles,
+        existingCycles,
+        nextGroupCycles,
+        nextInheritGroup,
+      )) || null
+      : nextInheritGroup === false && existingCycles.some((cycle) => cycle.quota_tokens === null || cycle.quota_requests === null)
+        ? serializePeriodCycleState(detachGroupCycles(existingCycles)) || null
+        : existing.period_cycles;
 
   const merged = {
     ...existing,
@@ -155,6 +174,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     // 档位内额度为 null 表示继承组档、-1 表示显式不限制并覆盖组档。
     // 组没有可继承的档位时，提交的白值档位一律落成 -1，否则「继承空」等于没配置。
     period_cycles: nextPeriodCycles,
+    inherit_group_periods: nextInheritGroup ? 1 : 0,
     allowed_model_aliases:
       parsed.data.allowed_model_aliases === undefined
         ? existing.allowed_model_aliases
@@ -189,7 +209,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         `UPDATE users
          SET username = ?, email = ?, role = ?, group_id = ?, enabled = ?, group_locked = ?, rpm = ?, qps = ?, tpm = ?,
              quota_tokens = ?, quota_requests = ?,
-             period_cycles = ?,
+             period_cycles = ?, inherit_group_periods = ?,
              allowed_model_aliases = ?, note = ?, password_hash = ?,
              token_version = COALESCE(token_version, 0) + 1
          WHERE id = ?`,
@@ -206,6 +226,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           merged.quota_tokens,
           merged.quota_requests,
           merged.period_cycles,
+          merged.inherit_group_periods,
           merged.allowed_model_aliases,
           merged.note,
           nextPasswordHash,
@@ -218,7 +239,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         `UPDATE users
          SET username = ?, email = ?, role = ?, group_id = ?, enabled = ?, group_locked = ?, rpm = ?, qps = ?, tpm = ?,
              quota_tokens = ?, quota_requests = ?,
-             period_cycles = ?,
+             period_cycles = ?, inherit_group_periods = ?,
              allowed_model_aliases = ?, note = ?
          WHERE id = ?`,
         [
@@ -234,6 +255,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           merged.quota_tokens,
           merged.quota_requests,
           merged.period_cycles,
+          merged.inherit_group_periods,
           merged.allowed_model_aliases,
           merged.note,
           id,
@@ -288,7 +310,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     }>(
       `SELECT u.id, u.username, u.email, u.role, u.group_id, g.name AS group_name,
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
-              u.period_cycles, g.period_cycles AS group_period_cycles,
+              u.period_cycles, u.inherit_group_periods, g.period_cycles AS group_period_cycles,
               u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.group_locked,
               u.pref_model_fallback, u.pref_vision_fallback, u.pref_quota_fallback,
               u.enabled, u.created_at

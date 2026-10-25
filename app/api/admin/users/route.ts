@@ -12,7 +12,7 @@ import { listExistingModelAliases, parseAllowedModelAliases, stringifyAllowedMod
 import { USERNAME_SCHEMA } from "@/lib/auth/username";
 import { friendlyCredentialPayloadError, passwordSchema } from "@/lib/auth/validation";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
-import { parsePeriodCycles, resolveUserPeriodCycles, serializePeriodCycleState, validatePeriodCycles } from "@/lib/gateway/period-cycles";
+import { parseInheritGroupPeriods, parsePeriodCycles, resolveUserPeriodCycles, serializePeriodCycleState, validatePeriodCycles } from "@/lib/gateway/period-cycles";
 
 const createSchema = z.object({
   username: USERNAME_SCHEMA,
@@ -27,6 +27,7 @@ const createSchema = z.object({
   quota_tokens: z.number().int().min(-1).nullable().optional(),
   quota_requests: z.number().int().min(-1).nullable().optional(),
   period_cycles: z.unknown().optional(),
+  inherit_group_periods: z.boolean().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
   note: z.string().max(500).nullable().optional(),
   group_locked: z.boolean().optional(),
@@ -105,6 +106,7 @@ export async function GET(request: Request) {
       oidc_issuer: string | null;
       oidc_subject: string | null;
       group_locked: number;
+      inherit_group_periods: number | null;
       pref_model_fallback: number;
       pref_vision_fallback: number;
       pref_quota_fallback: number;
@@ -114,7 +116,7 @@ export async function GET(request: Request) {
     }>(
       `SELECT u.id, u.username, u.email, u.role, u.group_id, g.name AS group_name,
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
-              u.period_cycles,
+              u.period_cycles, u.inherit_group_periods,
               u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.group_locked,
               u.pref_model_fallback, u.pref_vision_fallback, u.pref_quota_fallback,
               u.enabled, u.created_at
@@ -152,6 +154,7 @@ export async function GET(request: Request) {
   const data = [];
   for (const row of rows) {
     const group = await getUserGroup(row.group_id ?? null);
+    const inheritGroup = parseInheritGroupPeriods(row.inherit_group_periods);
     const effective = await getEffectiveLimits(row);
     // 生效档位 = 自有档（计数在 period_cycles）+ 组档中未被自有档覆盖的部分（计数在 group_period_cycles），
     // 与 /api/user/quota 同口径：两处计数分开存放，必须分别推进窗口再合并。
@@ -164,7 +167,9 @@ export async function GET(request: Request) {
       group_tpm: group?.tpm ?? null,
       group_quota_requests: group?.quota_requests ?? null,
       group_quota_tokens: group?.quota_tokens ?? null,
-      group_period_cycles: group?.period_cycles ?? null,
+      // 关掉继承时组档对用户不可见，回传 null 以免前端把组档当成「正在继承」展示。
+      group_period_cycles: inheritGroup ? (group?.period_cycles ?? null) : null,
+      inherit_group_periods: inheritGroup,
       effective_rpm: effective.rpm,
       effective_qps: effective.qps,
       effective_tpm: effective.tpm,
@@ -216,10 +221,11 @@ export async function POST(request: Request) {
 
   // 新建用户没有「原值」可继承：提交的档位原样落库，某一侧留空就表示跟着组档走
   // （读取时让位给组档），组里没有该周期时才落成 -1。与编辑接口同一口径。
+  const inheritGroup = parsed.data.inherit_group_periods ?? true;
   const groupCycles = parsePeriodCycles((await getUserGroup(groupId))?.period_cycles);
   const periodCycles = modelGateFeatures.periodQuota
     ? serializePeriodCycleState(
-      resolveUserPeriodCycles(cycleValidation.cycles ?? [], [], groupCycles),
+      resolveUserPeriodCycles(cycleValidation.cycles ?? [], [], groupCycles, inheritGroup),
     ) || null
     : null;
 
@@ -233,9 +239,9 @@ export async function POST(request: Request) {
       `INSERT INTO users (
          username, password_hash, email, role, group_id, enabled, group_locked,
          rpm, qps, tpm, quota_tokens, quota_requests,
-         period_cycles,
+         period_cycles, inherit_group_periods,
          allowed_model_aliases, note
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         parsed.data.username,
         passwordHash,
@@ -250,6 +256,7 @@ export async function POST(request: Request) {
         normalizeQuota(parsed.data.quota_tokens),
         normalizeQuota(parsed.data.quota_requests),
         periodCycles,
+        inheritGroup ? 1 : 0,
         stringifyAllowedModelAliases(existingAliases),
         parsed.data.note?.trim() ? parsed.data.note.trim() : null,
       ],
@@ -264,7 +271,7 @@ export async function POST(request: Request) {
     }>(
       `SELECT u.id, u.username, u.email, u.role, u.group_id, g.name AS group_name,
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
-              u.period_cycles, g.period_cycles AS group_period_cycles,
+              u.period_cycles, u.inherit_group_periods, g.period_cycles AS group_period_cycles,
               u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.group_locked,
               u.pref_model_fallback, u.pref_vision_fallback, u.pref_quota_fallback,
               u.enabled, u.created_at

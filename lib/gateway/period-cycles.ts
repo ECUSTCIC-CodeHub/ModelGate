@@ -285,6 +285,26 @@ export function isInheritedQuota(tokens: number | null, requests: number | null)
   return tokens === null && requests === null;
 }
 
+// 「周期档不继承用户组」总开关的落库值。缺省（老数据 / 新建用户 / 列还没写）为 true，
+// 只有显式存成 0/false 才关闭。开关只由管理员显式控制，不由档位推断。
+export function parseInheritGroupPeriods(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return value.trim() === "" ? true : Number(value) !== 0;
+  return Number(value) !== 0;
+}
+
+// 关闭总开关时用户自有档的落库形态：原本继承组档的那一侧固化成 -1。
+// 这是逐档覆盖的写法，不是把组档额度抄进用户档 —— 组档仍只提供定义，
+// 重新打开继承或改成数值都能立刻恢复。
+export function detachGroupCycles(cycles: PeriodCycle[]): PeriodCycle[] {
+  return cycles.map((cycle) => ({
+    ...cycle,
+    quota_tokens: cycle.quota_tokens ?? -1,
+    quota_requests: cycle.quota_requests ?? -1,
+  }));
+}
+
 // 覆盖式写入档位（含运行时状态）。供计费侧在同一事务内累加后回写。
 export function applyCycleUsage(
   cycles: PeriodCycle[],
@@ -301,6 +321,9 @@ export function applyCycleUsage(
 
 // 用户周期档的落库形态（新建与编辑共用，保证同一个输入只有一种落库形态）。
 //
+// inheritGroup=false（关掉「继承用户组周期配额」总开关）时留空侧保持 null：
+// 没有上游可继承，读取时 resolveEnforcedCycles 会把它算作不限制。
+//
 // 用户档只存「用户自己的意图」，绝不抄组档额度：
 // - 某一侧留空 = 这一侧跟着组档走。读取时由 resolveEnforcedCycles 按秒数让位给组档，
 //   写库时原样保留 null，组后续放宽/收紧/删除因此始终生效；
@@ -314,17 +337,20 @@ export function resolveUserPeriodCycles(
   submitted: PeriodCycleInput[],
   existing: PeriodCycle[],
   groupCycles: PeriodCycle[],
+  inheritGroup = true,
 ): PeriodCycle[] {
   const groupSeconds = new Set(groupCycles.map((cycle) => cycle.seconds));
   const existingBySeconds = new Map(existing.map((cycle) => [cycle.seconds, cycle]));
   return submitted.map((cycle, index) => {
     const prior = existingBySeconds.get(cycle.seconds);
-    const inheritable = groupSeconds.has(cycle.seconds);
+    // 留空落成 -1 只在「开着继承、组里却没有这一档」时发生：留空既没有上游可继承、
+    // 又说不清含义，落成不限制才是明确的。关掉总开关时本来就没有上游，留空保持 null。
+    const needsExplicitUnlimited = inheritGroup && !groupSeconds.has(cycle.seconds);
     return {
       ...toCycleFromInput({
         ...cycle,
-        quota_tokens: cycle.quota_tokens ?? (inheritable ? null : -1),
-        quota_requests: cycle.quota_requests ?? (inheritable ? null : -1),
+        quota_tokens: cycle.quota_tokens ?? (needsExplicitUnlimited ? -1 : null),
+        quota_requests: cycle.quota_requests ?? (needsExplicitUnlimited ? -1 : null),
       }, prior?.id, `p${index + 1}`),
       used_tokens: prior?.used_tokens ?? 0,
       used_requests: prior?.used_requests ?? 0,

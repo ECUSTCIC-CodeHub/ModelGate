@@ -1,6 +1,6 @@
 import { gatewayDb, type DbGroup, type DbUser } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
-import { isInheritedQuota, parsePeriodCycles, placeholderCycle, type PeriodCycle } from "@/lib/gateway/period-cycles";
+import { isInheritedQuota, parseInheritGroupPeriods, parsePeriodCycles, placeholderCycle, type PeriodCycle } from "@/lib/gateway/period-cycles";
 
 export type EffectiveLimits = {
   qps: number;
@@ -71,8 +71,17 @@ export type EnforcedCycles = {
 //
 // 两侧都留空、组里也没有可继承额度的档位记为 passThrough：不构成限制、不产生计数，
 // 既不进判定也不进 group_period_cycles（否则界面上的「不限制」档会偷偷涨用量）。
-export function resolveEnforcedCycles(userCycles: PeriodCycle[], groupCycles: PeriodCycle[]): EnforcedCycles {
-  const groupBySeconds = new Map(groupCycles.map((cycle) => [cycle.seconds, cycle]));
+//
+// inheritGroup=false（用户在界面上关掉了「继承用户组周期配额」总开关）时组档整体不参与：
+// 没有可让位的上游，留空那一侧直接算不限制，passThrough 也随之为空。
+// 开关只影响「组档能不能挡到这个人」，用户自己写的额度（含 -1）一律照旧。
+export function resolveEnforcedCycles(
+  userCycles: PeriodCycle[],
+  groupCycles: PeriodCycle[],
+  inheritGroup = true,
+): EnforcedCycles {
+  const effectiveGroupCycles = inheritGroup ? groupCycles : [];
+  const groupBySeconds = new Map(effectiveGroupCycles.map((cycle) => [cycle.seconds, cycle]));
 
   const own = userCycles.slice();
 
@@ -89,12 +98,14 @@ export function resolveEnforcedCycles(userCycles: PeriodCycle[], groupCycles: Pe
   // 组档里用户没写过显式额度的周期作为继承档生效：既包括用户没提过的周期，
   // 也包括用户写了但两侧留空的周期（那种情况下额度全来自组档）。
   const ownSeconds = new Set(own.map((cycle) => cycle.seconds));
-  const inherited = groupCycles
+  const inherited = effectiveGroupCycles
     .filter((cycle) => !ownSeconds.has(cycle.seconds) || inheritCountSeconds.has(cycle.seconds))
     .map((cycle) => definitionOnly([cycle])[0]);
 
   const enforcedOwn = own.map((cycle) => {
     const fromGroup = groupBySeconds.get(cycle.seconds);
+    // 留空一侧：有组档可继承就跟着组档，否则算不限制。
+    // 逐侧判断而不是看整个档位，否则「只填 Token」会把组的请求上限一起抹掉。
     return {
       ...cycle,
       quota_tokens: cycle.quota_tokens ?? fromGroup?.quota_tokens ?? -1,
@@ -125,7 +136,10 @@ export const mergePeriodCycles = resolveEnforcedCycles;
 export type EffectiveLimitsInput = Pick<
   DbUser,
   "group_id" | "qps" | "rpm" | "tpm" | "quota_requests" | "quota_tokens" | "period_cycles"
->;
+> & {
+  // 周期配额总开关：0 = 不继承用户组周期档。缺省/null 按继承处理（老数据与新建用户）。
+  inherit_group_periods?: number | null;
+};
 
 export async function getEffectiveLimits(user: EffectiveLimitsInput): Promise<EffectiveLimits> {
   const group = await getUserGroup(user.group_id);
@@ -133,9 +147,10 @@ export async function getEffectiveLimits(user: EffectiveLimitsInput): Promise<Ef
   // 周期档只认 period_cycles：旧单档列已停止写入，启动迁移已把存量单档配置折成档位，
   // 因此判定、计费、展示三处共用这一个口径。
   const userCycles = parsePeriodCycles(user.period_cycles);
+  const inheritGroup = parseInheritGroupPeriods(user.inherit_group_periods);
   const groupCycles = parsePeriodCycles(group?.period_cycles);
   const merged = modelGateFeatures.periodQuota
-    ? mergePeriodCycles(userCycles, groupCycles)
+    ? mergePeriodCycles(userCycles, groupCycles, inheritGroup)
     : { own: [], inherited: [], all: [], passThrough: [] };
 
   return {
@@ -145,6 +160,8 @@ export async function getEffectiveLimits(user: EffectiveLimitsInput): Promise<Ef
     quota_requests: pickQuota(user.quota_requests, group?.quota_requests ?? null),
     quota_tokens: pickQuota(user.quota_tokens, group?.quota_tokens ?? null),
     period_cycles: merged,
-    group_cycles: modelGateFeatures.periodQuota ? groupCycles : [],
+    // 关掉继承时组档对判定与计费完全不可见，因此这里一并透出空数组：
+    // 调用方都直接拿它做「继承部分」的计算，留原值会让关掉的开关在残留路径上复活。
+    group_cycles: modelGateFeatures.periodQuota && inheritGroup ? groupCycles : [],
   };
 }

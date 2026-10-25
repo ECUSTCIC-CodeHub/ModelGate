@@ -120,6 +120,9 @@ export type DbUser = {
   period_used_requests: number;
   period_reset_at: string | null;
   period_cycles: string | null;
+  group_period_cycles: string | null;
+  // 周期配额总开关：0 = 不继承用户组周期档，1/缺省 = 正常继承。
+  inherit_group_periods: number | null;
   used_tokens: number;
   used_requests: number;
   allowed_model_aliases: string;

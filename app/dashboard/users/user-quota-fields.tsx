@@ -2,6 +2,7 @@
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { formatLimit } from "@/lib/shared/formatters";
 import { formatPeriodLabel } from "@/lib/shared/period-format";
 import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
@@ -119,13 +120,37 @@ export function UserQuotaFields({
       </div>
       {periodQuotaEnabled ? (
         <div className="mt-3 border-t border-[var(--color-border)] pt-3">
+          {/* 总开关：关掉即该用户完全不受组周期档约束。用开关而不是逐档填 -1，
+              是因为组以后新增周期档时不会再把这个人套上。 */}
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <Label htmlFor="inherit-group-periods">继承用户组周期配额</Label>
+              <p className="text-xs text-[var(--color-foreground-muted)]">
+                关掉后该用户不受组周期档约束，只按下面的自有档判定；组以后新增档位也不会套用到该用户。
+              </p>
+            </div>
+            <Switch
+              id="inherit-group-periods"
+              checked={form.inherit_group_periods}
+              onCheckedChange={(checked) => onChange({ inherit_group_periods: checked })}
+            />
+          </div>
+          {!form.inherit_group_periods ? (
+            <p className="mb-2 text-xs text-[var(--color-foreground-muted)]">
+              已关闭：组周期档对该用户不生效。下面的档位留空即不限制，填数值即限制。
+            </p>
+          ) : null}
           <PeriodCycleFields
             drafts={form.period_cycles}
             onChange={(drafts) => onChange({ period_cycles: drafts })}
-            inheritedHint="两项额度都留空 = 该周期继承组档位；组里也没配这一档就是这一档不限制。要覆盖组档写成 -1。"
-            hint="按周期限制用量，任一周期超出即拒绝。额度留空表示继承组档位，-1 表示不限制（覆盖组），0 表示禁止。"
+            inheritedHint={form.inherit_group_periods
+              ? "两项额度都留空 = 该周期继承组档位；组里也没配这一档就是这一档不限制。要覆盖组档写成 -1。"
+              : "已关闭组档继承，留空即该周期不限制。填数值即可限制。"}
+            hint={form.inherit_group_periods
+              ? "按周期限制用量，任一周期超出即拒绝。额度留空表示继承组档位，-1 表示不限制（覆盖组），0 表示禁止。"
+              : "按周期限制用量，任一周期超出即拒绝。额度留空表示不限制，0 表示禁止。"}
           />
-          {editingGroupLimits && inheritedCycleLabels(editingGroupLimits).length > 0 ? (
+          {form.inherit_group_periods && editingGroupLimits && inheritedCycleLabels(editingGroupLimits).length > 0 ? (
             <p className="mt-2 text-xs text-[var(--color-foreground-muted)]">
               ← 组周期档: {inheritedCycleLabels(editingGroupLimits).join(" / ")}
               {inheritedParts.length > 0

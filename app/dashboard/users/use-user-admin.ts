@@ -63,6 +63,7 @@ function buildUserForm(row: UserRow): UserForm {
     quota_tokens: row.quota_tokens === null ? "" : String(row.quota_tokens),
     quota_requests: row.quota_requests === null ? "" : String(row.quota_requests),
     period_cycles: cyclesToDrafts(parsePeriodCycles(row.period_cycles)),
+    inherit_group_periods: row.inherit_group_periods !== false,
     allowed_model_aliases: row.allowed_model_aliases ?? [],
   };
 }
@@ -86,6 +87,7 @@ function buildUserPayload(form: UserForm, periodQuotaEnabled: boolean) {
     quota_requests: form.quota_requests.trim() === "" ? null : Number(form.quota_requests),
     ...(periodQuotaEnabled ? {
       period_cycles: draftsToPayload(form.period_cycles),
+      inherit_group_periods: form.inherit_group_periods,
     } : {}),
     allowed_model_aliases: form.allowed_model_aliases,
     note: form.note.trim() === "" ? null : form.note.trim(),

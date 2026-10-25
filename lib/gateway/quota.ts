@@ -155,12 +155,13 @@ export async function checkQuota(userId: number, estimatedTokens: number): Promi
     used_tokens: number;
     used_requests: number;
     period_cycles: string | null;
+    inherit_group_periods: number | null;
     rpm: number;
     qps: number;
     tpm: number;
   }>(
     `SELECT id, group_id, quota_tokens, quota_requests, used_tokens, used_requests,
-              period_cycles,
+              period_cycles, inherit_group_periods,
               rpm, qps, tpm FROM users WHERE id = ? AND deleted_at IS NULL`,
     [userId],
   );

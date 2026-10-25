@@ -5,6 +5,7 @@ import { parseStoredUtc, toMysqlDatetime } from "@/lib/core/db/datetime";
 import {
   applyCycleUsage,
   isInheritedQuota,
+  parseInheritGroupPeriods,
   parsePeriodCycles,
   serializePeriodCycleState,
   type PeriodCycle,
@@ -115,12 +116,16 @@ async function accumulateCycles(
 // 事务内读取用户所属用户组的周期档定义。组档按每用户独立计数，
 // 因此只需定义值，运行时计数记在用户行上。查不到组时返回空数组，不影响计费。
 async function loadUserGroupCycles(tx: TransactionContextLike, userId: number): Promise<PeriodCycle[]> {
-  const row = await tx.queryOne<{ period_cycles: string | null }>(
-    `SELECT g.period_cycles FROM users u
+  const row = await tx.queryOne<{ period_cycles: string | null; inherit_group_periods: number | null }>(
+    `SELECT g.period_cycles, u.inherit_group_periods FROM users u
        JOIN \`groups\` g ON g.id = u.group_id
       WHERE u.id = ? AND g.enabled = 1 AND g.deleted_at IS NULL`,
     [userId],
   );
+  // 关掉「继承用户组周期配额」总开关的用户，组档对计费侧同样不可见：
+  // 否则判定侧放行（组档不参与），计费侧却还在往 group_period_cycles 里累加，
+  // 一旦重新打开开关，关闭期间用掉的量会突然压上来。
+  if (!parseInheritGroupPeriods(row?.inherit_group_periods)) return [];
   return parsePeriodCycles(row?.period_cycles);
 }
 
