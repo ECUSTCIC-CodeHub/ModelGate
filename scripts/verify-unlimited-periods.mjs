@@ -612,6 +612,16 @@ try {
   const zaraQuotaAfter = await checkQuota(zara.id, 0);
   check("S78 切回留空后判定与计费同口径", zaraQuotaAfter.quota.periods.find((p) => p.period_seconds === DAY)?.used_requests === zaraGroupUsed, JSON.stringify(zaraQuotaAfter.quota.periods.filter((p) => p.period_seconds === DAY)) + " group=" + zaraGroupUsed);
 
+  // ---- all 是定义视图：不应携带自有档的陈旧 used_*（审计 L1） ----
+  const { resolveEnforcedCycles } = await import("@/lib/gateway/effective-limits");
+  const defView = resolveEnforcedCycles(
+    [{ id: "p1", seconds: 3600, quota_tokens: -1, quota_requests: -1, used_tokens: 900, used_requests: 150, reset_at: "2026-10-26 00:00:00" }],
+    [],
+    true,
+  );
+  const hourEntry = defView.all.find((cycle) => cycle.seconds === 3600);
+  check("S79 生效档位不携带自有档的历史计数", hourEntry?.used_requests === 0 && hourEntry?.used_tokens === 0 && hourEntry?.reset_at === null, JSON.stringify(hourEntry));
+
   console.log("");
   console.log(passed + "/" + (passed + failed) + " 通过" + (failed > 0 ? "，存在失败" : ""));
 } catch (err) {
