@@ -5,8 +5,7 @@ import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
 import { ensureWebUser } from "@/lib/auth/guards";
 import { sanitizeUser } from "@/lib/auth/auth";
 import { jsonError, jsonOk } from "@/lib/core/http";
-import { ensureCycleResets, loadGroupCycleState } from "@/lib/gateway/period-cycles-reset";
-import { toPeriodQuotaEntry } from "@/lib/gateway/quota";
+import { resolveEffectivePeriods } from "@/lib/gateway/quota";
 
 export async function GET(request: Request) {
   const guard = await ensureWebUser(request);
@@ -22,17 +21,10 @@ export async function GET(request: Request) {
 
   const effective = await getEffectiveLimits(user);
 
-  // 多档周期与 /api/user/quota 同口径：先按档懒重置再输出。
-  // 生效档位已由 getEffectiveLimits 算好（自有档 + 继承自组的档位），
-  // 两者的计数分开存放，分别推进窗口后合并，与判定、计费口径一致。
-  const enforced = effective.period_cycles;
-  const ownState = enforced.own.length > 0
-    ? await ensureCycleResets("users", user.id, enforced.own, undefined, user.period_cycles)
-    : [];
-  const inheritedState = enforced.inherited.length > 0
-    ? await loadGroupCycleState(user.id, enforced.inherited)
-    : [];
-  const periods = [...ownState, ...inheritedState].map(toPeriodQuotaEntry);
+  // 多档周期与管理端、/api/user/quota 同口径：统一走 resolveEffectivePeriods，
+  // 由它把自有档与继承自组的档位分别推进窗口后按生效值合并。
+  // 自己拼 [...own, ...inherited] 会漏掉占位档，同一份数据在不同接口里形状不一致。
+  const periods = await resolveEffectivePeriods(user.id, effective.period_cycles, user.period_cycles);
 
   return jsonOk({
     user: {
