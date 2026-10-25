@@ -11,10 +11,11 @@ import { softDeleteUser } from "@/lib/services/soft-delete-service";
 import { USERNAME_SCHEMA } from "@/lib/auth/username";
 import { friendlyCredentialPayloadError, passwordSchema } from "@/lib/auth/validation";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
-import { type EffectiveLimitsInput, getEffectiveLimits, getUserGroup } from "@/lib/gateway/effective-limits";
+import { type EffectiveLimitsInput, getEffectiveLimits, getUserGroup, resolveEnforcedCycles } from "@/lib/gateway/effective-limits";
 import { resolveEffectivePeriods } from "@/lib/gateway/quota";
 import {
   detachGroupCycles,
+  isInheritedQuota,
   parseInheritGroupPeriods,
   parsePeriodCycles,
   resolveHandedBackSeconds,
@@ -22,6 +23,7 @@ import {
   serializePeriodCycleState,
   validatePeriodCycles,
 } from "@/lib/gateway/period-cycles";
+import { pruneInheritedStates } from "@/lib/gateway/period-cycles-reset";
 
 const updateSchema = z.object({
   username: USERNAME_SCHEMA.optional(),
@@ -304,6 +306,23 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       );
     }
   });
+
+  // 事务里只清「交回组档」和「关掉继承」两种明确动作涉及的档位。剩下一种漏网：
+  // 这一档写了显式额度（数值或 -1）、于是退出继承，但组档那边的旧计数不会自己消失。
+  // 组档之后再扩到别的秒数时，判定按自有档口径放行，展示却挂着一段冻住的用量。
+  //
+  // 这里按「当前仍生效的继承档」收干净。判定必须用落库后的档位重新推一遍：
+  // 提交的留空侧在开着继承时是 null（此刻还说不清归属），落库后才由
+  // resolveUserPeriodCycles 决定它是继续继承、还是因为组里没有这一档而收口成 -1。
+  // 因此直接看 merged.period_cycles，而不是看提交形状。
+  if (modelGateFeatures.periodQuota && parsed.data.period_cycles !== undefined) {
+    const activeInherited = parsePeriodCycles(merged.period_cycles)
+      .filter((cycle) => isInheritedQuota(cycle.quota_tokens, cycle.quota_requests));
+    const keepSeconds = nextInheritGroup
+      ? resolveEnforcedCycles(activeInherited, nextGroupCycles).inherited.map((cycle) => cycle.seconds)
+      : [];
+    await pruneInheritedStates(existing.id, keepSeconds);
+  }
 
   if (parsed.data.reset_usage === "all" || parsed.data.reset_usage === "total") {
     await gatewayDb

@@ -124,10 +124,16 @@ export async function ensureCycleResets<Table extends "users" | "channels" | "mo
 // 传入的 definitions 是组当前的档位定义（已被自有档按秒数覆盖过滤），
 // 这里把同一秒数已存在的计数接上，未存在的从 0 起算；
 // 组里删掉的档位不会被带回来，因此组配置变更立即生效。
+//
 // persist=false 用于纯读取场景（管理端列表/详情/用户自查）：那里只是把生效档位
 // 渲染出来，不产生用量，推进窗口的活儿留给判定侧和计费侧。
 // 缺省 true 时，这里会把「原样回写的旧状态」也写进 group_period_cycles，
 // 于是「用户档显式覆盖组档」之后，残留的继承计数会在下一次查看时被复活。
+//
+// 列里多出来的档位（秒数已被自有档接管、或组里已删除）不能只靠调用方过滤：
+// 判定与计费都走各自的过滤，展示却可能按整列读，两边口径一飘就出现
+// 「额度不限制、用量还在」的读数。这里在读的时候按 definitions 直接裁一次，
+// 只保留当前真正生效的秒数。
 export async function loadGroupCycleState(
   userId: number,
   definitions: PeriodCycle[],
@@ -139,7 +145,9 @@ export async function loadGroupCycleState(
     "SELECT group_period_cycles FROM users WHERE id = ?",
     [userId],
   );
-  const stored = parsePeriodCycles(row?.group_period_cycles);
+  const activeSeconds = new Set(definitions.map((cycle) => cycle.seconds));
+  const stored = parsePeriodCycles(row?.group_period_cycles)
+    .filter((cycle) => activeSeconds.has(cycle.seconds));
   const bySeconds = new Map(stored.map((cycle) => [cycle.seconds, cycle]));
   const merged = definitions.map((definition) => {
     const prior = bySeconds.get(definition.seconds);
@@ -153,4 +161,35 @@ export async function loadGroupCycleState(
   });
   if (!persist) return merged;
   return ensureCycleResets("users", userId, merged, db, row?.group_period_cycles ?? null, "group_period_cycles");
+}
+
+// 清掉 users.group_period_cycles 里不再生效的档位计数。
+//
+// 组档按秒数被自有档接管后就不再参与判定与计费，但那一格的**旧计数不会自己消失**：
+// 组档一旦扩到别的秒数，判定按自有档口径放行、展示却带着一段冻住的用量，
+// 用户看到「不限制 + 已用很多」，与实际生效的额度对不上。
+// 改配置时按同一口径同步清理：凡是当前不构成生效组档的秒数，一律丢弃。
+//
+// keepSeconds 是当前仍在生效的继承档秒数：组里删掉的、已被用户自有档
+// 按秒数接管的，都不在其中。调用方一次给全，这里不做二次解释。
+export async function pruneInheritedStates(
+  userId: number,
+  keepSeconds: Iterable<number>,
+  db: CycleResetExecutor = gatewayDb,
+): Promise<boolean> {
+  const keep = new Set(keepSeconds);
+  const row = await db.queryOne<{ group_period_cycles: string | null }>(
+    "SELECT group_period_cycles FROM users WHERE id = ?",
+    [userId],
+  );
+  const raw = row?.group_period_cycles ?? null;
+  if (!raw) return false;
+  const stored = parsePeriodCycles(raw);
+  const kept = stored.filter((cycle) => keep.has(cycle.seconds));
+  if (kept.length === stored.length) return false;
+  await db.execute(
+    "UPDATE users SET group_period_cycles = ? WHERE id = ? AND group_period_cycles = ?",
+    [serializePeriodCycleState(kept) || null, userId, raw],
+  );
+  return true;
 }
