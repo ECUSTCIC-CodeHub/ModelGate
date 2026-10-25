@@ -105,12 +105,17 @@ export function resolveEnforcedCycles(
 
   // 自有档在 all 里的形态：某一侧留空就沿用组档该侧的额度，-1 与数值则覆盖组档。
   // 逐侧判断而不是看整个档位，否则「只填 Token」会把组的请求上限一起抹掉。
+  // 运行时计数一并清零：all 是定义视图（生效额度），计数由调用方按各自键空间填。
+  // 带着自有档的 used_* 会让「直接拿 all 展示」的调用方看到过去的用量。
   const enforcedOwn = own.map((cycle) => {
     const fromGroup = groupBySeconds.get(cycle.seconds);
     return {
       ...cycle,
       quota_tokens: cycle.quota_tokens ?? fromGroup?.quota_tokens ?? -1,
       quota_requests: cycle.quota_requests ?? fromGroup?.quota_requests ?? -1,
+      used_tokens: 0,
+      used_requests: 0,
+      reset_at: null,
     };
   });
 
