@@ -65,7 +65,8 @@ function QuotaProgress({ remaining, quota }: { remaining: number | null; quota: 
   );
 }
 
-// 多档周期配额：每档一段，展平显示「已用 / 额度」，额度为 null（不限）时显示「不限」。
+// 多档周期配额：每档一段，展平显示「已用 / 额度」。
+// 额度 -1 是显式不限制，没有可用量；null 表示该周期未配置。
 function PeriodCycleList({ periods }: { periods: PeriodQuotaEntry[] }) {
   if (periods.length === 0) return <span className="text-xs text-[var(--color-foreground-muted)]">-</span>;
 
@@ -74,19 +75,19 @@ function PeriodCycleList({ periods }: { periods: PeriodQuotaEntry[] }) {
       {periods.map((entry) => (
         <div key={entry.id} className="space-y-1">
           <Badge variant="outline" className="text-xs">{entry.period_label}</Badge>
-          {entry.quota_tokens !== null ? (
+          {entry.quota_tokens !== null && entry.quota_tokens >= 0 ? (
             <p className="text-xs text-[var(--color-foreground-muted)]">
               Token: {formatTokenCount(entry.used_tokens)} / {formatTokenCount(entry.quota_tokens)}
               <span className="ml-1">（剩 {formatTokenCount(entry.remaining_tokens)}）</span>
             </p>
           ) : null}
-          {entry.quota_requests !== null ? (
+          {entry.quota_requests !== null && entry.quota_requests >= 0 ? (
             <p className="text-xs text-[var(--color-foreground-muted)]">
               请求: {formatNumber(entry.used_requests)} / {formatNumber(entry.quota_requests)}
               <span className="ml-1">（剩 {formatNumber(entry.remaining_requests)}）</span>
             </p>
           ) : null}
-          {entry.quota_tokens === null && entry.quota_requests === null ? (
+          {(entry.quota_tokens === null || entry.quota_tokens < 0) && (entry.quota_requests === null || entry.quota_requests < 0) ? (
             <p className="text-xs text-[var(--color-foreground-muted)]">不限制</p>
           ) : null}
         </div>

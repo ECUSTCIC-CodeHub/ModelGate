@@ -1,6 +1,11 @@
 import { parseStoredUtc, toMysqlDatetime } from "@/lib/core/db/datetime";
 
 // 一个重置周期档位。used_* 与 reset_at 是运行时状态，随定义值一同落库在 period_cycles 里。
+//
+// quota_* 三态（全链路口径一致）：
+// - null  = 继承上游（用户上继承用户组，其余对象没有上游即不限制）
+// - -1    = 显式不限制，覆盖上游（用户档上的 -1 表示该周期不受用户组同秒数档位约束）
+// - >= 0  = 该周期的额度
 export type PeriodCycle = {
   id: string;
   seconds: number;
@@ -36,10 +41,13 @@ function cleanCount(value: unknown): number {
   return num;
 }
 
+// -1 是「显式不限制」的哨兵值，必须原样保留；其余负数一律视为未配置（继承）。
 function cleanQuota(value: unknown): number | null {
   if (value === null || value === undefined) return null;
   const num = Number(value);
-  if (!Number.isFinite(num) || num < 0) return null;
+  if (!Number.isFinite(num)) return null;
+  if (num === -1) return -1;
+  if (num < 0) return null;
   // 夹到安全整数范围：超出 BIGINT 的值会在落库时变成原始 DB 错误而不是 400。
   return Math.min(Math.round(num), Number.MAX_SAFE_INTEGER);
 }
@@ -163,8 +171,16 @@ export function serializePeriodCycleState(cycles: PeriodCycle[]): string {
   return cycles.length > 0 ? JSON.stringify(cycles) : "";
 }
 
-export function validatePeriodCycles(input: unknown): { valid: true; cycles: PeriodCycleInput[] } | { valid: false; error: string } {
-  if (input === null || input === undefined) return { valid: true, cycles: [] };
+// 提交体 → 周期档定义。
+//
+// 返回 cycles 为 undefined 表示「本次不修改周期档」（继承当前值），null/[] 表示「清空」。
+// 区分 undefined 与 [] 是为了让「两个额度都留空」能表达「继承上游」：
+// 后端把整个字段当作未提交即可，不必造特殊档位。
+export function validatePeriodCycles(
+  input: unknown,
+): { valid: true; cycles: PeriodCycleInput[] | undefined } | { valid: false; error: string } {
+  if (input === null) return { valid: true, cycles: [] };
+  if (input === undefined) return { valid: true, cycles: undefined };
   if (typeof input === "string") {
     const trimmed = input.trim();
     if (!trimmed) return { valid: true, cycles: [] };
@@ -188,9 +204,8 @@ export function validatePeriodCycles(input: unknown): { valid: true; cycles: Per
     }
     const tokens = record.quota_tokens === undefined ? null : cleanQuota(record.quota_tokens);
     const requests = record.quota_requests === undefined ? null : cleanQuota(record.quota_requests);
-    if (tokens === null && requests === null) {
-      return { valid: false, error: `第 ${i + 1} 档重置周期需至少填写 Token 或请求额度。` };
-    }
+    // 两项都为 null 的档位是合法的：表示该周期继承上游（无上游即不限制）。
+    // 用户档因此能表达「不动组档」，-1 则表达「覆盖组档为不限制」。
     // 同秒数重复档位没有意义，且会让「哪一档生效」变得不确定
     if (seenSeconds.has(record.seconds)) {
       return { valid: false, error: `第 ${i + 1} 档重置周期与前面的档位重复。` };
@@ -233,6 +248,25 @@ export function legacyToPeriodCycle(row: {
 
 // 周期配额的懒重置需要访问数据库，已拆到 period-cycles-reset.ts，
 // 让本模块保持无副作用，可供前端组件直接复用解析与校验逻辑。
+
+// 周期档两边都是「继承」时的占位档：只带周期与运行时状态，额度为 null 表示该周期不限制。
+// 组档未配置某周期时由用户侧补出来，保证用户能显式写 -1 覆盖它。
+export function inheritedCycleTemplate(seconds: number): PeriodCycle {
+  return {
+    id: "",
+    seconds,
+    quota_tokens: null,
+    quota_requests: null,
+    used_tokens: 0,
+    used_requests: 0,
+    reset_at: null,
+  };
+}
+
+// 额度是否落在「继承上游」这一态。只有 null 是继承，-1 与 >= 0 都是显式设定。
+export function isInheritedQuota(tokens: number | null, requests: number | null): boolean {
+  return tokens === null && requests === null;
+}
 
 // 覆盖式写入档位（含运行时状态）。供计费侧在同一事务内累加后回写。
 export function applyCycleUsage(

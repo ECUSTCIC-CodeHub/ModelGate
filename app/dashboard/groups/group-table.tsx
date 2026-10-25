@@ -26,8 +26,10 @@ function groupCyclesSummary(row: GroupRow): string {
   if (cycles.length === 0) return "-";
   return cycles.map((c) => {
     const parts: string[] = [];
-    if (c.quota_requests !== null) parts.push(`请求 ${formatLimit(c.quota_requests)}`);
-    if (c.quota_tokens !== null) parts.push(`Token ${formatLimit(c.quota_tokens)}`);
+    if (c.quota_requests === -1) parts.push("请求 不限制");
+    else if (c.quota_requests !== null) parts.push(`请求 ${formatLimit(c.quota_requests)}`);
+    if (c.quota_tokens === -1) parts.push("Token 不限制");
+    else if (c.quota_tokens !== null) parts.push(`Token ${formatLimit(c.quota_tokens)}`);
     return `${formatPeriodLabel(c.seconds)} ${parts.join(" · ")}`;
   }).join("\n");
 }

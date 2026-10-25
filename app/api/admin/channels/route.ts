@@ -174,7 +174,7 @@ export async function POST(request: Request) {
   if (!periodCyclesResult.valid) return jsonError(periodCyclesResult.error, 400);
   // 精简版不落库周期档：该版本没有周期配额判定，存进去只会是一份永远不生效的数据。
   const periodCycles = modelGateFeatures.periodQuota
-    ? serializePeriodCycles(periodCyclesResult.cycles) || null
+    ? serializePeriodCycles(periodCyclesResult.cycles ?? []) || null
     : null;
 
   let expiresAt: string | null = null;
@@ -197,7 +197,7 @@ export async function POST(request: Request) {
     if (!cyclesResult.valid) return jsonError(cyclesResult.error, 400);
     const schedulesResult = validateMultiplierSchedules(model.multiplier_schedules);
     if (!schedulesResult.valid) return jsonError(schedulesResult.error, 400);
-    modelPeriodCycles.push(modelGateFeatures.periodQuota ? serializePeriodCycles(cyclesResult.cycles) || null : null);
+    modelPeriodCycles.push(modelGateFeatures.periodQuota ? serializePeriodCycles(cyclesResult.cycles ?? []) || null : null);
     modelMultiplierSchedules.push(modelGateFeatures.periodQuota ? normalizeMultiplierSchedules(schedulesResult.schedules) || null : null);
   }
 

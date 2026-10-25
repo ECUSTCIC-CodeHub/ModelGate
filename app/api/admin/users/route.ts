@@ -12,7 +12,7 @@ import { listExistingModelAliases, parseAllowedModelAliases, stringifyAllowedMod
 import { USERNAME_SCHEMA } from "@/lib/auth/username";
 import { friendlyCredentialPayloadError, passwordSchema } from "@/lib/auth/validation";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
-import { serializePeriodCycles, validatePeriodCycles } from "@/lib/gateway/period-cycles";
+import { isInheritedQuota, parsePeriodCycles, serializePeriodCycles, validatePeriodCycles } from "@/lib/gateway/period-cycles";
 
 const createSchema = z.object({
   username: USERNAME_SCHEMA,
@@ -199,9 +199,9 @@ export async function POST(request: Request) {
 
   const cycleValidation = validatePeriodCycles(parsed.data.period_cycles);
   if (!cycleValidation.valid) return jsonError(cycleValidation.error, 400);
-  const periodCycles = modelGateFeatures.periodQuota
-    ? serializePeriodCycles(cycleValidation.cycles) || null
-    : null;
+  if (cycleValidation.cycles === undefined && parsed.data.period_cycles !== undefined) {
+    return jsonError("重置周期未提交任何档位，如需清空请传空数组。", 400);
+  }
 
   let groupId = parsed.data.group_id ?? null;
   if (groupId === null) {
@@ -213,6 +213,18 @@ export async function POST(request: Request) {
       .queryOne<{ id: number }>("SELECT id FROM `groups` WHERE id = ? AND deleted_at IS NULL", [groupId]);
     if (!group) return jsonError("用户组不存在", 400);
   }
+
+  // 新建用户没有「原值」可继承：提交的档位里额度为 null 的项，组内有同秒数档位则继承组档，
+  // 否则落成 -1（显式不限制）。与编辑接口同一口径，避免新建的用户档位空转。
+  const targetGroup = await getUserGroup(groupId);
+  const groupSeconds = new Set(parsePeriodCycles(targetGroup?.period_cycles).map((cycle) => cycle.seconds));
+  const periodCycles = modelGateFeatures.periodQuota
+    ? serializePeriodCycles((cycleValidation.cycles ?? []).map((cycle) => (
+      isInheritedQuota(cycle.quota_tokens, cycle.quota_requests) && !groupSeconds.has(cycle.seconds)
+        ? { ...cycle, quota_tokens: -1, quota_requests: -1 }
+        : cycle
+    ))) || null
+    : null;
 
   const passwordHash = await hashPassword(parsed.data.password);
   const inputAliases = parsed.data.allowed_model_aliases ?? [];

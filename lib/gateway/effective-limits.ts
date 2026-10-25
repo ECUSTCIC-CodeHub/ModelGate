@@ -1,6 +1,6 @@
 import { gatewayDb, type DbGroup, type DbUser } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
-import { parsePeriodCycles, type PeriodCycle } from "@/lib/gateway/period-cycles";
+import { inheritedCycleTemplate, parsePeriodCycles, type PeriodCycle } from "@/lib/gateway/period-cycles";
 
 export type EffectiveLimits = {
   qps: number;
@@ -56,13 +56,54 @@ export type EnforcedCycles = {
   all: PeriodCycle[];
 };
 
+// 周期档的生效规则（与整体配额同构，留空都是「继承上游」）：
+//
+// 1. 自有档按秒数在组档基础上合并：用户档某一侧额度留空时沿用组档该周期的额度，
+//    写 -1 或具体数值则覆盖组档。因此「某一档只填 Token、请求留空」不再静默作废
+//    组档的请求上限。两侧都没配时留空落成 -1，不放行空额度档位。
+// 2. 组档里用户没写过自有档的周期，作为继承档直接生效。
+// 3. 两边都没有的常见周期补一条额度为 null 的档位（继承但无上游 = 不限制），
+//    用户可以在那条上填 -1，使「这一周期不限制」成为显式配置。
+//
+// 自有档的运行时计数记在 users.period_cycles，继承档记在 users.group_period_cycles，
+// 两条键空间不能混。
 export function resolveEnforcedCycles(userCycles: PeriodCycle[], groupCycles: PeriodCycle[]): EnforcedCycles {
-  if (groupCycles.length === 0) return { own: userCycles, inherited: [], all: userCycles };
-  const ownSeconds = new Set(userCycles.map((cycle) => cycle.seconds));
+  const groupBySeconds = new Map(groupCycles.map((cycle) => [cycle.seconds, cycle]));
+  const own: PeriodCycle[] = [];
+
+  // 自有档与组档按同一周期合并：自有额度为 null 的那一侧沿用组档，-1 或数值则覆盖组档。
+  // 两侧都没配该周期时，自有额度为 null 属「继承但无上游」，直接落成 -1，
+  // 与「留空即继承、-1 即不限制」的契约一致，不留下永远不生效的空额度档位。
+  for (const cycle of userCycles) {
+    const fromGroup = groupBySeconds.get(cycle.seconds);
+    own.push({
+      ...cycle,
+      quota_tokens: fromGroup && cycle.quota_tokens === null ? fromGroup.quota_tokens : (cycle.quota_tokens ?? -1),
+      quota_requests: fromGroup && cycle.quota_requests === null ? fromGroup.quota_requests : (cycle.quota_requests ?? -1),
+    });
+  }
+
+  const ownSeconds = new Set(own.map((cycle) => cycle.seconds));
   const inherited = groupCycles
     .filter((cycle) => !ownSeconds.has(cycle.seconds))
     .map((cycle) => definitionOnly([cycle])[0]);
-  return { own: userCycles, inherited, all: [...userCycles, ...inherited] };
+
+  const all = [
+    ...own,
+    ...inherited,
+    ...unconfiguredSeconds(own, inherited).map(inheritedCycleTemplate),
+  ].sort((a, b) => a.seconds - b.seconds);
+
+  return { own, inherited, all };
+}
+
+// 常见周期里，用户与组都没配置、但需要让用户能显式写 -1 的那几档。
+// 只补常见档位（小时/天/周/月），自定义秒数仍以两边已有配置为准。
+const COMMON_PERIOD_SECONDS = [3600, 86400, 604800, 2592000];
+
+function unconfiguredSeconds(own: PeriodCycle[], inherited: PeriodCycle[]): number[] {
+  const covered = new Set([...own, ...inherited].map((cycle) => cycle.seconds));
+  return COMMON_PERIOD_SECONDS.filter((seconds) => !covered.has(seconds));
 }
 
 export const mergePeriodCycles = resolveEnforcedCycles;

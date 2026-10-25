@@ -63,7 +63,7 @@ export async function POST(request: Request) {
 
   const cyclesResult = validatePeriodCycles(kind === "reset" ? null : parsed.data.period_cycles ?? null);
   if (!cyclesResult.valid) return jsonError(cyclesResult.error, 400);
-  const periodCycles = cyclesResult.cycles;
+  const periodCycles = cyclesResult.cycles ?? [];
 
   if (kind === "quota" && parsed.data.token_quota == null && parsed.data.request_quota == null && periodCycles.length === 0) {
     return jsonError("Token 额度、请求额度与重置周期额度至少填写一项", 400);

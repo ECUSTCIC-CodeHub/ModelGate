@@ -42,8 +42,13 @@ export async function GET(request: Request) {
       quota_tokens: limits.quota_tokens,
       used_requests: user.used_requests,
       used_tokens: user.used_tokens,
-      remaining_requests: limits.quota_requests !== null ? Math.max(0, limits.quota_requests - user.used_requests) : null,
-      remaining_tokens: limits.quota_tokens !== null ? Math.max(0, limits.quota_tokens - user.used_tokens) : null,
+      // -1 是「显式不限制」，没有可用量；null 是未配置。
+      remaining_requests: limits.quota_requests !== null && limits.quota_requests >= 0
+        ? Math.max(0, limits.quota_requests - user.used_requests)
+        : null,
+      remaining_tokens: limits.quota_tokens !== null && limits.quota_tokens >= 0
+        ? Math.max(0, limits.quota_tokens - user.used_tokens)
+        : null,
     },
     periods,
     rate: {

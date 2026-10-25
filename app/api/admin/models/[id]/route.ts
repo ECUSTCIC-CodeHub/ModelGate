@@ -186,7 +186,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         ? existing.period_cycles ?? null
         : modelGateFeatures.periodQuota
           ? serializePeriodCycleState(
-            mergeDefinitionOntoState(existing.period_cycles, periodCyclesResult.cycles),
+            mergeDefinitionOntoState(existing.period_cycles, periodCyclesResult.cycles ?? []),
           ) || null
           : existing.period_cycles ?? null,
     multiplier_schedules:

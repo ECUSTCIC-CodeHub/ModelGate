@@ -2,7 +2,14 @@ import { gatewayDb, ensureDbReady } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { parseStoredUtc, toMysqlDatetime } from "@/lib/core/db/datetime";
-import { applyCycleUsage, parsePeriodCycles, serializePeriodCycleState, type PeriodCycle } from "@/lib/gateway/period-cycles";
+import {
+  applyCycleUsage,
+  isInheritedQuota,
+  parsePeriodCycles,
+  serializePeriodCycleState,
+  type PeriodCycle,
+} from "@/lib/gateway/period-cycles";
+import { resolveEnforcedCycles } from "@/lib/gateway/effective-limits";
 import { ensureCycleResets } from "@/lib/gateway/period-cycles-reset";
 import { parseMultiplierSchedules, resolveEffectiveMultiplier } from "@/lib/gateway/multiplier-schedule";
 import { buildRedeemScope, scopeCoversPair, balanceHasRemaining } from "@/lib/services/redeem-authorization";
@@ -46,16 +53,26 @@ async function accumulateCycles(
   // 组后续收紧/放宽/删除对该用户永久失效，已删除的组限制还会继续拦人。
   // 周期档只认 period_cycles：旧单档列已停止写入与自增，启动迁移已把存量单档配置折成档位。
   const ownCycles = parsePeriodCycles(row.period_cycles);
-  if (ownCycles.length > 0) {
+  if (table !== "users") {
+    if (ownCycles.length > 0) {
+      await tx.execute(
+        `UPDATE ${table} SET period_cycles = ? WHERE id = ?`,
+        [serializePeriodCycleState(applyCycleUsage(ownCycles, deltaTokens, deltaRequests)), id],
+      );
+    }
+    return;
+  }
+  // 生效口径只在这里算一次：判定侧、展示侧、计费侧共用 resolveEnforcedCycles，
+  // 保证「哪些档在管这个用户」只有一份真值。
+  const enforced = resolveEnforcedCycles(ownCycles, inherited);
+  const billableOwn = billableOwnCycles(enforced.own);
+  if (billableOwn.length > 0) {
     await tx.execute(
-      `UPDATE ${table} SET period_cycles = ? WHERE id = ?`,
-      [serializePeriodCycleState(applyCycleUsage(ownCycles, deltaTokens, deltaRequests)), id],
+      "UPDATE users SET period_cycles = ? WHERE id = ?",
+      [serializePeriodCycleState(applyCycleUsage(billableOwn, deltaTokens, deltaRequests)), id],
     );
   }
-  if (table !== "users") return;
-  // 组里已被用户自有档按秒数覆盖的档位不参与继承，与判定侧口径一致。
-  const ownSeconds = new Set(ownCycles.map((cycle) => cycle.seconds));
-  const effectiveInherited = inherited.filter((cycle) => !ownSeconds.has(cycle.seconds));
+  const effectiveInherited = enforced.inherited;
   const storedInherited = parsePeriodCycles(row.group_period_cycles);
   // 组已清空周期档（或全部被自有档覆盖）时清掉残留计数：
   // 这些档位不再参与判定，留着只会占空间。
@@ -86,6 +103,13 @@ async function loadUserGroupCycles(tx: TransactionContextLike, userId: number): 
     [userId],
   );
   return parsePeriodCycles(row?.period_cycles);
+}
+
+// 计费侧要写的自有档：用户档里额度全为 null 的档位按生效口径已被组档顶替，
+// 它们只占位置不带额度，计费时没有可累加的对象，也不能留在 period_cycles 里
+// 继续干扰「自有档是否覆盖组档」的判断。
+function billableOwnCycles(own: PeriodCycle[]): PeriodCycle[] {
+  return own.filter((cycle) => !isInheritedQuota(cycle.quota_tokens, cycle.quota_requests));
 }
 
 // 事务内查找匹配当前渠道+模型的用户有效定向额度。

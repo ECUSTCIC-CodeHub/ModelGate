@@ -9,6 +9,13 @@ export const PERIOD_PRESETS = [
 
 // 每档一行，请求与 Token 合并；「/」前为剩余、后为限额，与配额页口径一致。
 // 表格单元格用 periodQuotaLines 换行渲染，title 提示用 summarizePeriodQuota 单行汇总。
+// 额度 -1 = 显式不限制，不带可用量；null = 未配置（继承且上游无配置）。
+function quotaPart(label: string, quota: number | null, remaining: number | null, format: (value: number) => string): string | null {
+  if (quota === null) return null;
+  if (quota < 0) return `${label} 不限制`;
+  return `${label} ${format(remaining ?? 0)}/${format(quota)}`;
+}
+
 export function periodQuotaLines(
   periods: Array<{
     period_label: string;
@@ -18,14 +25,13 @@ export function periodQuotaLines(
     remaining_tokens: number | null;
   }>,
 ): string[] {
-  return periods
-    .filter((p) => p.quota_requests !== null || p.quota_tokens !== null)
-    .map((p) => {
-      const parts: string[] = [];
-      if (p.quota_requests !== null) parts.push(`请求 ${formatNumber(p.remaining_requests ?? 0)}/${formatNumber(p.quota_requests)}`);
-      if (p.quota_tokens !== null) parts.push(`Token ${formatTokenCount(p.remaining_tokens ?? 0)}/${formatTokenCount(p.quota_tokens)}`);
-      return `${p.period_label} ${parts.join(" · ")}`;
-    });
+  return periods.flatMap((p) => {
+    const parts = [
+      quotaPart("请求", p.quota_requests, p.remaining_requests, formatNumber),
+      quotaPart("Token", p.quota_tokens, p.remaining_tokens, formatTokenCount),
+    ].filter((part): part is string => part !== null);
+    return parts.length === 0 ? [] : [`${p.period_label} ${parts.join(" · ")}`];
+  });
 }
 
 export function summarizePeriodQuota(periods: Parameters<typeof periodQuotaLines>[0]): string {

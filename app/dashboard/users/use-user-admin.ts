@@ -18,8 +18,8 @@ import {
   type UserRow,
   type UserSortKey,
 } from "./user-model";
-import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
-import { cyclesToDrafts, draftsToPayload } from "@/app/dashboard/period-cycle-fields";
+import { parsePeriodCycles, type PeriodCycle } from "@/lib/gateway/period-cycles";
+import { cyclesToDrafts, draftSeconds, draftsToPayload, type PeriodCycleDraft } from "@/app/dashboard/period-cycle-fields";
 
 const PAGE_SIZE = 20;
 
@@ -46,6 +46,19 @@ function pickGroupLimits(row: UserRow): UserGroupLimits | null {
   };
 }
 
+// 编辑回填时，组里那些用户还没写过额度的周期档要作为「继承占位档」摆出来：
+// 额度留空 = 继承组档，管理员把它改成 -1 就变成显式覆盖。
+// 只补组里已有的周期，不凭空造档位，避免打开抽屉就多出几档空配置。
+function mergeInheritedDrafts(own: PeriodCycleDraft[], row: UserRow): PeriodCycleDraft[] {
+  const groupCycles = parsePeriodCycles(row.group_period_cycles);
+  if (groupCycles.length === 0) return own;
+  const ownSeconds = new Set(own.map((draft) => draftSeconds(draft)));
+  const inherited = groupCycles
+    .filter((cycle) => !ownSeconds.has(cycle.seconds))
+    .map((cycle) => cyclesToDrafts([{ seconds: cycle.seconds, quota_tokens: null, quota_requests: null }])[0]);
+  return [...own, ...inherited];
+}
+
 function buildUserForm(row: UserRow): UserForm {
   return {
     username: row.username,
@@ -62,12 +75,27 @@ function buildUserForm(row: UserRow): UserForm {
     tpm: row.tpm,
     quota_tokens: row.quota_tokens === null ? "" : String(row.quota_tokens),
     quota_requests: row.quota_requests === null ? "" : String(row.quota_requests),
-    period_cycles: cyclesToDrafts(parsePeriodCycles(row.period_cycles)),
+    period_cycles: mergeInheritedDrafts(cyclesToDrafts(parsePeriodCycles(row.period_cycles)), row),
     allowed_model_aliases: row.allowed_model_aliases ?? [],
   };
 }
 
-function buildUserPayload(form: UserForm, periodQuotaEnabled: boolean) {
+// 周期档：组里没有这些周期时，「两项都留空」的档位保存后不会生效，
+// 用户又没法在界面上表达「这一档不限制」，因此提交前把这类档位落成 -1。
+function buildPeriodPayload(drafts: PeriodCycleDraft[], groupCycles: PeriodCycle[]): Array<{
+  seconds: number;
+  quota_tokens: number | null;
+  quota_requests: number | null;
+}> {
+  const groupSeconds = new Set(groupCycles.map((cycle) => cycle.seconds));
+  return draftsToPayload(drafts).map((cycle) => (
+    cycle.quota_tokens === null && cycle.quota_requests === null && !groupSeconds.has(cycle.seconds)
+      ? { ...cycle, quota_tokens: -1, quota_requests: -1 }
+      : cycle
+  ));
+}
+
+function buildUserPayload(form: UserForm, periodQuotaEnabled: boolean, groupCycles: PeriodCycle[]) {
   return {
     username: form.username,
     email: form.email.trim() === "" ? null : form.email.trim(),
@@ -81,7 +109,7 @@ function buildUserPayload(form: UserForm, periodQuotaEnabled: boolean) {
     quota_tokens: form.quota_tokens.trim() === "" ? null : Number(form.quota_tokens),
     quota_requests: form.quota_requests.trim() === "" ? null : Number(form.quota_requests),
     ...(periodQuotaEnabled ? {
-      period_cycles: draftsToPayload(form.period_cycles),
+      period_cycles: buildPeriodPayload(form.period_cycles, groupCycles),
     } : {}),
     allowed_model_aliases: form.allowed_model_aliases,
     note: form.note.trim() === "" ? null : form.note.trim(),
@@ -226,7 +254,11 @@ export function useUserAdmin() {
 
   async function submitUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const payload = buildUserPayload(form, periodQuotaEnabled);
+    const payload = buildUserPayload(
+      form,
+      periodQuotaEnabled,
+      parsePeriodCycles(editingGroupLimits?.period_cycles ?? null),
+    );
 
     if (editingId === null) {
       const response = await authedFetch("/api/admin/users", {

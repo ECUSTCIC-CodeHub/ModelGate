@@ -11,9 +11,16 @@ import { softDeleteUser } from "@/lib/services/soft-delete-service";
 import { USERNAME_SCHEMA } from "@/lib/auth/username";
 import { friendlyCredentialPayloadError, passwordSchema } from "@/lib/auth/validation";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
-import { type EffectiveLimitsInput, getEffectiveLimits } from "@/lib/gateway/effective-limits";
+import { type EffectiveLimitsInput, getEffectiveLimits, getUserGroup } from "@/lib/gateway/effective-limits";
 import { resolveEffectivePeriods } from "@/lib/gateway/quota";
-import { parsePeriodCycles, serializePeriodCycleState, mergeDefinitionOntoState, validatePeriodCycles } from "@/lib/gateway/period-cycles";
+import {
+  isInheritedQuota,
+  mergeDefinitionOntoState,
+  parsePeriodCycles,
+  serializePeriodCycleState,
+  validatePeriodCycles,
+  type PeriodCycleInput,
+} from "@/lib/gateway/period-cycles";
 
 const updateSchema = z.object({
   username: USERNAME_SCHEMA.optional(),
@@ -40,6 +47,30 @@ function normalizeQuota(value: number | null | undefined) {
   return value;
 }
 
+// 用户周期档的落库形态。
+// - 未提交（undefined）：保持原值；
+// - 原有档位上的运行时计数按秒数保留，否则管理员改额度会把已用量清零、窗口重新锚定；
+// - 组里没有可继承的周期时，白值档位落成 -1：契约上 null 是「继承」，
+//   而用户组本来就没配置，留给 null 会让这条档位永远不生效，也不能让人显式覆盖。
+async function resolveUserPeriodCycles(input: {
+  submitted: PeriodCycleInput[] | undefined;
+  existingRaw: string | null;
+  groupId: number | null;
+}): Promise<string | null> {
+  if (!modelGateFeatures.periodQuota) return input.existingRaw;
+  if (input.submitted === undefined) return input.existingRaw;
+
+  const group = await getUserGroup(input.groupId);
+  const groupSeconds = new Set(parsePeriodCycles(group?.period_cycles).map((cycle) => cycle.seconds));
+  const definitions = input.submitted.map((cycle) => (
+    isInheritedQuota(cycle.quota_tokens, cycle.quota_requests) && !groupSeconds.has(cycle.seconds)
+      ? { ...cycle, quota_tokens: -1, quota_requests: -1 }
+      : cycle
+  ));
+
+  return serializePeriodCycleState(mergeDefinitionOntoState(input.existingRaw, definitions)) || null;
+}
+
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
   const guard = await ensureAdmin(request);
   if ("error" in guard) return guard.error;
@@ -56,6 +87,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
   const cycleValidation = validatePeriodCycles(parsed.data.period_cycles);
   if (!cycleValidation.valid) return jsonError(cycleValidation.error, 400);
+  if (cycleValidation.cycles === undefined && parsed.data.period_cycles !== undefined) {
+    return jsonError("重置周期未提交任何档位，如需清空请传空数组。", 400);
+  }
 
   const existing = await gatewayDb
     .queryOne<{
@@ -113,6 +147,12 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const existingAliases = await listExistingModelAliases(inputAliases);
   const droppedAliases = inputAliases.filter((a) => !existingAliases.includes(a));
 
+  const nextPeriodCycles = await resolveUserPeriodCycles({
+    submitted: cycleValidation.cycles,
+    existingRaw: existing.period_cycles,
+    groupId: parsed.data.group_id === undefined ? existing.group_id : parsed.data.group_id,
+  });
+
   const merged = {
     ...existing,
     ...parsed.data,
@@ -134,15 +174,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         : normalizeQuota(parsed.data.quota_requests),
     // 周期配额只走 period_cycles：旧单档列（quota_period / period_quota_*）已停止写入，
     // 仅保留在库里供回滚参考。
-    // 周期档需合并已有运行时状态，避免管理员改额度时清空用户的已用量与重置锚点。
-    period_cycles:
-      parsed.data.period_cycles === undefined
-        ? existing.period_cycles
-        : modelGateFeatures.periodQuota
-          ? serializePeriodCycleState(
-            mergeDefinitionOntoState(existing.period_cycles, cycleValidation.cycles),
-          ) || null
-          : existing.period_cycles,
+    // 提交契约：字段缺省/null 表示不动（继承当前配置）、空数组表示清空自有档、
+    // 档位内额度为 null 表示继承组档、-1 表示显式不限制并覆盖组档。
+    // 组没有可继承的档位时，提交的白值档位一律落成 -1，否则「继承空」等于没配置。
+    period_cycles: nextPeriodCycles,
     allowed_model_aliases:
       parsed.data.allowed_model_aliases === undefined
         ? existing.allowed_model_aliases

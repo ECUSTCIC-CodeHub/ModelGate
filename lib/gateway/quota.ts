@@ -1,6 +1,6 @@
 import { gatewayDb } from "@/lib/core/db";
 import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
-import { type PeriodCycle } from "@/lib/gateway/period-cycles";
+import { isInheritedQuota, type PeriodCycle } from "@/lib/gateway/period-cycles";
 import { ensureCycleResets, loadGroupCycleState } from "@/lib/gateway/period-cycles-reset";
 import { formatPeriodLabel } from "@/lib/shared/period-format";
 
@@ -64,16 +64,27 @@ export function appendQuotaHeaders(headers: Record<string, string>, quota: Quota
 // users.group_period_cycles，两处分开存放，因此必须分别推进窗口再合并。
 // 只读 getEffectiveLimits 的 period_cycles 会漏掉继承档的实际用量（组表只有定义值），
 // 与判定、计费口径不一致。
+//
+// enforced 必须来自 resolveEnforcedCycles：自有档里额度全为 null 的档位只是
+// 「不动组档」的占位，计数应当落在继承档上，不能在自有档里另起一份。
 export async function resolveEffectivePeriods(
   userId: number,
   enforced: { own: PeriodCycle[]; inherited: PeriodCycle[] },
   ownRaw: string | null,
 ): Promise<PeriodQuotaEntry[]> {
-  const own = enforced.own.length > 0
-    ? await ensureCycleResets("users", userId, enforced.own, undefined, ownRaw)
+  const billableOwn = enforced.own.filter((cycle) => !isInheritedQuota(cycle.quota_tokens, cycle.quota_requests));
+  const own = billableOwn.length > 0
+    ? await ensureCycleResets("users", userId, billableOwn, undefined, ownRaw)
     : [];
   const inherited = await loadGroupCycleState(userId, enforced.inherited);
   return [...own, ...inherited].map(toPeriodQuotaEntry);
+}
+
+// -1 是「显式不限制」的哨兵值：没有可用量，也不是「未配置」。
+// 对外响应里额度原样透出 -1（保留来源信息），剩余量则一律为 null。
+function remainingQuota(quota: number | null, used: number): number | null {
+  if (quota === null || quota < 0) return null;
+  return Math.max(0, quota - used);
 }
 
 export function toPeriodQuotaEntry(cycle: PeriodCycle): PeriodQuotaEntry {
@@ -85,8 +96,8 @@ export function toPeriodQuotaEntry(cycle: PeriodCycle): PeriodQuotaEntry {
     quota_requests: cycle.quota_requests,
     used_tokens: cycle.used_tokens,
     used_requests: cycle.used_requests,
-    remaining_tokens: cycle.quota_tokens !== null ? Math.max(0, cycle.quota_tokens - cycle.used_tokens) : null,
-    remaining_requests: cycle.quota_requests !== null ? Math.max(0, cycle.quota_requests - cycle.used_requests) : null,
+    remaining_tokens: remainingQuota(cycle.quota_tokens, cycle.used_tokens),
+    remaining_requests: remainingQuota(cycle.quota_requests, cycle.used_requests),
     reset_at: cycle.reset_at,
   };
 }
@@ -97,10 +108,11 @@ export function toPeriodQuotaEntry(cycle: PeriodCycle): PeriodQuotaEntry {
 export function findExceededCycle(cycles: PeriodCycle[], estimatedTokens: number): { reason: string } | null {
   for (const cycle of cycles) {
     const label = formatPeriodLabel(cycle.seconds);
-    if (cycle.quota_requests !== null && cycle.used_requests >= cycle.quota_requests) {
+    // null（继承无上游）与 -1（显式不限制）都不构成限制，只有 >= 0 才判定。
+    if (cycle.quota_requests !== null && cycle.quota_requests >= 0 && cycle.used_requests >= cycle.quota_requests) {
       return { reason: `周期请求配额已用尽（${label}）` };
     }
-    if (cycle.quota_tokens !== null && cycle.used_tokens + estimatedTokens > cycle.quota_tokens) {
+    if (cycle.quota_tokens !== null && cycle.quota_tokens >= 0 && cycle.used_tokens + estimatedTokens > cycle.quota_tokens) {
       return { reason: `周期 Token 配额已用尽（${label}）` };
     }
   }
@@ -133,16 +145,21 @@ export async function checkQuota(userId: number, estimatedTokens: number): Promi
   const limits = await getEffectiveLimits(user);
 
   const quota: QuotaInfo = {
-    remaining_requests: limits.quota_requests !== null ? Math.max(0, limits.quota_requests - user.used_requests) : null,
-    remaining_tokens: limits.quota_tokens !== null ? Math.max(0, limits.quota_tokens - user.used_tokens) : null,
+    remaining_requests: limits.quota_requests !== null && limits.quota_requests >= 0
+      ? Math.max(0, limits.quota_requests - user.used_requests)
+      : null,
+    remaining_tokens: limits.quota_tokens !== null && limits.quota_tokens >= 0
+      ? Math.max(0, limits.quota_tokens - user.used_tokens)
+      : null,
     periods: [],
   };
 
-  if (limits.quota_requests !== null && user.used_requests >= limits.quota_requests) {
+  // pickQuota 已把用户级 -1 归一成 null，这里再挡一次 -1，避免「显式不限制」被当成 0 额度。
+  if (limits.quota_requests !== null && limits.quota_requests >= 0 && user.used_requests >= limits.quota_requests) {
     return { ok: false, reason: "请求配额已用尽", quota };
   }
 
-  if (limits.quota_tokens !== null && user.used_tokens + estimatedTokens > limits.quota_tokens) {
+  if (limits.quota_tokens !== null && limits.quota_tokens >= 0 && user.used_tokens + estimatedTokens > limits.quota_tokens) {
     return { ok: false, reason: "Token 配额已用尽", quota };
   }
 
