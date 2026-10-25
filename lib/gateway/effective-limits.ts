@@ -46,7 +46,7 @@ function definitionOnly(cycles: PeriodCycle[]): PeriodCycle[] {
 // 关键约束：继承档的计数必须与用户自有档**分开存放**（users.group_period_cycles），
 // 绝不能写进 users.period_cycles。一旦落进用户行，组档就变成用户自有档，
 // 组后续收紧/放宽/删除对该用户永久失效，甚至已删除的组限制会继续拦人。
-// 因此这里只做「定义合并」，计数由调用方按各自的键空间读写。
+// 因此这里返回的是「定义视图」，计数由调用方按各自的键空间读写。
 export type EnforcedCycles = {
   // 用户自有档：**只含用户自己写的额度**，不含从组档让位来的值。
   // 计数存 users.period_cycles，回写库时必须用这里的形状，否则组档额度会被物化。
