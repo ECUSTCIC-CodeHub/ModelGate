@@ -129,6 +129,9 @@ CNB 流水线中，`main` push 只负责自动生成 tag；`tag_push` 会构建�
 | `MYSQL_PASSWORD` | — | MySQL 密码 |
 | `MYSQL_DATABASE` | `modelgate` | MySQL 数据库名 |
 | `MYSQL_POOL_SIZE` | `10` | MySQL 连接池大小 |
+| `MYSQL_QUEUE_LIMIT` | `200` | 连接池排队上限，超过后新请求立即失败而不是无限排队 |
+| `MYSQL_ACQUIRE_TIMEOUT_MS` | `5000` | 等待空闲连接的硬超时（毫秒），超时后请求快速失败 |
+| `MYSQL_LOCK_WAIT_TIMEOUT_SECONDS` | `5` | 行锁等待上限（秒），避免热点行把池连接长时间占住 |
 | `MODELGATE_EDITION` / `NEXT_PUBLIC_MODELGATE_EDITION` | `full` | 构建版本，`full` 为完整版，`lite` 为精简版 |
 
 ## 免认证模式

@@ -3,7 +3,12 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import type { DatabaseAdapter } from "@/lib/core/db/adapter";
 import { SqliteAdapter } from "@/lib/core/db/sqlite-adapter";
-import { MysqlAdapter } from "@/lib/core/db/mysql-adapter";
+import {
+  DEFAULT_LOCK_WAIT_TIMEOUT_SECONDS,
+  DEFAULT_POOL_ACQUIRE_TIMEOUT_MS,
+  DEFAULT_POOL_QUEUE_LIMIT,
+  MysqlAdapter,
+} from "@/lib/core/db/mysql-adapter";
 import { startLogRetentionJob } from "@/lib/data/log-cleanup";
 import { startOidcGroupExpiryJob } from "@/lib/auth/oidc-group-reaper";
 import {
@@ -476,6 +481,16 @@ async function migrateQuotaColumnsToBigInt(db: DatabaseAdapter) {
   }
 }
 
+// 连接池参数来自环境变量，负值/NaN 会让 mysql2 的行为完全反常（例如队列长度恒为负导致每次请求都失败），
+// 因此统一钳到 >= 1 的整数，非法输入回退默认值。
+function positiveInt(raw: string | undefined, fallback: number, max = Number.MAX_SAFE_INTEGER): number {
+  // 空串会被 Number() 转成 0，必须显式回退，否则 MYSQL_POOL_SIZE= 会把池缩成 1 条连接
+  if (raw == null || raw.trim() === "") return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(1, Math.floor(parsed)));
+}
+
 async function initMysql(): Promise<DatabaseAdapter> {
   const host = process.env.MYSQL_HOST || "localhost";
   const port = Number(process.env.MYSQL_PORT) || 3306;
@@ -487,7 +502,11 @@ async function initMysql(): Promise<DatabaseAdapter> {
     user,
     password: process.env.MYSQL_PASSWORD || "",
     database,
-    poolSize: Number(process.env.MYSQL_POOL_SIZE) || 10,
+    poolSize: positiveInt(process.env.MYSQL_POOL_SIZE, 10),
+    queueLimit: positiveInt(process.env.MYSQL_QUEUE_LIMIT, DEFAULT_POOL_QUEUE_LIMIT),
+    // 取连接超时要留在反向代理超时之前，否则单次等待就可能把请求拖成 502
+    acquireTimeoutMs: positiveInt(process.env.MYSQL_ACQUIRE_TIMEOUT_MS, DEFAULT_POOL_ACQUIRE_TIMEOUT_MS, 30_000),
+    lockWaitTimeoutSeconds: positiveInt(process.env.MYSQL_LOCK_WAIT_TIMEOUT_SECONDS, DEFAULT_LOCK_WAIT_TIMEOUT_SECONDS),
   });
 
   try {
