@@ -109,14 +109,15 @@ export class SqliteAdapter implements DatabaseAdapter {
 
       if (result instanceof Promise) {
         result.then(value => {
-          try { this.db.exec("COMMIT"); } catch (err) { reject(err); return; }
+          // COMMIT 失败时必须回滚，否则事务既未提交也未结束，上层重试会撞上「事务已在执行中」
+          try { this.db.exec("COMMIT"); } catch (err) { try { this.db.exec("ROLLBACK"); } catch {} reject(err); return; }
           resolve(value);
         }).catch(err => {
           try { this.db.exec("ROLLBACK"); } catch {}
           reject(err);
         });
       } else {
-        try { this.db.exec("COMMIT"); } catch (err) { reject(err); return; }
+        try { this.db.exec("COMMIT"); } catch (err) { try { this.db.exec("ROLLBACK"); } catch {} reject(err); return; }
         resolve(result);
       }
     });
