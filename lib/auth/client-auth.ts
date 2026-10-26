@@ -77,26 +77,52 @@ async function clearExpiredSession() {
   await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" }).catch(() => undefined);
 }
 
-export async function getOrFetchProfile() {
+export type ProfileResolution =
+  | { kind: "ok"; profile: CachedProfile }
+  | { kind: "unauthorized" }
+  | { kind: "retryable" };
+
+// 5xx/429 表示服务端暂时不可用（例如数据库连接池饱和），不能据此认定会话失效：
+// 否则一次容量抖动会让所有在线用户被判为未登录，随即集中重登放大事故。
+function isRetryableStatus(status: number) {
+  return status >= 500 || status === 429;
+}
+
+async function resolveProfile(): Promise<ProfileResolution> {
   const cached = getCachedProfile();
-  if (cached) return cached;
+  if (cached) return { kind: "ok", profile: cached };
 
   const response = await authedFetch("/api/dashboard/profile");
-  if (!response.ok) return null;
+  if (!response.ok) {
+    return isRetryableStatus(response.status) ? { kind: "retryable" } : { kind: "unauthorized" };
+  }
   const data = await response.json().catch(() => null);
   const user = data?.user as CachedProfile | undefined;
-  if (!user) return null;
+  if (!user) return { kind: "unauthorized" };
   setCachedProfile(user);
-  return user;
+  return { kind: "ok", profile: user };
+}
+
+// 需要区分「未登录」与「服务端暂时不可用」的调用方使用这个版本，
+// 后者不应清会话或跳登录页。
+export async function resolveAuthProfile(): Promise<ProfileResolution> {
+  return resolveProfile();
+}
+
+export async function getOrFetchProfile() {
+  const result = await resolveProfile();
+  return result.kind === "ok" ? result.profile : null;
 }
 
 export async function ensureAdmin(router: { push: (url: string) => void }): Promise<CachedProfile | null> {
-  const profile = await getOrFetchProfile();
-  if (!profile) {
+  const result = await resolveProfile();
+  if (result.kind === "retryable") return null;
+  if (result.kind !== "ok") {
     clearSession();
     router.push(loginUrlWithNext());
     return null;
   }
+  const profile = result.profile;
   if (profile.role !== "admin") {
     router.push("/dashboard/keys");
     return null;
@@ -105,13 +131,14 @@ export async function ensureAdmin(router: { push: (url: string) => void }): Prom
 }
 
 export async function ensureLoggedIn(router: { push?: (url: string) => void; replace?: (url: string) => void }): Promise<CachedProfile | null> {
-  const profile = await getOrFetchProfile();
-  if (!profile) {
+  const result = await resolveProfile();
+  if (result.kind === "retryable") return null;
+  if (result.kind !== "ok") {
     clearSession();
     (router.replace ?? router.push)?.(loginUrlWithNext());
     return null;
   }
-  return profile;
+  return result.profile;
 }
 
 export async function authedFetch(input: string, init?: RequestInit) {
@@ -136,6 +163,11 @@ export async function authedFetch(input: string, init?: RequestInit) {
   });
 
   if (!refresh.ok) {
+    // 刷新接口因服务端繁忙（5xx/429）失败时不能注销：服务端此时并没有清 cookie，
+    // 客户端抢先注销只会把用户踢回登录页，进而引发集中重登。
+    // 这里把 5xx/429 原样返回而不是回吐首次请求的 401，
+    // 否则调用方会把它当成「会话失效」而不是「服务端暂时不可用」。
+    if (isRetryableStatus(refresh.status)) return refresh;
     await clearExpiredSession();
     return response;
   }

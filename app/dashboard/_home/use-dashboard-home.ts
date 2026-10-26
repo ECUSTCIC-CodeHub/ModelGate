@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthProfile } from "@/components/providers/auth-provider";
-import { authedFetch, clearSession, getCachedProfile, getOrFetchProfile, loginUrlWithNext } from "@/lib/auth/client-auth";
+import { authedFetch, clearSession, getCachedProfile, loginUrlWithNext, resolveAuthProfile } from "@/lib/auth/client-auth";
 import type { QuotaData, Role, Summary } from "./dashboard-model";
 import type { ModelQuotaItem } from "./dashboard-model-quota-card";
 
@@ -25,15 +25,17 @@ export function useDashboardHome() {
   useEffect(() => {
     let cancelled = false;
 
-    void Promise.all([getOrFetchProfile(), authedFetch(`/api/dashboard/summary?tz=${-new Date().getTimezoneOffset()}`), authedFetch("/api/user/quota"), authedFetch("/api/user/model-quotas")])
-      .then(async ([profile, summaryResp, quotaResp, modelQuotaResp]) => {
+    void Promise.all([resolveAuthProfile(), authedFetch(`/api/dashboard/summary?tz=${-new Date().getTimezoneOffset()}`), authedFetch("/api/user/quota"), authedFetch("/api/user/model-quotas")])
+      .then(async ([resolution, summaryResp, quotaResp, modelQuotaResp]) => {
         if (cancelled) return;
-        if (!profile) {
+        // 服务端暂时不可用时保留会话与缓存，不跳登录页，避免集中重登
+        if (resolution.kind === "retryable") return;
+        if (resolution.kind !== "ok") {
           clearSession();
           router.replace(loginUrlWithNext());
           return;
         }
-        setRole(profile.role as Role);
+        setRole(resolution.profile.role as Role);
 
         if (summaryResp.ok) {
           const summaryData = await summaryResp.json();
