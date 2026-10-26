@@ -100,7 +100,7 @@ Docker 构建可通过 build arg 选择版本：
 docker build --build-arg MODELGATE_EDITION=lite -t modelgate:lite .
 ```
 
-CNB 流水线中，`main` push 只负责自动生成 tag；`tag_push` 会构建完整版镜像并推送 `latest` 和 tag 名，同时构建精简版镜像并推送 `lite`。
+CNB 流水线中，`main` push 只负责自动生成 tag；`tag_push` 会构建完整版镜像并推送 `latest` 和 tag 名。精简版流水线当前已停用，精简版制品通过构建参数生成。
 
 ## 环境变量
 
