@@ -16,13 +16,17 @@
           --build-arg APK_MIRROR=${APK_MIRROR:-http://mirrors.tencentyun.com} \
           --build-arg NPM_REGISTRY=${NPM_REGISTRY:-http://mirrors.tencentyun.com/npm/} \
           --cache-from type=registry,ref=${IMAGE}:full-cache-amd64 \
-          --cache-from type=registry,ref=${IMAGE}:full-cache-arm64 \
           --cache-to type=registry,ref=${IMAGE}:full-cache-amd64,mode=max \
-          --cache-to type=registry,ref=${IMAGE}:full-cache-arm64,mode=max \
           -t ${IMAGE}:latest -t ${IMAGE}:${CNB_BRANCH} \
-          --platform linux/amd64,linux/arm64 --push .
+          --platform linux/amd64 --push .
+          # ARM 构建已关闭（耗时过高），恢复方式：
+          #   1. 上一行改为 --platform linux/amd64,linux/arm64 --push . \
+          #   2. 下面两行去掉 "# " 前缀，并移回 --build-arg 之后、-t 之前
+          #   --cache-from type=registry,ref=${IMAGE}:full-cache-arm64 \
+          #   --cache-to type=registry,ref=${IMAGE}:full-cache-arm64,mode=max \
 
 # .build-lite: &build-lite
+# 注：恢复 lite 构建时同样去掉 arm64 平台与 arm64 缓存 ref，与 full 保持一致
 #   services:
 #     - name: docker
 #       options:
