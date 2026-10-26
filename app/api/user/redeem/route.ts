@@ -4,7 +4,7 @@ import { z } from "zod";
 import { requireRedeemCodeFeature } from "@/lib/core/features";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { ensureUser } from "@/lib/auth/guards";
-import { jsonError, jsonOk } from "@/lib/core/http";
+import { dbCapacityResponse, jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { gatewayDb } from "@/lib/core/db";
 import { resolveClientIp } from "@/lib/core/client-ip";
@@ -68,23 +68,29 @@ export async function GET(request: Request) {
   const guard = await ensureUser(request);
   if ("error" in guard) return guard.error;
 
-  const balances = (await listUserBalances(guard.auth.user.id)).map((balance) => ({
-    ...balance,
-    allowed_channel_ids: parseAllowedChannelIds(balance.allowed_channel_ids),
-    allowed_model_aliases: parseAllowedModelAliases(balance.allowed_model_aliases),
-  }));
+  try {
+    const balances = (await listUserBalances(guard.auth.user.id)).map((balance) => ({
+      ...balance,
+      allowed_channel_ids: parseAllowedChannelIds(balance.allowed_channel_ids),
+      allowed_model_aliases: parseAllowedModelAliases(balance.allowed_model_aliases),
+    }));
 
-  // 补充兑换记录与渠道/模型可读信息
-  const redemptions = await gatewayDb.query<Record<string, unknown>>(
-    `SELECT r.id, r.code_id, r.redeemed_at, c.code, c.token_quota, c.request_quota, c.period_cycles
-       FROM redeem_redemptions r
-       LEFT JOIN redeem_codes c ON c.id = r.code_id
-       WHERE r.user_id = ?
-       ORDER BY r.id DESC`,
-    [guard.auth.user.id],
-  );
+    // 补充兑换记录与渠道/模型可读信息
+    const redemptions = await gatewayDb.query<Record<string, unknown>>(
+      `SELECT r.id, r.code_id, r.redeemed_at, c.code, c.token_quota, c.request_quota, c.period_cycles
+         FROM redeem_redemptions r
+         LEFT JOIN redeem_codes c ON c.id = r.code_id
+         WHERE r.user_id = ?
+         ORDER BY r.id DESC`,
+      [guard.auth.user.id],
+    );
 
-  return jsonOk({ data: balances, redemptions });
+    return jsonOk({ data: balances, redemptions });
+  } catch (err) {
+    const busy = dbCapacityResponse(err);
+    if (busy) return busy;
+    throw err;
+  }
 }
 
 export async function POST(request: Request) {
@@ -105,7 +111,14 @@ export async function POST(request: Request) {
   const parsed = redeemSchema.safeParse(body.data);
   if (!parsed.success) return jsonError("请求参数不正确", 400);
 
-  const result = await redeemCodeForUser(guard.auth.user.id, parsed.data.code);
+  let result: Awaited<ReturnType<typeof redeemCodeForUser>>;
+  try {
+    result = await redeemCodeForUser(guard.auth.user.id, parsed.data.code);
+  } catch (err) {
+    const busy = dbCapacityResponse(err);
+    if (busy) return busy;
+    throw err;
+  }
   if (!result.ok) {
     return jsonError(result.reason, 400);
   }

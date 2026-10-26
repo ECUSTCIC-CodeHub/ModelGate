@@ -1,4 +1,5 @@
 import { gatewayDb } from "@/lib/core/db";
+import { isDbCapacityError } from "@/lib/core/db/errors";
 import { serializeRetryStatusCodes } from "@/lib/gateway/upstream-error";
 import { clampStatusLightHours } from "@/lib/shared/utils";
 import { featureSettingsKey, modelGateFeatures, resolveRuntimeFeatures, runtimeFeatureDefaults, runtimeToggleableFeatures, type ModelGateFeature } from "@/lib/core/features";
@@ -248,9 +249,19 @@ export async function getGatewaySettings(): Promise<GatewaySettings> {
     return cachedGatewaySettings.value;
   }
 
-  const value = await readGatewaySettingsFromDb();
-  cachedGatewaySettings = { value, expiresAt: now + GATEWAY_SETTINGS_CACHE_TTL_MS };
-  return value;
+  try {
+    const value = await readGatewaySettingsFromDb();
+    cachedGatewaySettings = { value, expiresAt: now + GATEWAY_SETTINGS_CACHE_TTL_MS };
+    return value;
+  } catch (err) {
+    // 设置本身容忍 TTL 内的陈旧值；池饱和时让所有读设置的路径一起失败只会放大事故，
+    // 因此有上次读到的值就继续用。
+    if (cachedGatewaySettings && isDbCapacityError(err)) {
+      console.error("[settings] 数据库繁忙，沿用上次读取的设置:", err);
+      return cachedGatewaySettings.value;
+    }
+    throw err;
+  }
 }
 
 // 面向客户端的安全子集：名单与 settings key 都由服务端维护，不把全部设置暴露出去。

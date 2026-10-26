@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { isBusyError } from "@/lib/core/busy-error";
+import { isDbCapacityError } from "@/lib/core/db/errors";
 
 const TIMESTAMP_KEYS = new Set([
   "created_at",
@@ -100,6 +102,24 @@ export function jsonError(message: string, status = 400, options: JsonErrorOptio
     },
     { status, headers: extraHeaders },
   );
+}
+
+// 数据库容量类错误（连接池排队满 / 等待连接超时）统一按 503 快速失败，
+// 让客户端退避重试，而不是和 SQL 执行失败混在同一个 500 里。
+export function dbCapacityResponse(err: unknown): NextResponse | null {
+  if (!isDbCapacityError(err)) return null;
+  return jsonError("服务繁忙，请稍后重试", 503, {}, { "retry-after": "2" });
+}
+
+// 容量不足与锁冲突都属于「稍后重试即可」，统一映射成 503；
+// 其余错误返回 null，由调用方继续上抛。
+export function busyErrorResponse(err: unknown): NextResponse | null {
+  const capacity = dbCapacityResponse(err);
+  if (capacity) return capacity;
+  if (isBusyError(err)) {
+    return jsonError(err instanceof Error ? err.message : "服务繁忙，请稍后重试", 503, {}, { "retry-after": "2" });
+  }
+  return null;
 }
 
 export function parseBearerToken(authHeader: string | null): string | null {

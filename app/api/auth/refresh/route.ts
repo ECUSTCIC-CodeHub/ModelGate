@@ -8,7 +8,7 @@ import {
   issueAuthTokens,
   resolveRefreshTokenUser,
 } from "@/lib/auth/auth";
-import { jsonError, jsonOk } from "@/lib/core/http";
+import { dbCapacityResponse, jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 
 const schema = z.object({
@@ -23,7 +23,15 @@ export async function POST(request: Request) {
   const refreshToken = getRefreshTokenFromRequest(request) ?? parsed.data.refresh_token;
   if (!refreshToken) return clearAuthCookies(jsonError("登录已过期，请重新登录", 401));
 
-  const user = await resolveRefreshTokenUser(refreshToken);
+  let user: Awaited<ReturnType<typeof resolveRefreshTokenUser>>;
+  try {
+    user = await resolveRefreshTokenUser(refreshToken);
+  } catch (err) {
+    // 服务端繁忙时不清 cookie：清掉只会把用户踢回登录页，与容量问题无关
+    const busy = dbCapacityResponse(err);
+    if (busy) return busy;
+    throw err;
+  }
   if (!user) return clearAuthCookies(jsonError("刷新令牌无效", 401));
 
   const responsePayload = { ...issueAuthTokens(user), message: "令牌刷新成功。" };

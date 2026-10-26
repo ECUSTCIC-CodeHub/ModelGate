@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { NextResponse } from "next/server";
 import { gatewayDb, type DbUser } from "@/lib/core/db";
+import { isDbCapacityError } from "@/lib/core/db/errors";
 import { parseBearerToken } from "@/lib/core/http";
 import { AUTH_DISABLED, getNoAuthContext } from "@/lib/auth/no-auth";
 
@@ -220,7 +221,10 @@ export async function requireWebAuth(request: Request): Promise<AuthContext | nu
     const token = getAccessTokenFromRequest(request);
     if (!token) return null;
     return getAuthContextFromAccessToken(token);
-  } catch {
+  } catch (err) {
+    // 容量类错误不能退化成「未登录」：池饱和时全员会被踢回登录页并集中重登，
+    // 把登录接口和连接池一起压垮。交由上层转成 503。
+    if (isDbCapacityError(err)) throw err;
     return null;
   }
 }
@@ -246,7 +250,9 @@ export async function resolveRefreshTokenUser(token: string): Promise<DbUser | n
     if (!user) return null;
     if (!tokenVersionMatches(payload, user)) return null;
     return user;
-  } catch {
+  } catch (err) {
+    // 同上：容量类错误必须上抛，不能被当成令牌无效
+    if (isDbCapacityError(err)) throw err;
     return null;
   }
 }
@@ -301,7 +307,10 @@ export async function getServerProfileFromCookieStore(cookieStore: { get: (name:
       const accessUser = (await getAuthContextFromAccessToken(accessToken))?.user;
       if (accessUser) return accessUser;
     }
-  } catch {}
+  } catch (err) {
+    // 容量错误不能被当成「令牌无效」：RSC 侧据此 redirect 到登录页同样会引发重登风暴
+    if (isDbCapacityError(err)) throw err;
+  }
 
   const refreshUser = refreshToken ? await resolveRefreshTokenUser(refreshToken) : null;
   return refreshUser ? sanitizeUser(refreshUser) : null;

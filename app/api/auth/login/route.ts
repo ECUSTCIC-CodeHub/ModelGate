@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { applyAuthCookies, comparePassword, compareWithDummyPassword, issueAuthTokens, sanitizeUser } from "@/lib/auth/auth";
 import { gatewayDb, type DbUser } from "@/lib/core/db";
-import { jsonError, jsonOk } from "@/lib/core/http";
+import { dbCapacityResponse, jsonError, jsonOk } from "@/lib/core/http";
 import { checkLoginRateLimit } from "@/lib/auth/login-ratelimit";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
@@ -14,7 +14,14 @@ const schema = z.object({
 });
 
 export async function POST(request: Request) {
-  const settings = await getGatewaySettings();
+  let settings: Awaited<ReturnType<typeof getGatewaySettings>>;
+  try {
+    settings = await getGatewaySettings();
+  } catch (err) {
+    const busy = dbCapacityResponse(err);
+    if (busy) return busy;
+    throw err;
+  }
   if (settings.password_login_enabled !== 1) {
     return jsonError("账号密码登录已关闭", 403);
   }
@@ -30,7 +37,14 @@ export async function POST(request: Request) {
 
   if (!parsed.success) return jsonError("用户名或密码错误", 401);
 
-  const user = await gatewayDb.queryOne<DbUser>("SELECT * FROM users WHERE username = ? AND deleted_at IS NULL", [parsed.data.username]);
+  let user: DbUser | undefined;
+  try {
+    user = await gatewayDb.queryOne<DbUser>("SELECT * FROM users WHERE username = ? AND deleted_at IS NULL", [parsed.data.username]);
+  } catch (err) {
+    const busy = dbCapacityResponse(err);
+    if (busy) return busy;
+    throw err;
+  }
 
   const passwordOk = user
     ? await comparePassword(parsed.data.password, user.password_hash)
