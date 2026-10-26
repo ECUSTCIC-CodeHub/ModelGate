@@ -112,13 +112,17 @@ export class MysqlAdapter implements DatabaseAdapter {
     });
     // mysql2 的 timezone 选项只影响客户端 Date 的转义/解析，不会改服务端会话时区；
     // 这里在每条连接建立时显式 SET，让 CURRENT_TIMESTAMP/NOW()/DEFAULT CURRENT_TIMESTAMP 返回 UTC。
-    this.pool.on("connection", (conn) => {
-      // 变量设置失败必须留痕：静默失败会让行锁等待上限停在默认 50s，等于没防护。
-      // 拆成两条 SET，时区设置失败不影响锁等待上限生效。
-      conn.query("SET SESSION time_zone = '+00:00'", (err: Error | null) => {
+    // 变量设置失败必须留痕：静默失败会让行锁等待上限停在默认 50s，等于没防护。
+    // 拆成两条 SET，时区设置失败不影响锁等待上限生效。
+    // 事件回调拿到的是核心（回调风格）连接，而 mysql2 的 promise 类型声明写成了 promise 连接，
+    // 这里按运行时实际类型断言。
+    type CoreConnection = { query: (sql: string, cb?: (err: Error | null) => void) => unknown };
+    this.pool.on("connection", (conn: unknown) => {
+      const core = conn as CoreConnection;
+      core.query("SET SESSION time_zone = '+00:00'", (err) => {
         if (err) console.error("[db] 会话时区初始化失败:", err);
       });
-      conn.query(`SET SESSION innodb_lock_wait_timeout = ${lockWaitTimeout}`, (err: Error | null) => {
+      core.query(`SET SESSION innodb_lock_wait_timeout = ${lockWaitTimeout}`, (err) => {
         if (err) console.error("[db] 行锁等待上限初始化失败:", err);
       });
     });
