@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { gatewayDb } from "@/lib/core/db";
-import type { ExecuteResult } from "@/lib/core/db/adapter";
+import type { ExecuteResult, TransactionContext } from "@/lib/core/db/adapter";
+import { BusyError } from "@/lib/core/busy-error";
 import { modelGateFeatures } from "@/lib/core/features";
 import { toMysqlDatetime, parseStoredUtc } from "@/lib/core/db/datetime";
 import { stringifyAllowedChannelIds } from "@/lib/gateway/channel-access";
@@ -18,6 +19,9 @@ function isUniqueConstraintError(err: unknown): boolean {
 
 // 用于在并发重复兑换时强制回滚事务，再由外层转为友好提示，避免多计一次核销次数。
 class RedeemAlreadyRedeemedError extends Error {}
+
+// 抢占核销次数失败（已停用、已过期、次数耗尽）时抛出，用于回滚事务内已写入的额度行。
+class RedeemCodeExhaustedError extends Error {}
 
 export type RedeemCodeRow = {
   id: number;
@@ -347,30 +351,43 @@ export async function deleteRedeemCodes(codes: string[]): Promise<number> {
   )).map((row) => row.id);
   if (ids.length === 0) return 0;
 
-  await gatewayDb.transaction(async (tx) => {
-    const idPlaceholders = ids.map(() => "?").join(",");
-    await tx.execute(`DELETE FROM redeem_redemptions WHERE code_id IN (${idPlaceholders})`, ids);
-    await tx.execute(`DELETE FROM redeem_balances WHERE code_id IN (${idPlaceholders})`, ids);
-    await tx.execute(`DELETE FROM redeem_codes WHERE id IN (${idPlaceholders})`, ids);
-  });
+  try {
+    await gatewayDb.transaction(async (tx) => {
+      const idPlaceholders = ids.map(() => "?").join(",");
+      // 加锁顺序与兑换事务保持一致（额度 → 核销记录 → 兑换码），避免与并发兑换构成死锁环
+      await tx.execute(`DELETE FROM redeem_balances WHERE code_id IN (${idPlaceholders})`, ids);
+      await tx.execute(`DELETE FROM redeem_redemptions WHERE code_id IN (${idPlaceholders})`, ids);
+      await tx.execute(`DELETE FROM redeem_codes WHERE id IN (${idPlaceholders})`, ids);
+    });
+  } catch (err) {
+    throw mapLockConflict(err);
+  }
   return ids.length;
 }
 
 // 按批次删除兑换码及其定向额度与核销记录，返回删除数量；批次不存在时返回 0。
-// 用子查询避免把整批 code_id 拼进 IN 列表，批次上限 1000 也不会触碰占位符上限。
+// code_id 先在事务外物化，避免事务内的子查询先锁住 redeem_codes 造成加锁顺序反转。
 export async function deleteRedeemBatch(batchId: string): Promise<number> {
-  return gatewayDb.transaction(async (tx) => {
-    await tx.execute(
-      "DELETE FROM redeem_redemptions WHERE code_id IN (SELECT id FROM redeem_codes WHERE batch_id = ?)",
-      [batchId],
-    );
-    await tx.execute(
-      "DELETE FROM redeem_balances WHERE code_id IN (SELECT id FROM redeem_codes WHERE batch_id = ?)",
-      [batchId],
-    );
-    const result = await tx.execute("DELETE FROM redeem_codes WHERE batch_id = ?", [batchId]);
-    return result.changes;
-  });
+  // 先把 code_id 物化出来：事务内用子查询会先给 redeem_codes 加 S 锁，
+  // 变成「兑换码 → 额度」的反向顺序，与并发兑换构成死锁环。
+  const ids = (await gatewayDb.query<{ id: number }>(
+    "SELECT id FROM redeem_codes WHERE batch_id = ?",
+    [batchId],
+  )).map((row) => row.id);
+  if (ids.length === 0) return 0;
+
+  try {
+    return await gatewayDb.transaction(async (tx) => {
+      const idPlaceholders = ids.map(() => "?").join(",");
+      // 加锁顺序与兑换事务保持一致（额度 → 核销记录 → 兑换码）
+      await tx.execute(`DELETE FROM redeem_balances WHERE code_id IN (${idPlaceholders})`, ids);
+      await tx.execute(`DELETE FROM redeem_redemptions WHERE code_id IN (${idPlaceholders})`, ids);
+      const result = await tx.execute(`DELETE FROM redeem_codes WHERE id IN (${idPlaceholders})`, ids);
+      return result.changes;
+    });
+  } catch (err) {
+    throw mapLockConflict(err);
+  }
 }
 
 // 用户兑换：校验有效性、限定渠道/模型是否存在，创建定向额度并登记核销。
@@ -405,6 +422,65 @@ async function resetUserCycleUsage(tx: CycleResetExecutor, userId: number): Prom
   );
 }
 
+// 原子抢占一次核销次数。必须放在事务最后一步：同一兑换码的并发事务只在这一行上排队，
+// 持锁范围从「整段读写」压缩到「一条 UPDATE」，量化后单行吞吐提升一个数量级。
+async function claimRedeemUse(tx: TransactionContext, codeId: number): Promise<void> {
+  const updated = await tx.execute(
+    `UPDATE redeem_codes
+       SET used_count = used_count + 1
+       WHERE id = ? AND enabled = 1
+         AND (max_uses = 0 OR used_count < max_uses)
+         AND (expires_at IS NULL OR expires_at > ?)`,
+    [codeId, toMysqlDatetime(new Date())],
+  );
+  if (updated.changes !== 1) throw new RedeemCodeExhaustedError();
+}
+
+// 事务内只做写入与冲突判定，额度行在抢占 used_count 之前读回：
+// 提交后再取一次连接读取，会在池已饱和时出现「次数已扣、响应却 500」。
+type RedeemTxOutcome =
+  | { kind: "quota"; balance: RedeemBalanceRow }
+  | { kind: "reset" }
+  | { kind: "rejected"; reason: string };
+
+// 1213/1205 属于锁冲突而非业务拒绝：兑换与管理员改码/删码并发时会撞上，
+// 重试一次即可避开，重试仍失败则按繁忙返回，不向用户抛 500。
+function isLockConflictError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const code = (err as Error & { code?: string }).code;
+  if (code === "ER_LOCK_DEADLOCK" || code === "ER_LOCK_WAIT_TIMEOUT") return true;
+  return /Deadlock found|Lock wait timeout exceeded|database is locked/i.test(err.message ?? "");
+}
+
+// 锁冲突后的重试预算：立即重试只会再排一次队，先退避一小段；
+// 若首次尝试已经把预算耗尽则不再重试，避免单个请求耗时叠加到反代超时线以上。
+const REDEEM_DEADLINE_MS = 8_000;
+const REDEEM_RETRY_DELAY_MS = 20;
+
+// 管理员侧同样可能与并发兑换撞上行锁冲突，映射成可读文案而不是抛 500 英文错误。
+function mapLockConflict(err: unknown): Error {
+  if (isLockConflictError(err)) return new BusyError();
+  return err instanceof Error ? err : new Error(String(err));
+}
+
+async function runRedeemTransaction(
+  fn: (tx: TransactionContext) => Promise<RedeemTxOutcome>,
+  deadlineAt: number,
+): Promise<RedeemTxOutcome> {
+  try {
+    return await gatewayDb.transaction(fn);
+  } catch (err) {
+    if (!isLockConflictError(err)) throw err;
+    // SQLite 是同步驱动，重试只会把单进程再卡一个 busy_timeout（默认 30s），
+    // 比直接失败更糟，因此只在 MySQL 下重试。
+    if ((await gatewayDb.getDriver()) !== "mysql") throw err;
+    const jitter = REDEEM_RETRY_DELAY_MS + Math.floor(Math.random() * REDEEM_RETRY_DELAY_MS);
+    if (Date.now() + jitter >= deadlineAt) throw err;
+    await new Promise((resolve) => setTimeout(resolve, jitter));
+    return gatewayDb.transaction(fn);
+  }
+}
+
 export async function redeemCodeForUser(userId: number, code: string): Promise<RedeemResult> {
   const normalized = code.trim().toUpperCase();
   const row = await getCodeByCode(normalized);
@@ -428,115 +504,114 @@ export async function redeemCodeForUser(userId: number, code: string): Promise<R
     }
   }
 
-  let result: RedeemResult | undefined;
+  const deadlineAt = Date.now() + REDEEM_DEADLINE_MS;
+  let outcome: RedeemTxOutcome;
   try {
-    result = await gatewayDb.transaction(async (tx) => {
-    // 重置券与额度分开：不发额度、不建 redeem_balances，只把核销人的周期用量清零。
-    if (row.kind === "reset") {
-      // 重置券不建额度行，因此不能用 redeem_balances 判重，改查核销记录。
-      const redeemed = await tx.queryOne<{ id: number }>(
-        "SELECT id FROM redeem_redemptions WHERE code_id = ? AND user_id = ?",
+    outcome = await runRedeemTransaction(async (tx): Promise<RedeemTxOutcome> => {
+      // 重置券与额度分开：不发额度、不建 redeem_balances，只把核销人的周期用量清零。
+      if (row.kind === "reset") {
+        // 重置券不建额度行，因此不能用 redeem_balances 判重，改查核销记录。
+        const redeemed = await tx.queryOne<{ id: number }>(
+          "SELECT id FROM redeem_redemptions WHERE code_id = ? AND user_id = ?",
+          [row.id, userId],
+        );
+        if (redeemed) {
+          return { kind: "rejected", reason: "您已兑换过该兑换码" };
+        }
+        try {
+          await tx.execute(
+            "INSERT INTO redeem_redemptions (code_id, user_id, redeemed_at) VALUES (?, ?, ?)",
+            [row.id, userId, toMysqlDatetime(new Date())],
+          );
+        } catch (err) {
+          // 并发下同一用户重复核销，唯一约束兜底；抛出以回滚事务内的写入。
+          if (isUniqueConstraintError(err)) throw new RedeemAlreadyRedeemedError();
+          throw err;
+        }
+        // 先抢热点行再改 users：等锁期间不持有用户的周期行锁，
+        // 避免把兑换码的排队时间放大到计费路径上。
+        await claimRedeemUse(tx, row.id);
+        await resetUserCycleUsage(tx, userId);
+        return { kind: "reset" };
+      }
+
+      const existing = await tx.queryOne<{ id: number }>(
+        "SELECT id FROM redeem_balances WHERE code_id = ? AND user_id = ?",
         [row.id, userId],
       );
-      if (redeemed) {
-        return { ok: false as const, reason: "您已兑换过该兑换码" };
+      if (existing) {
+        return { kind: "rejected", reason: "您已兑换过该兑换码" };
       }
-      const updated = await tx.execute(
-        `UPDATE redeem_codes
-           SET used_count = used_count + 1
-           WHERE id = ? AND enabled = 1
-             AND (max_uses = 0 OR used_count < max_uses)
-             AND (expires_at IS NULL OR expires_at > ?)`,
-        [row.id, toMysqlDatetime(new Date())],
-      );
-      if (updated.changes !== 1) {
-        return { ok: false as const, reason: "该兑换码已失效或使用次数已达上限" };
-      }
-      await resetUserCycleUsage(tx, userId);
+
+      // 并发下同一用户重复兑换同一多用途兑换码时，SELECT 无法兜底，
+      // 唯一约束会让后到事务抛错。捕获唯一约束冲突并转为友好提示。
+      let balanceResult: ExecuteResult;
       try {
-        await tx.execute(
-          "INSERT INTO redeem_redemptions (code_id, user_id, redeemed_at) VALUES (?, ?, ?)",
-          [row.id, userId, toMysqlDatetime(new Date())],
+        balanceResult = await tx.execute(
+          `INSERT INTO redeem_balances (
+             code_id, user_id, token_quota, request_quota, period_cycles,
+             allowed_channel_ids, allowed_model_aliases, expires_at, created_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            row.id,
+            userId,
+            row.token_quota,
+            row.request_quota,
+            // 周期档快照到额度上：兑换码之后被删除或改动都只影响新兑换，
+            // 已发放额度的周期约束保持兑换时的形态（与额度、有效期一致）。
+            modelGateFeatures.periodQuota ? row.period_cycles : null,
+            row.allowed_channel_ids,
+            row.allowed_model_aliases,
+            row.expires_at,
+            toMysqlDatetime(new Date()),
+          ],
         );
       } catch (err) {
-        // 并发下同一用户重复核销，唯一约束兜底；抛出以回滚本次 used_count 自增。
         if (isUniqueConstraintError(err)) throw new RedeemAlreadyRedeemedError();
         throw err;
       }
-      return { ok: true as const, balance: null, reset: true as const };
-    }
 
-    const existing = await tx.queryOne<{ id: number }>(
-      "SELECT id FROM redeem_balances WHERE code_id = ? AND user_id = ?",
-      [row.id, userId],
-    );
-    if (existing) {
-      return { ok: false as const, reason: "您已兑换过该兑换码" };
-    }
-
-    // 原子性核销：仅当 remaining uses 充足时才核销
-    const updated = await tx.execute(
-      `UPDATE redeem_codes
-         SET used_count = used_count + 1
-         WHERE id = ? AND enabled = 1
-           AND (max_uses = 0 OR used_count < max_uses)
-           AND (expires_at IS NULL OR expires_at > ?)`,
-      [row.id, toMysqlDatetime(new Date())],
-    );
-    if (updated.changes !== 1) {
-      return { ok: false as const, reason: "该兑换码已失效或使用次数已达上限" };
-    }
-
-    // 并发下同一用户重复兑换同一多用途兑换码时，SELECT 无法兜底，
-    // 唯一约束会让后到事务抛错。捕获唯一约束冲突并转为友好提示。
-    let balanceResult: ExecuteResult | undefined;
-    try {
-      balanceResult = await tx.execute(
-        `INSERT INTO redeem_balances (
-           code_id, user_id, token_quota, request_quota, period_cycles,
-           allowed_channel_ids, allowed_model_aliases, expires_at, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          row.id,
-          userId,
-          row.token_quota,
-          row.request_quota,
-          // 周期档快照到额度上：兑换码之后被删除或改动都只影响新兑换，
-          // 已发放额度的周期约束保持兑换时的形态（与额度、有效期一致）。
-          modelGateFeatures.periodQuota ? row.period_cycles : null,
-          row.allowed_channel_ids,
-          row.allowed_model_aliases,
-          row.expires_at,
-          toMysqlDatetime(new Date()),
-        ],
-      );
-    } catch (err) {
-      if (isUniqueConstraintError(err)) {
-        // 抛出以回滚事务（回滚本次 used_count 自增），由外层捕获转为友好提示。
-        throw new RedeemAlreadyRedeemedError();
+      try {
+        await tx.execute(
+          `INSERT INTO redeem_redemptions (code_id, user_id) VALUES (?, ?)`,
+          [row.id, userId],
+        );
+      } catch (err) {
+        if (isUniqueConstraintError(err)) throw new RedeemAlreadyRedeemedError();
+        throw err;
       }
-      throw err;
-    }
 
-    await tx.execute(
-      `INSERT INTO redeem_redemptions (code_id, user_id) VALUES (?, ?)`,
-      [row.id, userId],
-    );
+      // 在抢占 used_count 之前读回额度行：此时只持有本事务刚插入行的锁，
+      // 不会延长 redeem_codes 的持锁时间，也不需要提交后再取一次连接。
+      const balance = await tx.queryOne<RedeemBalanceRow>(
+        "SELECT * FROM redeem_balances WHERE id = ?",
+        [balanceResult.lastInsertRowid],
+      );
+      if (!balance) throw new Error("兑换额度写入后读取失败");
 
-    const balance = await tx.queryOne<RedeemBalanceRow>(
-      "SELECT * FROM redeem_balances WHERE id = ?",
-      [balanceResult.lastInsertRowid],
-    );
-    return { ok: true as const, balance: balance! };
-    });
+      await claimRedeemUse(tx, row.id);
+      return { kind: "quota", balance };
+    }, deadlineAt);
   } catch (err) {
     if (err instanceof RedeemAlreadyRedeemedError) {
-      return { ok: false as const, reason: "您已兑换过该兑换码" };
+      return { ok: false, reason: "您已兑换过该兑换码" };
+    }
+    if (err instanceof RedeemCodeExhaustedError) {
+      return { ok: false, reason: "该兑换码已失效或使用次数已达上限" };
+    }
+    if (isLockConflictError(err)) {
+      return { ok: false, reason: "兑换请求过于繁忙，请稍后重试" };
     }
     throw err;
   }
 
-  return result;
+  if (outcome.kind === "rejected") {
+    return { ok: false, reason: outcome.reason };
+  }
+  if (outcome.kind === "reset") {
+    return { ok: true, balance: null, reset: true };
+  }
+  return { ok: true, balance: outcome.balance };
 }
 
 // 查询用户所有定向额度，有效性判定与授权、计费侧保持一致：兑换码启用、未过期、额度未耗尽（含周期档）。
@@ -788,15 +863,20 @@ export async function updateRedeemCode(
     balanceArgs.push(input.expiresAt);
   }
 
-  await gatewayDb.transaction(async (tx) => {
-    await tx.execute(`UPDATE redeem_codes SET ${sets.join(", ")} WHERE id = ?`, [...args, id]);
-    if (balanceSets.length > 0) {
-      await tx.execute(
-        `UPDATE redeem_balances SET ${balanceSets.join(", ")} WHERE code_id = ?`,
-        [...balanceArgs, id],
-      );
-    }
-  });
+  try {
+    await gatewayDb.transaction(async (tx) => {
+      // 加锁顺序与兑换事务保持一致（额度 → 兑换码），避免与并发兑换构成死锁环
+      if (balanceSets.length > 0) {
+        await tx.execute(
+          `UPDATE redeem_balances SET ${balanceSets.join(", ")} WHERE code_id = ?`,
+          [...balanceArgs, id],
+        );
+      }
+      await tx.execute(`UPDATE redeem_codes SET ${sets.join(", ")} WHERE id = ?`, [...args, id]);
+    });
+  } catch (err) {
+    throw mapLockConflict(err);
+  }
 
   return { ok: true };
 }
