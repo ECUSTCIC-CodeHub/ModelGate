@@ -4,10 +4,9 @@ import { z } from "zod";
 import { requireRedeemCodeFeature } from "@/lib/core/features";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { ensureAdmin } from "@/lib/auth/guards";
-import { jsonError, jsonOk } from "@/lib/core/http";
+import { busyErrorResponse, jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
-import { gatewayDb } from "@/lib/core/db";
-import { parseExpiresInput, getCodeById, getCodeDetail, listRedemptions, updateRedeemCode, listExistingGroupIds } from "@/lib/services/redeem-codes";
+import { deleteRedeemCodes, parseExpiresInput, getCodeById, getCodeDetail, listRedemptions, updateRedeemCode, listExistingGroupIds } from "@/lib/services/redeem-codes";
 
 const patchSchema = z
   .strictObject({
@@ -90,15 +89,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
   }
 
-  const result = await updateRedeemCode(codeId, {
-    note: parsed.data.note,
-    enabled: parsed.data.enabled,
-    expiresAt,
-    maxUses: parsed.data.max_uses,
-    tokenQuota: parsed.data.token_quota,
-    requestQuota: parsed.data.request_quota,
-    allowedGroupIds,
-  });
+  let result: Awaited<ReturnType<typeof updateRedeemCode>>;
+  try {
+    result = await updateRedeemCode(codeId, {
+      note: parsed.data.note,
+      enabled: parsed.data.enabled,
+      expiresAt,
+      maxUses: parsed.data.max_uses,
+      tokenQuota: parsed.data.token_quota,
+      requestQuota: parsed.data.request_quota,
+      allowedGroupIds,
+    });
+  } catch (err) {
+    const busy = busyErrorResponse(err);
+    if (busy) return busy;
+    throw err;
+  }
   if (!result.ok) return jsonError(result.reason, 400);
 
   const detail = await getCodeDetail(codeId);
@@ -123,11 +129,14 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   const code = await getCodeById(codeId);
   if (!code) return jsonError("兑换码不存在", 404);
 
-  await gatewayDb.transaction(async (tx) => {
-    await tx.execute("DELETE FROM redeem_redemptions WHERE code_id = ?", [codeId]);
-    await tx.execute("DELETE FROM redeem_balances WHERE code_id = ?", [codeId]);
-    await tx.execute("DELETE FROM redeem_codes WHERE id = ?", [codeId]);
-  });
+  // 复用服务层的删除实现，保证加锁顺序与兑换事务一致（额度 → 核销记录 → 兑换码）
+  try {
+    await deleteRedeemCodes([code.code]);
+  } catch (err) {
+    const busy = busyErrorResponse(err);
+    if (busy) return busy;
+    throw err;
+  }
 
   return jsonOk({ message: "兑换码已删除。" });
 }

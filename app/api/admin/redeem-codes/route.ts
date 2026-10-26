@@ -4,7 +4,7 @@ import { z } from "zod";
 import { requireRedeemCodeFeature } from "@/lib/core/features";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { ensureAdmin } from "@/lib/auth/guards";
-import { jsonError, jsonOk } from "@/lib/core/http";
+import { busyErrorResponse, jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { listExistingChannelIds } from "@/lib/gateway/channel-access";
 import { listExistingModelAliases } from "@/lib/gateway/model-access";
@@ -214,7 +214,14 @@ export async function DELETE(request: Request) {
   const { codes, singleCode, batchId } = targetsResult;
 
   if (batchId) {
-    const deleted = await deleteRedeemBatch(batchId);
+    let deleted: number;
+    try {
+      deleted = await deleteRedeemBatch(batchId);
+    } catch (err) {
+      const busy = busyErrorResponse(err);
+      if (busy) return busy;
+      throw err;
+    }
     if (deleted === 0) return jsonError("批次不存在", 404);
     return jsonOk({ message: `已删除 ${deleted} 个兑换码。` });
   }
@@ -224,7 +231,14 @@ export async function DELETE(request: Request) {
     const row = await getCodeByCode(singleCode);
     if (!row) return jsonError("兑换码不存在", 404);
   }
-  const deleted = await deleteRedeemCodes(targets);
+  let deleted: number;
+  try {
+    deleted = await deleteRedeemCodes(targets);
+  } catch (err) {
+    const busy = busyErrorResponse(err);
+    if (busy) return busy;
+    throw err;
+  }
 
   return jsonOk({ message: `已删除 ${deleted} 个兑换码。` });
 }
