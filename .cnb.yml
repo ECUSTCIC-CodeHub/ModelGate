@@ -6,11 +6,15 @@
           enabled: true
   env:
     IMAGE: ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}
+    APK_MIRROR: http://mirrors.tencentyun.com
+    NPM_REGISTRY: http://mirrors.tencentyun.com/npm/
   stages:
     - name: docker build & push
       script: |
         docker buildx build \
           --build-arg MODELGATE_EDITION=full \
+          --build-arg APK_MIRROR=${APK_MIRROR:-http://mirrors.tencentyun.com} \
+          --build-arg NPM_REGISTRY=${NPM_REGISTRY:-http://mirrors.tencentyun.com/npm/} \
           --cache-from type=registry,ref=${IMAGE}:full-cache-amd64 \
           --cache-from type=registry,ref=${IMAGE}:full-cache-arm64 \
           --cache-to type=registry,ref=${IMAGE}:full-cache-amd64,mode=max \
@@ -26,11 +30,15 @@
 #           enabled: true
 #   env:
 #     IMAGE: ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}
+#     APK_MIRROR: http://mirrors.tencentyun.com
+#     NPM_REGISTRY: http://mirrors.tencentyun.com/npm/
 #   stages:
 #     - name: docker build & push lite
 #       script: |
 #         docker buildx build \
 #           --build-arg MODELGATE_EDITION=lite \
+#           --build-arg APK_MIRROR=${APK_MIRROR:-http://mirrors.tencentyun.com} \
+#           --build-arg NPM_REGISTRY=${NPM_REGISTRY:-http://mirrors.tencentyun.com/npm/} \
 #           --cache-from type=registry,ref=${IMAGE}:lite-cache-amd64 \
 #           --cache-from type=registry,ref=${IMAGE}:lite-cache-arm64 \
 #           --cache-to type=registry,ref=${IMAGE}:lite-cache-amd64,mode=max \

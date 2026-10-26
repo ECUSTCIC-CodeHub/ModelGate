@@ -1,12 +1,18 @@
+ARG APK_MIRROR=https://mirrors.cloud.tencent.com
+ARG NPM_REGISTRY=https://mirrors.cloud.tencent.com/npm/
+
 FROM node:22-alpine AS deps
 
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN apk add --no-cache python3 make g++ tzdata
+COPY scripts/apk-add.sh /usr/local/bin/apk-add
+ARG APK_MIRROR
+RUN sh /usr/local/bin/apk-add python3 make g++ tzdata
 
 COPY package.json package-lock.json ./
-RUN npm config set registry https://mirrors.cloud.tencent.com/npm/
+ARG NPM_REGISTRY
+RUN npm config set registry "${NPM_REGISTRY:-https://mirrors.cloud.tencent.com/npm/}"
 RUN npm ci
 
 FROM deps AS build
@@ -22,6 +28,7 @@ RUN rm -rf .next/standalone/data
 FROM node:22-alpine AS run
 
 ARG MODELGATE_EDITION=full
+ARG APK_MIRROR
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -31,9 +38,11 @@ ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 ENV TZ=Asia/Shanghai
 
-RUN apk add --no-cache tzdata libstdc++ su-exec \
-  && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
-  && echo $TZ > /etc/timezone
+COPY scripts/apk-add.sh /usr/local/bin/apk-add
+RUN sh /usr/local/bin/apk-add tzdata libstdc++ su-exec \
+ && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
+ && echo $TZ > /etc/timezone \
+ && rm -f /usr/local/bin/apk-add
 
 COPY --chown=node:node --from=build /app/.next/standalone ./
 COPY --chown=node:node --from=build /app/.next/static ./.next/static

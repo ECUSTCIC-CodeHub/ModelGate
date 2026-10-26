@@ -100,6 +100,15 @@ Docker 构建可通过 build arg 选择版本：
 docker build --build-arg MODELGATE_EDITION=lite -t modelgate:lite .
 ```
 
+镜像构建默认使用腾讯云公共镜像源（`https://mirrors.cloud.tencent.com`），可用 `APK_MIRROR` / `NPM_REGISTRY` 覆盖，取值须以 `http://` 或 `https://` 开头，`APK_MIRROR` 只填主机部分。CNB 流水线在腾讯云内网构建，传入内网源 `http://mirrors.tencentyun.com`：
+
+```bash
+docker build \
+  --build-arg APK_MIRROR=http://mirrors.tencentyun.com \
+  --build-arg NPM_REGISTRY=http://mirrors.tencentyun.com/npm/ \
+  -t modelgate:latest .
+```
+
 CNB 流水线中，`main` push 只负责自动生成 tag；`tag_push` 会构建完整版镜像并推送 `latest` 和 tag 名。精简版流水线当前已停用，精简版制品通过构建参数生成。
 
 ## 环境变量
