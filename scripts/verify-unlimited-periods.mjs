@@ -77,6 +77,7 @@ function adminRequest(pathname, method, body) {
 }
 
 const DAY = 86400;
+const HOUR = 3600;
 let db = null;
 try {
   const { ensureDbReady } = await import("@/lib/core/db");
@@ -88,7 +89,7 @@ try {
   const { appendQuotaHeaders, checkQuota, resolveEffectivePeriods } = await import("@/lib/gateway/quota");
   const { getEffectiveLimits } = await import("@/lib/gateway/effective-limits");
   const { addUsage } = await import("@/lib/gateway/usage-accounting");
-  const { parsePeriodCycles } = await import("@/lib/gateway/period-cycles");
+  const { parsePeriodCycles, resolveHandedBackSeconds } = await import("@/lib/gateway/period-cycles");
   const bcrypt = (await import("bcryptjs")).default;
 
   const adminGroup = await db.queryOne("SELECT id FROM `groups` WHERE is_default = 1 AND deleted_at IS NULL");
@@ -621,6 +622,45 @@ try {
   );
   const hourEntry = defView.all.find((cycle) => cycle.seconds === 3600);
   check("S79 生效档位不携带自有档的历史计数", hourEntry?.used_requests === 0 && hourEntry?.used_tokens === 0 && hourEntry?.reset_at === null, JSON.stringify(hourEntry));
+
+  // ---- 用户自查接口必须读到继承档的真实用量（否则展示 0、判定却按实际用量拦人） ----
+  await setGroupCycles(G, [{ seconds: DAY, quota_requests: 100, quota_tokens: null }]);
+  const displayUser = await createUser("verifydisplay");
+  await setUserCycles(displayUser.id, [{ seconds: DAY, quota_tokens: null, quota_requests: null }]);
+  await db.execute("INSERT INTO `keys` (`key`, name, user_id, enabled) VALUES (?, 'k', ?, 1)", ["verify-display-key", displayUser.id]);
+  const displayKey = await db.queryOne("SELECT id FROM `keys` WHERE user_id = ?", [displayUser.id]);
+  for (let i = 0; i < 3; i += 1) {
+    await primeWindows(displayUser.id);
+    await addUsage(displayUser.id, displayKey.id, 0, 1);
+  }
+  const displayQuota = await checkQuota(displayUser.id, 0);
+  const displayQuotaDay = displayQuota.quota.periods.find((p) => p.period_seconds === DAY);
+  const displayBody = await (await userQuotaRoute.GET(userRequest("/api/user/quota", displayUser.id))).json();
+  const displayDay = (displayBody.periods ?? []).find((p) => p.period_seconds === DAY);
+  check("S80 用户自查接口读到继承档用量", displayDay?.used_requests === 3, "user/quota=" + displayDay?.used_requests + " checkQuota=" + displayQuotaDay?.used_requests);
+  check("S81 用户自查与判定口径一致", displayDay?.used_requests === displayQuotaDay?.used_requests, JSON.stringify(displayDay));
+
+  // ---- 旧版无后缀响应头不能被占位档顶掉 ----
+  const legacyHeaders = {};
+  appendQuotaHeaders(legacyHeaders, displayQuota.quota);
+  check("S82 单档旧版周期响应头仍输出", legacyHeaders["X-Period-Quota-Requests-Remaining"] === "97", JSON.stringify(legacyHeaders));
+
+  // ---- 交回判定：组里没有同秒数档位时，留空会被收口成 -1，不能算交回 ----
+  const explicitDay = { id: "p1", seconds: DAY, quota_tokens: -1, quota_requests: -1, used_tokens: 0, used_requests: 9, reset_at: null };
+  const noGroupHandback = resolveHandedBackSeconds(
+    [{ seconds: DAY, quota_tokens: null, quota_requests: null }],
+    [explicitDay],
+    [{ id: "g1", seconds: HOUR, quota_tokens: null, quota_requests: 5, used_tokens: 0, used_requests: 0, reset_at: null }],
+    true,
+  );
+  check("S83 组里没有同秒数档位不算交回", noGroupHandback.length === 0, JSON.stringify(noGroupHandback));
+  const withGroupHandback = resolveHandedBackSeconds(
+    [{ seconds: DAY, quota_tokens: null, quota_requests: null }],
+    [explicitDay],
+    [{ id: "g1", seconds: DAY, quota_tokens: null, quota_requests: 100, used_tokens: 0, used_requests: 0, reset_at: null }],
+    true,
+  );
+  check("S84 组里有同秒数档位才交回", withGroupHandback.length === 1 && withGroupHandback[0] === DAY, JSON.stringify(withGroupHandback));
 
   console.log("");
   console.log(passed + "/" + (passed + failed) + " 通过" + (failed > 0 ? "，存在失败" : ""));

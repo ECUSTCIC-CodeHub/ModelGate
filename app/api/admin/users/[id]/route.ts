@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { hashPassword } from "@/lib/auth/auth";
-import { gatewayDb } from "@/lib/core/db";
+import { gatewayDb, ensureDbReady } from "@/lib/core/db";
 import { modelGateFeatures, requireFeature } from "@/lib/core/features";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
@@ -162,7 +162,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const handedBackSeconds = modelGateFeatures.periodQuota
     && cycleValidation.cycles !== undefined
     && nextInheritGroup
-    ? resolveHandedBackSeconds(cycleValidation.cycles, existingCycles)
+    ? resolveHandedBackSeconds(cycleValidation.cycles, existingCycles, nextGroupCycles, nextInheritGroup)
     : [];
 
   // 关掉总开关后组档整体不参与计费，group_period_cycles 里的残留计数已经没有读者。
@@ -292,17 +292,23 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     }
     if (handedBackSeconds.length > 0) {
       // 只清涉及的那几档，其余档位的继承计数照旧（它们仍在生效）。
+      // 守卫式写入：并发计费（FOR UPDATE 读改写）改写这一列时本次直接放弃，
+      // 被交回的档位随 resolveEnforcedCycles 不再参与判定，残留计数由下次计费兜底清掉。
       const inheritedRow = await tx
         .queryOne<{ group_period_cycles: string | null }>(
           "SELECT group_period_cycles FROM users WHERE id = ?",
           [id],
         );
+      const raw = inheritedRow?.group_period_cycles ?? null;
       const handedBack = new Set(handedBackSeconds);
-      const remainingInherited = parsePeriodCycles(inheritedRow?.group_period_cycles)
+      const remainingInherited = parsePeriodCycles(raw)
         .filter((cycle) => !handedBack.has(cycle.seconds));
+      const isMysql = (await ensureDbReady()).driver === "mysql";
       await tx.execute(
-        "UPDATE users SET group_period_cycles = ? WHERE id = ?",
-        [remainingInherited.length > 0 ? serializePeriodCycleState(remainingInherited) : null, id],
+        isMysql
+          ? "UPDATE users SET group_period_cycles = ? WHERE id = ? AND group_period_cycles <=> ?"
+          : "UPDATE users SET group_period_cycles = ? WHERE id = ? AND group_period_cycles IS ?",
+        [remainingInherited.length > 0 ? serializePeriodCycleState(remainingInherited) : null, id, raw],
       );
     }
   });
@@ -316,6 +322,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   // resolveUserPeriodCycles 决定它是继续继承、还是因为组里没有这一档而收口成 -1。
   // 因此直接看 merged.period_cycles，而不是看提交形状。
   if (modelGateFeatures.periodQuota && parsed.data.period_cycles !== undefined) {
+    // 这里只清「组里已经删除」的秒数。被用户自有档接管的秒数仍保留在
+    // group_period_cycles 里，但读取路径会按当前生效的档位过滤掉，下一次计费时
+    // 也会随 effectiveInherited 一起被丢弃；提前删除会让「清空自有档后重新继承」
+    // 从 0 起算，等于凭一次覆盖动作白送组档额度。
     const activeInherited = parsePeriodCycles(merged.period_cycles)
       .filter((cycle) => isInheritedQuota(cycle.quota_tokens, cycle.quota_requests));
     const keepSeconds = nextInheritGroup

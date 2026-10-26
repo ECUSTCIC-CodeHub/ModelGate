@@ -346,19 +346,38 @@ export function applyCycleUsage(
 //
 // 运行时计数按秒数从库里保留，否则管理员改额度会把已用量清零、窗口重新锚定。
 //
+// 「交回组档」的统一判定：提交两侧留空、组里确实有同秒数档位可接、且库里原本是显式额度。
+// 组里没有同秒数档位时，留空会被收口成 -1（显式不限制），不属于交回，不能清继承计数。
+// 两处调用方必须共用这一份判断，否则会出现「自有计数保留、继承计数被清」的分叉。
+function isHandedBack(
+  cycle: PeriodCycleInput,
+  prior: PeriodCycle | undefined,
+  groupSeconds: Set<number>,
+  inheritGroup: boolean,
+): boolean {
+  if (inheritGroup && !groupSeconds.has(cycle.seconds)) return false;
+  return isInheritedQuota(cycle.quota_tokens, cycle.quota_requests)
+    && prior !== undefined
+    && !isInheritedQuota(prior.quota_tokens, prior.quota_requests);
+}
+
 // 交回组档的秒数：提交为两侧留空、且库里这一档原本是显式额度（-1 或数值）。
 // 这些秒数在原语义下攒的用量既可能在 period_cycles（显式额度期间）、也可能在
 // group_period_cycles（更早的继承期间），两处都得清 —— 只清一处时，另一处的历史用量
 // 会在交回后立刻生效，判定与展示还会各读一列、各说一套。
-export function resolveHandedBackSeconds(submitted: PeriodCycleInput[], existing: PeriodCycle[]): number[] {
+export function resolveHandedBackSeconds(
+  submitted: PeriodCycleInput[],
+  existing: PeriodCycle[],
+  groupCycles: PeriodCycle[],
+  inheritGroup = true,
+): number[] {
   const existingBySeconds = new Map(existing.map((cycle) => [cycle.seconds, cycle]));
-  return submitted.flatMap((cycle) => {
-    const prior = existingBySeconds.get(cycle.seconds);
-    const backToInherit = isInheritedQuota(cycle.quota_tokens, cycle.quota_requests)
-      && prior !== undefined
-      && !isInheritedQuota(prior.quota_tokens, prior.quota_requests);
-    return backToInherit ? [cycle.seconds] : [];
-  });
+  const groupSeconds = new Set(groupCycles.map((cycle) => cycle.seconds));
+  return submitted.flatMap((cycle) => (
+    isHandedBack(cycle, existingBySeconds.get(cycle.seconds), groupSeconds, inheritGroup)
+      ? [cycle.seconds]
+      : []
+  ));
 }
 
 // 提交档位是「重新声明这一档的意图」：只要写进库的形状是 -1 或数值，
@@ -383,10 +402,7 @@ export function resolveUserPeriodCycles(
     // 压住（-1 档已用 150 次、组档给 100，切过去立刻超额）。因此切回继承时计数归零，
     // 由 group_period_cycles 从 0 起算，语义上等于「这一档重新交回组档」。
     // 额度仍原样保留 null（= 跟着组档走），与「提交留空」的落库形态保持一致。
-    const backToInherit = needsExplicitUnlimited === false
-      && isInheritedQuota(cycle.quota_tokens, cycle.quota_requests)
-      && prior !== undefined
-      && !isInheritedQuota(prior.quota_tokens, prior.quota_requests);
+    const backToInherit = isHandedBack(cycle, prior, groupSeconds, inheritGroup);
     if (backToInherit) {
       return {
         ...toCycleFromInput({ ...cycle, quota_tokens: null, quota_requests: null }, prior?.id, `p${index + 1}`),
