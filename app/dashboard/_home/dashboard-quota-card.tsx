@@ -47,8 +47,9 @@ function PeriodQuotaBlock({
   remainingTokens: number | null;
   resetAt: string | null;
 }) {
-  const showRequests = quotaRequests !== null;
-  const showTokens = quotaTokens !== null;
+  // -1 是「显式不限制」，不是一条可展示的额度：画出来会变成「0 / -1」和 0% 进度条。
+  const showRequests = quotaRequests !== null && quotaRequests >= 0;
+  const showTokens = quotaTokens !== null && quotaTokens >= 0;
 
   return (
     <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-4">
@@ -86,7 +87,11 @@ function PeriodQuotaBlock({
 
 export function DashboardQuotaCard({ quota }: DashboardQuotaCardProps) {
   if (!quota) return null;
-  const periods: PeriodQuotaEntry[] = quota.periods ?? [];
+  // 占位档（两侧额度都为 null）只是让管理端能显式写 -1，对用户没有展示价值：
+  // 它既不构成限制，也不该渲染成一张「不限制」卡片。显式 -1 不是 null，仍会展示。
+  const periods: PeriodQuotaEntry[] = (quota.periods ?? []).filter(
+    (entry) => entry.quota_requests !== null || entry.quota_tokens !== null,
+  );
 
   const showRate = quota.rate.rpm >= 0 || quota.rate.qps >= 0 || quota.rate.tpm >= 0;
   const showTotalRequests = quota.total.quota_requests !== null;

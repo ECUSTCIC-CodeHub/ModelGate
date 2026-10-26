@@ -33,6 +33,7 @@ type UserDrawerProps = {
   periodQuotaEnabled: boolean;
   editingOidc: UserOidcBinding | null;
   editingGroupLimits: UserGroupLimits | null;
+  editingOwnCycles: string | null;
   onFormChange: (patch: Partial<UserForm>) => void;
   onToggleAllowedAlias: (alias: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>;
@@ -49,6 +50,7 @@ export function UserDrawer({
   periodQuotaEnabled,
   editingOidc,
   editingGroupLimits,
+  editingOwnCycles,
   onFormChange,
   onToggleAllowedAlias,
   onSubmit,
@@ -70,6 +72,7 @@ export function UserDrawer({
           {oidcFeatureEnabled && editingId !== null ? <UserOidcBindingPanel binding={editingOidc} /> : null}
           <UserQuotaFields
             form={form}
+            ownPeriodCycles={editingOwnCycles}
             editingGroupLimits={editingGroupLimits}
             periodQuotaEnabled={periodQuotaEnabled}
             onChange={onFormChange}

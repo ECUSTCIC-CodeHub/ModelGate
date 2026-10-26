@@ -2,7 +2,15 @@ import { gatewayDb, ensureDbReady } from "@/lib/core/db";
 import { modelGateFeatures } from "@/lib/core/features";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { parseStoredUtc, toMysqlDatetime } from "@/lib/core/db/datetime";
-import { applyCycleUsage, parsePeriodCycles, serializePeriodCycleState, type PeriodCycle } from "@/lib/gateway/period-cycles";
+import {
+  applyCycleUsage,
+  isInheritedQuota,
+  parseInheritGroupPeriods,
+  parsePeriodCycles,
+  serializePeriodCycleState,
+  type PeriodCycle,
+} from "@/lib/gateway/period-cycles";
+import { resolveEnforcedCycles } from "@/lib/gateway/effective-limits";
 import { ensureCycleResets } from "@/lib/gateway/period-cycles-reset";
 import { parseMultiplierSchedules, resolveEffectiveMultiplier } from "@/lib/gateway/multiplier-schedule";
 import { buildRedeemScope, scopeCoversPair, balanceHasRemaining } from "@/lib/services/redeem-authorization";
@@ -46,17 +54,46 @@ async function accumulateCycles(
   // 组后续收紧/放宽/删除对该用户永久失效，已删除的组限制还会继续拦人。
   // 周期档只认 period_cycles：旧单档列已停止写入与自增，启动迁移已把存量单档配置折成档位。
   const ownCycles = parsePeriodCycles(row.period_cycles);
-  if (ownCycles.length > 0) {
+  if (table !== "users") {
+    if (ownCycles.length > 0) {
+      await tx.execute(
+        `UPDATE ${table} SET period_cycles = ? WHERE id = ?`,
+        [serializePeriodCycleState(applyCycleUsage(ownCycles, deltaTokens, deltaRequests)), id],
+      );
+    }
+    return;
+  }
+  // 生效口径只在这里算一次：判定侧、展示侧、计费侧共用 resolveEnforcedCycles，
+  // 保证「哪些档在管这个用户」只有一份真值。
+  // 注意 enforced.own 是**用户自己写下的形状**（不含从组档让位来的额度），
+  // 因此回写 users.period_cycles 时额度天然不会被物化。
+  const enforced = resolveEnforcedCycles(ownCycles, inherited);
+
+  // 自有档里真正归属 own 的秒数：只有用户自己写了额度的档位。
+  // 两侧留空的档位额度全来自组档（或根本没有上游），计数一律走继承档那一列：
+  // 两边都记会让同一次请求被算两遍，界面上的「不限制」档也会莫名涨用量。
+  const passThroughSeconds = new Set(enforced.passThrough);
+  const billableOwn = enforced.own.filter((cycle) => (
+    !passThroughSeconds.has(cycle.seconds) && !isInheritedQuota(cycle.quota_tokens, cycle.quota_requests)
+  ));
+  if (billableOwn.length > 0) {
+    const ownSeconds = new Set(billableOwn.map((cycle) => cycle.seconds));
+    const nextOwn = ownCycles.map((cycle) => (
+      ownSeconds.has(cycle.seconds) ? applyCycleUsage([cycle], deltaTokens, deltaRequests)[0] : cycle
+    ));
     await tx.execute(
-      `UPDATE ${table} SET period_cycles = ? WHERE id = ?`,
-      [serializePeriodCycleState(applyCycleUsage(ownCycles, deltaTokens, deltaRequests)), id],
+      "UPDATE users SET period_cycles = ? WHERE id = ?",
+      [serializePeriodCycleState(nextOwn), id],
     );
   }
-  if (table !== "users") return;
-  // 组里已被用户自有档按秒数覆盖的档位不参与继承，与判定侧口径一致。
-  const ownSeconds = new Set(ownCycles.map((cycle) => cycle.seconds));
-  const effectiveInherited = inherited.filter((cycle) => !ownSeconds.has(cycle.seconds));
-  const storedInherited = parsePeriodCycles(row.group_period_cycles);
+
+  // 生效口径里落到自有档的秒数不再属于继承档：用户写了显式额度覆盖组档，
+  // 必须把 group_period_cycles 里同秒数的残留计数清掉，否则切回「覆盖」后
+  // 内存里的旧计数会被下一次累加写回来，组档的用量继续在后台叠加。
+  const ownSecondsSet = new Set(billableOwn.map((cycle) => cycle.seconds));
+  const effectiveInherited = enforced.inherited;
+  const storedInherited = parsePeriodCycles(row.group_period_cycles)
+    .filter((cycle) => !ownSecondsSet.has(cycle.seconds));
   // 组已清空周期档（或全部被自有档覆盖）时清掉残留计数：
   // 这些档位不再参与判定，留着只会占空间。
   if (effectiveInherited.length === 0) {
@@ -79,12 +116,16 @@ async function accumulateCycles(
 // 事务内读取用户所属用户组的周期档定义。组档按每用户独立计数，
 // 因此只需定义值，运行时计数记在用户行上。查不到组时返回空数组，不影响计费。
 async function loadUserGroupCycles(tx: TransactionContextLike, userId: number): Promise<PeriodCycle[]> {
-  const row = await tx.queryOne<{ period_cycles: string | null }>(
-    `SELECT g.period_cycles FROM users u
+  const row = await tx.queryOne<{ period_cycles: string | null; inherit_group_periods: number | null }>(
+    `SELECT g.period_cycles, u.inherit_group_periods FROM users u
        JOIN \`groups\` g ON g.id = u.group_id
       WHERE u.id = ? AND g.enabled = 1 AND g.deleted_at IS NULL`,
     [userId],
   );
+  // 关掉「继承用户组周期配额」总开关的用户，组档对计费侧同样不可见：
+  // 否则判定侧放行（组档不参与），计费侧却还在往 group_period_cycles 里累加，
+  // 一旦重新打开开关，关闭期间用掉的量会突然压上来。
+  if (!parseInheritGroupPeriods(row?.inherit_group_periods)) return [];
   return parsePeriodCycles(row?.period_cycles);
 }
 

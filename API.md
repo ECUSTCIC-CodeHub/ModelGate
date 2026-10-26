@@ -89,7 +89,7 @@ MySQL 模式下启动时自动建表和初始化默认数据。两种驱动共�
 
 - 字段名统一为 `period_cycles`，JSON 数组，按 TEXT 存储。
 - **滚动窗口语义**：周期按秒数计算，重置锚点是上一次重置时刻（或首次用量时刻），不与自然日/自然周对齐。这与原有单周期 `quota_period` 的行为一致。
-- `quota_tokens` / `quota_requests` 为 `null` 表示该维度在该周期不限制；两项都为 `null` 的档位没有意义，会被忽略。
+- `quota_tokens` / `quota_requests` 三态：`null` 留空表示**继承上游**（用户上继承用户组；组/渠道/模型/兑换码没有上游，等价于不限制）、`-1` 表示**显式不限制**并覆盖上游、`>= 0` 为该周期的额度。
 - 每档独立累计用量与独立重置，互不影响。
 
 **请求字段**
@@ -97,10 +97,10 @@ MySQL 模式下启动时自动建表和初始化默认数据。两种驱动共�
 | 字段 | 类型 | 必填 | 默认 | 说明 |
 |:---|:---|:---|:---|:---|
 | seconds | int | 是 | — | 周期秒数，范围 60 ~ 3153600000（100 年） |
-| quota_tokens | int/null | 否 | null | 该周期内 Token 额度上限，null 表示不限 |
-| quota_requests | int/null | 否 | null | 该周期内请求额度上限，null 表示不限 |
+| quota_tokens | int/null | 否 | null | 该周期内 Token 额度上限；null 留空表示继承，-1 表示不限制 |
+| quota_requests | int/null | 否 | null | 该周期内请求额度上限；null 留空表示继承，-1 表示不限制 |
 
-最多 8 档；`seconds` 重复的档位会被拒绝。
+最多 8 档；`seconds` 重复的档位会被拒绝。两项额度都为 `null` 的档位合法，表示「该周期不动上游配置」。
 
 ```json
 {
@@ -111,7 +111,46 @@ MySQL 模式下启动时自动建表和初始化默认数据。两种驱动共�
 }
 ```
 
-提交空数组表示清空所有周期档（等价于不启用周期配额）。
+提交空数组表示清空所有周期档（等价于不启用周期配额）。字段整条缺省或为 `null` 表示不修改周期档（沿用原值）。
+
+**`null` 与缺省的区别按接口语义区分，调用方需注意**：新建类接口（`POST`）里两者等价，都表示「本次没有周期档」；编辑类接口（`PUT`）里缺省 = 保持原值、`null`/`[]` = 清空。档位内的额度只接受整数、`-1` 或 `null`，传字符串（如 `"1000"`）或小数会直接返回 400，避免被隐式转换后语义漂移。
+
+**用户级覆盖组周期档**（`PUT /api/admin/users/{id}`、`POST /api/admin/users`）
+
+用户的周期档按 `seconds` 与用户组的档位逐档合并，因此同一个用户既能继承组档、也能只覆盖其中一侧额度：
+
+| 用户档写成 | 含义 |
+|:---|:---|
+| `{ "seconds": 86400, "quota_tokens": null, "quota_requests": null }` | 该周期不动组档（组有这一档就沿用组档额度，组没有就是不限制） |
+| `{ "seconds": 86400, "quota_tokens": -1, "quota_requests": -1 }` | 该周期不限制，覆盖组档 |
+| `{ "seconds": 86400, "quota_tokens": 900000, "quota_requests": null }` | 只覆盖 Token，请求额度仍沿用组档 |
+
+- **留空原样落库为 `null`，服务端不会把组档额度抄进用户档。** 组档额度只在读取时按 `seconds` 逐侧让位，因此组后续放宽、收紧、删除该周期都立即对该用户生效。想把某侧钉死，就写 `-1` 或具体数值。
+- 开着继承时，唯一会把留空落成 `-1` 的情况：组上没有对应 `seconds` 的档位。那时留空既无上游可继承、又说不清含义，落成 `-1` 才是一条明确的「不限制」。新建与编辑两条路径口径完全一致。关掉「继承用户组周期配额」总开关后没有上游可继承，留空侧的落库形态见下一节。
+- 用户档一旦带显式额度，该周期的运行时计数记在用户自有档上并从 0 起算，不搬组档的历史用量；组档中未被用户覆盖的周期记在 `group_period_cycles`。只覆盖一侧时（例如只填 Token），另一侧仍沿用组档，两套计数都参与判定，`periods` 里该周期同样只出现一条，`used_*` 取两套计数中较大的一侧。
+- 两侧都留空、且组里有同 `seconds` 档位时，这一档的额度与计数都归组档（`group_period_cycles`），自有档那条不参与判定也不累计用量；`periods` 里该周期只出现一条。
+- 把某档从 `-1`/数值改回两侧留空（即「交回组档」）时，该档的两套计数（`period_cycles` 与 `group_period_cycles`）一并归零，重新按组档从 0 起算 —— 否则显式不限制期间累积的用量会在切回继承的瞬间把用户顶过组档额度。
+- `-1` 档位照常累计用量（用量是事实），只是不构成判定限制。关掉「继承用户组周期配额」总开关后，留空档位没有上游可继承，同样按不限制处理并照常累计用量。
+- 组档、渠道档、模型档没有上游可继承：留空的额度在判定上不构成限制，`POST /api/admin/users` 与 `PUT /api/admin/users/{id}` 是唯一会做「留空转 -1」的对象。
+- 两边都未配置的常见周期（每小时 / 每日 / 每周 / 每月）以额度为 `null` 的占位档出现在 `periods` 中（`id` 形如 `unconfigured-86400`），仅用于展示与让管理员显式写 `-1`；它们不参与判定、不累计用量。
+
+**周期配额总开关 `inherit_group_periods`**（`POST /api/admin/users`、`PUT /api/admin/users/{id}`，布尔，缺省 `true`）
+
+用于「一次性关掉这个用户与用户组周期档的全部关系」，避免逐个周期填 `-1`。
+
+- `true`（默认）：正常继承组周期档，行为与上面的逐档合并一致。
+- `false`：组周期档**整体不参与**该用户的判定、计费与展示。用户自有档照旧生效，档位里的留空侧与 `-1` 一样按不限制处理，并照常累计用量。
+- **留空的落库形态分两种，不要混为一谈**：
+  - 新建（`POST`）或关闭期间**新提交**的留空档，没有上游可继承，落库固化为 `-1`；
+  - **存量**档位里还在「继承」形态的留空侧，在关闭时一并固化成 `-1`，避免界面上关了开关、读取时仍挂在组档上；
+  - 唯一保留 `null` 的情形是「两侧都留空、且用户组仍提供同 `seconds` 的档位」：那是货真价实的「跟着组走」，重新打开继承后会重新指向组档。
+  也就是说，同一行数据里 `null` 与 `-1` 对外都表现成「不限制」，但前者表示仍跟随组档、后者表示已显式固化。
+- 关闭时按 `now` 顺带推进一次已过期的窗口锚点：固化会让原本不参与计费的档位进入计费键空间，若锚点已过期，下一次计费会把 `used_*` 归零、重新开窗。把推进提前到「关闭」这一刻，行为与「窗口本来就该换了」一致，不会因为点了一下开关就额外发放一份额度。仍在有效期内的窗口锚点与 `used_*` 原样保留。
+- 重新打开开关后按逐档合并生效。注意关闭期间被固化为 `-1` 的档位**不会**自动恢复成继承：`-1` 是显式值，保持显式才是可预测的，要重新继承请把这些档位的额度改回留空。
+- 关闭期间组档的继承计数（`group_period_cycles`）不再累加，残留计数会随「关闭」这个动作立即清掉，不必等下一次计费；重新打开后从 0 起算，不会突然被关闭期间的历史用量压住。
+- 组以后新增周期档不会套用到关闭了该开关的用户，这是它相对逐档 `-1` 的主要价值。
+- 存量行该列为 `NULL` 时按 `true` 处理。
+- 管理端列表与 `GET /api/user/quota` 都会回传该字段；被关闭的用户在列表里 `group_period_cycles` 回传 `null`。
 
 时间字段有两种形态：响应里的 `periods[].reset_at` 会统一规范化为 ISO 8601（如 `2026-05-01T00:00:00.000Z`）；而请求/响应中 `period_cycles` 这个 **JSON 字符串**内部保留裸 UTC 形态 `YYYY-MM-DD HH:MM:SS`，前端需自行解析该字符串。
 
@@ -133,12 +172,12 @@ MySQL 模式下启动时自动建表和初始化默认数据。两种驱动共�
 
 | 字段 | 类型 | 说明 |
 |:---|:---|:---|
-| id | string | 档位标识 |
+| id | string | 档位标识（同一对象内唯一；占位档为 `unconfigured-<seconds>`，不会为空） |
 | period_seconds | int | 周期秒数 |
 | period_label | string | 周期可读文案，如「每日」「每 2 小时」 |
-| quota_tokens / quota_requests | int/null | 该档额度上限，null 表示不限 |
+| quota_tokens / quota_requests | int/null | 该档额度上限：`-1` 表示不限制，`null` 表示该周期未配置（继承且上游无配置） |
 | used_tokens / used_requests | int | 当前周期已用量 |
-| remaining_tokens / remaining_requests | int/null | 当前周期剩余量，null 表示不限 |
+| remaining_tokens / remaining_requests | int/null | 当前周期剩余量，额度为 `-1` 或 `null` 时为 `null` |
 | reset_at | string/null | 该档下次重置时间 |
 
 ```json
@@ -1183,7 +1222,7 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
 | group_locked | bool | 否 | false | 锁定身份组；开启后 OIDC 登录与过期回收定时任务都不再修改该用户的身份组，由管理员手动指定 |
 | rpm / qps / tpm | int | 否 | -1 | 速率限制，-1 表示继承组设置 |
 | quota_tokens / quota_requests | int/null | 否 | null | 总量配额，`null` 表示继承组设置，`-1` 表示不限制（覆盖组） |
-| period_cycles | object[] | 否 | [] | 多档重置周期，见「多档重置周期」一节（仅完整版） |
+| period_cycles | object[]/null | 否 | [] | 多档重置周期，见「多档重置周期」一节（仅完整版）；档位内额度留空表示继承组档，`-1` 表示不限制并覆盖组档 |
 | allowed_model_aliases | string[] | 否 | [] | 非公开模型白名单，为空表示不额外授权（公开模型不受白名单限制） |
 | note | string | 否 | null | 备注，最长 500 字符 |
 
@@ -1422,7 +1461,7 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
 | description | string | 否 | null | 描述，最长 200 字符 |
 | rpm / qps / tpm | int | 否 | -1 | 速率限制，-1 表示不限 |
 | quota_requests / quota_tokens | int/null | 否 | null | 总量配额，null 表示不限 |
-| period_cycles | object[] | 否 | [] | 多档重置周期，见「多档重置周期」一节；组档按每用户独立计数生效（仅完整版） |
+| period_cycles | object[] | 否 | [] | 多档重置周期，见「多档重置周期」一节；组档按每用户独立计数生效，用户档可按周期继承或覆盖（仅完整版） |
 | allowed_model_aliases | string[] | 否 | [] | 非公开模型白名单，为空表示不额外授权（公开模型不受白名单限制） |
 | allowed_channel_ids | int[] | 否 | [] | 可命中渠道白名单（按渠道 id），为空表示允许所有渠道；不在白名单内的渠道在路由和模型列表中会被过滤 |
 | oidc_claim_expr | string | 否 | null | OIDC Claim 匹配表达式，最长 512 字符 |
@@ -2372,6 +2411,8 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 >
 > 继承档的运行时计数与用户自有档**分开存储**（用户自有档在 `period_cycles`，继承档在 `group_period_cycles`），因此管理员随时收紧、放宽、新增或删除组上的周期档都会**立即对该组所有用户生效**，不会因为曾经计费过而被固化成用户自有档。用户组因此不需要运行时计数器。
 >
+> 某个秒数被用户自有档接管后，该秒数在 `group_period_cycles` 里的历史计数不再生效，也不会出现在任何读取路径中：读档位时会按当前生效的秒数过滤一次，下一次计费也会随生效继承档一起把它丢弃；管理员提交该用户的周期档时，则会顺手清掉组里已经删除、不再有定义的秒数。因此组档之后再扩到别的秒数时，`periods` 不会出现「额度不限制、用量却还挂着」的组合。
+>
 > 精简版 `periods` 始终为 `[]`。
 
 ### GET /api/user/model-quotas
@@ -2789,7 +2830,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | period_cycles | string/null | 用户自有的周期档原始 JSON |
 | periods | array | 生效的多档周期，含自有档与**继承自用户组的档位**（完整版；精简版恒为 `[]`） |
 
-`periods` 的每项与 `GET /api/user/quota` 同构（见「多档重置周期」一节），字段为 `id`、`period_seconds`、`period_label`、`quota_tokens`、`quota_requests`、`used_tokens`、`used_requests`、`remaining_tokens`、`remaining_requests`、`reset_at`。读取时会按档懒重置窗口，因此 `used_*` / `remaining_*` 为当前窗口内的值，`reset_at` 已规范化为 ISO 时间。
+`periods` 的每项与 `GET /api/user/quota` 同构（见「多档重置周期」一节），字段为 `id`、`period_seconds`、`period_label`、`quota_tokens`、`quota_requests`、`used_tokens`、`used_requests`、`remaining_tokens`、`remaining_requests`、`reset_at`。读取时会按档懒重置窗口，因此 `used_*` / `remaining_*` 为当前窗口内的值，`reset_at` 已规范化为 ISO 时间。与 `GET /api/user/quota`、管理端列表/详情一样走 `resolveEffectivePeriods`：包含继承档与「未配置」占位档，因此同一份配置在两个接口里的 `periods` 形状一致。
 
 > 侧边栏按 `periods` 展示周期额度；`period_cycles` 为「定义 + 运行时状态」的合并存储，实际生效额度以 `periods` 为准。
 

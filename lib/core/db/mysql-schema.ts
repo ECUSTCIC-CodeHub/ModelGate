@@ -113,6 +113,7 @@ CREATE TABLE IF NOT EXISTS users (
   used_requests DOUBLE DEFAULT 0,
   period_cycles TEXT DEFAULT NULL,
   group_period_cycles TEXT DEFAULT NULL,
+  inherit_group_periods TINYINT DEFAULT 1,
   allowed_model_aliases TEXT DEFAULT NULL,
   note TEXT,
   enabled TINYINT(1) DEFAULT 1,

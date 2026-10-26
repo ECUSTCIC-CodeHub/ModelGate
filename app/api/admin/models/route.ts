@@ -107,7 +107,7 @@ export async function POST(request: Request) {
   // 精简版不落库周期档与分时倍率：这两个特性都不参与精简版的判定，
   // 存进去只会是一份永远不生效的数据。
   const periodCycles = modelGateFeatures.periodQuota
-    ? serializePeriodCycles(periodCyclesResult.cycles) || null
+    ? serializePeriodCycles(periodCyclesResult.cycles ?? []) || null
     : null;
 
   const multiplierSchedulesResult = validateMultiplierSchedules(parsed.data.multiplier_schedules);

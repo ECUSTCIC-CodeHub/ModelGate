@@ -28,6 +28,8 @@ export type UserRow = {
   group_quota_requests: number | null;
   group_quota_tokens: number | null;
   group_period_cycles: string | null;
+  // 周期配额总开关：false = 该用户不继承用户组周期档。
+  inherit_group_periods: boolean;
   effective_rpm: number;
   effective_qps: number;
   effective_tpm: number;
@@ -80,6 +82,7 @@ export type UserForm = {
   quota_tokens: string;
   quota_requests: string;
   period_cycles: PeriodCycleDraft[];
+  inherit_group_periods: boolean;
   allowed_model_aliases: string[];
   note: string;
 };
@@ -99,6 +102,7 @@ export const initialForm: UserForm = {
   quota_tokens: "",
   quota_requests: "",
   period_cycles: [],
+  inherit_group_periods: true,
   allowed_model_aliases: [],
   note: "",
 };

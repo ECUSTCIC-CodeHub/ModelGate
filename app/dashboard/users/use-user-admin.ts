@@ -63,10 +63,15 @@ function buildUserForm(row: UserRow): UserForm {
     quota_tokens: row.quota_tokens === null ? "" : String(row.quota_tokens),
     quota_requests: row.quota_requests === null ? "" : String(row.quota_requests),
     period_cycles: cyclesToDrafts(parsePeriodCycles(row.period_cycles)),
+    inherit_group_periods: row.inherit_group_periods !== false,
     allowed_model_aliases: row.allowed_model_aliases ?? [],
   };
 }
 
+// 周期档按用户提交的形状原样上送：某一侧留空就是「跟着组档走」，
+// 组里没有该周期时由后端落成 -1。前端不做任何额度补全 ——
+// 一旦在这里把组档额度填进用户档，保存后组档就被物化成用户的自有档，
+// 组后续调整对该用户永久失效（打开抽屉不改直接保存就会发生）。
 function buildUserPayload(form: UserForm, periodQuotaEnabled: boolean) {
   return {
     username: form.username,
@@ -82,6 +87,7 @@ function buildUserPayload(form: UserForm, periodQuotaEnabled: boolean) {
     quota_requests: form.quota_requests.trim() === "" ? null : Number(form.quota_requests),
     ...(periodQuotaEnabled ? {
       period_cycles: draftsToPayload(form.period_cycles),
+      inherit_group_periods: form.inherit_group_periods,
     } : {}),
     allowed_model_aliases: form.allowed_model_aliases,
     note: form.note.trim() === "" ? null : form.note.trim(),
@@ -101,6 +107,8 @@ export function useUserAdmin() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingOidc, setEditingOidc] = useState<UserOidcBinding | null>(null);
   const [editingGroupLimits, setEditingGroupLimits] = useState<UserGroupLimits | null>(null);
+  // 编辑对象的自有周期档原文：只用于展示「哪一侧正在继承组档」，不参与提交。
+  const [editingOwnCycles, setEditingOwnCycles] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [keyword, setKeyword] = useState("");
@@ -203,6 +211,7 @@ export function useUserAdmin() {
     setEditingId(null);
     setEditingOidc(null);
     setEditingGroupLimits(null);
+    setEditingOwnCycles(null);
     setForm(initialForm);
     setDrawerOpen(true);
   }
@@ -211,6 +220,7 @@ export function useUserAdmin() {
     setEditingId(row.id);
     setEditingOidc(oidcFeatureEnabled && row.oidc_subject ? { issuer: row.oidc_issuer ?? "", subject: row.oidc_subject } : null);
     setEditingGroupLimits(pickGroupLimits(row));
+    setEditingOwnCycles(row.period_cycles);
     setForm(buildUserForm(row));
     setDrawerOpen(true);
   }
@@ -323,6 +333,7 @@ export function useUserAdmin() {
     editingId,
     editingOidc,
     editingGroupLimits,
+    editingOwnCycles,
     page,
     total,
     pageSize: PAGE_SIZE,

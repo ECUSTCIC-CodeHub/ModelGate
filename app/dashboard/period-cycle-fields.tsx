@@ -41,7 +41,9 @@ export function draftSeconds(draft: PeriodCycleDraft): number | null {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : null;
 }
 
-// 草稿 → 提交体。秒数非法或两项额度都为空时跳过该档（与后端校验口径一致）。
+// 草稿 → 提交体。秒数非法或额度非法的档位跳过；两项额度都留空的档位保留，
+// 语义是「该周期继承上游」（无上游即不限制），与后端校验口径一致。
+// 额度填 -1 表示显式不限制。
 export function draftsToPayload(drafts: PeriodCycleDraft[]): Array<{
   seconds: number;
   quota_tokens: number | null;
@@ -52,15 +54,23 @@ export function draftsToPayload(drafts: PeriodCycleDraft[]): Array<{
   for (const draft of drafts) {
     const seconds = draftSeconds(draft);
     if (seconds === null || seen.has(seconds)) continue;
-    const tokens = draft.quota_tokens.trim() === "" ? null : Number(draft.quota_tokens);
-    const requests = draft.quota_requests.trim() === "" ? null : Number(draft.quota_requests);
-    if (tokens === null && requests === null) continue;
-    if (tokens !== null && (!Number.isFinite(tokens) || tokens < 0)) continue;
-    if (requests !== null && (!Number.isFinite(requests) || requests < 0)) continue;
+    const tokens = parseQuotaInput(draft.quota_tokens);
+    const requests = parseQuotaInput(draft.quota_requests);
+    if (tokens === undefined || requests === undefined) continue;
     seen.add(seconds);
     out.push({ seconds, quota_tokens: tokens, quota_requests: requests });
   }
   return out;
+}
+
+// 额度输入：空串 → null（继承），-1 → -1（不限制），非负整数 → 数值。
+// 其余输入返回 undefined，由调用方丢弃该档位。
+function parseQuotaInput(raw: string): number | null | undefined {
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  const value = Number(trimmed);
+  if (!Number.isInteger(value) || value < -1) return undefined;
+  return value;
 }
 
 // 已存周期 → 草稿。用于编辑回填。
@@ -82,6 +92,8 @@ type PeriodCycleFieldsProps = {
   onChange: (drafts: PeriodCycleDraft[]) => void;
   hint?: string;
   customPlaceholder?: string;
+  // inheritedHint：留空额的档位在本对象上的含义（用户档继承组档，其余对象即不限制）。
+  inheritedHint?: string;
 };
 
 export function PeriodCycleFields({
@@ -89,6 +101,7 @@ export function PeriodCycleFields({
   onChange,
   hint,
   customPlaceholder = "如 7200 = 2 小时",
+  inheritedHint = "留空表示继承上游，无上游则不限制；填 -1 表示显式不限制。",
 }: PeriodCycleFieldsProps) {
   const update = (key: string, patch: Partial<PeriodCycleDraft>) => {
     onChange(drafts.map((draft) => (draft.key === key ? { ...draft, ...patch } : draft)));
@@ -99,7 +112,7 @@ export function PeriodCycleFields({
       <div>
         <p className="text-sm font-medium text-[var(--color-foreground)]">周期配额</p>
         <p className="text-xs text-[var(--color-foreground-muted)]">
-          {hint ?? "可同时配置多个重置周期，任一周期超出即拒绝请求。留空表示该周期不限制。"}
+          {hint ?? "可同时配置多个重置周期，任一周期超出即拒绝请求。留空表示继承上游，填 -1 表示不限制。"}
         </p>
       </div>
 
@@ -145,22 +158,25 @@ export function PeriodCycleFields({
             <Label>周期请求配额</Label>
             <Input
               type="number"
-              min={0}
+              min={-1}
               value={draft.quota_requests}
               onChange={(e) => update(draft.key, { quota_requests: e.target.value })}
-              placeholder="留空不限制"
+              placeholder="留空继承，-1 不限制"
             />
           </div>
           <div className="space-y-2">
             <Label>周期 Token 配额</Label>
             <Input
               type="number"
-              min={0}
+              min={-1}
               value={draft.quota_tokens}
               onChange={(e) => update(draft.key, { quota_tokens: e.target.value })}
-              placeholder="留空不限制"
+              placeholder="留空继承，-1 不限制"
             />
           </div>
+          {draft.quota_requests.trim() === "" && draft.quota_tokens.trim() === "" ? (
+            <p className="text-xs text-[var(--color-foreground-muted)] md:col-span-2">{inheritedHint}</p>
+          ) : null}
 
           <div className="md:col-span-2">
             <Button

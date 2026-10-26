@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { hashPassword } from "@/lib/auth/auth";
-import { gatewayDb } from "@/lib/core/db";
+import { gatewayDb, ensureDbReady } from "@/lib/core/db";
 import { modelGateFeatures, requireFeature } from "@/lib/core/features";
 import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
@@ -11,9 +11,19 @@ import { softDeleteUser } from "@/lib/services/soft-delete-service";
 import { USERNAME_SCHEMA } from "@/lib/auth/username";
 import { friendlyCredentialPayloadError, passwordSchema } from "@/lib/auth/validation";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
-import { type EffectiveLimitsInput, getEffectiveLimits } from "@/lib/gateway/effective-limits";
+import { type EffectiveLimitsInput, getEffectiveLimits, getUserGroup, resolveEnforcedCycles } from "@/lib/gateway/effective-limits";
 import { resolveEffectivePeriods } from "@/lib/gateway/quota";
-import { parsePeriodCycles, serializePeriodCycleState, mergeDefinitionOntoState, validatePeriodCycles } from "@/lib/gateway/period-cycles";
+import {
+  detachGroupCycles,
+  isInheritedQuota,
+  parseInheritGroupPeriods,
+  parsePeriodCycles,
+  resolveHandedBackSeconds,
+  resolveUserPeriodCycles,
+  serializePeriodCycleState,
+  validatePeriodCycles,
+} from "@/lib/gateway/period-cycles";
+import { pruneInheritedStates } from "@/lib/gateway/period-cycles-reset";
 
 const updateSchema = z.object({
   username: USERNAME_SCHEMA.optional(),
@@ -27,6 +37,7 @@ const updateSchema = z.object({
   quota_tokens: z.number().int().min(-1).nullable().optional(),
   quota_requests: z.number().int().min(-1).nullable().optional(),
   period_cycles: z.unknown().optional(),
+  inherit_group_periods: z.boolean().optional(),
   allowed_model_aliases: z.array(z.string().min(1)).optional(),
   note: z.string().max(500).nullable().optional(),
   new_password: passwordSchema().optional(),
@@ -56,6 +67,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
   const cycleValidation = validatePeriodCycles(parsed.data.period_cycles);
   if (!cycleValidation.valid) return jsonError(cycleValidation.error, 400);
+  if (cycleValidation.cycles === undefined && parsed.data.period_cycles !== undefined) {
+    return jsonError("重置周期未提交任何档位，如需清空请传空数组。", 400);
+  }
 
   const existing = await gatewayDb
     .queryOne<{
@@ -72,12 +86,13 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         quota_tokens: number | null;
         quota_requests: number | null;
         period_cycles: string | null;
+        inherit_group_periods: number | null;
         allowed_model_aliases: string;
         note: string | null;
       }>(
         `SELECT id, username, email, role, group_id, enabled, group_locked, rpm, qps, tpm,
                 quota_tokens, quota_requests,
-                period_cycles,
+                period_cycles, inherit_group_periods,
                 allowed_model_aliases, note
          FROM users WHERE id = ? AND deleted_at IS NULL`,
         [id],
@@ -113,6 +128,50 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const existingAliases = await listExistingModelAliases(inputAliases);
   const droppedAliases = inputAliases.filter((a) => !existingAliases.includes(a));
 
+  const nextGroupId = parsed.data.group_id === undefined ? existing.group_id : parsed.data.group_id;
+  const nextInheritGroup = parsed.data.inherit_group_periods ?? parseInheritGroupPeriods(existing.inherit_group_periods);
+  const existingCycles = parsePeriodCycles(existing.period_cycles);
+  const nextGroupCycles = parsePeriodCycles((await getUserGroup(nextGroupId))?.period_cycles);
+
+  // 周期档落库有三种情况，彼此互斥、都必须显式判断：
+  // 1. 提交了档位：按提交形状落库。留空侧在开着继承时保留 null，等读取时让位给组档；
+  //    关掉继承时收口成 -1（含存量已固化的档位原样再保存），显式意图不会在一次
+  //    「打开抽屉直接保存」里被抹回 null；
+  // 2. 没提交档位但关掉了总开关：把现在的档位里「还在继承组档」的那一侧固化成 -1。
+  //    不这么做的话，档位留着 null 会让用户「看起来关了开关，实际还挂在组档上」；
+  //    固化 -1 是逐档覆盖的写法，重新打开开关或改成数值都能立刻恢复；
+  // 3. 其余情况保持原值。
+  const cycleNow = new Date();
+  const nextPeriodCycles = !modelGateFeatures.periodQuota
+    ? existing.period_cycles
+    : cycleValidation.cycles !== undefined
+      ? serializePeriodCycleState(resolveUserPeriodCycles(
+        cycleValidation.cycles,
+        existingCycles,
+        nextGroupCycles,
+        nextInheritGroup,
+        cycleNow,
+      )) || null
+      : nextInheritGroup === false && existingCycles.some((cycle) => cycle.quota_tokens === null || cycle.quota_requests === null)
+        ? serializePeriodCycleState(detachGroupCycles(existingCycles, cycleNow)) || null
+        : existing.period_cycles;
+
+  // 把档位交回组档（两侧留空）时，这一档在继承档那边留下的计数同样属于上一种语义：
+  // 不清掉的话，交回瞬间它会立刻生效，判定（读 group_period_cycles）与展示各说一套。
+  // 只在这个用户确实有继承计数时才清，避免无谓写入。
+  const handedBackSeconds = modelGateFeatures.periodQuota
+    && cycleValidation.cycles !== undefined
+    && nextInheritGroup
+    ? resolveHandedBackSeconds(cycleValidation.cycles, existingCycles, nextGroupCycles, nextInheritGroup)
+    : [];
+
+  // 关掉总开关后组档整体不参与计费，group_period_cycles 里的残留计数已经没有读者。
+  // 计费侧只会在「这个用户下一次产生用量」时顺手清掉，再也不用量的用户会一直留着，
+  // 所以在这里跟着「关闭」这个动作一起收干净，与 API.md 的承诺对齐。
+  const clearInheritedCounts = modelGateFeatures.periodQuota
+    && !nextInheritGroup
+    && parsed.data.inherit_group_periods === false;
+
   const merged = {
     ...existing,
     ...parsed.data,
@@ -134,15 +193,11 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         : normalizeQuota(parsed.data.quota_requests),
     // 周期配额只走 period_cycles：旧单档列（quota_period / period_quota_*）已停止写入，
     // 仅保留在库里供回滚参考。
-    // 周期档需合并已有运行时状态，避免管理员改额度时清空用户的已用量与重置锚点。
-    period_cycles:
-      parsed.data.period_cycles === undefined
-        ? existing.period_cycles
-        : modelGateFeatures.periodQuota
-          ? serializePeriodCycleState(
-            mergeDefinitionOntoState(existing.period_cycles, cycleValidation.cycles),
-          ) || null
-          : existing.period_cycles,
+    // 提交契约：字段缺省/null 表示不动（继承当前配置）、空数组表示清空自有档、
+    // 档位内额度为 null 表示继承组档、-1 表示显式不限制并覆盖组档。
+    // 组没有可继承的档位时，提交的白值档位一律落成 -1，否则「继承空」等于没配置。
+    period_cycles: nextPeriodCycles,
+    inherit_group_periods: nextInheritGroup ? 1 : 0,
     allowed_model_aliases:
       parsed.data.allowed_model_aliases === undefined
         ? existing.allowed_model_aliases
@@ -171,62 +226,112 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     ? await hashPassword(parsed.data.new_password)
     : null;
 
-  if (nextPasswordHash) {
-    await gatewayDb
-      .execute(
-        `UPDATE users
-         SET username = ?, email = ?, role = ?, group_id = ?, enabled = ?, group_locked = ?, rpm = ?, qps = ?, tpm = ?,
-             quota_tokens = ?, quota_requests = ?,
-             period_cycles = ?,
-             allowed_model_aliases = ?, note = ?, password_hash = ?,
-             token_version = COALESCE(token_version, 0) + 1
-         WHERE id = ?`,
-        [
-          merged.username,
-          merged.email,
-          merged.role,
-          merged.group_id,
-          merged.enabled,
-          merged.group_locked,
-          merged.rpm,
-          merged.qps,
-          merged.tpm,
-          merged.quota_tokens,
-          merged.quota_requests,
-          merged.period_cycles,
-          merged.allowed_model_aliases,
-          merged.note,
-          nextPasswordHash,
-          id,
-        ],
+  await gatewayDb.transaction(async (tx) => {
+    if (nextPasswordHash) {
+      await tx
+        .execute(
+          `UPDATE users
+           SET username = ?, email = ?, role = ?, group_id = ?, enabled = ?, group_locked = ?, rpm = ?, qps = ?, tpm = ?,
+               quota_tokens = ?, quota_requests = ?,
+               period_cycles = ?, inherit_group_periods = ?,
+               allowed_model_aliases = ?, note = ?, password_hash = ?,
+               token_version = COALESCE(token_version, 0) + 1
+           WHERE id = ?`,
+          [
+            merged.username,
+            merged.email,
+            merged.role,
+            merged.group_id,
+            merged.enabled,
+            merged.group_locked,
+            merged.rpm,
+            merged.qps,
+            merged.tpm,
+            merged.quota_tokens,
+            merged.quota_requests,
+            merged.period_cycles,
+            merged.inherit_group_periods,
+            merged.allowed_model_aliases,
+            merged.note,
+            nextPasswordHash,
+            id,
+          ],
+        );
+    } else {
+      await tx
+        .execute(
+          `UPDATE users
+           SET username = ?, email = ?, role = ?, group_id = ?, enabled = ?, group_locked = ?, rpm = ?, qps = ?, tpm = ?,
+               quota_tokens = ?, quota_requests = ?,
+               period_cycles = ?, inherit_group_periods = ?,
+               allowed_model_aliases = ?, note = ?
+           WHERE id = ?`,
+          [
+            merged.username,
+            merged.email,
+            merged.role,
+            merged.group_id,
+            merged.enabled,
+            merged.group_locked,
+            merged.rpm,
+            merged.qps,
+            merged.tpm,
+            merged.quota_tokens,
+            merged.quota_requests,
+            merged.period_cycles,
+            merged.inherit_group_periods,
+            merged.allowed_model_aliases,
+            merged.note,
+            id,
+          ],
+        );
+    }
+
+    if (clearInheritedCounts) {
+      await tx.execute("UPDATE users SET group_period_cycles = NULL WHERE id = ?", [id]);
+    }
+    if (handedBackSeconds.length > 0) {
+      // 只清涉及的那几档，其余档位的继承计数照旧（它们仍在生效）。
+      // 守卫式写入：并发计费（FOR UPDATE 读改写）改写这一列时本次直接放弃，
+      // 被交回的档位随 resolveEnforcedCycles 不再参与判定，残留计数由下次计费兜底清掉。
+      const inheritedRow = await tx
+        .queryOne<{ group_period_cycles: string | null }>(
+          "SELECT group_period_cycles FROM users WHERE id = ?",
+          [id],
+        );
+      const raw = inheritedRow?.group_period_cycles ?? null;
+      const handedBack = new Set(handedBackSeconds);
+      const remainingInherited = parsePeriodCycles(raw)
+        .filter((cycle) => !handedBack.has(cycle.seconds));
+      const isMysql = (await ensureDbReady()).driver === "mysql";
+      await tx.execute(
+        isMysql
+          ? "UPDATE users SET group_period_cycles = ? WHERE id = ? AND group_period_cycles <=> ?"
+          : "UPDATE users SET group_period_cycles = ? WHERE id = ? AND group_period_cycles IS ?",
+        [remainingInherited.length > 0 ? serializePeriodCycleState(remainingInherited) : null, id, raw],
       );
-  } else {
-    await gatewayDb
-      .execute(
-        `UPDATE users
-         SET username = ?, email = ?, role = ?, group_id = ?, enabled = ?, group_locked = ?, rpm = ?, qps = ?, tpm = ?,
-             quota_tokens = ?, quota_requests = ?,
-             period_cycles = ?,
-             allowed_model_aliases = ?, note = ?
-         WHERE id = ?`,
-        [
-          merged.username,
-          merged.email,
-          merged.role,
-          merged.group_id,
-          merged.enabled,
-          merged.group_locked,
-          merged.rpm,
-          merged.qps,
-          merged.tpm,
-          merged.quota_tokens,
-          merged.quota_requests,
-          merged.period_cycles,
-          merged.allowed_model_aliases,
-          merged.note,
-          id,
-        ],
-      );
+    }
+  });
+
+  // 事务里只清「交回组档」和「关掉继承」两种明确动作涉及的档位。剩下一种漏网：
+  // 这一档写了显式额度（数值或 -1）、于是退出继承，但组档那边的旧计数不会自己消失。
+  // 组档之后再扩到别的秒数时，判定按自有档口径放行，展示却挂着一段冻住的用量。
+  //
+  // 这里按「当前仍生效的继承档」收干净。判定必须用落库后的档位重新推一遍：
+  // 提交的留空侧在开着继承时是 null（此刻还说不清归属），落库后才由
+  // resolveUserPeriodCycles 决定它是继续继承、还是因为组里没有这一档而收口成 -1。
+  // 因此直接看 merged.period_cycles，而不是看提交形状。
+  if (modelGateFeatures.periodQuota && parsed.data.period_cycles !== undefined) {
+    // 这里只清「组里已经删除」的秒数。被用户自有档接管的秒数仍保留在
+    // group_period_cycles 里，但读取路径会按当前生效的档位过滤掉，下一次计费时
+    // 也会随 effectiveInherited 一起被丢弃；提前删除会让「清空自有档后重新继承」
+    // 从 0 起算，等于凭一次覆盖动作白送组档额度。
+    const activeInherited = parsePeriodCycles(merged.period_cycles)
+      .filter((cycle) => isInheritedQuota(cycle.quota_tokens, cycle.quota_requests));
+    const keepSeconds = nextInheritGroup
+      ? resolveEnforcedCycles(activeInherited, nextGroupCycles).inherited.map((cycle) => cycle.seconds)
+      : [];
+    await pruneInheritedStates(existing.id, keepSeconds);
   }
 
   if (parsed.data.reset_usage === "all" || parsed.data.reset_usage === "total") {
@@ -276,7 +381,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     }>(
       `SELECT u.id, u.username, u.email, u.role, u.group_id, g.name AS group_name,
               u.rpm, u.qps, u.tpm, u.quota_tokens, u.quota_requests,
-              u.period_cycles, g.period_cycles AS group_period_cycles,
+              u.period_cycles, u.inherit_group_periods, g.period_cycles AS group_period_cycles,
               u.used_tokens, u.used_requests, u.allowed_model_aliases, u.note, u.oidc_issuer, u.oidc_subject, u.group_locked,
               u.pref_model_fallback, u.pref_vision_fallback, u.pref_quota_fallback,
               u.enabled, u.created_at

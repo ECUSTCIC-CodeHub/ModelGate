@@ -85,7 +85,7 @@ export async function POST(request: Request) {
   const cycleValidation = validatePeriodCycles(parsed.data.period_cycles);
   if (!cycleValidation.valid) return jsonError(cycleValidation.error, 400);
   const periodCycles = modelGateFeatures.periodQuota
-    ? serializePeriodCycles(cycleValidation.cycles) || null
+    ? serializePeriodCycles(cycleValidation.cycles ?? []) || null
     : null;
 
   const setDefault = parsed.data.is_default === true;

@@ -84,7 +84,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     // 合并已有运行时状态，避免管理员改额度时把用户的已用量与重置锚点一并清空。
     const merged = mergeDefinitionOntoState(
       (existing as { period_cycles?: string | null }).period_cycles ?? null,
-      validation.cycles,
+      validation.cycles ?? [],
     );
     periodCycles = modelGateFeatures.periodQuota ? serializePeriodCycleState(merged) || null : null;
     periodCyclesProvided = true;

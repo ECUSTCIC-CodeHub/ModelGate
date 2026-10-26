@@ -124,6 +124,7 @@ export default function AdminUsersPage() {
         periodQuotaEnabled={admin.periodQuotaEnabled}
         editingOidc={admin.editingOidc}
         editingGroupLimits={admin.editingGroupLimits}
+        editingOwnCycles={admin.editingOwnCycles}
         onFormChange={admin.updateForm}
         onToggleAllowedAlias={admin.toggleAllowedAlias}
         onSubmit={admin.submitUser}

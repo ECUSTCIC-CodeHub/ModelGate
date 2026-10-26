@@ -69,6 +69,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
   const cycleValidation = validatePeriodCycles(parsed.data.period_cycles);
   if (!cycleValidation.valid) return jsonError(cycleValidation.error, 400);
+  const submittedCycles = cycleValidation.cycles ?? [];
 
   const exprTrimmed = modelGateFeatures.oidc ? parsed.data.oidc_claim_expr?.trim() || null : null;
   if (exprTrimmed) {
@@ -136,7 +137,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         ? existing.period_cycles
         : modelGateFeatures.periodQuota
           ? serializePeriodCycleState(
-            mergeDefinitionOntoState(existing.period_cycles, cycleValidation.cycles),
+            mergeDefinitionOntoState(existing.period_cycles, submittedCycles),
           ) || null
           : existing.period_cycles,
     allowed_model_aliases:

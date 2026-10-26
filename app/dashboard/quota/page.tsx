@@ -70,9 +70,14 @@ function TokenQuotaBar({ used, total }: { used: number; total: number | null }) 
   );
 }
 
+// 额度 -1 是显式不限制（没有进度条），null 是该周期未配置。
+function limitedEntries(cycles: PeriodQuotaEntry[], key: "quota_requests" | "quota_tokens") {
+  return cycles.filter((entry) => entry[key] !== null && entry[key] >= 0);
+}
+
 function ModelPeriodRequests({ model }: { model: ModelQuota }) {
   const cycles = model.periods ?? [];
-  const limited = cycles.filter((entry) => entry.quota_requests !== null);
+  const limited = limitedEntries(cycles, "quota_requests");
   if (limited.length === 0) {
     return cycles.length === 0
       ? <span className="text-xs text-[var(--color-foreground-muted)]">-</span>
@@ -93,7 +98,7 @@ function ModelPeriodRequests({ model }: { model: ModelQuota }) {
 
 function ModelPeriodTokens({ model }: { model: ModelQuota }) {
   const cycles = model.periods ?? [];
-  const limited = cycles.filter((entry) => entry.quota_tokens !== null);
+  const limited = limitedEntries(cycles, "quota_tokens");
   if (limited.length === 0) {
     return cycles.length === 0
       ? <span className="text-xs text-[var(--color-foreground-muted)]">-</span>

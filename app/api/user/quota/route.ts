@@ -4,10 +4,8 @@ import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
 import { ensureUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
-import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
-import { resolveEnforcedCycles } from "@/lib/gateway/effective-limits";
-import { ensureCycleResets, loadGroupCycleState } from "@/lib/gateway/period-cycles-reset";
-import { toPeriodQuotaEntry } from "@/lib/gateway/quota";
+import { resolveEffectivePeriods } from "@/lib/gateway/quota";
+import { parseInheritGroupPeriods } from "@/lib/gateway/period-cycles";
 
 export async function GET(request: Request) {
   const guard = await ensureUser(request);
@@ -23,18 +21,12 @@ export async function GET(request: Request) {
 
   const limits = await getEffectiveLimits(user);
 
-  // 多档周期：先按档懒重置，再输出。
-  // 自有档与继承自组的档位计数分开存放（period_cycles / group_period_cycles），
-  // 因此这里分别推进窗口再合并展示，与判定、计费口径一致。
-  const userCycles = parsePeriodCycles(user.period_cycles);
-  const enforced = resolveEnforcedCycles(userCycles, limits.group_cycles);
-  const ownState = enforced.own.length > 0
-    ? await ensureCycleResets("users", userId, enforced.own, undefined, user.period_cycles)
-    : [];
-  const inheritedState = enforced.inherited.length > 0
-    ? await loadGroupCycleState(userId, enforced.inherited)
-    : [];
-  const periods = [...ownState, ...inheritedState].map(toPeriodQuotaEntry);
+  // 多档周期与管理端、dashboard profile 共用同一份实现：它会把自有档与继承档
+  // 分别推进窗口后按秒数合并两套计数，避免这里只取其中一边导致继承用量显示成 0。
+  // 用户自查沿用「读时推进继承档窗口」的旧行为，窗口过期后不会继续展示上一窗口的用量。
+  const periods = await resolveEffectivePeriods(userId, limits.period_cycles, user.period_cycles, {
+    persistInherited: true,
+  });
 
   return jsonOk({
     total: {
@@ -42,10 +34,17 @@ export async function GET(request: Request) {
       quota_tokens: limits.quota_tokens,
       used_requests: user.used_requests,
       used_tokens: user.used_tokens,
-      remaining_requests: limits.quota_requests !== null ? Math.max(0, limits.quota_requests - user.used_requests) : null,
-      remaining_tokens: limits.quota_tokens !== null ? Math.max(0, limits.quota_tokens - user.used_tokens) : null,
+      // -1 是「显式不限制」，没有可用量；null 是未配置。
+      remaining_requests: limits.quota_requests !== null && limits.quota_requests >= 0
+        ? Math.max(0, limits.quota_requests - user.used_requests)
+        : null,
+      remaining_tokens: limits.quota_tokens !== null && limits.quota_tokens >= 0
+        ? Math.max(0, limits.quota_tokens - user.used_tokens)
+        : null,
     },
     periods,
+    // 周期配额总开关的当前值。
+    inherit_group_periods: parseInheritGroupPeriods(user.inherit_group_periods),
     rate: {
       rpm: limits.rpm,
       qps: limits.qps,

@@ -399,6 +399,9 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   // 继承自用户组的周期档计数。与 period_cycles 分开存放，避免把组档物化成用户自有档，
   // 否则组后续收紧/放宽/删除对该用户永久失效。
   await db.ensureColumn("users", "group_period_cycles", "group_period_cycles TEXT DEFAULT NULL");
+  // 周期配额总开关：0 = 不继承用户组周期档（组档挡不到该用户），1/缺省 = 正常继承。
+  // 存成布尔而不是「把该用户的档位都填 -1」：组以后新增档位不会再套上来。
+  await db.ensureColumn("users", "inherit_group_periods", "inherit_group_periods INTEGER DEFAULT 1");
   await db.ensureColumn("groups", "period_cycles", "period_cycles TEXT DEFAULT NULL");
   await db.ensureColumn("channels", "period_cycles", "period_cycles TEXT DEFAULT NULL");
   await db.ensureColumn("models", "period_cycles", "period_cycles TEXT DEFAULT NULL");
