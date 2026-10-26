@@ -23,9 +23,10 @@ export type QuotaInfo = {
   periods: PeriodQuotaEntry[];
 };
 
-// 旧的单档响应头保留，取「最先触发」的档位，避免老客户端读到空值。
+// 旧的单档响应头保留，取第一条真正配置了额度的档位，避免老客户端读到空值。
+// periods 里混有「两侧额度都为空」的占位档，不能直接取 periods[0]。
 function firstConfigured(periods: PeriodQuotaEntry[]): PeriodQuotaEntry | null {
-  return periods.length > 0 ? periods[0] : null;
+  return periods.find((period) => period.quota_requests !== null || period.quota_tokens !== null) ?? null;
 }
 
 export function appendQuotaHeaders(headers: Record<string, string>, quota: QuotaInfo) {
@@ -97,10 +98,14 @@ export function storedOwnShape(own: PeriodCycle[], ownRaw: string | null): Perio
 //
 // enforced 必须来自 resolveEnforcedCycles：own 是用户自己写的形状，inherited 是
 // 组档没被覆盖的部分，all 是让位后的生效值（展示与判定都用它）。
+//
+// persistInherited=true 供用户自查接口沿用「读时推进继承档窗口」的旧行为，
+// 避免窗口过期后仍展示上一窗口的用量；管理端列表/详情与 profile 保持纯读取。
 export async function resolveEffectivePeriods(
   userId: number,
   enforced: { own: PeriodCycle[]; inherited: PeriodCycle[]; all?: PeriodCycle[] },
   ownRaw: string | null,
+  options: { persistInherited?: boolean } = {},
 ): Promise<PeriodQuotaEntry[]> {
   // 自有档只推进**库里原有的**那些档位的窗口：enforced.own 只含用户自己写的额度，
   // 但 id / 计数 / 锚点必须以库里的为准，否则会把未落库的形状写进去。
@@ -108,7 +113,7 @@ export async function resolveEffectivePeriods(
     ? await ensureCycleResets("users", userId, storedOwnShape(enforced.own, ownRaw), undefined, ownRaw)
     : [];
   const inherited = enforced.inherited.length > 0
-    ? await loadGroupCycleState(userId, enforced.inherited, undefined, false)
+    ? await loadGroupCycleState(userId, enforced.inherited, undefined, options.persistInherited ?? false)
     : [];
   const ownBySeconds = new Map(own.map((cycle) => [cycle.seconds, cycle]));
   const inheritedBySeconds = new Map(inherited.map((cycle) => [cycle.seconds, cycle]));

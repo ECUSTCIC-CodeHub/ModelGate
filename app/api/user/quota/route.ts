@@ -4,8 +4,7 @@ import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { getEffectiveLimits } from "@/lib/gateway/effective-limits";
 import { ensureUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
-import { ensureCycleResets, loadGroupCycleState } from "@/lib/gateway/period-cycles-reset";
-import { toPeriodQuotaEntry } from "@/lib/gateway/quota";
+import { resolveEffectivePeriods } from "@/lib/gateway/quota";
 import { parseInheritGroupPeriods } from "@/lib/gateway/period-cycles";
 
 export async function GET(request: Request) {
@@ -22,23 +21,11 @@ export async function GET(request: Request) {
 
   const limits = await getEffectiveLimits(user);
 
-  // 多档周期：先按档懒重置，再输出。
-  // 直接复用 getEffectiveLimits 算好的生效口径（已按总开关决定要不要让位给组档），
-  // 自有档与继承档的计数分开存放，因此分别推进窗口再合并，与判定、计费口径一致。
-  const enforced = limits.period_cycles;
-  const ownState = enforced.own.length > 0
-    ? await ensureCycleResets("users", userId, enforced.own, undefined, user.period_cycles)
-    : [];
-  const inheritedState = enforced.inherited.length > 0
-    ? await loadGroupCycleState(userId, enforced.inherited)
-    : [];
-  const ownBySeconds = new Map(ownState.map((cycle) => [cycle.seconds, cycle]));
-  const inheritedBySeconds = new Map(inheritedState.map((cycle) => [cycle.seconds, cycle]));
-  const periods = enforced.all.map((cycle) => {
-    const state = ownBySeconds.get(cycle.seconds) ?? inheritedBySeconds.get(cycle.seconds);
-    return toPeriodQuotaEntry(state
-      ? { ...cycle, used_tokens: state.used_tokens, used_requests: state.used_requests, reset_at: state.reset_at }
-      : cycle);
+  // 多档周期与管理端、dashboard profile 共用同一份实现：它会把自有档与继承档
+  // 分别推进窗口后按秒数合并两套计数，避免这里只取其中一边导致继承用量显示成 0。
+  // 用户自查沿用「读时推进继承档窗口」的旧行为，窗口过期后不会继续展示上一窗口的用量。
+  const periods = await resolveEffectivePeriods(userId, limits.period_cycles, user.period_cycles, {
+    persistInherited: true,
   });
 
   return jsonOk({
