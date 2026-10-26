@@ -87,7 +87,11 @@ function PeriodQuotaBlock({
 
 export function DashboardQuotaCard({ quota }: DashboardQuotaCardProps) {
   if (!quota) return null;
-  const periods: PeriodQuotaEntry[] = quota.periods ?? [];
+  // 占位档（两侧额度都为 null）只是让管理端能显式写 -1，对用户没有展示价值：
+  // 它既不构成限制，也不该渲染成一张「不限制」卡片。显式 -1 不是 null，仍会展示。
+  const periods: PeriodQuotaEntry[] = (quota.periods ?? []).filter(
+    (entry) => entry.quota_requests !== null || entry.quota_tokens !== null,
+  );
 
   const showRate = quota.rate.rpm >= 0 || quota.rate.qps >= 0 || quota.rate.tpm >= 0;
   const showTotalRequests = quota.total.quota_requests !== null;
