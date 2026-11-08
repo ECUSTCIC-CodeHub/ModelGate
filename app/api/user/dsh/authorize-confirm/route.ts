@@ -3,14 +3,14 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { ensureUser } from "@/lib/auth/guards";
 import { dbCapacityResponse, jsonError } from "@/lib/core/http";
-import { cancelEnrollment, deliverToDsh, enrollDsh } from "@/lib/services/dsh-enroll";
+import { enrollDsh } from "@/lib/services/dsh-enroll";
 
 /**
  * POST /api/user/dsh/authorize-confirm  (表单：port, session?)
  *
  * /dsh/authorize 的「确认登录」由同源 HTML 表单提交到这里。颁发一枚 DSH
- * 专用密钥 + 一次性兑换码，然后 302 跳回 http://127.0.0.1:{port}/callback?code=xxx。
- * 明文密钥只经本机回调投递，从不出现在跳转地址里。
+ * 专用密钥 + 一次性兑换码，然后 303 跳回 http://127.0.0.1:{port}/callback?code=xxx。
+ * 明文密钥不出现在跳转地址里，DSH 拿到码后自己调 /api/user/dsh/redeem 换取。
  * 必须用 POST：每次确认都会新建密钥，不是幂等读取，不能挂在 GET 上。
  */
 
@@ -73,31 +73,24 @@ export async function POST(request: Request) {
   });
   if (!parsed.success) return htmlError("参数无效：需要 port（1-65535）", 400);
 
-  const callbackUrl = `http://127.0.0.1:${parsed.data.port}/callback`;
+  const { port, session } = parsed.data;
+  const callbackUrl = `http://127.0.0.1:${port}/callback`;
 
   try {
     const result = await enrollDsh(guard.auth.user.id, {
       callbackUrl,
-      clientId: parsed.data.session ?? null,
+      clientId: session ?? null,
     });
     if (!result.ok) return htmlError(FAILURE_MESSAGES[result.reason], 400);
 
-    const enrollment = result.enrollment;
-    const delivered = await deliverToDsh(enrollment.id, callbackUrl, {
-      code: enrollment.code,
-      key: enrollment.key,
-      clientId: parsed.data.session ?? null,
-    });
-    if (!delivered) {
-      // 投递不到就撤销，别留一枚没人用的密钥；用户可以再点一次
-      await cancelEnrollment(enrollment.id, guard.auth.user.id);
-      return htmlError("本机 DSH 未响应，请确认插件正在运行后重试", 502);
-    }
+    // session 交由 DSH 自己比对：浏览器跳回来时带上它，插件只认自己发起的那个会话
+    const query = new URLSearchParams({ code: result.enrollment.code });
+    if (session) query.set("session", session);
 
     return new Response(null, {
       status: 303,
       headers: {
-        Location: `${callbackUrl}?code=${encodeURIComponent(enrollment.code)}`,
+        Location: `${callbackUrl}?${query.toString()}`,
         "cache-control": "no-store",
       },
     });

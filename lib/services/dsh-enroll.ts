@@ -5,6 +5,10 @@ import { generateGatewayKey } from "@/lib/auth/keys";
 
 // ---------------------------------------------------------------------------
 // DSH 接入：颁发一次性兑换码，DSH 用兑换码换网关密钥
+//
+// 全程走 OAuth 授权码模式：服务端只发兑换码，明文密钥由 DSH 自己调
+// /api/user/dsh/redeem 取回。服务端不主动 POST 明文密钥到本机端口——
+// 那既不在插件契约里，也会让一次投递失败连累刚建好的密钥。
 // ---------------------------------------------------------------------------
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -13,8 +17,8 @@ const MAX_PENDING_CODES_PER_USER = 5;
 const KEY_LIMIT = 50;
 const CODE_ATTEMPTS = 5;
 
-/** 兑换码的状态全集。pending 与 delivered 都是「还能换一次」。 */
-const LIVE_STATUSES = "('pending', 'delivered')";
+/** 兑换码的状态全集。pending 是唯一还能换一次的状态，其余都是终态。 */
+const PENDING_STATUS = "pending";
 
 export const DSH_KEY_NAME = "dsh";
 
@@ -74,9 +78,9 @@ async function pickCode(): Promise<string | null> {
 /**
  * 为用户新建一枚 DSH 专用密钥并颁发兑换码。
  *
- * 不复用用户已有密钥：那枚很可能正在网关里跑生产流量，把它投递到
- * 127.0.0.1 的任意端口等于用户不知情地把凭据交给了本机监听进程，
- * 而且之后无法单独吊销。每次授权新建，密钥名固定为 dsh，便于识别与删除。
+ * 不复用用户已有密钥：那枚很可能正在网关里跑生产流量，把它交给 DSH 等于
+ * 用户不知情地多了一处凭据副本，而且之后无法单独吊销。每次授权新建，
+ * 密钥名固定为 dsh，便于识别与删除。
  */
 export async function enrollDsh(
   userId: number,
@@ -88,9 +92,11 @@ export async function enrollDsh(
   );
   if ((keyCount?.count ?? 0) >= KEY_LIMIT) return { ok: false, reason: "key_limit" };
 
+  // 只算还没过期的：过期但状态仍是 pending 的记录要等清理任务才翻牌，
+  // 不排除的话用户会被这些死码卡在「待兑换过多」上最多一个清理周期。
   const pending = await gatewayDb.queryOne<{ count: number }>(
-    `SELECT COUNT(*) AS count FROM dsh_enrollments WHERE user_id = ? AND status IN ${LIVE_STATUSES}`,
-    [userId],
+    "SELECT COUNT(*) AS count FROM dsh_enrollments WHERE user_id = ? AND status = ? AND expires_at >= ?",
+    [userId, PENDING_STATUS, toMysqlDatetime(new Date())],
   );
   if ((pending?.count ?? 0) >= MAX_PENDING_CODES_PER_USER) return { ok: false, reason: "enroll_limit" };
 
@@ -110,8 +116,17 @@ export async function enrollDsh(
     const keyId = keyResult.lastInsertRowid;
     const enrollResult = await tx.execute(
       `INSERT INTO dsh_enrollments (code, key_id, user_id, client_id, callback_url, status, created_at, expires_at)
-       VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`,
-      [code, keyId, userId, options.clientId ?? null, options.callbackUrl ?? null, nowStr, expiresAt],
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        code,
+        keyId,
+        userId,
+        options.clientId ?? null,
+        options.callbackUrl ?? null,
+        PENDING_STATUS,
+        nowStr,
+        expiresAt,
+      ],
     );
     return { id: enrollResult.lastInsertRowid, keyId };
   });
@@ -136,8 +151,8 @@ export async function enrollDsh(
 export async function cancelEnrollment(enrollmentId: number, userId: number): Promise<void> {
   await gatewayDb.transaction(async (tx) => {
     const claimed = await tx.execute(
-      "UPDATE dsh_enrollments SET status = 'revoked' WHERE id = ? AND user_id = ? AND status = 'pending'",
-      [enrollmentId, userId],
+      "UPDATE dsh_enrollments SET status = 'revoked' WHERE id = ? AND user_id = ? AND status = ?",
+      [enrollmentId, userId, PENDING_STATUS],
     );
     if (claimed.changes !== 1) return;
 
@@ -153,93 +168,51 @@ export async function cancelEnrollment(enrollmentId: number, userId: number): Pr
   });
 }
 
-/** 只允许投递到本机 loopback，且不跟随重定向，避免本机进程把请求体（含明文密钥）转发出去。 */
-function resolveLoopbackCallback(callbackUrl: string): string | null {
-  let url: URL;
-  try {
-    url = new URL(callbackUrl);
-  } catch {
-    return null;
-  }
-  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-  const host = url.hostname;
-  if (host !== "localhost" && host !== "127.0.0.1" && host !== "::1" && host !== "[::1]") return null;
-  return url.toString();
-}
-
-/** 把兑换码投递到 DSH 本机回调。成功返回 true，失败返回 false（不抛错）。 */
-export async function deliverToDsh(
-  enrollmentId: number,
-  callbackUrl: string,
-  payload: { code: string; key: string; clientId?: string | null },
-): Promise<boolean> {
-  const target = resolveLoopbackCallback(callbackUrl);
-  if (!target) return false;
-
-  try {
-    const response = await fetch(target, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code: payload.code, key: payload.key, client_id: payload.clientId ?? null }),
-      redirect: "manual",
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!response.ok) return false;
-
-    await gatewayDb.execute(
-      `UPDATE dsh_enrollments SET status = 'delivered' WHERE id = ? AND status = 'pending'`,
-      [enrollmentId],
-    );
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * 用兑换码换取网关密钥。兑换码一次性。
  *
  * 先把兑换码原子地占成 redeemed，只有 changes === 1 的那个请求能读到明文密钥，
  * 并发请求一律拿到「已被使用」。过期判断也放进 UPDATE 的 WHERE 里，
  * 用同一台应用时钟算出的字符串做比较，不依赖两套驱动的日期类型归一化行为。
+ *
+ * expectedUserId 用于绑定授权会话：传入时只接受该用户颁发的码，
+ * 防止别人拿自己机器上的插件把受害者的密钥换走。
  */
 export async function redeemEnrollCode(
   code: string,
+  expectedUserId?: number | null,
 ): Promise<{ ok: true; key: string; keyId: number } | { ok: false; reason: string }> {
   const trimmed = code.trim();
   if (!trimmed) return { ok: false, reason: "兑换码不能为空" };
 
-  const now = new Date();
-  const nowStr = toMysqlDatetime(now);
-  const claimed = await gatewayDb.execute(
-    `UPDATE dsh_enrollments SET status = 'redeemed', redeemed_at = ?
-     WHERE code = ? AND status IN ${LIVE_STATUSES} AND expires_at >= ?`,
-    [nowStr, trimmed, nowStr],
-  );
-
-  const enrollment = await gatewayDb.queryOne<{ id: number; key_id: number; status: string }>(
-    "SELECT id, key_id, status FROM dsh_enrollments WHERE code = ?",
+  const enrollment = await gatewayDb.queryOne<{ id: number; key_id: number; user_id: number; status: string }>(
+    "SELECT id, key_id, user_id, status FROM dsh_enrollments WHERE code = ?",
     [trimmed],
   );
   if (!enrollment) return { ok: false, reason: "兑换码不存在" };
 
+  if (expectedUserId != null && enrollment.user_id !== expectedUserId) {
+    return { ok: false, reason: "兑换码不属于当前账号" };
+  }
+
+  const nowStr = toMysqlDatetime(new Date());
+  const claimed = await gatewayDb.execute(
+    `UPDATE dsh_enrollments SET status = 'redeemed', redeemed_at = ?
+     WHERE id = ? AND status = ? AND expires_at >= ?`,
+    [nowStr, enrollment.id, PENDING_STATUS, nowStr],
+  );
+
   if (claimed.changes !== 1) {
-    if (enrollment.status === "pending" || enrollment.status === "delivered") {
-      await gatewayDb.execute(
-        `UPDATE dsh_enrollments SET status = 'expired' WHERE id = ? AND status IN ${LIVE_STATUSES}`,
-        [enrollment.id],
-      );
-      return { ok: false, reason: "兑换码已过期" };
-    }
+    if (enrollment.status === PENDING_STATUS) return { ok: false, reason: "兑换码已过期" };
     return { ok: false, reason: "兑换码已被使用" };
   }
 
   const keyRow = await gatewayDb.queryOne<{ key: string; enabled: number; deleted_at: string | null }>(
-    "SELECT `key`, enabled, deleted_at FROM `keys` WHERE id = ?",
-    [enrollment.key_id],
+    "SELECT `key`, enabled, deleted_at FROM `keys` WHERE id = ? AND user_id = ?",
+    [enrollment.key_id, enrollment.user_id],
   );
   if (!keyRow || keyRow.deleted_at !== null || keyRow.enabled !== 1) {
-    // 刚建的密钥被用户删了：这枚码已经没意义，删掉避免占着「待兑换」额度
+    // 刚建的密钥被用户删了：这枚码已经没意义，删掉避免占着待兑换额度
     await gatewayDb.execute("DELETE FROM dsh_enrollments WHERE id = ?", [enrollment.id]);
     return { ok: false, reason: "密钥不可用，请重新授权" };
   }

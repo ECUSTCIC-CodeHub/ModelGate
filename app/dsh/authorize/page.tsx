@@ -9,8 +9,8 @@ import { AuthorizeForm } from "./authorize-form";
  * /dsh/authorize?port=XXX&session=YYY
  *
  * DSH 插件在系统浏览器里打开本页。已登录时显示确认按钮，确认后由
- * /api/user/dsh/authorize-confirm 颁发密钥并 302 回
- * http://127.0.0.1:{port}/callback?code=xxx；未登录则先走 OIDC 登录再回来。
+ * /api/user/dsh/authorize-confirm 颁发兑换码并 303 回
+ * http://127.0.0.1:{port}/callback?code=xxx&session=YYY；未登录则先走 OIDC 登录再回来。
  */
 export default async function DshAuthorizePage({
   searchParams,
