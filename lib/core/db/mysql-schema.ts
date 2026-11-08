@@ -262,6 +262,21 @@ CREATE TABLE IF NOT EXISTS redeem_redemptions (
   redeemed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uq_redeem_redemptions_code_user (code_id, user_id)
 );
+
+CREATE TABLE IF NOT EXISTS dsh_enrollments (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  code VARCHAR(64) UNIQUE NOT NULL,
+  key_id INT NOT NULL,
+  user_id INT NOT NULL,
+  client_id VARCHAR(255),
+  callback_url TEXT,
+  status VARCHAR(16) DEFAULT 'pending',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  expires_at DATETIME NOT NULL,
+  redeemed_at DATETIME,
+  FOREIGN KEY (key_id) REFERENCES `keys`(id),
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
 `;
 
 export const MYSQL_BASE_INDEXES = [
@@ -283,6 +298,8 @@ export const MYSQL_BASE_INDEXES = [
   { name: "idx_redeem_codes_batch", table: "redeem_codes", expr: "(batch_id)" },
   { name: "idx_redeem_balances_user", table: "redeem_balances", expr: "(user_id)" },
   { name: "idx_redeem_redemptions_user", table: "redeem_redemptions", expr: "(user_id)" },
+  { name: "idx_dsh_enrollments_code", table: "dsh_enrollments", expr: "(code)" },
+  { name: "idx_dsh_enrollments_user", table: "dsh_enrollments", expr: "(user_id)" },
 ] as const;
 
 export const MYSQL_POST_MIGRATION_INDEXES = [

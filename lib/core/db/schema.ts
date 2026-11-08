@@ -234,6 +234,23 @@ CREATE TABLE IF NOT EXISTS redeem_redemptions (
   UNIQUE(code_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_redeem_redemptions_user ON redeem_redemptions(user_id);
+
+CREATE TABLE IF NOT EXISTS dsh_enrollments (
+  id INTEGER PRIMARY KEY,
+  code TEXT UNIQUE NOT NULL,
+  key_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  client_id TEXT,
+  callback_url TEXT,
+  status TEXT DEFAULT 'pending',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  expires_at DATETIME NOT NULL,
+  redeemed_at DATETIME,
+  FOREIGN KEY (key_id) REFERENCES keys(id),
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_dsh_enrollments_code ON dsh_enrollments(code);
+CREATE INDEX IF NOT EXISTS idx_dsh_enrollments_user ON dsh_enrollments(user_id);
 `;
 
 export const POST_MIGRATION_INDEXES_SQL = `
