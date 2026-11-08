@@ -54,6 +54,11 @@ SQLite 数据库文件位于 `data/gateway.db`，启动时自动创建。无需�
 | `MYSQL_ACQUIRE_TIMEOUT_MS` | `5000` | 等待空闲连接的硬超时（毫秒） |
 | `MYSQL_LOCK_WAIT_TIMEOUT_SECONDS` | `5` | 行锁等待上限（秒） |
 
+`MYSQL_POOL_SIZE + MYSQL_QUEUE_LIMIT` 为可同时等待数据库的连接总额度（默认 `210`）。
+超出额度或等待超过 `MYSQL_ACQUIRE_TIMEOUT_MS` 时，网关类接口（`/api/v1/*`、`/api/ollama/*`）
+按 `503` 返回并带 `Retry-After: 2`，客户端应退避重试而不是当作永久失败。
+该映射只覆盖连接池容量类错误（排队已满、取连接超时），SQL 执行失败仍按其它错误处理。
+
 MySQL 模式下启动时自动建表和初始化默认数据。两种驱动共享相同的业务逻辑和数据结构。
 
 ### 日志保留

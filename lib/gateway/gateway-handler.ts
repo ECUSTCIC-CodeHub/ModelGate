@@ -2,7 +2,7 @@ import { checkApiKeyAuth } from "@/lib/auth/api-key-auth";
 import { getUserAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { checkChannelQuota, appendChannelQuotaHeaders } from "@/lib/gateway/channel-quota";
 import { insertChatLog, withSubstitutionNote } from "@/lib/gateway/chat-log";
-import { jsonError } from "@/lib/core/http";
+import { dbCapacityResponse, jsonError } from "@/lib/core/http";
 import { checkModelQuota, appendModelQuotaHeaders } from "@/lib/gateway/model-quota";
 import { resolveAccessibleModelAlias } from "@/lib/gateway/model-access";
 import { getGatewayProtocolAdapter, type GatewayProtocolAdapter } from "@/lib/gateway/protocol-adapters";
@@ -36,6 +36,18 @@ import {
 } from "@/lib/gateway/copilot-compat";
 
 export async function handleGatewayProtocolRequest(request: Request, inboundAdapter: GatewayProtocolAdapter) {
+  try {
+    return await runGatewayProtocolRequest(request, inboundAdapter);
+  } catch (error) {
+    // 连接池排队满/取连接超时属于容量类错误，必须按 503 让客户端退避重试；
+    // 直接上抛会被 Next 兜成 500，客户端会当成永久失败而不再重试。
+    const busy = dbCapacityResponse(error);
+    if (busy) return busy;
+    throw error;
+  }
+}
+
+async function runGatewayProtocolRequest(request: Request, inboundAdapter: GatewayProtocolAdapter) {
   const inboundProtocol = inboundAdapter.protocol;
   const startedAt = Date.now();
   const clientIp = resolveClientIp(request.headers);

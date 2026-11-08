@@ -2,7 +2,7 @@ import { checkApiKeyAuth } from "@/lib/auth/api-key-auth";
 import { getUserAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { checkChannelQuota, appendChannelQuotaHeaders } from "@/lib/gateway/channel-quota";
 import { insertChatLog, withSubstitutionNote } from "@/lib/gateway/chat-log";
-import { jsonError } from "@/lib/core/http";
+import { dbCapacityResponse, jsonError } from "@/lib/core/http";
 import { checkModelQuota, appendModelQuotaHeaders } from "@/lib/gateway/model-quota";
 import { resolveAccessibleModelAlias } from "@/lib/gateway/model-access";
 import { appendQuotaHeaders, checkQuota } from "@/lib/gateway/quota";
@@ -27,6 +27,16 @@ function estimatePromptTokens(prompt: unknown): number {
 }
 
 export async function handleMultipartGatewayRequest(request: Request) {
+  try {
+    return await runMultipartGatewayRequest(request);
+  } catch (error) {
+    const busy = dbCapacityResponse(error);
+    if (busy) return busy;
+    throw error;
+  }
+}
+
+async function runMultipartGatewayRequest(request: Request) {
   const startedAt = Date.now();
   const clientIp = resolveClientIp(request.headers);
   const clientUserAgent = normalizeUserAgent(request.headers.get("user-agent"));

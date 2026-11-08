@@ -134,6 +134,13 @@ CNB 流水线中，`main` push 只负责自动生成 tag；`tag_push` 会构建�
 | `MYSQL_LOCK_WAIT_TIMEOUT_SECONDS` | `5` | 行锁等待上限（秒），避免热点行把池连接长时间占住 |
 | `MODELGATE_EDITION` / `NEXT_PUBLIC_MODELGATE_EDITION` | `full` | 构建版本，`full` 为完整版，`lite` 为精简版 |
 
+`MYSQL_POOL_SIZE + MYSQL_QUEUE_LIMIT` 就是能同时等待数据库的连接总额度（默认 `10 + 200 = 210`）。
+网关每个请求在响应前后只顺序借还连接，但并发一多就会一起排队，超出额度按 503 快速失败。
+**几百人同时活动的 MySQL 部署**应显式放大，推荐先按「预期并发连接数 ≈ 在线用户数 × 0.3」
+估算，例如 `MYSQL_POOL_SIZE=25`、`MYSQL_QUEUE_LIMIT=1000`；MySQL 的 `max_connections`
+必须大于 `MYSQL_POOL_SIZE` 乘以实例数，否则连接会在服务端被拒。放大后仍需保留队列上限：
+设为 0 会让整站请求在锁等待时无限堆积，而不是可控地快速失败。
+
 ## 免认证模式
 
 适用于局域网内单人使用，无需注册登录：

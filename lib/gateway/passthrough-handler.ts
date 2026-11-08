@@ -1,6 +1,6 @@
 import { checkApiKeyAuth } from "@/lib/auth/api-key-auth";
 import { getUserAllowedChannelIds } from "@/lib/gateway/channel-access";
-import { jsonError } from "@/lib/core/http";
+import { dbCapacityResponse, jsonError } from "@/lib/core/http";
 import { insertChatLog } from "@/lib/gateway/chat-log";
 import { checkQuota, appendQuotaHeaders } from "@/lib/gateway/quota";
 import { resolveAccessibleModelAlias } from "@/lib/gateway/model-access";
@@ -41,6 +41,16 @@ const RESPONSE_STRIP_HEADERS = new Set([
 ]);
 
 export async function handlePassthroughRequest(request: Request, upstreamPath: string) {
+  try {
+    return await runPassthroughRequest(request, upstreamPath);
+  } catch (error) {
+    const busy = dbCapacityResponse(error);
+    if (busy) return busy;
+    throw error;
+  }
+}
+
+async function runPassthroughRequest(request: Request, upstreamPath: string) {
   const startedAt = Date.now();
   const clientIp = resolveClientIp(request.headers);
   const clientUserAgent = normalizeUserAgent(request.headers.get("user-agent"));
