@@ -1914,6 +1914,240 @@ test("纯工具调用时 Responses 流 usage 仍有输出 Token", async () => {
   );
 });
 
+// --- Responses 上游工具参数不得重复拼接 ---
+
+console.log("\nResponses 上游工具参数重复拼接");
+
+function responsesToolUpstream(options: {
+  addedArguments: string;
+  deltas?: string[];
+  doneArguments?: string;
+  completedArguments?: string;
+}) {
+  const events = [
+    'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_tool","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[]}}\n\n',
+    `event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_weather","arguments":${JSON.stringify(options.addedArguments)}}}\n\n`,
+    ...(options.deltas ?? []).map((delta) =>
+      `event: response.function_call_arguments.delta\ndata: {"type":"response.function_call_arguments.delta","item_id":"fc_1","output_index":0,"delta":${JSON.stringify(delta)}}\n\n`),
+  ];
+  if (options.doneArguments !== undefined) {
+    events.push(`event: response.function_call_arguments.done\ndata: {"type":"response.function_call_arguments.done","item_id":"fc_1","output_index":0,"arguments":${JSON.stringify(options.doneArguments)}}\n\n`);
+  }
+  events.push(`event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_tool","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_weather","arguments":${JSON.stringify(options.completedArguments ?? '{"city":"Beijing"}')}}]}}\n\n`);
+  return makeUpstreamResponsesStream(events);
+}
+
+function collectArgumentFragments(output: string) {
+  return [...output.matchAll(/"(?:partial_json|arguments)":"((?:[^"\\]|\\.)*)"/g)]
+    .map((match) => JSON.parse(`"${match[1]}"`) as string);
+}
+
+const TOOL_CALL_ARGS = '{"city":"Beijing"}';
+
+test("Responses 上游在 added 提前给完整参数并在 delta 重放时，客户端不会拼出重复参数", async () => {
+  // 每次转换都要独立的流实例：ReadableStream 读过一次即被锁定
+  for (const outbound of [anthropicGatewayAdapter, chatCompletionsGatewayAdapter]) {
+    const upstream = responsesToolUpstream({ addedArguments: TOOL_CALL_ARGS, deltas: [TOOL_CALL_ARGS], doneArguments: TOOL_CALL_ARGS });
+    const result = createTransformedStream(upstream, responsesGatewayAdapter, outbound);
+    const output = await collectStream(result.stream);
+    const fragments = collectArgumentFragments(output);
+    assert.ok(fragments.some((fragment) => fragment), "应下发工具参数");
+    assert.equal(fragments.join(""), TOOL_CALL_ARGS, `参数不得重复拼接，实际: ${JSON.stringify(fragments)}`);
+  }
+});
+
+test("Responses 上游在 added 提前给完整参数、参数按分片重放时仍只下发一份", async () => {
+  const upstream = responsesToolUpstream({
+    addedArguments: TOOL_CALL_ARGS,
+    deltas: ['{"city"', ':"Beijing"}'],
+    doneArguments: TOOL_CALL_ARGS,
+  });
+
+  const result = createTransformedStream(upstream, responsesGatewayAdapter, anthropicGatewayAdapter);
+  const output = await collectStream(result.stream);
+  assert.equal(collectArgumentFragments(output).join(""), TOOL_CALL_ARGS);
+});
+
+test("Responses 官方形态（added 参数为空）时参数按增量原样下发", async () => {
+  const upstream = responsesToolUpstream({
+    addedArguments: "",
+    deltas: ['{"city"', ':"Beijing"}'],
+    doneArguments: TOOL_CALL_ARGS,
+  });
+
+  const result = createTransformedStream(upstream, responsesGatewayAdapter, anthropicGatewayAdapter);
+  const output = await collectStream(result.stream);
+  const fragments = collectArgumentFragments(output);
+  assert.deepEqual(fragments, ['{"city"', ':"Beijing"}'], `应按增量原样转发，实际: ${JSON.stringify(fragments)}`);
+});
+
+test("Responses 上游只在 added 给参数且没有参数事件时，参数不丢失", async () => {
+  const upstream = responsesToolUpstream({ addedArguments: TOOL_CALL_ARGS });
+
+  const result = createTransformedStream(upstream, responsesGatewayAdapter, anthropicGatewayAdapter);
+  const output = await collectStream(result.stream);
+  assert.equal(collectArgumentFragments(output).join(""), TOOL_CALL_ARGS);
+});
+
+test("Responses 上游重放参数时客户端 usage 不因重复参数翻倍", async () => {
+  const upstream = responsesToolUpstream({ addedArguments: TOOL_CALL_ARGS, deltas: [TOOL_CALL_ARGS], doneArguments: TOOL_CALL_ARGS });
+  const result = createTransformedStream(upstream, responsesGatewayAdapter, anthropicGatewayAdapter, {
+    streamPromptTokens: 9,
+    streamUsageModel: "gpt-4o",
+  });
+  const output = await collectStream(result.stream);
+  const expected = countTextTokens(`get_weather${TOOL_CALL_ARGS}`, "gpt-4o");
+  const usagePayload = output.split("message_delta").pop() ?? "";
+
+  assert.ok(
+    usagePayload.includes(`"output_tokens":${expected}`),
+    `工具名与参数只统计一次，期望 ${expected}，实际: ${usagePayload}`,
+  );
+});
+
+test("Responses 上游在 done 里补全参数时按差值下发", async () => {
+  const upstream = responsesToolUpstream({
+    addedArguments: "",
+    deltas: ['{"city"'],
+    doneArguments: TOOL_CALL_ARGS,
+    completedArguments: TOOL_CALL_ARGS,
+  });
+
+  const result = createTransformedStream(upstream, responsesGatewayAdapter, anthropicGatewayAdapter);
+  const output = await collectStream(result.stream);
+  const joined = collectArgumentFragments(output).join("");
+
+  assert.equal(joined, TOOL_CALL_ARGS, `应补差值到完整参数，实际: ${JSON.stringify(joined)}`);
+  assert.doesNotThrow(() => JSON.parse(joined), "客户端拼出的参数应是合法 JSON");
+});
+
+test("Responses 上游在 done 里改写出对不上的参数时，保留已下发内容不拼第二段", async () => {
+  // 参数是纯追加语义，客户端已累积的前缀无法回收，再补一份完整值只会拼出两段 JSON
+  const upstream = responsesToolUpstream({
+    addedArguments: "",
+    deltas: ['{"city":"Bei'],
+    doneArguments: '{"town":"Beijing"}',
+    completedArguments: '{"town":"Beijing"}',
+  });
+
+  const result = createTransformedStream(upstream, responsesGatewayAdapter, anthropicGatewayAdapter);
+  const output = await collectStream(result.stream);
+  const joined = collectArgumentFragments(output).join("");
+
+  assert.equal(joined, '{"city":"Bei', `应保留已下发内容，实际: ${JSON.stringify(joined)}`);
+  assert.ok(!joined.includes("town"), "不应追加改写后的第二段参数");
+});
+
+test("Responses 上游工具名晚到时只声明一次且带正确名称", async () => {
+  const upstream = makeUpstreamResponsesStream([
+    'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_tool","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[]}}\n\n',
+    `event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"","arguments":""}}\n\n`,
+    `event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_weather","arguments":${JSON.stringify(TOOL_CALL_ARGS)}}}\n\n`,
+    `event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_tool","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_weather","arguments":${JSON.stringify(TOOL_CALL_ARGS)}}]}}\n\n`,
+  ]);
+
+  const result = createTransformedStream(upstream, responsesGatewayAdapter, anthropicGatewayAdapter);
+  const output = await collectStream(result.stream);
+  // 事件名与 payload 的 type 各出现一次，只数 payload
+  const starts = output.split('"type":"content_block_start"').length - 1;
+
+  assert.equal(starts, 1, `工具块只应声明一次，实际: ${starts}`);
+  const startPayload = output.split('"type":"content_block_start"')[1] ?? "";
+  assert.ok(startPayload.includes('"name":"get_weather"'), `声明应带正确工具名，实际: ${startPayload}`);
+  assert.ok(!startPayload.includes('"name":""'), "声明不应带空工具名");
+  assert.equal(collectArgumentFragments(output).join(""), TOOL_CALL_ARGS);
+});
+
+test("Responses 上游完全没有工具名时仍声明调用，不丢参数", async () => {
+  const upstream = responsesToolUpstream({ addedArguments: TOOL_CALL_ARGS });
+
+  const result = createTransformedStream(upstream, responsesGatewayAdapter, anthropicGatewayAdapter);
+  const output = await collectStream(result.stream);
+
+  const startPayload = output.split('"type":"content_block_start"')[1] ?? "";
+  assert.ok(startPayload.includes('"type":"tool_use"'), "应声明工具调用");
+  assert.equal(collectArgumentFragments(output).join(""), TOOL_CALL_ARGS);
+});
+
+test("Responses 上游分片 delta 收齐后 completed 快照重复同一参数时只下发一次", async () => {
+  const upstream = responsesToolUpstream({
+    addedArguments: "",
+    deltas: ['{"city"', ':"Beijing"}'],
+    completedArguments: TOOL_CALL_ARGS,
+  });
+
+  const result = createTransformedStream(upstream, responsesGatewayAdapter, anthropicGatewayAdapter);
+  const output = await collectStream(result.stream);
+
+  assert.equal(collectArgumentFragments(output).join(""), TOOL_CALL_ARGS);
+});
+
+test("Responses 上游多个工具并行时参数各自独立且不重复", async () => {
+  const first = '{"a":1}';
+  const second = '{"b":2}';
+  const upstream = makeUpstreamResponsesStream([
+    'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_multi","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[]}}\n\n',
+    `event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"first","arguments":${JSON.stringify(first)}}}\n\n`,
+    `event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":1,"item":{"type":"function_call","id":"fc_2","call_id":"call_2","name":"second","arguments":${JSON.stringify(second)}}}\n\n`,
+    `event: response.function_call_arguments.delta\ndata: {"type":"response.function_call_arguments.delta","item_id":"fc_1","output_index":0,"delta":${JSON.stringify(first)}}\n\n`,
+    `event: response.function_call_arguments.delta\ndata: {"type":"response.function_call_arguments.delta","item_id":"fc_2","output_index":1,"delta":${JSON.stringify(second)}}\n\n`,
+    `event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_multi","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[{"type":"function_call","id":"fc_1","call_id":"call_1","name":"first","arguments":${JSON.stringify(first)}},{"type":"function_call","id":"fc_2","call_id":"call_2","name":"second","arguments":${JSON.stringify(second)}}]}}\n\n`,
+  ]);
+
+  const result = createTransformedStream(upstream, responsesGatewayAdapter, anthropicGatewayAdapter);
+  const output = await collectStream(result.stream);
+  const fragments = collectArgumentFragments(output);
+
+  assert.equal(fragments.filter((fragment) => fragment === first).length, 1, "第一个工具参数只下发一次");
+  assert.equal(fragments.filter((fragment) => fragment === second).length, 1, "第二个工具参数只下发一次");
+});
+
+test("Responses 上游重放参数时 Chat 出口 usage 也不翻倍", async () => {
+  const upstream = responsesToolUpstream({ addedArguments: TOOL_CALL_ARGS, deltas: [TOOL_CALL_ARGS], doneArguments: TOOL_CALL_ARGS });
+  const result = createTransformedStream(upstream, responsesGatewayAdapter, chatCompletionsGatewayAdapter, {
+    includeUsage: true,
+    streamPromptTokens: 9,
+    streamUsageModel: "gpt-4o",
+  });
+  const output = await collectStream(result.stream);
+  const expected = countTextTokens(`get_weather${TOOL_CALL_ARGS}`, "gpt-4o");
+
+  assert.ok(
+    output.includes(`"completion_tokens":${expected}`),
+    `Chat 出口工具名与参数只统计一次，期望 ${expected}，实际: ${output}`,
+  );
+});
+
+test("Responses 上游完全无工具名时声明空名但不丢参数", async () => {
+  const upstream = makeUpstreamResponsesStream([
+    'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_noname","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[]}}\n\n',
+    `event: response.function_call_arguments.delta\ndata: {"type":"response.function_call_arguments.delta","item_id":"fc_1","output_index":0,"delta":${JSON.stringify(TOOL_CALL_ARGS)}}\n\n`,
+    'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_noname","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[]}}\n\n',
+  ]);
+
+  const result = createTransformedStream(upstream, responsesGatewayAdapter, anthropicGatewayAdapter);
+  const output = await collectStream(result.stream);
+  const startPayload = output.split('"type":"content_block_start"')[1] ?? "";
+
+  assert.ok(startPayload.includes('"name":""'), `名称缺失时应以空名声明，实际: ${startPayload}`);
+  assert.equal(collectArgumentFragments(output).join(""), TOOL_CALL_ARGS);
+});
+
+test("Responses 上游只有 function_call_arguments.done 时也能带出工具名与参数", async () => {
+  const upstream = makeUpstreamResponsesStream([
+    'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_done","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[]}}\n\n',
+    `event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_weather","arguments":${JSON.stringify(TOOL_CALL_ARGS)}}}\n\n`,
+    `event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_done","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_weather","arguments":${JSON.stringify(TOOL_CALL_ARGS)}}]}}\n\n`,
+  ]);
+
+  const result = createTransformedStream(upstream, responsesGatewayAdapter, anthropicGatewayAdapter);
+  const output = await collectStream(result.stream);
+  const startPayload = output.split('"type":"content_block_start"')[1] ?? "";
+
+  assert.ok(startPayload.includes('"name":"get_weather"'), `应带出工具名，实际: ${startPayload}`);
+  assert.equal(collectArgumentFragments(output).join(""), TOOL_CALL_ARGS);
+});
+
 // --- Summary ---
 
 void Promise.all(pending).then(() => {

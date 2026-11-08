@@ -28,7 +28,15 @@ type ResponsesToolState = {
   itemId: string;
   callId: string;
   name: string;
+  // 上游已给出的参数累计（收到即记，不代表已下发）
+  received: string;
+  // 已经下发给客户端的参数累计
   arguments: string;
+  // 上游在 output_item.added 里声明的完整参数，只在流收尾且始终没有增量时兜底下发
+  declared: string;
+  // 是否已下发 tool_call_start：名称可能晚于调用项建立才到，而 Anthropic 出口会在
+  // content_block_start 固化 name，空名先声明就纠正不回来，因此推迟到名称可用再声明
+  started: boolean;
 };
 
 export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): IntermediateStreamResult {
@@ -81,6 +89,7 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
     const existing = toolsByItemId.get(itemId);
     if (existing) {
       if (!existing.name && typeof item?.name === "string") existing.name = item.name;
+      if (!existing.declared && typeof item?.arguments === "string") existing.declared = item.arguments;
       return existing;
     }
 
@@ -94,7 +103,13 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
       itemId: typeof item?.id === "string" ? item.id : itemId || callId,
       callId,
       name: typeof item?.name === "string" ? item.name : "",
-      arguments: typeof item?.arguments === "string" ? item.arguments : "",
+      // output_item.added 的 arguments 不作为已下发内容：官方上游这里恒为空串，
+      // 而提前给出完整参数的兼容上游随后会把同一段参数当增量重发，
+      // 两边都收会让客户端把参数拼两遍（如 "{}{}"）。参数统一由增量与完成事件构建。
+      received: "",
+      arguments: "",
+      declared: typeof item?.arguments === "string" ? item.arguments : "",
+      started: false,
     };
     toolsByItemId.set(state.itemId, state);
     toolsByItemId.set(state.callId, state);
@@ -103,16 +118,33 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
     return state;
   };
 
-  const emitMissingToolArguments = (
+  // 名称可能晚于调用项建立才到（added 带空 name、done 或 completed 快照才给），
+  // 而 Anthropic 出口会在 content_block_start 时固化 name，空名先声明就纠正不回来，
+  // 所以声明推迟到名称可用之后
+  const emitToolStart = (
     controller: ReadableStreamDefaultController<IntermediateStreamEvent>,
     state: ResponsesToolState,
-    finalArguments: string,
+    force = false,
   ) => {
-    const delta = finalArguments.startsWith(state.arguments)
-      ? finalArguments.slice(state.arguments.length)
-      : finalArguments;
-    state.arguments = finalArguments;
+    if (state.started) return;
+    // 名称缺失时先不声明；force 只允许在流收尾使用，中途强制声明会固化空名
+    if (!state.name && !force) return;
+    state.started = true;
+    controller.enqueue({
+      type: "tool_call_start",
+      index: state.index,
+      id: state.callId,
+      name: state.name,
+    });
+  };
+
+  // 参数是纯追加语义：收到的先攒在 received，声明成功后再把差值下发出去。
+  // arguments 只在这里被推进且总等于当时的 received，因此恒为其前缀
+  const flushToolArguments = (controller: ReadableStreamDefaultController<IntermediateStreamEvent>, state: ResponsesToolState) => {
+    if (!state.started) return;
+    const delta = state.received.slice(state.arguments.length);
     if (!delta) return;
+    state.arguments = state.received;
     controller.enqueue({
       type: "tool_call_delta",
       index: state.index,
@@ -120,6 +152,59 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
       name: state.name,
       arguments: delta,
     });
+  };
+
+  const declareTool = (controller: ReadableStreamDefaultController<IntermediateStreamEvent>, state: ResponsesToolState) => {
+    emitToolStart(controller, state);
+    flushToolArguments(controller, state);
+  };
+
+  const appendToolArguments = (
+    controller: ReadableStreamDefaultController<IntermediateStreamEvent>,
+    state: ResponsesToolState,
+    delta: string,
+  ) => {
+    if (!delta) return;
+    state.received += delta;
+    declareTool(controller, state);
+  };
+
+  // 终止事件给的是完整参数，只有它能接在已给出内容后面时才补差值
+  const applyFullToolArguments = (
+    controller: ReadableStreamDefaultController<IntermediateStreamEvent>,
+    state: ResponsesToolState,
+    full: string,
+  ) => {
+    if (full === state.received) {
+      // 参数与已收内容一致：借这个完整信号尽早声明，并补发可能还没下发的尾部
+      declareTool(controller, state);
+      return;
+    }
+    // 与已给出内容对不上说明上游在终止事件里改写了参数。参数是纯追加语义，
+    // 客户端已累积的前缀无法回收，再补一份完整值只会拼出两段 JSON，
+    // 因此沿用已有内容，宁可少一段也不制造重复参数
+    if (!full.startsWith(state.received)) return;
+    state.received = full;
+    declareTool(controller, state);
+  };
+
+  // 收尾时把还没声明的调用补上：上游只在 output_item.added 里给过参数、之后既没有增量
+  // 也没有完成事件时用声明的参数兜底；名称始终缺失时也强制声明，避免调用整体丢失
+  const finishTools = (controller: ReadableStreamDefaultController<IntermediateStreamEvent>) => {
+    // 同一状态登记在多个键下，按对象身份去重避免重复下发；遍历 toolsByItemId 是因为
+    // 异常上游复用 output_index 时，被覆盖的 state 只留在这个 map 里
+    const seen = new Set<ResponsesToolState>();
+    for (const tool of toolsByItemId.values()) {
+      if (seen.has(tool)) continue;
+      seen.add(tool);
+      if (!tool.received && tool.declared) {
+        tool.received = tool.declared;
+      }
+      if (!tool.received) continue;
+      // 收尾是最后一次机会，名称仍缺失也要声明，否则整个调用会丢
+      emitToolStart(controller, tool, true);
+      flushToolArguments(controller, tool);
+    }
   };
 
   const emitStart = (controller: ReadableStreamDefaultController<IntermediateStreamEvent>) => {
@@ -217,16 +302,9 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
       const existing = toolsByItemId.get(itemId) ?? toolsByIndex.get(outputIndex);
       const tool = existing ?? rememberTool(item, itemId, outputIndex);
       if (!tool.name && typeof item.name === "string") tool.name = item.name;
-      if (!existing) {
-        controller.enqueue({
-          type: "tool_call_start",
-          index: tool.index,
-          id: tool.callId,
-          name: tool.name,
-          arguments: tool.arguments || undefined,
-        });
-      } else if (typeof item.arguments === "string") {
-        emitMissingToolArguments(controller, tool, item.arguments);
+      declareTool(controller, tool);
+      if (typeof item.arguments === "string") {
+        applyFullToolArguments(controller, tool, item.arguments);
       }
     });
   };
@@ -308,13 +386,8 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
                 const outputIndex = Number(payload?.output_index ?? toolsByIndex.size);
                 const itemId = typeof item.id === "string" ? item.id : typeof payload?.item_id === "string" ? payload.item_id : "";
                 const tool = rememberTool(item, itemId, outputIndex);
-                controller.enqueue({
-                  type: "tool_call_start",
-                  index: tool.index,
-                  id: tool.callId,
-                  name: tool.name,
-                  arguments: tool.arguments || undefined,
-                });
+                // 名称缺失时先不声明，等 done 或 completed 快照补上名字再发
+                declareTool(controller, tool);
               }
               continue;
             }
@@ -324,14 +397,7 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
               const itemId = typeof payload.item_id === "string" ? payload.item_id : "";
               const outputIndex = Number(payload.output_index ?? toolsByIndex.size);
               const tool = toolsByItemId.get(itemId) ?? rememberTool(null, itemId, outputIndex);
-              tool.arguments += payload.delta;
-              controller.enqueue({
-                type: "tool_call_delta",
-                index: tool.index,
-                id: tool.callId,
-                name: tool.name,
-                arguments: payload.delta,
-              });
+              appendToolArguments(controller, tool, payload.delta);
               continue;
             }
 
@@ -340,7 +406,7 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
               const itemId = typeof payload.item_id === "string" ? payload.item_id : "";
               const outputIndex = Number(payload.output_index ?? toolsByIndex.size);
               const tool = toolsByItemId.get(itemId) ?? rememberTool(null, itemId, outputIndex);
-              emitMissingToolArguments(controller, tool, payload.arguments);
+              applyFullToolArguments(controller, tool, payload.arguments);
               continue;
             }
 
@@ -351,8 +417,10 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
                 const outputIndex = Number(payload?.output_index ?? toolsByIndex.size);
                 const itemId = typeof item.id === "string" ? item.id : typeof payload?.item_id === "string" ? payload.item_id : "";
                 const tool = toolsByItemId.get(itemId) ?? rememberTool(item, itemId, outputIndex);
+                if (!tool.name && typeof item.name === "string") tool.name = item.name;
+                declareTool(controller, tool);
                 if (typeof item.arguments === "string") {
-                  emitMissingToolArguments(controller, tool, item.arguments);
+                  applyFullToolArguments(controller, tool, item.arguments);
                 }
               } else if (item?.type === "message" || item?.type === "reasoning") {
                 emitMissingResponseOutput(controller, { output: [item] });
@@ -363,6 +431,7 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
             if (event.event === "response.completed" || event.event === "response.incomplete") {
               emitStart(controller);
               emitMissingResponseOutput(controller, response);
+              finishTools(controller);
               if (usage) controller.enqueue({ type: "usage", usage });
               if (!finished) {
                 finished = true;
@@ -374,6 +443,7 @@ export function decodeResponsesStream(upstream: ReadableStream<Uint8Array>): Int
 
         if (started && !finished) {
           emitMissingResponseOutput(controller, lastResponse);
+          finishTools(controller);
           if (usage) controller.enqueue({ type: "usage", usage });
           controller.enqueue({ type: "finish", reason: finishReason ?? "stop" });
         }

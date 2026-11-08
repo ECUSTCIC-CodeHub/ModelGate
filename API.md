@@ -3484,6 +3484,8 @@ OpenAI Responses API 兼容端点。
 - 流式 Responses 响应在上游正常 EOF 但缺少最终 `response.completed` 时，会由网关补齐标准完成事件，避免客户端因缺少 `response.completed` 而报流提前结束。
 - 流式 Responses 响应在上游只在 `response.completed` 最终快照中提供文本或工具调用时，网关会补发对应增量事件，确保跨协议转换和 Responses 客户端都能收到完整输出。
 - 流式 Responses 响应在上游只通过 `response.output_item.done`、`response.content_part.done`、`response.output_text.done` 或 reasoning done 事件提供最终文本/思考内容时，网关也会补发对应增量，并纳入本地 Token 统计。
+- 流式 Responses 响应的工具调用参数按追加语义下发：`response.output_item.added` 里的 `arguments` 不作为已下发内容（官方上游这里恒为空串，部分兼容上游会先给完整参数、随后又把同一段参数当增量重发，照抄会让客户端拼出重复参数）。网关先累积上游给出的参数，`response.function_call_arguments.done`、`response.output_item.done` 与 `response.completed` 快照在参数能接在已下发内容之后时补差值下发；若上游在终止事件里改写了参数、与已下发内容对不上，则保留已下发内容，不追加第二段 JSON。上游只在 `added` 里给过参数、之后没有任何参数事件时，在流收尾补发一次，避免参数丢失。
+- 流式 Responses 响应的 `tool_call_start` 推迟到工具名可用时下发。部分上游在 `response.output_item.added` 里不给 `name`，到 `response.output_item.done` 或 `response.completed` 才给出，而 Anthropic 出口会在 `content_block_start` 时固化名称，先发空名无法再纠正。名称始终缺失时仍在收尾声明，避免调用整体丢失。
 - 最终 `response.completed` / `response.incomplete` / `response.failed` 里的 `usage` 不会缺失：上游返回了 usage 就用上游值；上游没给、或输出为 0 时用与日志/计费侧同一个分词器（按实际命中模型的编码族）本地兜底，统计正文、推理与工具名及参数，`input_tokens` 按真实模型的请求体计数。本地兜底时 `input_tokens` 与 `total_tokens` 和日志同值；`output_tokens` 按协议含义包含推理 Token，日志里的 `completion_tokens` 只算可见输出、推理单独计入 `output_tps` 与 `total_tokens`，无推理内容时两者相同。
 
 ---
