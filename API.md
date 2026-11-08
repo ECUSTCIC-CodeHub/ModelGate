@@ -2456,7 +2456,11 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 `/dsh/authorize` 确认按钮的提交目标：建密钥、发兑换码、303 跳回本机回调。
 
-**认证:** 用户；必须同源（校验 `Origin` 与 `Sec-Fetch-Site`），`GET` 返回 405
+**认证:** 用户；必须同源，`GET` 返回 405
+
+同源判定顺序：`Sec-Fetch-Site` 为 `same-origin` / `none` 直接放行，为其它值直接拒绝；缺失 `Sec-Fetch-Site`（非浏览器或老浏览器）时把 `Origin` 与设置里的 `public_base_url` 按完整 origin（协议 + 主机 + 端口）比对，不一致即拒绝、不回退，未配置或无法解析才退回 `Host` / `X-Forwarded-Host`；`Origin` 也缺失时不校验。
+
+经 CDN / 反代且回源会改写 `Host` 的部署，建议配置 `public_base_url`，否则缺少 `Sec-Fetch-Site` 的客户端可能被误判为跨站；配置时协议与端口必须与对外实际访问完全一致，配成 `http://` 而实际用 `https://` 访问会被拒绝
 
 **请求体:** `application/x-www-form-urlencoded`
 

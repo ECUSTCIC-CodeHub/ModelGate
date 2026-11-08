@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { ensureUser } from "@/lib/auth/guards";
 import { dbCapacityResponse, jsonError } from "@/lib/core/http";
+import { getGatewaySettings } from "@/lib/core/settings";
 import { enrollDsh } from "@/lib/services/dsh-enroll";
 
 /**
@@ -31,35 +32,67 @@ const FAILURE_MESSAGES = {
   code_conflict: "授权码生成失败，请重试",
 } as const;
 
-/** 浏览器发起的确认必须同源，挡掉跨站构造的确认表单。 */
-function isSameOrigin(request: Request): boolean {
+function headerUrl(value: string | null): URL | null {
+  const raw = value?.split(",")[0]?.trim();
+  if (!raw) return null;
+  try {
+    return new URL(raw.includes("://") ? raw : `http://${raw}`);
+  } catch {
+    return null;
+  }
+}
+
+function headerHostname(value: string | null): string | null {
+  const hostname = headerUrl(value)?.hostname;
+  return hostname ? hostname.replace(/\.$/, "") : null;
+}
+
+/**
+ * 浏览器发起的确认必须同源，挡掉跨站构造的确认表单。
+ *
+ * 不能拿 `request.url` 或 `Host` 当基准：standalone 下 `request.url` 的主机是
+ * `0.0.0.0:3000`，而 CDN/反代回源时可能把 `Host` 改写成源站域名，两者都不等于
+ * 浏览器看到的对外域名，合法确认会被判 403。
+ */
+async function isSameOrigin(request: Request): Promise<boolean> {
+  // Sec-Fetch-Site 由浏览器填写，跨站请求伪造不出来，也不受回源改写影响。
   const fetchSite = request.headers.get("sec-fetch-site");
-  if (fetchSite && fetchSite !== "same-origin" && fetchSite !== "none") return false;
+  if (fetchSite === "same-origin" || fetchSite === "none") return true;
+  if (fetchSite) return false;
 
   const origin = request.headers.get("origin");
   if (!origin) return true;
 
-  // 不能用 request.url 的 host 比对：线上按 standalone 方式启动
-  // （server.js + HOSTNAME=0.0.0.0 PORT=3000），Next 的 initURL 由监听地址拼成
-  // `http://0.0.0.0:3000/...`，与浏览器的 Origin 永远不相等，合法确认也会被判 403。
-  // 改用反代透传的 Host / X-Forwarded-Host，它们才是外部访问域名。
-  const originHost = (() => {
-    try {
-      return new URL(origin).host;
-    } catch {
-      return null;
-    }
-  })();
-  if (!originHost) return false;
+  const originUrl = headerUrl(origin);
+  if (!originUrl) return false;
+  const originHostname = originUrl.hostname.replace(/\.$/, "");
 
-  for (const candidate of [request.headers.get("x-forwarded-host"), request.headers.get("host")]) {
-    if (!candidate) continue;
-    try {
-      if (new URL(candidate.includes("://") ? candidate : `http://${candidate}`).host === originHost) return true;
-    } catch {
-      // 头值不可解析时忽略，继续尝试下一个
+  // 没有 Sec-Fetch-Site（非浏览器或老浏览器）时退回比对 Origin：
+  // 优先用管理端配置的对外域名，其次才是可能被回源改写的 Host。
+  let baseUrl = "";
+  try {
+    baseUrl = (await getGatewaySettings()).public_base_url;
+  } catch (err) {
+    console.error("[dsh] 读取 public_base_url 失败", err);
+  }
+  if (baseUrl) {
+    const baseOrigin = /^https?:\/\//i.test(baseUrl) ? headerUrl(baseUrl)?.origin : null;
+    if (!baseOrigin) {
+      console.warn("[dsh] public_base_url 无法解析，退回 Host 比对", { baseUrl });
+    } else if (baseOrigin === originUrl.origin) {
+      return true;
+    } else {
+      console.warn("[dsh] Origin 与 public_base_url 不一致", { origin, baseOrigin });
+      return false;
     }
   }
+
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const host = request.headers.get("host");
+  if (headerHostname(forwardedHost) === originHostname || headerHostname(host) === originHostname) {
+    return true;
+  }
+  console.warn("[dsh] 同源校验失败", { fetchSite, origin, host, forwardedHost, baseUrl });
   return false;
 }
 
@@ -76,7 +109,7 @@ function htmlError(message: string, status: number) {
 export async function POST(request: Request) {
   const guard = await ensureUser(request);
   if ("error" in guard) return guard.error;
-  if (!isSameOrigin(request)) return htmlError("请求来源不合法", 403);
+  if (!(await isSameOrigin(request))) return htmlError("请求来源不合法", 403);
 
   let form: FormData;
   try {
