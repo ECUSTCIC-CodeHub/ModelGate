@@ -76,6 +76,8 @@ export type ResponseAdapterOptions = {
   requestedModel?: string;
   includeUsage?: boolean;
   streamPromptTokens?: number;
+  // 本地分词兜底要按实际命中的上游模型选择编码族，别名（requestedModel）会落到错误的词表
+  streamUsageModel?: string;
 };
 
 export type ProtocolBodyAdapter = {

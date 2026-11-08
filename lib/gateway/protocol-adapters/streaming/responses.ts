@@ -15,6 +15,6 @@ export {
 export const responsesStreamAdapter: ProtocolStreamAdapter = {
   protocol: "responses",
   decode: decodeResponsesStream,
-  encode: (events) => encodeResponsesStream(events),
+  encode: (events, options) => encodeResponsesStream(events, options),
   trackPassthroughEvent: trackResponsesStreamEvent,
 };

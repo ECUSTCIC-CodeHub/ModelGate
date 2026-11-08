@@ -1,3 +1,4 @@
+import type { ResponseAdapterOptions } from "@/lib/gateway/protocol-adapters/intermediate";
 import {
   toSseBlock,
   type IntermediateStreamEvent,
@@ -10,6 +11,7 @@ import {
   type EncodedToolState,
 } from "@/lib/gateway/protocol-adapters/streaming/responses-encode-items";
 import { responseUsage } from "@/lib/gateway/protocol-adapters/streaming/responses-events";
+import { createStreamUsageFallback } from "@/lib/gateway/protocol-adapters/streaming/usage-fallback";
 
 export class ResponsesStreamWriter {
   private responseId = `resp_${crypto.randomUUID().replace(/-/g, "")}`;
@@ -31,8 +33,20 @@ export class ResponsesStreamWriter {
   private textOutputIndex = 0;
   private readonly outputMessageId = `msg_${crypto.randomUUID().replace(/-/g, "")}`;
   private readonly tools = new Map<number, EncodedToolState>();
+  // 工具名可能晚于工具项建立才到，记下已计入的 index，避免重复计数或漏计
+  private readonly countedToolNames = new Set<number>();
+  // 上游没在 response.completed 里给 usage 时不能回 undefined，用与账务侧同一个分词器兜底
+  private readonly meter: ReturnType<typeof createStreamUsageFallback>;
 
-  constructor(private readonly encoder: TextEncoder) {}
+  constructor(
+    private readonly encoder: TextEncoder,
+    options?: ResponseAdapterOptions,
+  ) {
+    this.meter = createStreamUsageFallback({
+      promptTokens: options?.streamPromptTokens,
+      model: options?.streamUsageModel,
+    });
+  }
 
   applyStart(event: Extract<IntermediateStreamEvent, { type: "start" }>, controller: ReadableStreamDefaultController<Uint8Array>) {
     if (event.id) this.responseId = event.id;
@@ -52,6 +66,7 @@ export class ResponsesStreamWriter {
   ) {
     this.ensureReasoning(controller);
     this.reasoningText += event.text;
+    this.meter.observeReasoning(event.text);
     this.emit(controller, "response.reasoning_text.delta", {
       type: "response.reasoning_text.delta",
       response_id: this.responseId,
@@ -68,6 +83,7 @@ export class ResponsesStreamWriter {
   ) {
     this.ensureText(controller);
     this.text += event.text;
+    this.meter.observeText(event.text);
     this.emit(controller, "response.output_text.delta", {
       type: "response.output_text.delta",
       response_id: this.responseId,
@@ -97,6 +113,8 @@ export class ResponsesStreamWriter {
     };
     this.nextOutputIndex += 1;
     this.tools.set(event.index, tool);
+    this.meter.observeToolCall(tool.name, tool.arguments);
+    if (tool.name) this.countedToolNames.add(event.index);
     this.emit(controller, "response.output_item.added", {
       type: "response.output_item.added",
       response_id: this.responseId,
@@ -119,7 +137,12 @@ export class ResponsesStreamWriter {
   ) {
     const tool = this.ensureToolCall(event, controller);
     if (event.name) tool.name = event.name;
+    if (tool.name && !this.countedToolNames.has(event.index)) {
+      this.meter.observeToolCall(tool.name);
+      this.countedToolNames.add(event.index);
+    }
     tool.arguments += event.arguments;
+    this.meter.observeToolArguments(event.arguments);
     this.emit(controller, "response.function_call_arguments.delta", {
       type: "response.function_call_arguments.delta",
       response_id: this.responseId,
@@ -155,7 +178,7 @@ export class ResponsesStreamWriter {
         ...this.responseBase(status),
         output,
         output_text: this.text,
-        usage: responseUsage(this.usage),
+        usage: responseUsage(this.finalUsage()),
         ...(incompleteReason ? { incomplete_details: { reason: incompleteReason } } : {}),
       },
     });
@@ -182,10 +205,17 @@ export class ResponsesStreamWriter {
         ...this.responseBase("failed"),
         output,
         output_text: this.text,
+        // 失败流保持上游原值：无 usage 时 responseUsage 返回 undefined（序列化后该字段省略），
+        // 不伪造本地分词结果去充当一次失败请求的用量
         usage: responseUsage(this.usage),
         error: { code: "upstream_error", message },
       },
     });
+  }
+
+  // 上游给了 usage 就用上游值，缺失或输出为 0 时补本地分词结果，口径与 Anthropic / Chat 出口一致
+  private finalUsage(): StreamUsage {
+    return this.meter.complete(this.usage, this.model);
   }
 
   private emit(controller: ReadableStreamDefaultController<Uint8Array>, event: string, payload: unknown) {

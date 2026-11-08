@@ -1,21 +1,27 @@
 import { asRecord } from "@/lib/gateway/normalized-message";
+import type { ResponseAdapterOptions } from "@/lib/gateway/protocol-adapters/intermediate";
 import {
   type IntermediateStreamEvent,
   type IntermediateStreamResult,
   type StreamUsage,
 } from "@/lib/gateway/protocol-adapters/streaming/common";
+import { createStreamUsageFallback } from "@/lib/gateway/protocol-adapters/streaming/usage-fallback";
 import { parseAnthropicSseEvent } from "@/lib/gateway/protocol-adapters/streaming/anthropic-events";
 import { usageFromAnthropic } from "@/lib/gateway/protocol-adapters/usage";
 import { finishReasonFromAnthropic, upstreamErrorText } from "@/lib/gateway/protocol-adapters/intermediate";
 import { createSseFrameReader } from "@/lib/shared/sse-frames";
 
-export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Array>): IntermediateStreamResult {
+export function decodeAnthropicMessagesStream(
+  upstream: ReadableStream<Uint8Array>,
+  options?: ResponseAdapterOptions,
+): IntermediateStreamResult {
   const reader = upstream.getReader();
   const decoder = new TextDecoder();
   const frameReader = createSseFrameReader();
   let completionText = "";
   let reasoningText = "";
   let firstTokenAt: number | null = null;
+  let upstreamModel: string | null = null;
   let promptTokens = 0;
   let completionTokens = 0;
   let cacheReadTokens: number | undefined;
@@ -24,6 +30,8 @@ export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Arra
   let hasUsage = false;
   let finishReason: string | null = null;
   const toolUseByIndex = new Map<number, { id: string; name: string }>();
+  // 上游不返回 usage、或在 message_delta 里只给缓存字段时，本地分词兜底要按实际命中的上游模型选词表
+  const meter = createStreamUsageFallback({ promptTokens: options?.streamPromptTokens, model: options?.streamUsageModel });
   const markFirstToken = () => {
     if (firstTokenAt === null) firstTokenAt = Date.now();
   };
@@ -58,6 +66,7 @@ export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Arra
 
             if (event.event === "message_start") {
               const message = asRecord(payload?.message);
+              if (typeof message?.model === "string") upstreamModel = message.model;
               const nextUsage = usageFromAnthropic(message?.usage);
               promptTokens = nextUsage?.prompt_tokens ?? 0;
               cacheReadTokens = nextUsage?.cache_read_tokens;
@@ -91,10 +100,12 @@ export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Arra
               if (delta?.type === "text_delta" && typeof delta.text === "string") {
                 markFirstToken();
                 completionText += delta.text;
+                meter.observeText(delta.text);
                 controller.enqueue({ type: "text_delta", text: delta.text });
               } else if (delta?.type === "thinking_delta" && typeof delta.thinking === "string") {
                 markFirstToken();
                 reasoningText += delta.thinking;
+                meter.observeReasoning(delta.thinking);
                 controller.enqueue({ type: "reasoning_delta", text: delta.thinking });
               } else if (delta?.type === "signature_delta" && typeof delta.signature === "string") {
                 controller.enqueue({ type: "reasoning_signature", signature: delta.signature });
@@ -122,7 +133,9 @@ export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Arra
               cacheCreationTokens = nextUsage?.cache_creation_tokens ?? cacheCreationTokens;
               cacheMissTokens = nextUsage?.cache_miss_tokens ?? cacheMissTokens;
               hasUsage = hasUsage || Boolean(nextUsage);
-              controller.enqueue({ type: "usage", usage: usage() });
+              // 只兜底回给客户端的 usage 事件；usage() 仍返回上游原始值，账务侧口径由
+              // resolveTokenUsage 自己处理，不在这里改动
+              controller.enqueue({ type: "usage", usage: meter.complete(usage(), upstreamModel) });
               continue;
             }
 
@@ -143,6 +156,7 @@ export function decodeAnthropicMessagesStream(upstream: ReadableStream<Uint8Arra
     completionText: () => completionText,
     reasoningText: () => reasoningText,
     firstTokenAt: () => firstTokenAt,
+    // 账务侧口径由 resolveTokenUsage 自己兜底，这里保持上游原始值不动
     usage: () => (hasUsage ? usage() : null),
   };
 }

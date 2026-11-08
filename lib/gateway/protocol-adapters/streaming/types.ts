@@ -8,7 +8,10 @@ import type {
 
 export type StreamingProtocol = Exclude<GatewayProtocol, "embeddings" | "images" | "other">;
 
-export type StreamDecoder = (upstream: ReadableStream<Uint8Array>) => IntermediateStreamResult;
+export type StreamDecoder = (
+  upstream: ReadableStream<Uint8Array>,
+  options?: ResponseAdapterOptions,
+) => IntermediateStreamResult;
 
 export type StreamEncoder = (
   events: ReadableStream<IntermediateStreamEvent>,

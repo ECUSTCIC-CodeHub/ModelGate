@@ -6,6 +6,7 @@ import {
   type IntermediateStreamEvent,
   type StreamUsage,
 } from "@/lib/gateway/protocol-adapters/streaming/common";
+import { createStreamUsageFallback } from "@/lib/gateway/protocol-adapters/streaming/usage-fallback";
 
 export function encodeChatCompletionsStream(events: ReadableStream<IntermediateStreamEvent>, options?: ResponseAdapterOptions) {
   const reader = events.getReader();
@@ -20,20 +21,10 @@ export function encodeChatCompletionsStream(events: ReadableStream<IntermediateS
   const emittedToolCalls = new Set<number>();
   const includeUsage = options?.includeUsage === true;
   const promptTokens = options?.streamPromptTokens ?? 0;
-  let accumulatedText = "";
-  let accumulatedReasoning = "";
+  // 客户端 SSE 的 usage 兜底与账务侧共用同一分词器与 real_model，不再用字符数/4 的启发式
+  const meter = createStreamUsageFallback({ promptTokens, model: options?.streamUsageModel });
 
-  const localUsage = (): StreamUsage => {
-    const completionTokens = Math.max(1, Math.ceil((accumulatedText.length + accumulatedReasoning.length) / 4));
-    return {
-      prompt_tokens: promptTokens,
-      completion_tokens: completionTokens,
-      total_tokens: promptTokens + completionTokens,
-    };
-  };
-
-  const chatUsage = (u: StreamUsage = usage!) => {
-    if (!u) return undefined;
+  const chatUsage = (u: StreamUsage) => {
     const completionDetails =
       u.reasoning_tokens !== undefined
         ? { reasoning_tokens: u.reasoning_tokens }
@@ -80,7 +71,7 @@ export function encodeChatCompletionsStream(events: ReadableStream<IntermediateS
     if (includeUsage) {
       chunkPayload.usage = null;
     } else if (usage) {
-      chunkPayload.usage = chatUsage();
+      chunkPayload.usage = chatUsage(usage);
     }
     controller.enqueue(encoder.encode(toSseBlock(null, chunkPayload)));
   };
@@ -97,17 +88,14 @@ export function encodeChatCompletionsStream(events: ReadableStream<IntermediateS
     const finishReason = reason === "tool_use" ? "tool_calls" : reason ?? "stop";
     emit(controller, {}, finishReason);
     if (includeUsage) {
-      const finalUsage = usage ? chatUsage() : chatUsage(localUsage());
-      if (finalUsage) {
-        controller.enqueue(encoder.encode(toSseBlock(null, {
-          id,
-          object: "chat.completion.chunk",
-          created,
-          model,
-          choices: [],
-          usage: finalUsage,
-        })));
-      }
+      controller.enqueue(encoder.encode(toSseBlock(null, {
+        id,
+        object: "chat.completion.chunk",
+        created,
+        model,
+        choices: [],
+        usage: chatUsage(meter.complete(usage, model)),
+      })));
     }
     controller.enqueue(encoder.encode("data: [DONE]\n\n"));
   };
@@ -136,14 +124,14 @@ export function encodeChatCompletionsStream(events: ReadableStream<IntermediateS
           if (value.type === "text_delta") {
             emitRole(controller);
             emit(controller, { content: value.text });
-            accumulatedText += value.text;
+            meter.observeText(value.text);
             continue;
           }
 
           if (value.type === "reasoning_delta") {
             emitRole(controller);
             emit(controller, { reasoning: value.text });
-            accumulatedReasoning += value.text;
+            meter.observeReasoning(value.text);
             continue;
           }
 
@@ -154,6 +142,7 @@ export function encodeChatCompletionsStream(events: ReadableStream<IntermediateS
           if (value.type === "tool_call_start") {
             emitRole(controller);
             toolCalls.set(value.index, { id: value.id, name: value.name });
+            meter.observeToolCall(value.name, value.arguments);
             emit(controller, {
               tool_calls: [{
                 index: value.index,
@@ -170,6 +159,7 @@ export function encodeChatCompletionsStream(events: ReadableStream<IntermediateS
 
           if (value.type === "tool_call_delta") {
             emitRole(controller);
+            meter.observeToolArguments(value.arguments);
             if (emittedToolCalls.has(value.index)) {
               emit(controller, {
                 tool_calls: [{

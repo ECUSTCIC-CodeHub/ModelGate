@@ -1715,6 +1715,205 @@ test("Responses incomplete 解析回 length", async () => {
   assert.ok(output.includes("\"finish_reason\":\"length\""), `Responses incomplete 应转成 Chat length，实际: ${output}`);
 });
 
+// --- 客户端 SSE usage 本地分词兜底（上游 a47b07f）---
+
+console.log("\n客户端 SSE usage 本地分词兜底");
+
+function chatNoUsageUpstream(content: string, model = "gpt-4o") {
+  const encoder = new TextEncoder();
+  const events = [
+    `data: {"id":"c1","object":"chat.completion.chunk","created":1,"model":"${model}","choices":[{"index":0,"delta":{"role":"assistant","content":${JSON.stringify(content)}}}]}\n\n`,
+    `data: {"id":"c1","object":"chat.completion.chunk","created":1,"model":"${model}","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n`,
+    "data: [DONE]\n\n",
+  ];
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const event of events) controller.enqueue(encoder.encode(event));
+      controller.close();
+    },
+  });
+}
+
+test("Anthropic 流 message_delta 在上游缺 usage 时用本地分词兜底", async () => {
+  const text = "hello world, this is a test";
+  const result = createTransformedStream(
+    chatNoUsageUpstream(text),
+    chatCompletionsGatewayAdapter,
+    anthropicGatewayAdapter,
+    { streamPromptTokens: 17, streamUsageModel: "gpt-4o" },
+  );
+  const output = await collectStream(result.stream);
+  const expected = countTextTokens(text, "gpt-4o");
+
+  assert.ok(
+    output.includes(`"usage":{"input_tokens":17,"output_tokens":${expected}}`),
+    `message_delta 应携带本地兜底 usage，期望 output_tokens=${expected}，实际: ${output}`,
+  );
+  // message_start 的 output_tokens 按 Anthropic 规范就是 0，这里只看 message_delta
+  const deltaUsage = output.split("message_delta")[1] ?? "";
+  assert.ok(!deltaUsage.includes('"output_tokens":0'), "message_delta 不应回传 0");
+});
+
+test("Anthropic 流 message_delta 携带 input_tokens 与缓存字段", async () => {
+  const encoder = new TextEncoder();
+  const upstream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode('event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","model":"claude-3-5-sonnet","usage":{"input_tokens":12,"output_tokens":0,"cache_read_input_tokens":40,"cache_creation_input_tokens":8}}}\n\n'));
+      controller.enqueue(encoder.encode('event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello"}}\n\n'));
+      controller.enqueue(encoder.encode('event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}\n\n'));
+      controller.enqueue(encoder.encode('event: message_stop\ndata: {"type":"message_stop"}\n\n'));
+      controller.close();
+    },
+  });
+
+  const result = createTransformedStream(upstream, anthropicGatewayAdapter, anthropicGatewayAdapter, {
+    streamUsageModel: "claude-3-5-sonnet",
+  });
+  const output = await collectStream(result.stream);
+
+  assert.ok(output.includes('"input_tokens":12'), `应回传 input_tokens，实际: ${output}`);
+  assert.ok(output.includes('"output_tokens":3'), `应优先用上游 output_tokens，实际: ${output}`);
+  assert.ok(output.includes('"cache_read_input_tokens":40'), "应保留缓存读取字段");
+  assert.ok(output.includes('"cache_creation_input_tokens":8'), "应保留缓存创建字段");
+});
+
+test("Chat 流 usage 用分词器兜底而不是字符数/4", async () => {
+  const text = "你好，世界！这是一段用于测试的中文文本。";
+  const result = createTransformedStream(
+    chatNoUsageUpstream(text),
+    chatCompletionsGatewayAdapter,
+    chatCompletionsGatewayAdapter,
+    { includeUsage: true, streamPromptTokens: 5, streamUsageModel: "gpt-4o" },
+  );
+  const output = await collectStream(result.stream);
+  const expected = countTextTokens(text, "gpt-4o");
+  const heuristic = Math.max(1, Math.ceil(text.length / 4));
+
+  assert.ok(expected !== heuristic, "测试语料需区分分词结果与字符启发式");
+  assert.ok(
+    output.includes(`"completion_tokens":${expected}`),
+    `应使用分词器结果 ${expected} 而非启发式 ${heuristic}，实际: ${output}`,
+  );
+});
+
+test("纯工具调用时 Anthropic 流 usage 仍有输出 Token", async () => {
+  const encoder = new TextEncoder();
+  const calls = "get_weather";
+  const args = '{"city":"Beijing"}';
+  const upstream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode(`data: {"id":"c1","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"${calls}","arguments":${JSON.stringify(args)}}}]}}]}\n\n`));
+      controller.enqueue(encoder.encode('data: {"id":"c1","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}\n\n'));
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+
+  const result = createTransformedStream(upstream, chatCompletionsGatewayAdapter, anthropicGatewayAdapter, {
+    streamPromptTokens: 9,
+    streamUsageModel: "gpt-4o",
+  });
+  const output = await collectStream(result.stream);
+  const expected = countTextTokens(`${calls}${args}`, "gpt-4o");
+  // message_delta 事件名与载荷里的 type 都会命中这个关键字，取最后一段才是载荷
+  const usagePayload = output.split("message_delta").pop() ?? "";
+
+  assert.ok(expected > 0, "工具调用应有输出 Token");
+  assert.ok(
+    usagePayload.includes(`"output_tokens":${expected}`),
+    `纯工具调用应统计工具名与参数，期望 ${expected}，实际: ${usagePayload}`,
+  );
+});
+
+test("Chat 流上游给了 usage 时优先使用上游值", async () => {
+  const encoder = new TextEncoder();
+  const upstream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode('data: {"id":"c1","choices":[{"index":0,"delta":{"content":"hi"}}]}\n\n'));
+      controller.enqueue(encoder.encode('data: {"id":"c1","choices":[],"usage":{"prompt_tokens":9,"completion_tokens":4,"total_tokens":13}}\n\n'));
+      controller.enqueue(encoder.encode('data: {"id":"c1","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n'));
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+
+  const result = createTransformedStream(upstream, chatCompletionsGatewayAdapter, chatCompletionsGatewayAdapter, {
+    includeUsage: true,
+    streamPromptTokens: 5,
+    streamUsageModel: "gpt-4o",
+  });
+  const output = await collectStream(result.stream);
+
+  assert.ok(output.includes('"completion_tokens":4'), `上游 usage 应优先，实际: ${output}`);
+  assert.ok(output.includes('"prompt_tokens":9'), "上游 prompt_tokens 应优先于本地估算");
+});
+
+test("Responses 流上游缺 usage 时用本地分词兜底", async () => {
+  const text = "hello world, this is a test";
+  const result = createTransformedStream(
+    chatNoUsageUpstream(text),
+    chatCompletionsGatewayAdapter,
+    responsesGatewayAdapter,
+    { streamPromptTokens: 17, streamUsageModel: "gpt-4o" },
+  );
+  const output = await collectStream(result.stream);
+  const expected = countTextTokens(text, "gpt-4o");
+  const completed = output.split("response.completed").pop() ?? "";
+
+  assert.ok(
+    completed.includes(`"usage":{"input_tokens":17,"output_tokens":${expected}`),
+    `response.completed 应携带本地兜底 usage，期望 output_tokens=${expected}，实际: ${completed}`,
+  );
+  assert.ok(!completed.includes('"usage":undefined'), "usage 不应为 undefined");
+  assert.ok(!completed.includes('"output_tokens":0'), "output_tokens 不应回传 0");
+});
+
+test("Responses 流上游给了 usage 时优先使用上游值", async () => {
+  const upstream = makeUpstreamResponsesStream([
+    'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_test","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[]}}\n\n',
+    'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"hello"}\n\n',
+    'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_test","model":"gpt-4o","created_at":"2026-01-01T00:00:00Z","output":[],"usage":{"input_tokens":9,"output_tokens":4,"total_tokens":13}}}\n\n',
+  ]);
+
+  const result = createTransformedStream(upstream, responsesGatewayAdapter, responsesGatewayAdapter, {
+    streamPromptTokens: 5,
+    streamUsageModel: "gpt-4o",
+  });
+  const output = await collectStream(result.stream);
+  const completed = output.split("response.completed").pop() ?? "";
+
+  assert.ok(completed.includes('"input_tokens":9'), `上游 input_tokens 应优先，实际: ${completed}`);
+  assert.ok(completed.includes('"output_tokens":4'), `上游 output_tokens 应优先，实际: ${completed}`);
+});
+
+test("纯工具调用时 Responses 流 usage 仍有输出 Token", async () => {
+  const encoder = new TextEncoder();
+  const name = "get_weather";
+  const args = '{"city":"Beijing"}';
+  const upstream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode(`data: {"id":"c1","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"${name}","arguments":${JSON.stringify(args)}}}]}}]}\n\n`));
+      controller.enqueue(encoder.encode('data: {"id":"c1","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}\n\n'));
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+
+  const result = createTransformedStream(upstream, chatCompletionsGatewayAdapter, responsesGatewayAdapter, {
+    streamPromptTokens: 9,
+    streamUsageModel: "gpt-4o",
+  });
+  const output = await collectStream(result.stream);
+  const expected = countTextTokens(`${name}${args}`, "gpt-4o");
+  const completed = output.split("response.completed").pop() ?? "";
+
+  assert.ok(expected > 0, "工具调用应有输出 Token");
+  assert.ok(
+    completed.includes(`"output_tokens":${expected}`),
+    `纯工具调用应统计工具名与参数，期望 ${expected}，实际: ${completed}`,
+  );
+});
+
 // --- Summary ---
 
 void Promise.all(pending).then(() => {

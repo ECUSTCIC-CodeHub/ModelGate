@@ -1,9 +1,10 @@
+import type { ResponseAdapterOptions } from "@/lib/gateway/protocol-adapters/intermediate";
 import { errorMessageFrom, type IntermediateStreamEvent } from "@/lib/gateway/protocol-adapters/streaming/common";
 import { ResponsesStreamWriter } from "@/lib/gateway/protocol-adapters/streaming/responses-encode-writer";
 
-export function encodeResponsesStream(events: ReadableStream<IntermediateStreamEvent>) {
+export function encodeResponsesStream(events: ReadableStream<IntermediateStreamEvent>, options?: ResponseAdapterOptions) {
   const reader = events.getReader();
-  const writer = new ResponsesStreamWriter(new TextEncoder());
+  const writer = new ResponsesStreamWriter(new TextEncoder(), options);
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {

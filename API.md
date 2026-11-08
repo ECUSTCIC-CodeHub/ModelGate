@@ -3243,6 +3243,8 @@ OpenAI Chat Completions 兼容端点。
 
 > 流式 Chat Completions 请求转发到上游时，网关会自动附加 `stream_options.include_usage = true`，用于优先记录上游返回的 Token usage 和缓存 Token；上游不返回 usage 时才使用本地分词统计。
 
+> 客户端请求显式带 `stream_options.include_usage = true` 时，结束前回传的 usage 使用与日志/计费侧同一个分词器（按实际命中模型的编码族，非字符数估算）：上游有 usage 就用上游值，上游没给、或给的是 0（部分上游会在流式结束块里回传 0）时改用本地分词结果，prompt 侧按真实模型的请求体计数。本地兜底时 `prompt_tokens` 与 `total_tokens` 和日志同值；`completion_tokens` 按协议含义包含推理 Token，日志里的 `completion_tokens` 只算可见输出、推理单独计入 `output_tps` 与 `total_tokens`，无推理内容时两者相同。
+
 > 当 Chat Completions 请求被路由到 Responses 或 Anthropic Messages 上游时，网关会将 `developer` 消息按系统指令语义转换，避免上游协议不支持 `developer` role 导致请求失败。
 
 > 当 Chat Completions 请求被路由到 Responses 上游时，assistant 消息中的 `reasoning` / `reasoning_content` 会转换为 Responses reasoning item，不会作为 `thinking` 内容块写入 `message.content`。
@@ -3439,6 +3441,12 @@ Anthropic Messages 兼容端点。
 - 客户端的 `anthropic-beta` 头透传给上游（prompt caching、扩展思考等特性所需）
 - 当实际命中的上游协议为 `responses` 时，流式转换会从 `response.completed` 的最终快照补齐未通过 delta 发出的文本与工具调用，避免 Claude Code 等 Anthropic 客户端收到空回复。
 
+**流式 usage（输出 Anthropic 流时）:**
+
+- `message_delta.usage` 同时携带 `input_tokens` 与 `output_tokens`；上游返回缓存 Token 时还携带 `cache_read_input_tokens`、`cache_creation_input_tokens`，便于 CC Switch 等客户端统计 Token 与输出速度。
+- 上游不返回 usage、或输出为 0 时，`input_tokens` 与 `output_tokens` 使用本地分词结果兜底，不再返回 0；复用与日志/计费侧同一个按编码族缓存的 tokenizer 与实际命中模型，统计正文与推理内容。
+- `message_start.usage.input_tokens` 在上游未提供时改用本地请求体分词结果；`output_tokens` 在 `message_start` 按协议恒为 0，真实值在 `message_delta` 给出。
+
 **metadata 字段处理:**
 
 - `metadata` 是 Anthropic Messages 的合法字段，但只定义 `user_id`。由 `/api/v1/chat/completions`、`/api/v1/responses` 跨协议转换发往 `anthropic_messages` 上游时，网关只下发 `user_id`（OpenAI 侧的其余键会被严格上游判为未知输入）。
@@ -3476,6 +3484,7 @@ OpenAI Responses API 兼容端点。
 - 流式 Responses 响应在上游正常 EOF 但缺少最终 `response.completed` 时，会由网关补齐标准完成事件，避免客户端因缺少 `response.completed` 而报流提前结束。
 - 流式 Responses 响应在上游只在 `response.completed` 最终快照中提供文本或工具调用时，网关会补发对应增量事件，确保跨协议转换和 Responses 客户端都能收到完整输出。
 - 流式 Responses 响应在上游只通过 `response.output_item.done`、`response.content_part.done`、`response.output_text.done` 或 reasoning done 事件提供最终文本/思考内容时，网关也会补发对应增量，并纳入本地 Token 统计。
+- 最终 `response.completed` / `response.incomplete` / `response.failed` 里的 `usage` 不会缺失：上游返回了 usage 就用上游值；上游没给、或输出为 0 时用与日志/计费侧同一个分词器（按实际命中模型的编码族）本地兜底，统计正文、推理与工具名及参数，`input_tokens` 按真实模型的请求体计数。本地兜底时 `input_tokens` 与 `total_tokens` 和日志同值；`output_tokens` 按协议含义包含推理 Token，日志里的 `completion_tokens` 只算可见输出、推理单独计入 `output_tps` 与 `total_tokens`，无推理内容时两者相同。
 
 ---
 

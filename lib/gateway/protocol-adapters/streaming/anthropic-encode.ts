@@ -4,7 +4,9 @@ import {
   errorMessageFrom,
   toSseBlock,
   type IntermediateStreamEvent,
+  type StreamUsage,
 } from "@/lib/gateway/protocol-adapters/streaming/common";
+import { createStreamUsageFallback } from "@/lib/gateway/protocol-adapters/streaming/usage-fallback";
 
 export function encodeAnthropicMessagesStream(events: ReadableStream<IntermediateStreamEvent>, options?: ResponseAdapterOptions) {
   const reader = events.getReader();
@@ -24,6 +26,9 @@ export function encodeAnthropicMessagesStream(events: ReadableStream<Intermediat
   const toolBlockByIndex = new Map<number, number>();
 
   const thinkingEnabled = options?.thinkingEnabled ?? false;
+  // 部分上游不在 message_delta 回传 usage，直接透传会让客户端拿到 0；用与账务侧同一个分词器兜底
+  const meter = createStreamUsageFallback({ promptTokens: options?.streamPromptTokens, model: options?.streamUsageModel });
+  let remoteUsage: StreamUsage | null = null;
 
   const emit = (controller: ReadableStreamDefaultController<Uint8Array>, event: string, payload: unknown) => {
     controller.enqueue(encoder.encode(toSseBlock(event, payload)));
@@ -43,7 +48,8 @@ export function encodeAnthropicMessagesStream(events: ReadableStream<Intermediat
         stop_reason: null,
         stop_sequence: null,
         usage: {
-          input_tokens: promptTokens,
+          // 上游没给 input_tokens 时才用本地分词估算，上游给了就以上游为准（与账务口径一致）
+          input_tokens: promptTokens > 0 ? promptTokens : meter.localPromptTokens,
           output_tokens: 0,
           cache_read_input_tokens: cacheReadTokens,
           cache_creation_input_tokens: cacheCreationTokens,
@@ -75,6 +81,19 @@ export function encodeAnthropicMessagesStream(events: ReadableStream<Intermediat
     if (finished) return;
     finished = true;
     stopOpenBlocks(controller);
+    const finalUsage = meter.complete(
+      remoteUsage ?? {
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
+        total_tokens: promptTokens + completionTokens,
+      },
+      model,
+    );
+    // 缓存字段可能只在 message_start 出现过，因此以累计变量为准
+    const cacheRead = cacheReadTokens ?? finalUsage.cache_read_tokens;
+    const cacheCreation = cacheCreationTokens ?? finalUsage.cache_creation_tokens;
+    // Anthropic 客户端（CC Switch 等）靠 message_delta.usage 统计 Token 与输出速度，
+    // 因此这里补全 input_tokens 与缓存字段，而不是只回输出侧
     emit(controller, "message_delta", {
       type: "message_delta",
       delta: {
@@ -82,7 +101,10 @@ export function encodeAnthropicMessagesStream(events: ReadableStream<Intermediat
         stop_sequence: null,
       },
       usage: {
-        output_tokens: completionTokens,
+        input_tokens: finalUsage.prompt_tokens,
+        output_tokens: finalUsage.completion_tokens,
+        ...(cacheRead !== undefined ? { cache_read_input_tokens: cacheRead } : {}),
+        ...(cacheCreation !== undefined ? { cache_creation_input_tokens: cacheCreation } : {}),
       },
     });
     emit(controller, "message_stop", { type: "message_stop" });
@@ -108,6 +130,7 @@ export function encodeAnthropicMessagesStream(events: ReadableStream<Intermediat
           }
 
           if (value.type === "usage") {
+            remoteUsage = value.usage;
             promptTokens = value.usage.prompt_tokens;
             completionTokens = value.usage.completion_tokens;
             cacheReadTokens = value.usage.cache_read_tokens;
@@ -116,6 +139,7 @@ export function encodeAnthropicMessagesStream(events: ReadableStream<Intermediat
           }
 
           if (value.type === "reasoning_delta") {
+            meter.observeReasoning(value.text);
             ensureStarted(controller);
             if (thinkingEnabled) {
               if (thinkingIndex === null) {
@@ -143,6 +167,7 @@ export function encodeAnthropicMessagesStream(events: ReadableStream<Intermediat
           }
 
           if (value.type === "text_delta") {
+            meter.observeText(value.text);
             ensureStarted(controller);
             if (textIndex === null) {
               textIndex = startBlock(controller, { type: "text", text: "" });
@@ -164,6 +189,7 @@ export function encodeAnthropicMessagesStream(events: ReadableStream<Intermediat
               input: {},
             });
             toolBlockByIndex.set(value.index, index);
+            meter.observeToolCall(value.name, value.arguments);
             if (value.arguments) {
               emit(controller, "content_block_delta", {
                 type: "content_block_delta",
@@ -184,6 +210,7 @@ export function encodeAnthropicMessagesStream(events: ReadableStream<Intermediat
                 input: {},
               });
             toolBlockByIndex.set(value.index, index);
+            meter.observeToolArguments(value.arguments);
             emit(controller, "content_block_delta", {
               type: "content_block_delta",
               index,

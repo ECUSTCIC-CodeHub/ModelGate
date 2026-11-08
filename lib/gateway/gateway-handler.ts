@@ -136,11 +136,9 @@ async function runGatewayProtocolRequest(request: Request, inboundAdapter: Gatew
   };
   const streamOptions = body.stream_options as Record<string, unknown> | undefined;
   if (streamOptions?.include_usage === true) {
+    // 流式 usage 的 prompt 侧由选路后按真实模型分词补齐（见 createTransformedStreamForRoute），
+    // 这里不再用字符数估算
     responseOptions.includeUsage = true;
-    const messages = body.messages as Array<Record<string, unknown>> | undefined;
-    if (messages) {
-      responseOptions.streamPromptTokens = Math.ceil(JSON.stringify(messages).length / 4);
-    }
   }
   if (typeof alias !== "string" || alias.length === 0) {
     logRejected(400, "缺少模型参数 model", null);
@@ -365,7 +363,16 @@ async function runGatewayProtocolRequest(request: Request, inboundAdapter: Gatew
   const maxRouteAttempts = retryEnabled ? Math.max(1, settings.upstream_retry_max_attempts) : 1;
   const stream = inboundAdapter.getStreamFlag(body);
   const getRouteAdapter = (route: RoutedModel) => getGatewayProtocolAdapter(route.effective_upstream_protocol);
-  const countPromptTokensForRoute = (route: RoutedModel) => inboundAdapter.countPromptTokens(body, route.model.real_model);
+  // 只依赖请求体与 real_model，同一模型在本请求内复用：账务与客户端 SSE 兜底都要这一份，
+  // 而 createTransformedStreamForRoute 每次换渠道重试都会再要一次，重复分词在大 prompt 上很贵
+  const promptTokenCache = new Map<string, number>();
+  const countPromptTokensForRoute = (route: RoutedModel) => {
+    const cached = promptTokenCache.get(route.model.real_model);
+    if (cached !== undefined) return cached;
+    const count = inboundAdapter.countPromptTokens(body, route.model.real_model);
+    promptTokenCache.set(route.model.real_model, count);
+    return count;
+  };
   const adaptRequestBodyForRoute = (route: RoutedModel) => {
     const adapted = inboundAdapter.adaptRequestBody(
       body,
@@ -401,7 +408,14 @@ async function runGatewayProtocolRequest(request: Request, inboundAdapter: Gatew
   const extractReasoningTextForRoute = (rawText: string, route: RoutedModel) =>
     getRouteAdapter(route).extractReasoningTextFromBody(rawText);
   const createTransformedStreamForRoute = (upstreamBody: ReadableStream<Uint8Array>, route: RoutedModel) => {
-    const transformed = createTransformedStream(upstreamBody, getRouteAdapter(route), inboundAdapter, responseOptions);
+    // 客户端 SSE 的 usage 兜底要按实际命中的路由取分词器与 prompt 计数，
+    // 与账务侧 resolveTokenUsage 用同一组入参，避免两边算出不同的 usage
+    const streamOptions: ResponseAdapterOptions = {
+      ...responseOptions,
+      streamPromptTokens: countPromptTokensForRoute(route),
+      streamUsageModel: route.model.real_model,
+    };
+    const transformed = createTransformedStream(upstreamBody, getRouteAdapter(route), inboundAdapter, streamOptions);
     return shouldApplyCopilotCompatibility(route)
       ? applyCopilotCompatibilityToChatStream(transformed, body)
       : transformed;

@@ -20,7 +20,7 @@ export function createTransformedStream(
       return createPassthroughStream(upstream, () => null);
     }
     if (options?.includeUsage || options?.requestedModel || outboundProtocol === "responses") {
-      const decoded = passthroughAdapter.decode(upstream);
+      const decoded = passthroughAdapter.decode(upstream, options);
       return {
         stream: passthroughAdapter.encode(decoded.stream, options),
         completionText: decoded.completionText,
@@ -38,7 +38,7 @@ export function createTransformedStream(
     throw new Error(`${outboundProtocol} 协议流不能转换为 ${inboundProtocol}`);
   }
 
-  const decoded = outboundStreamAdapter.decode(upstream);
+  const decoded = outboundStreamAdapter.decode(upstream, options);
   return {
     stream: inboundStreamAdapter.encode(decoded.stream, options),
     completionText: decoded.completionText,
