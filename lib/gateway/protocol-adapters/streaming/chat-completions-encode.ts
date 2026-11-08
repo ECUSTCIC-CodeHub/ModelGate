@@ -143,6 +143,9 @@ export function encodeChatCompletionsStream(events: ReadableStream<IntermediateS
             emitRole(controller);
             toolCalls.set(value.index, { id: value.id, name: value.name });
             meter.observeToolCall(value.name, value.arguments);
+            // 中间协议的 tool_call_start 允许携带初始参数（Responses 出口会消费该字段），
+            // 此时首帧已把参数发完，后续增量不能再带 id 与 name 重发一遍
+            if (value.arguments) emittedToolCalls.add(value.index);
             emit(controller, {
               tool_calls: [{
                 index: value.index,
