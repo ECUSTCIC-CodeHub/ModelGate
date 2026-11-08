@@ -11,6 +11,7 @@ import {
 } from "@/lib/core/db/mysql-adapter";
 import { startLogRetentionJob } from "@/lib/data/log-cleanup";
 import { startOidcGroupExpiryJob } from "@/lib/auth/oidc-group-reaper";
+import { startDshEnrollmentReaper } from "@/lib/services/dsh-enroll-reaper";
 import {
   BASE_SCHEMA_SQL,
   DISABLE_MODELS_FOR_DISABLED_CHANNELS_SQL,
@@ -725,6 +726,7 @@ export async function initializeGatewayDbAsync(): Promise<DatabaseAdapter> {
       .then((db) => {
         startLogRetentionJob(db);
         startOidcGroupExpiryJob();
+        startDshEnrollmentReaper();
         return db;
       })
       .catch((err) => {
