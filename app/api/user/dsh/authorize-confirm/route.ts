@@ -38,11 +38,29 @@ function isSameOrigin(request: Request): boolean {
 
   const origin = request.headers.get("origin");
   if (!origin) return true;
-  try {
-    return new URL(origin).host === new URL(request.url).host;
-  } catch {
-    return false;
+
+  // 不能用 request.url 的 host 比对：线上按 standalone 方式启动
+  // （server.js + HOSTNAME=0.0.0.0 PORT=3000），Next 的 initURL 由监听地址拼成
+  // `http://0.0.0.0:3000/...`，与浏览器的 Origin 永远不相等，合法确认也会被判 403。
+  // 改用反代透传的 Host / X-Forwarded-Host，它们才是外部访问域名。
+  const originHost = (() => {
+    try {
+      return new URL(origin).host;
+    } catch {
+      return null;
+    }
+  })();
+  if (!originHost) return false;
+
+  for (const candidate of [request.headers.get("x-forwarded-host"), request.headers.get("host")]) {
+    if (!candidate) continue;
+    try {
+      if (new URL(candidate.includes("://") ? candidate : `http://${candidate}`).host === originHost) return true;
+    } catch {
+      // 头值不可解析时忽略，继续尝试下一个
+    }
   }
+  return false;
 }
 
 function htmlError(message: string, status: number) {
