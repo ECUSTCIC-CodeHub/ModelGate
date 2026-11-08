@@ -2458,6 +2458,8 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 **认证:** 用户；必须同源，`GET` 返回 405
 
+access token 过期但 refresh token 仍有效时按已登录处理（整页表单提交没有客户端 `authedFetch` 的「401 → 刷新 → 重试」）；两者都失效时不是返回 `401` JSON，而是 `303` 回 `/login?next=`（`next` 取自同源 `Referer` 的 `/dsh/authorize?...`，取不到时退回 `/dsh/authorize`），登录完成后回到同一张确认页
+
 同源判定顺序：`Sec-Fetch-Site` 为 `same-origin` / `none` 直接放行，为其它值直接拒绝；缺失 `Sec-Fetch-Site`（非浏览器或老浏览器）时把 `Origin` 与设置里的 `public_base_url` 按完整 origin（协议 + 主机 + 端口）比对，不一致即拒绝、不回退，未配置或无法解析才退回 `Host` / `X-Forwarded-Host`；`Origin` 也缺失时不校验。
 
 经 CDN / 反代且回源会改写 `Host` 的部署，建议配置 `public_base_url`，否则缺少 `Sec-Fetch-Site` 的客户端可能被误判为跨站；配置时协议与端口必须与对外实际访问完全一致，配成 `http://` 而实际用 `https://` 访问会被拒绝
@@ -2471,8 +2473,10 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 **响应:**
 - `303`：`Location: http://127.0.0.1:{port}/callback?code={code}&session={session}`（无 `session` 时不带该参数）。明文密钥不出现在跳转地址里
+- `303`（未登录）：`Location: /login?next={授权页}`，见上
 - `400`：参数无效，或密钥/待兑换码已达上限
 - `403`：来源不合法
+- `503`：服务繁忙（如数据库连接池饱和），响应为 HTML 页面，带 `retry-after`
 - `500`：内部错误，响应为 HTML 页面，不含内部错误详情
 
 `session` 由 DSH 自己比对：它会丢弃与自己发起的会话不匹配的回调，这是当前唯一能挡住「把授权链接转发给别人」的机制（插件侧尚无 PKCE）。

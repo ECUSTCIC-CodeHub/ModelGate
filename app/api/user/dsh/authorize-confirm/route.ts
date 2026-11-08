@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { ensureUser } from "@/lib/auth/guards";
+import { ensureUserWithRefresh } from "@/lib/auth/guards";
 import { dbCapacityResponse, jsonError } from "@/lib/core/http";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { enrollDsh } from "@/lib/services/dsh-enroll";
@@ -106,9 +106,38 @@ function htmlError(message: string, status: number) {
   );
 }
 
+// 整页表单提交不能把 JSON 丢给浏览器，容量错误也渲染成 HTML，并保留 retry-after。
+function htmlBusy(retryAfter: string | null) {
+  const response = htmlError("服务繁忙，请稍后重试", 503);
+  if (retryAfter) response.headers.set("retry-after", retryAfter);
+  return response;
+}
+
+// 未登录时浏览器已经跳过一次 401 JSON 了：这里 303 回登录页，把授权页（含 port /
+// session）留在 next 里，登录完还能回到同一张确认页。
+function loginPath(request: Request): string {
+  const referer = request.headers.get("referer");
+  let next = "/dsh/authorize";
+  if (referer) {
+    try {
+      const url = new URL(referer);
+      if (url.pathname.replace(/\/$/, "") === "/dsh/authorize") next = `/dsh/authorize${url.search}`;
+    } catch {
+      // referer 不可解析时用默认值
+    }
+  }
+  return `/login?next=${encodeURIComponent(next)}`;
+}
+
 export async function POST(request: Request) {
-  const guard = await ensureUser(request);
-  if ("error" in guard) return guard.error;
+  const guard = await ensureUserWithRefresh(request);
+  if ("error" in guard) {
+    if (guard.error.status === 401) {
+      return new Response(null, { status: 303, headers: { location: loginPath(request), "cache-control": "no-store" } });
+    }
+    if (guard.error.status === 503) return htmlBusy(guard.error.headers.get("retry-after"));
+    return guard.error;
+  }
   if (!(await isSameOrigin(request))) return htmlError("请求来源不合法", 403);
 
   let form: FormData;
@@ -147,7 +176,7 @@ export async function POST(request: Request) {
     });
   } catch (err) {
     const busy = dbCapacityResponse(err);
-    if (busy) return busy;
+    if (busy) return htmlBusy(busy.headers.get("retry-after"));
     console.error("[dsh] 授权确认失败", err);
     return htmlError("授权失败，请稍后重试", 500);
   }
