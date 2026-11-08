@@ -274,7 +274,7 @@ CREATE TABLE IF NOT EXISTS dsh_enrollments (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   expires_at DATETIME NOT NULL,
   redeemed_at DATETIME,
-  FOREIGN KEY (key_id) REFERENCES `keys`(id),
+  FOREIGN KEY (key_id) REFERENCES \`keys\`(id),
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 `;

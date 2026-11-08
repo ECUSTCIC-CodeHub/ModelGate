@@ -3,9 +3,8 @@
 import { useState } from "react";
 
 /**
- * The confirm button on the /dsh/authorize page. Clicking it navigates to
- * GET /api/user/dsh/authorize-confirm?port=XXX&session=YYY, which generates
- * a key + code and 302-redirects the browser to the DSH localhost callback.
+ * /dsh/authorize 的确认按钮。确认动作是 POST（会新建密钥，不可幂等），
+ * 所以页面用一份隐藏表单提交，由服务端 302 把浏览器带到 DSH 的本机回调。
  */
 export function AuthorizeForm({
   port,
@@ -18,12 +17,8 @@ export function AuthorizeForm({
 }) {
   const [loading, setLoading] = useState(false);
 
-  const handleConfirm = () => {
+  const handleSubmit = () => {
     setLoading(true);
-    const params = new URLSearchParams({ port });
-    if (session) params.set("session", session);
-    // Full-page navigation → the server responds with a 302 redirect
-    window.location.href = `/api/user/dsh/authorize-confirm?${params.toString()}`;
   };
 
   return (
@@ -47,34 +42,36 @@ export function AuthorizeForm({
           maxWidth: "420px",
         }}
       >
-        <div style={{ fontSize: "48px", marginBottom: "16px" }}>🔑</div>
         <h1 style={{ margin: "0 0 8px", fontSize: "22px", fontWeight: 600 }}>
           登录到 DeepSeek Harness
         </h1>
         <p style={{ color: "#666", margin: "0 0 24px", fontSize: "14px", lineHeight: 1.6 }}>
           当前已登录账号：<strong style={{ color: "#333" }}>{username}</strong>
           <br />
-          确认后，将自动把 CIC 网关密钥发送到本机 DSH。
+          确认后将为本次接入新建一枚网关密钥，并投递到本机 DSH。
         </p>
-        <button
-          type="button"
-          onClick={handleConfirm}
-          disabled={loading}
-          style={{
-            font: "inherit",
-            fontSize: "15px",
-            padding: "12px 32px",
-            borderRadius: "8px",
-            border: "none",
-            background: loading ? "#aaa" : "#2f9e63",
-            color: "#fff",
-            cursor: loading ? "default" : "pointer",
-            fontWeight: 500,
-            transition: "background 0.2s",
-          }}
-        >
-          {loading ? "正在发送…" : "确认登录到 DSH"}
-        </button>
+        <form method="post" action="/api/user/dsh/authorize-confirm" onSubmit={handleSubmit}>
+            <input type="hidden" name="port" value={port} />
+            {session ? <input type="hidden" name="session" value={session} /> : null}
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              font: "inherit",
+              fontSize: "15px",
+              padding: "12px 32px",
+              borderRadius: "8px",
+              border: "none",
+              background: loading ? "#aaa" : "#2f9e63",
+              color: "#fff",
+              cursor: loading ? "default" : "pointer",
+              fontWeight: 500,
+              transition: "background 0.2s",
+            }}
+          >
+            {loading ? "正在发送…" : "确认登录到 DSH"}
+          </button>
+        </form>
         <p style={{ color: "#999", margin: "20px 0 0", fontSize: "12px" }}>
           密钥不会显示在此页面，仅通过本机回调安全传递。
         </p>

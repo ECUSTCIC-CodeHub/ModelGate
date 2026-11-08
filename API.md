@@ -2370,6 +2370,113 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 ---
 
+## 用户接口 - DSH 接入
+
+为 DeepSeek Harness（DSH）插件提供 OIDC 授权与密钥投递。整体流程：
+
+1. DSH 插件在系统浏览器打开 `/dsh/authorize?port={端口}&session={会话标识}`
+2. 用户确认后，服务端新建一枚专用密钥（名称固定为 `dsh`）与一次性兑换码
+3. 服务端把兑换码 POST 到 `http://127.0.0.1:{端口}/callback`，随后 303 跳转浏览器到同一地址
+4. DSH 用兑换码调 `POST /api/user/dsh/redeem` 换取明文密钥，写入本地凭据
+
+密钥一律新建，不复用用户已有密钥，便于在密钥列表里单独识别与吊销。每次授权都会新增一枚，最多 50 枚（与密钥上限一致）。
+
+### POST /api/user/dsh/enroll
+
+创建一次授权会话，返回兑换码（不返回明文密钥）。
+
+**认证:** 用户
+
+**请求体:**
+```json
+{
+  "callback_url": "http://127.0.0.1:34567/callback",
+  "client_id": "dsh-session-abc"
+}
+```
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|:---|:---|:---|:---|:---|
+| callback_url | string \| null | 否 | null | 投递目标，最长 512；仅记录，不由本接口投递 |
+| client_id | string \| null | 否 | null | 调用方会话标识，最长 128 |
+
+**响应 (201):**
+```json
+{
+  "message": "兑换码已生成，请在 DSH 里粘贴兑换码完成接入。",
+  "data": {
+    "code": "ABCD2345",
+    "expires_at": "2026-01-01 00:05:00",
+    "key_masked": "sk-gw-abcd...1234"
+  }
+}
+```
+
+**错误:**
+
+| 状态码 | 说明 |
+|:---|:---|
+| 400 | 参数不正确；密钥数量已达上限（50）；待兑换授权码过多（同一用户最多 5 个未使用） |
+| 413 | 请求体过大 |
+
+### POST /api/user/dsh/redeem
+
+用兑换码换取明文网关密钥。兑换码一次性，有效期 5 分钟。
+
+**认证:** 无需认证（兑换码本身即凭据），按客户端 IP 限流 10 次/分钟
+
+**请求体:**
+```json
+{ "code": "ABCD2345" }
+```
+
+**响应 (200):**
+```json
+{
+  "message": "兑换成功。",
+  "data": { "key": "sk-gw-...", "key_id": 12 }
+}
+```
+
+**错误:**
+- 400：兑换码不存在 / 已被使用 / 已过期 / 密钥不可用，`error.message` 为中文原因
+- 429：兑换请求过于频繁，带 `retry-after`
+
+兑换采用先原子占位（`status` 由 `pending`/`delivered` 改为 `redeemed`）再取密钥的方式，并发请求只有一个能拿到明文密钥。
+
+### POST /api/user/dsh/authorize-confirm
+
+`/dsh/authorize` 确认按钮的提交目标，同时完成建密钥、发兑换码、投递本机回调。
+
+**认证:** 用户；必须同源（校验 `Origin` 与 `Sec-Fetch-Site`），`GET` 返回 405
+
+**请求体:** `application/x-www-form-urlencoded`
+
+| 字段 | 类型 | 必填 | 说明 |
+|:---|:---|:---|:---|
+| port | string | 是 | 1-65535，DSH 本机监听端口 |
+| session | string | 否 | 会话标识，最长 128，落库为 `dsh_enrollments.client_id` |
+
+**响应:**
+- `303`：`Location: http://127.0.0.1:{port}/callback?code={code}`。明文密钥不出现在跳转地址里
+- `403`：来源不合法
+- `502`：本机回调未响应；此时本次新建的密钥会被立即删除，兑换码作废，可直接重试
+- `500`：内部错误，响应为 HTML 页面，不含内部错误详情
+
+### GET /dsh/authorize（页面路由）
+
+授权确认页。缺少或非法的 `port` 时渲染「参数无效」；未登录时 302 到 `/login?next=`（保留 `port` 与 `session`）。
+
+### 投递规则
+
+投递目标只允许 `http`/`https` 且主机名必须是 `localhost`、`127.0.0.1` 或 `::1`；请求不跟随重定向（`redirect: "manual"`），超时 5 秒，失败即撤销本次颁发的密钥。
+
+### 过期清理
+
+`dsh_enrollments` 中超过 `expires_at` 仍未兑换的记录会被标记为 `expired`；`expired`/`redeemed`/`revoked` 且过期超过 24 小时的记录被物理删除。清理任务随数据库一起启动（`startDshEnrollmentReaper`，启动 1 分钟后首跑，之后每 10 分钟一次），与 OIDC 用户组过期任务同一套做法。
+
+---
+
 ## 用户接口 - 配额查询
 
 ### GET /api/user/quota
