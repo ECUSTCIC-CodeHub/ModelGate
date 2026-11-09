@@ -1,7 +1,5 @@
-// 自定义 Header 会附加到该渠道的所有上游请求（真实转发、模型测试、模型列表探测）。
-// 其中一部分头部由网关托管，允许覆盖会破坏鉴权或让请求体与声明不符，故列入黑名单，
-// 大小写不敏感地拒绝。
-const BLOCKED_HEADERS = new Set([
+// 网关托管的头部：允许覆盖会破坏鉴权、让请求体与声明不符或让网络层改写请求。
+const MANAGED_HEADERS = [
   "authorization",
   "x-api-key",
   "api-key",
@@ -21,14 +19,43 @@ const BLOCKED_HEADERS = new Set([
   "anthropic-version",
   "anthropic-beta",
   "accept-encoding",
-]);
+];
+
+// 转发链元数据：request_body_omit 支持剔除 metadata 说明上游会在意这类字段，
+// 而 header_mappings 的值由客户端控制。上游若按它们做 IP 白名单、绝对 URL 生成
+// 或同源校验，映射就成了提权通道，因此与托管头一起拒绝。
+const FORWARDING_METADATA_HEADERS = [
+  "forwarded",
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-proto",
+  "x-forwarded-port",
+  "x-forwarded-server",
+  "x-real-ip",
+  "x-client-ip",
+  "x-cluster-client-ip",
+  "true-client-ip",
+  "cf-connecting-ip",
+  "fastly-client-ip",
+  "x-original-url",
+  "x-rewrite-url",
+  "x-original-forwarded-for",
+  "sec-fetch-site",
+  "sec-fetch-mode",
+  "sec-fetch-dest",
+  "sec-fetch-user",
+];
+
+// 自定义 Header 会附加到该渠道的所有上游请求（真实转发、模型测试、模型列表探测），
+// 请求头映射的值还来自客户端，两处共用同一份黑名单与运行期拦截
+const BLOCKED_HEADERS = new Set([...MANAGED_HEADERS, ...FORWARDING_METADATA_HEADERS]);
 
 export const CUSTOM_HEADER_MAX_ENTRIES = 20;
 export const HEADER_MAPPING_MAX_ENTRIES = 10;
 export const CUSTOM_HEADER_NAME_MAX_LENGTH = 128;
 export const CUSTOM_HEADER_VALUE_MAX_LENGTH = 2048;
 
-// HTTP token 允许的字符集合（RFC 9110）
+// HTTP token 允许的字符集合（RFC 9110 token）
 const HEADER_NAME_PATTERN = /^[a-zA-Z0-9!#$%&'*+\-.^_`|~]+$/;
 
 // 值里的换行会破坏「每行一条」的编辑形态而无法再保存，其它控制字符与 NEL/NBSP
@@ -147,10 +174,16 @@ function isValidHeaderName(name: string): boolean {
   return name.length > 0 && name.length <= CUSTOM_HEADER_NAME_MAX_LENGTH && HEADER_NAME_PATTERN.test(name);
 }
 
-// 源和目标写反是这套配置最常见的笔误，而写反时值永远取不到、表现为「配了没生效」，
-// 所以要求两端都写成带连字符的名字：HTTP 头实际上都带连字符，这条约束不误伤真实用途
+// 源与目标写反是这套配置最常见的笔误，而写反时值永远取不到、表现为「配了没生效」。
+// 但两端都强制带连字符会误伤真实头名（referer、origin、traceparent 都无连字符，
+// 而它们改名恰恰是映射的典型用途），故收敛为「任一端带连字符」：写反时仍会命中，
+// 因为另一端仍是另一个真实头名、通常也不带连字符
 function looksLikeHeaderName(name: string): boolean {
   return name.includes("-");
+}
+
+function hasHyphenOnEitherSide(source: string, target: string): boolean {
+  return looksLikeHeaderName(source) || looksLikeHeaderName(target);
 }
 
 export type HeaderMappingResult =
@@ -180,8 +213,8 @@ export function validateHeaderMappings(value: unknown): HeaderMappingResult {
     if (!isValidHeaderName(source) || !isValidHeaderName(target)) {
       return { ok: false, error: `请求头映射的名称不合法或超过 ${CUSTOM_HEADER_NAME_MAX_LENGTH} 字符：${source || target}` };
     }
-    if (!looksLikeHeaderName(source) || !looksLikeHeaderName(target)) {
-      return { ok: false, error: `请求头映射的名称需为带连字符的 HTTP 头名：${source} -> ${target}` };
+    if (!hasHyphenOnEitherSide(source, target)) {
+      return { ok: false, error: `请求头映射的源与目标至少一端需是带连字符的 HTTP 头名（两端都不带，很可能是源与目标写反了）：${source} -> ${target}` };
     }
     if (BLOCKED_HEADERS.has(target.toLowerCase())) {
       return { ok: false, error: `请求头映射的目标不允许是 ${target}` };
@@ -220,23 +253,24 @@ export function stringifyHeaderMappings(mappings: HeaderMapping[]): string {
   return mappings.length === 0 ? "" : JSON.stringify(mappings);
 }
 
-// overwrite=false 用于标准转发：自定义 Header 与入站会话头先落位，映射值覆盖同名键；
-// overwrite=true 用于 other 透传：客户端已经把所有头原样带上，映射要与整体优先级保持一致，
-// 同样覆盖。两种场景下都不覆盖网关托管字段，目标名的黑名单在保存时已挡过一遍，
-// 这里再挡一次，避免手改库值或历史数据把客户端值写进鉴权头
+// 映射只做改名、值恒取自客户端，因此每个调用点都是「覆盖同名键」。目标名的黑名单在保存
+// 时已挡过一遍，这里再挡一次：手改库值或历史数据若带着鉴权头目标，客户端值就会被写进
+// 鉴权头。名称同样要重新规范化并校验：运行期拿到的是未经校验的库值，直接拿去 get/set
+// 会让 Headers 抛错，而这个异常落在 fetch 的 try 之外，会把整条转发路径变成永久 500
 export function applyHeaderMappings(
   target: Headers,
   mappings: HeaderMapping[],
   inboundHeaders?: Headers,
-  overwrite = true,
 ): Headers {
   if (mappings.length === 0 || !inboundHeaders) return target;
-  for (const { from, to } of mappings) {
-    if (BLOCKED_HEADERS.has(to.toLowerCase())) continue;
-    const value = inboundHeaders.get(from);
-    if (!value) continue;
-    if (!overwrite && target.has(to)) continue;
-    target.set(to, value);
+  for (const mapping of mappings) {
+    const fromName = normalizeCustomHeaderName(mapping.from);
+    const toName = normalizeCustomHeaderName(mapping.to);
+    if (!isValidHeaderName(fromName) || !isValidHeaderName(toName)) continue;
+    if (BLOCKED_HEADERS.has(toName.toLowerCase())) continue;
+    const value = inboundHeaders.get(fromName);
+    if (!value || value.trim() === "") continue;
+    target.set(toName, value);
   }
   return target;
 }

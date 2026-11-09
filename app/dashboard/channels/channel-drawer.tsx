@@ -276,8 +276,9 @@ export function ChannelDrawer({
                 onChange={(e) => onFormChange({ header_mappings: e.target.value })}
               />
               <p className="text-xs text-[var(--color-foreground-muted)]">
-                把客户端请求头改名后发往上游，值取自客户端：客户端没带源头的请求不会下发目标头。
-                每行「源: 目标」，最多 10 项；目标不能是 Authorization、Content-Type 等网关托管的 Header。
+                把客户端请求头改名后发往上游，值取自客户端：客户端没带源头、或源头值为空的请求不会下发目标头。
+                每行「源: 目标」，最多 10 项，两端至少一端需带连字符（防止源与目标写反）；
+                目标不能是 Authorization、Content-Type 等网关托管 Header，也不能是 X-Forwarded-For 这类转发链元数据。
               </p>
             </div>
             <div className="space-y-2 md:col-span-2">

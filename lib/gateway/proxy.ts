@@ -65,61 +65,52 @@ function passthroughSessionHeaders(inboundHeaders?: Headers): Record<string, str
 }
 
 // 渠道配置的请求头映射：客户端带了源头才改名下发，没带就不发，不凭空造值
-export function mappedHeaderEntries(route: RoutedModel, inboundHeaders?: Headers): Record<string, string> {
-  const mappings = parseHeaderMappings(route.channel.header_mappings);
-  if (mappings.length === 0 || !inboundHeaders) return {};
-  return Object.fromEntries(
-    applyHeaderMappings(new Headers(), mappings, inboundHeaders).entries(),
-  );
+function applyConfiguredHeaderMappings(target: Headers, route: RoutedModel, inboundHeaders?: Headers): Headers {
+  return applyHeaderMappings(target, parseHeaderMappings(route.channel.header_mappings), inboundHeaders);
 }
 
-function mergeHeaders(base: Record<string, string>, extra: Record<string, string>): Record<string, string> {
-  if (Object.keys(base).length === 0) return { ...extra };
-  const merged = new Headers(base);
-  for (const [name, value] of Object.entries(extra)) merged.set(name, value);
-  return Object.fromEntries(merged.entries());
+// 三层自定义头共用一把 Headers：键名大小写不敏感地覆盖，落位顺序即优先级
+function mergeHeaderLayers(
+  inboundHeaders: Headers | undefined,
+  customHeaders: Record<string, string>,
+): Headers {
+  const merged = new Headers(passthroughSessionHeaders(inboundHeaders));
+  for (const [name, value] of Object.entries(customHeaders)) merged.set(name, value);
+  return merged;
 }
 
 function buildUpstreamHeaders(
   route: RoutedModel,
   protocol: GatewayProtocol,
   inboundHeaders?: Headers,
-): Record<string, string> {
+): Headers {
   const userAgent = resolveUpstreamUserAgent(protocol, route.channel.user_agent, inboundHeaders);
   const apiKey = route.channel.api_key?.trim() ?? "";
 
   // 顺序固定为：入站会话亲和头 -> 自定义 Header -> 请求头映射 -> 托管字段
   // （content-type、user-agent、鉴权头等），后者覆盖同名键，保证托管字段永远胜出
-  const customHeaders = mergeHeaders(
-    mergeHeaders(
-      passthroughSessionHeaders(inboundHeaders),
-      parseCustomHeaders(route.channel.custom_headers),
-    ),
-    mappedHeaderEntries(route, inboundHeaders),
+  const customHeaders = applyConfiguredHeaderMappings(
+    mergeHeaderLayers(inboundHeaders, parseCustomHeaders(route.channel.custom_headers)),
+    route,
+    inboundHeaders,
   );
 
+  customHeaders.set("content-type", "application/json");
+  customHeaders.set("user-agent", userAgent);
+
   if (protocol === "anthropic_messages") {
-    const headers: Record<string, string> = {
-      ...customHeaders,
-      "content-type": "application/json",
-      "user-agent": userAgent,
-      "anthropic-version": inboundHeaders?.get("anthropic-version") || "2023-06-01",
-    };
+    customHeaders.set("anthropic-version", inboundHeaders?.get("anthropic-version") || "2023-06-01");
     if (apiKey) {
-      headers["x-api-key"] = apiKey;
-      headers["authorization"] = `Bearer ${apiKey}`;
+      customHeaders.set("x-api-key", apiKey);
+      customHeaders.set("authorization", `Bearer ${apiKey}`);
     }
     const beta = inboundHeaders?.get("anthropic-beta");
-    if (beta) headers["anthropic-beta"] = beta;
-    return headers;
+    if (beta) customHeaders.set("anthropic-beta", beta);
+    return customHeaders;
   }
 
-  return {
-    ...customHeaders,
-    "content-type": "application/json",
-    "user-agent": userAgent,
-    ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
-  };
+  if (apiKey) customHeaders.set("authorization", `Bearer ${apiKey}`);
+  return customHeaders;
 }
 
 function createTimeoutController(timeoutSeconds: number) {
