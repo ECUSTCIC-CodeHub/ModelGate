@@ -12,7 +12,7 @@ import { selectModelRoute, findUaDenyMatchForAlias, resolveModelFallbackAlias } 
 import { resolveClientIp } from "@/lib/core/client-ip";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { resolveTriState } from "@/lib/gateway/user-preferences";
-import { parseCustomHeaders } from "@/lib/gateway/custom-headers";
+import { applyHeaderMappings, parseCustomHeaders, parseHeaderMappings } from "@/lib/gateway/custom-headers";
 import { fetchUpstream } from "@/lib/gateway/upstream-proxy";
 import { isFeatureEnabled } from "@/lib/core/features";
 import { findMatchingRedeemBalance } from "@/lib/services/redeem-codes";
@@ -294,6 +294,7 @@ async function runMultipartGatewayRequest(request: Request) {
       const upstreamHeaders = new Headers(
         parseCustomHeaders(route.channel.custom_headers),
       );
+      applyHeaderMappings(upstreamHeaders, parseHeaderMappings(route.channel.header_mappings), request.headers);
       if (route.channel.api_key?.trim()) {
         upstreamHeaders.set("authorization", `Bearer ${route.channel.api_key.trim()}`);
       }

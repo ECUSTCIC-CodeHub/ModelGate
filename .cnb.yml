@@ -76,6 +76,14 @@
   stages:
     - *sync
 
+# 行为契约脚本既没有测试框架兜着，也不在 tsc 的类型检查范围里：必须进 CI 才会被执行。
+# 脚本自举 --loader 解析路径别名与 next/server 桩，不装依赖也能跑
+.verify: &verify
+  - name: verify header mappings
+    image: docker.cnb.cool/scaffold/examples/nodejs:latest
+    script: |
+      node --loader ./scripts/verify-opencode-session-passthrough-loader.mjs scripts/verify-header-mappings.mjs
+
 .push: &push
   runner:
     cpus: 1
@@ -113,6 +121,8 @@ $:
       services:
         - vscode
         - docker
+  pull_request:
+    - *verify
   tag_push:
     - *build-full
     - *sync-only

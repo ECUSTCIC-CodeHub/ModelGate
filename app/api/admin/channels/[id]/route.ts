@@ -11,7 +11,7 @@ import { validateUaRestrictionRules } from "@/lib/gateway/ua-restrictions";
 import { toLocalDatetime, validateTimeRestrictions, normalizeTimeRestrictions } from "@/lib/gateway/channel-time";
 import { disableExpiredChannels } from "@/lib/gateway/channel-expiry";
 import { disableExpiredModels } from "@/lib/gateway/model-expiry";
-import { stringifyCustomHeaders, validateCustomHeaders } from "@/lib/gateway/custom-headers";
+import { stringifyCustomHeaders, stringifyHeaderMappings, validateCustomHeaders, validateHeaderMappings } from "@/lib/gateway/custom-headers";
 import { stringifyRequestBodyOmit, validateRequestBodyOmit } from "@/lib/gateway/request-body-omit";
 import { serializeRetryStatusCodes } from "@/lib/gateway/upstream-error";
 import { isMaskedApiKey, looksLikeMaskedApiKey, maskApiKey, resolveSubmittedApiKey } from "@/lib/shared/redact";
@@ -41,6 +41,7 @@ const updateSchema = z.object({
   expires_at: z.string().max(32).nullable().optional(),
   time_restrictions: z.string().max(20000).optional(),
   custom_headers: z.record(z.string(), z.string()).nullable().optional(),
+  header_mappings: z.array(z.object({ from: z.string(), to: z.string() })).nullable().optional(),
   request_body_omit: z.array(z.string()).nullable().optional(),
   group_name: z.string().max(64).nullable().optional(),
   retry_status_codes: z.array(z.number().int().min(400).max(599)).max(64).nullable().optional(),
@@ -172,6 +173,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   if (!customHeadersResult.ok) return jsonError(customHeadersResult.error, 400);
   const requestBodyOmitResult = validateRequestBodyOmit(parsed.data.request_body_omit);
   if (!requestBodyOmitResult.ok) return jsonError(requestBodyOmitResult.error, 400);
+  const headerMappingsResult = validateHeaderMappings(parsed.data.header_mappings);
+  if (!headerMappingsResult.ok) return jsonError(headerMappingsResult.error, 400);
 
   const merged = {
     ...existing,
@@ -201,6 +204,11 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       parsed.data.request_body_omit === undefined
         ? (existing as { request_body_omit?: string | null }).request_body_omit ?? ""
         : stringifyRequestBodyOmit(requestBodyOmitResult.fields),
+    // 字段缺席保持原值，传 [] 或 null 整份清空
+    header_mappings:
+      parsed.data.header_mappings === undefined
+        ? (existing as { header_mappings?: string | null }).header_mappings ?? ""
+        : stringifyHeaderMappings(headerMappingsResult.mappings),
     expires_at: nextExpiresAt,
     // 字段缺席保持原值，传 null 或空串清空
     group_name:
@@ -240,7 +248,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       .execute(
         `UPDATE channels
          SET name = ?, base_url = ?, api_key = ?, supported_protocols = ?, user_agent = ?, proxy_url = ?, enabled = ?, weight = ?, max_concurrency = ?, timeout = ?,
-             quota_tokens = ?, quota_requests = ?, period_cycles = ?, force_include_usage = ?, ua_restrictions = ?, expires_at = ?, time_restrictions = ?, custom_headers = ?, request_body_omit = ?, group_name = ?, retry_status_codes = ?, api_key_private = ?, created_by = ?
+             quota_tokens = ?, quota_requests = ?, period_cycles = ?, force_include_usage = ?, ua_restrictions = ?, expires_at = ?, time_restrictions = ?, custom_headers = ?, request_body_omit = ?, group_name = ?, retry_status_codes = ?, header_mappings = ?, api_key_private = ?, created_by = ?
          WHERE id = ?`,
         [
           (merged as { name: string }).name,
@@ -268,6 +276,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           (merged as { request_body_omit: string }).request_body_omit,
           (merged as { group_name: string }).group_name || null,
           (merged as { retry_status_codes: string | null }).retry_status_codes ?? null,
+          (merged as { header_mappings: string }).header_mappings || null,
           nextPrivate,
           nextCreatedBy,
           id,

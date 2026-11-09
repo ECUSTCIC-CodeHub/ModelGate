@@ -28,6 +28,7 @@ import {
 } from "./channel-model";
 import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
 import { normalizeRetryStatusCodes } from "@/lib/gateway/upstream-error";
+import type { HeaderMapping } from "@/lib/gateway/custom-headers";
 import { parseMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
 import { cyclesToDrafts, draftsToPayload } from "@/app/dashboard/period-cycle-fields";
 import { scheduleDraftsToPayload, schedulesToDrafts } from "@/app/dashboard/multiplier-schedule-fields";
@@ -78,6 +79,35 @@ function parseCustomHeadersInput(value: string): Record<string, string> | null {
     headers[trimmed.slice(0, separatorAt).trim()] = trimmed.slice(separatorAt + 1).trim();
   }
   return headers;
+}
+
+// 表单里按「源: 目标」每行编辑，落库是 [{ from, to }] 数组
+function formatHeaderMappingsInput(raw: unknown): string {
+  if (typeof raw !== "string" || raw.trim() === "") return "";
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return "";
+    return parsed
+      .filter((item): item is HeaderMapping => Boolean(item) && typeof item === "object" && typeof (item as HeaderMapping).from === "string" && typeof (item as HeaderMapping).to === "string")
+      .map((item) => `${item.from}: ${item.to}`)
+      .join("\n");
+  } catch {
+    return "";
+  }
+}
+
+// 解析失败返回 null 由调用方拦下，避免用户以为保存成功却清空了配置；
+// 只校验形态，名称合法性与黑名单交由后端 validateHeaderMappings 统一裁定
+function parseHeaderMappingsInput(value: string): HeaderMapping[] | null {
+  const mappings: HeaderMapping[] = [];
+  for (const line of value.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const separatorAt = trimmed.indexOf(":");
+    if (separatorAt <= 0) return null;
+    mappings.push({ from: trimmed.slice(0, separatorAt).trim(), to: trimmed.slice(separatorAt + 1).trim() });
+  }
+  return mappings;
 }
 
 // 保留入参顺序的受限并发映射
@@ -194,6 +224,7 @@ export function useChannelAdmin() {
       time_restrictions: row.time_restrictions ?? "",
       custom_headers: formatCustomHeadersInput(row.custom_headers),
       request_body_omit: formatRequestBodyOmitInput(row.request_body_omit),
+      header_mappings: formatHeaderMappingsInput(row.header_mappings),
       group_name: row.group_name ?? "",
       retry_status_codes: formatRetryStatusCodesInput(row.retry_status_codes),
     });
@@ -305,6 +336,11 @@ export function useChannelAdmin() {
       toast({ variant: "error", description: "自定义 Header 需按「名称: 值」每行一条填写。" });
       return;
     }
+    const headerMappings = parseHeaderMappingsInput(channelForm.header_mappings);
+    if (headerMappings === null) {
+      toast({ variant: "error", description: "请求头映射需按「源: 目标」每行一条填写。" });
+      return;
+    }
     const requestBodyOmit = parseRequestBodyOmitInput(channelForm.request_body_omit);
     if (requestBodyOmit === null) {
       toast({
@@ -351,6 +387,7 @@ export function useChannelAdmin() {
           time_restrictions: channelForm.time_restrictions,
           custom_headers: customHeaders,
           request_body_omit: requestBodyOmit,
+          header_mappings: headerMappings,
           group_name: channelForm.group_name.trim(),
           retry_status_codes: normalizeRetryStatusCodes(channelForm.retry_status_codes),
           ...buildQuotaPayload(channelForm),
@@ -384,6 +421,7 @@ export function useChannelAdmin() {
       time_restrictions: channelForm.time_restrictions,
       custom_headers: customHeaders,
       request_body_omit: requestBodyOmit,
+      header_mappings: headerMappings,
       group_name: channelForm.group_name.trim(),
       retry_status_codes: normalizeRetryStatusCodes(channelForm.retry_status_codes),
       ...buildQuotaPayload(channelForm),

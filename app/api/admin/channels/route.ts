@@ -15,7 +15,7 @@ import { maskApiKey } from "@/lib/shared/redact";
 import { resolveChannelOwnerId, resolveChannelOwnerIds } from "@/lib/services/channel-ownership";
 import type { ModelRow } from "@/app/dashboard/channels/channel-model";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
-import { stringifyCustomHeaders, validateCustomHeaders } from "@/lib/gateway/custom-headers";
+import { stringifyCustomHeaders, stringifyHeaderMappings, validateCustomHeaders, validateHeaderMappings } from "@/lib/gateway/custom-headers";
 import { stringifyRequestBodyOmit, validateRequestBodyOmit } from "@/lib/gateway/request-body-omit";
 import { validatePeriodCycles, serializePeriodCycles } from "@/lib/gateway/period-cycles";
 import { validateMultiplierSchedules, normalizeMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
@@ -47,6 +47,8 @@ const createSchema = z.object({
   expires_at: z.string().max(32).nullable().optional(),
   time_restrictions: z.string().max(20000).optional(),
   custom_headers: customHeadersSchema,
+  // 细则同 custom_headers：这里只校验形态，语义交给 validateHeaderMappings
+  header_mappings: z.array(z.object({ from: z.string(), to: z.string() })).nullable().optional(),
   request_body_omit: z.array(z.string()).optional(),
   group_name: z.string().max(64).nullable().optional(),
   retry_status_codes: z.array(z.number().int().min(400).max(599)).max(64).nullable().optional(),
@@ -205,13 +207,15 @@ export async function POST(request: Request) {
   if (!customHeadersResult.ok) return jsonError(customHeadersResult.error, 400);
   const requestBodyOmitResult = validateRequestBodyOmit(parsed.data.request_body_omit);
   if (!requestBodyOmitResult.ok) return jsonError(requestBodyOmitResult.error, 400);
+  const headerMappingsResult = validateHeaderMappings(parsed.data.header_mappings);
+  if (!headerMappingsResult.ok) return jsonError(headerMappingsResult.error, 400);
 
   const channelId = await gatewayDb.transaction(async (tx) => {
     const channelEnabled = parsed.data.enabled === false ? 0 : 1;
     const result = await tx
       .execute(
-        `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, period_cycles, force_include_usage, ua_restrictions, expires_at, time_restrictions, custom_headers, request_body_omit, group_name, retry_status_codes, created_by, api_key_private)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_tokens, quota_requests, period_cycles, force_include_usage, ua_restrictions, expires_at, time_restrictions, custom_headers, request_body_omit, group_name, retry_status_codes, header_mappings, created_by, api_key_private)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           parsed.data.name,
           parsed.data.base_url,
@@ -234,6 +238,7 @@ export async function POST(request: Request) {
           stringifyRequestBodyOmit(requestBodyOmitResult.fields),
           parsed.data.group_name?.trim() || null,
           serializeRetryStatusCodes(parsed.data.retry_status_codes),
+          stringifyHeaderMappings(headerMappingsResult.mappings),
           guard.auth.user.id,
           parsed.data.api_key_private === true ? 1 : 0,
         ],

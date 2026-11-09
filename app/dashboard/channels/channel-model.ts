@@ -91,6 +91,7 @@ export type Channel = {
   time_restrictions: string;
   custom_headers: string;
   request_body_omit: string;
+  header_mappings: string | null;
   period_cycles: string | null;
   group_name: string;
   retry_status_codes: string | null;
@@ -138,6 +139,7 @@ export type ChannelForm = {
   time_restrictions: string;
   custom_headers: string;
   request_body_omit: string;
+  header_mappings: string;
   group_name: string;
   retry_status_codes: string;
 };
@@ -218,6 +220,7 @@ export const initialChannelForm: ChannelForm = {
   time_restrictions: "",
   custom_headers: "",
   request_body_omit: "",
+  header_mappings: "",
   group_name: "",
   retry_status_codes: "",
 };

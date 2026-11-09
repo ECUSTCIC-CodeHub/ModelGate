@@ -74,6 +74,7 @@ type CandidateRow = {
   channel_time_restrictions: string;
   channel_custom_headers: string | null;
   channel_request_body_omit: string | null;
+  channel_header_mappings: string | null;
   channel_group_name: string | null;
   channel_retry_status_codes: string | null;
 };
@@ -145,7 +146,8 @@ const LIST_MODEL_ROUTES_SQL = `SELECT
       c.custom_headers as channel_custom_headers,
       c.request_body_omit as channel_request_body_omit,
       c.group_name as channel_group_name,
-      c.retry_status_codes as channel_retry_status_codes
+      c.retry_status_codes as channel_retry_status_codes,
+      c.header_mappings as channel_header_mappings
    FROM models m
    JOIN channels c ON c.id = m.channel_id
    WHERE m.alias = ? AND m.enabled = 1 AND c.enabled = 1 AND m.deleted_at IS NULL AND c.deleted_at IS NULL`;
@@ -235,6 +237,7 @@ function mapRowToRoute(row: CandidateRow, inboundProtocol?: GatewayProtocol): Ro
       request_body_omit: row.channel_request_body_omit ?? null,
       group_name: row.channel_group_name ?? null,
       retry_status_codes: row.channel_retry_status_codes ?? null,
+      header_mappings: row.channel_header_mappings ?? null,
     },
     effective_upstream_protocol: effectiveUpstreamProtocol,
   };
