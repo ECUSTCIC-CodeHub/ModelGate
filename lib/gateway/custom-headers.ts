@@ -24,6 +24,7 @@ const BLOCKED_HEADERS = new Set([
 ]);
 
 export const CUSTOM_HEADER_MAX_ENTRIES = 20;
+export const HEADER_MAPPING_MAX_ENTRIES = 10;
 export const CUSTOM_HEADER_NAME_MAX_LENGTH = 128;
 export const CUSTOM_HEADER_VALUE_MAX_LENGTH = 2048;
 
@@ -47,6 +48,11 @@ function isUsableHeader(name: string, value: string): boolean {
 }
 
 export type CustomHeaders = Record<string, string>;
+
+// 请求头映射：把客户端请求里的某个头改名后发往上游，用于不同客户端/上游对同一语义
+// 使用不同头名的场景（如客户端的 X-Session-Id 映射成上游要的 X-Opencode-Session）。
+// 纯重命名，值始终取自客户端，因此不能借它伪造鉴权头
+export type HeaderMapping = { from: string; to: string };
 
 export type CustomHeadersResult =
   | { ok: true; headers: CustomHeaders }
@@ -135,4 +141,102 @@ export function applyCustomHeaders(target: Headers, headers: CustomHeaders, over
     if (!overwrite && target.has(name)) continue;
     target.set(name, value);
   }
+}
+
+function isValidHeaderName(name: string): boolean {
+  return name.length > 0 && name.length <= CUSTOM_HEADER_NAME_MAX_LENGTH && HEADER_NAME_PATTERN.test(name);
+}
+
+// 源和目标写反是这套配置最常见的笔误，而写反时值永远取不到、表现为「配了没生效」，
+// 所以要求两端都写成带连字符的名字：HTTP 头实际上都带连字符，这条约束不误伤真实用途
+function looksLikeHeaderName(name: string): boolean {
+  return name.includes("-");
+}
+
+export type HeaderMappingResult =
+  | { ok: true; mappings: HeaderMapping[] }
+  | { ok: false; error: string };
+
+// 源与目标都必须是合法 token，目标还不能是网关托管头：映射的值来自客户端，
+// 允许写进 Authorization 等于给了客户端绕过渠道密钥的通道
+export function validateHeaderMappings(value: unknown): HeaderMappingResult {
+  if (value === undefined || value === null) return { ok: true, mappings: [] };
+  if (!Array.isArray(value)) return { ok: false, error: "请求头映射需为对象数组" };
+  if (value.length > HEADER_MAPPING_MAX_ENTRIES) {
+    return { ok: false, error: `请求头映射最多 ${HEADER_MAPPING_MAX_ENTRIES} 项` };
+  }
+
+  const mappings: HeaderMapping[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return { ok: false, error: "请求头映射需为对象数组" };
+    }
+    const { from, to } = item as Record<string, unknown>;
+    if (typeof from !== "string" || typeof to !== "string") {
+      return { ok: false, error: "请求头映射的源与目标都必须是字符串" };
+    }
+    const source = normalizeCustomHeaderName(from);
+    const target = normalizeCustomHeaderName(to);
+    if (!isValidHeaderName(source) || !isValidHeaderName(target)) {
+      return { ok: false, error: `请求头映射的名称不合法或超过 ${CUSTOM_HEADER_NAME_MAX_LENGTH} 字符：${source || target}` };
+    }
+    if (!looksLikeHeaderName(source) || !looksLikeHeaderName(target)) {
+      return { ok: false, error: `请求头映射的名称需为带连字符的 HTTP 头名：${source} -> ${target}` };
+    }
+    if (BLOCKED_HEADERS.has(target.toLowerCase())) {
+      return { ok: false, error: `请求头映射的目标不允许是 ${target}` };
+    }
+    // 同名映射是无意义配置，留着只会让管理员误以为做了什么；键名大小写不敏感地判重
+    if (mappings.some((mapping) => mapping.to.toLowerCase() === target.toLowerCase())) {
+      return { ok: false, error: `请求头映射的目标 ${target} 重复` };
+    }
+    mappings.push({ from: source, to: target });
+  }
+  return { ok: true, mappings };
+}
+
+// 存储为 JSON 字符串，读回逐项容错：脏数据里混入一项非法映射时其余仍生效
+export function parseHeaderMappings(raw: unknown): HeaderMapping[] {
+  if (typeof raw !== "string" || raw.trim() === "") return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const mappings: HeaderMapping[] = [];
+  for (const item of parsed) {
+    if (mappings.length >= HEADER_MAPPING_MAX_ENTRIES) break;
+    const result = validateHeaderMappings([item]);
+    if (result.ok && result.mappings.length === 1 && !mappings.some((m) => m.to.toLowerCase() === result.mappings[0].to.toLowerCase())) {
+      mappings.push(result.mappings[0]);
+    }
+  }
+  return mappings;
+}
+
+export function stringifyHeaderMappings(mappings: HeaderMapping[]): string {
+  return mappings.length === 0 ? "" : JSON.stringify(mappings);
+}
+
+// overwrite=false 用于标准转发：自定义 Header 与入站会话头先落位，映射值覆盖同名键；
+// overwrite=true 用于 other 透传：客户端已经把所有头原样带上，映射要与整体优先级保持一致，
+// 同样覆盖。两种场景下都不覆盖网关托管字段，目标名的黑名单在保存时已挡过一遍，
+// 这里再挡一次，避免手改库值或历史数据把客户端值写进鉴权头
+export function applyHeaderMappings(
+  target: Headers,
+  mappings: HeaderMapping[],
+  inboundHeaders?: Headers,
+  overwrite = true,
+): Headers {
+  if (mappings.length === 0 || !inboundHeaders) return target;
+  for (const { from, to } of mappings) {
+    if (BLOCKED_HEADERS.has(to.toLowerCase())) continue;
+    const value = inboundHeaders.get(from);
+    if (!value) continue;
+    if (!overwrite && target.has(to)) continue;
+    target.set(to, value);
+  }
+  return target;
 }

@@ -5,7 +5,7 @@ import type { GatewayProtocol } from "@/lib/gateway/protocols";
 import { fetchUpstream } from "@/lib/gateway/upstream-proxy";
 import { isTimeoutError, upstreamFailureStatus } from "@/lib/gateway/upstream-error";
 import { redactErrorMessage, redactUrlCredentials } from "@/lib/shared/redact";
-import { parseCustomHeaders } from "@/lib/gateway/custom-headers";
+import { applyHeaderMappings, parseCustomHeaders, parseHeaderMappings } from "@/lib/gateway/custom-headers";
 
 export function normalizeProviderBaseUrl(baseUrl: string) {
   const normalized = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
@@ -64,6 +64,15 @@ function passthroughSessionHeaders(inboundHeaders?: Headers): Record<string, str
   return headers;
 }
 
+// 渠道配置的请求头映射：客户端带了源头才改名下发，没带就不发，不凭空造值
+export function mappedHeaderEntries(route: RoutedModel, inboundHeaders?: Headers): Record<string, string> {
+  const mappings = parseHeaderMappings(route.channel.header_mappings);
+  if (mappings.length === 0 || !inboundHeaders) return {};
+  return Object.fromEntries(
+    applyHeaderMappings(new Headers(), mappings, inboundHeaders).entries(),
+  );
+}
+
 function mergeHeaders(base: Record<string, string>, extra: Record<string, string>): Record<string, string> {
   if (Object.keys(base).length === 0) return { ...extra };
   const merged = new Headers(base);
@@ -79,11 +88,14 @@ function buildUpstreamHeaders(
   const userAgent = resolveUpstreamUserAgent(protocol, route.channel.user_agent, inboundHeaders);
   const apiKey = route.channel.api_key?.trim() ?? "";
 
-  // 顺序固定为：入站会话亲和头 -> 自定义 Header -> 托管字段（content-type、user-agent、
-  // 鉴权头等），后者覆盖同名键，保证托管字段永远胜出
+  // 顺序固定为：入站会话亲和头 -> 自定义 Header -> 请求头映射 -> 托管字段
+  // （content-type、user-agent、鉴权头等），后者覆盖同名键，保证托管字段永远胜出
   const customHeaders = mergeHeaders(
-    passthroughSessionHeaders(inboundHeaders),
-    parseCustomHeaders(route.channel.custom_headers),
+    mergeHeaders(
+      passthroughSessionHeaders(inboundHeaders),
+      parseCustomHeaders(route.channel.custom_headers),
+    ),
+    mappedHeaderEntries(route, inboundHeaders),
   );
 
   if (protocol === "anthropic_messages") {

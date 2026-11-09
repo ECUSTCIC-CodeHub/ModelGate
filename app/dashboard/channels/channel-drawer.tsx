@@ -267,6 +267,20 @@ export function ChannelDrawer({
               </p>
             </div>
             <div className="space-y-2 md:col-span-2">
+              <Label>请求头映射</Label>
+              <textarea
+                className="min-h-16 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-foreground)] outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-ring)] disabled:opacity-50"
+                placeholder={"每行一条，例如：\nx-session-id: X-Opencode-Session"}
+                value={form.header_mappings}
+                disabled={addressLocked}
+                onChange={(e) => onFormChange({ header_mappings: e.target.value })}
+              />
+              <p className="text-xs text-[var(--color-foreground-muted)]">
+                把客户端请求头改名后发往上游，值取自客户端：客户端没带源头的请求不会下发目标头。
+                每行「源: 目标」，最多 10 项；目标不能是 Authorization、Content-Type 等网关托管的 Header。
+              </p>
+            </div>
+            <div className="space-y-2 md:col-span-2">
               <Label>剔除请求体字段</Label>
               <textarea
                 className="min-h-16 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-foreground)] outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-ring)] disabled:opacity-50"

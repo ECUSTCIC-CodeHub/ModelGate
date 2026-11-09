@@ -1669,6 +1669,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | period_cycles | object[] | 否 | [] | 多档重置周期，见「多档重置周期」一节；为空数组表示清空已有档位（仅完整版） |
 | force_include_usage | bool | 否 | true | 流式请求时向上游发送 `stream_options.include_usage`，设为 false 可兼容不支持该参数的上游（如微软） |
 | request_body_omit | array\|null | 否 | null | 渠道级请求体字段剔除列表，字符串数组，元素为要从上游请求体中删除的**顶层**字段名（如 `["metadata"]`）。发往该渠道上游的所有请求都会先删除这些字段，用于兼容不接受特定字段的上游（如智谱不接受 `metadata`）。最多 16 项，单个字段名最长 64 字符且须为 `[A-Za-z_][A-Za-z0-9_]*` 形态的顶层字段名（不支持 `a.b`、`a[0]` 这类嵌套路径写法）；重复项自动去重，空字符串项被忽略。`model`、`messages`、`input`、`contents`、`prompt`、`system`、`stream` 承载请求语义，不允许剔除。留空或 null 表示不剔除。读取时容错：脏数据或含非法项时整份退回「不剔除」。`other` 通用转发路径请求体原样转发，该配置对其不生效 |
+| header_mappings | object[]\|null | 否 | null | 渠道级请求头映射，元素形如 `{"from":"x-session-id","to":"X-Opencode-Session"}`，表示把客户端请求里的 `from` 头**改名**后以 `to` 发往该渠道上游，值始终取自客户端。用于不同客户端与上游对同一语义使用不同头名的场景（如客户端的 `X-Session-Id` 映射成上游要的 `X-Opencode-Session`）。最多 10 项；两端名称须为 HTTP token 字符、最长 128 字符且必须带连字符（防止把源与目标写反后静默失效）；`to` 不允许是 `Authorization`、`X-Api-Key`、`Host`、`Content-Type`、`User-Agent` 等网关托管头（与 `custom_headers` 同一份黑名单），`to` 大小写不敏感地不允许重复。客户端未携带 `from` 时不下发 `to`，网关不会凭空造值。生效路径：标准转发（`chat_completions` / `responses` / `embeddings` / `images` / `anthropic_messages`）、`/api/v1/images/edits`、`other` 透传。优先级低于托管字段，高于 `custom_headers`；`other` 透传路径下会覆盖客户端的同名透传值。模型测试与模型列表探测不携带客户端请求，故不生效。读取时容错：脏数据逐项丢弃，非法项不影响其余项 |
 | models | array | 否 | [] | 初始模型列表 |
 
 `models` 初始模型字段：
@@ -1701,7 +1702,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 > 无添加人渠道指 `created_by` 为空，或其指向的用户已被删除、停用或不再是管理员（渠道不会因此被永久冻结，任意管理员可接管）。无添加人的私有渠道由本次修改者接管为新的添加人。公共渠道的 `created_by` 不会因为添加人失效而被清空，归属信息保留。开启 `api_key_private` 后，非添加人不能修改该渠道的 `base_url` 与 `proxy_url`（否则可把地址指向自己的服务器再借密钥读取接口取出密钥），违反时返回 403。
 
 
-**请求体:** 与 POST 相同，所有字段均为可选。`force_include_usage` 变更对后续新请求立即生效，不影响已建立的连接。`proxy_url` 传空字符串可清空代理配置。`custom_headers` 字段缺席时保持原值，传 `{}` 或 `null` 整份清空（与其它可清空字段一致）。`request_body_omit` 字段缺席时保持原值，传 `[]` 或 `null` 清空剔除配置。`period_cycles` 字段缺席时保持原值，传 `[]` 清空所有周期档。
+**请求体:** 与 POST 相同，所有字段均为可选。`force_include_usage` 变更对后续新请求立即生效，不影响已建立的连接。`proxy_url` 传空字符串可清空代理配置。`custom_headers` 字段缺席时保持原值，传 `{}` 或 `null` 整份清空（与其它可清空字段一致）。`header_mappings` 字段缺席时保持原值，传 `[]` 或 `null` 整份清空。`request_body_omit` 字段缺席时保持原值，传 `[]` 或 `null` 清空剔除配置。`period_cycles` 字段缺席时保持原值，传 `[]` 清空所有周期档。
 
 **模型同步:**
 
@@ -3303,6 +3304,8 @@ access token 过期但 refresh token 仍有效时按已登录处理（整页表�
 **User-Agent 透传:** 渠道配置了 `user_agent` 时，网关请求固定使用该值；未配置时，如果客户端请求包含 `User-Agent`，网关会原样透传给上游渠道；仍未提供时 OpenAI 协议默认使用 `OpenAI/JS 6.39.0`，Anthropic Messages 协议默认使用 Claude Code UA `claude-cli/2.1.148`。可通过环境变量 `CLAUDE_CODE_USER_AGENT` 覆盖默认 Claude Code UA。
 
 **上游代理:** 渠道配置了 `proxy_url` 时，网关访问该渠道的普通调用、流式调用、模型测试和模型列表探测都会通过该 HTTP(S) 代理转发；未配置时直连上游。
+
+**请求头映射:** 渠道配置了 `header_mappings` 时，网关从客户端请求里取出 `from` 头的原值，以 `to` 为名发往上游。它是纯改名而非赋值，所以没带 `from` 的请求不会下发 `to`；`to` 命中网关托管头时保存阶段即拒绝，运行期也会再挡一次，避免客户端值被写进鉴权头。标准转发路径的优先级自低到高为：客户端会话亲和头 → `custom_headers` → `header_mappings` → 网关托管字段（`Content-Type`、`User-Agent`、鉴权头等），因此映射可以覆盖渠道静态值、但压不过托管字段。
 
 **会话亲和头透传:** 客户端请求带了 `X-Opencode-Session` 时，网关把它的原值透传给上游（标准转发路径的 chat_completions / responses / embeddings / images / anthropic_messages 全部生效）；未携带时不下发该头，也不生成默认值。该头按会话变化，无法用渠道级静态 `custom_headers` 表达，因此由网关单独透传；渠道 `custom_headers` 里配置了同名头时以渠道值为准（键名大小写不敏感）。`other` 通用转发本就原样转发全部请求头，不受此规则影响。
 

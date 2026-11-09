@@ -362,6 +362,7 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("channels", "request_body_omit", "request_body_omit TEXT DEFAULT NULL");
   await db.ensureColumn("channels", "group_name", "group_name TEXT DEFAULT NULL");
   await db.ensureColumn("channels", "retry_status_codes", "retry_status_codes TEXT DEFAULT NULL");
+  await db.ensureColumn("channels", "header_mappings", "header_mappings TEXT DEFAULT NULL");
   await db.ensureColumn("models", "deleted_at", "deleted_at DATETIME");
   await db.ensureColumn("models", "is_public", "is_public INTEGER DEFAULT 1");
   await db.ensureColumn("models", "upstream_protocol", `upstream_protocol TEXT DEFAULT 'chat_completions'`);
