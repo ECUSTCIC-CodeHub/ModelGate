@@ -1656,7 +1656,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | user_agent | string | 否 | "" | 渠道级上游 User-Agent，留空时透传客户端 UA 或使用协议默认值 |
 | proxy_url | string | 否 | "" | 渠道级上游 HTTP(S) 代理地址，留空表示直连；支持 `http://` / `https://`，可在 URL 中携带代理认证信息 |
 | ua_restrictions | string | 否 | "" | 渠道级 User-Agent 限制规则 JSON 数组，留空表示不限制（完整版功能，最长 20000 字符） |
-| custom_headers | object\|null | 否 | null | 渠道级自定义 Header，键值对对象；会附加到该渠道的**所有**上游请求（真实转发、模型测试、模型列表探测、`/api/v1/images/edits` 图片编辑）。最多 20 对，名称最长 128 字符且须为 HTTP token 字符，值最长 2048 字符，名称与值的首尾空白会被修剪，值中不允许换行、控制字符或 Unicode 行分隔符（`U+2028`/`U+2029`）等会让 HTTP 头非法的字符（制表符与中文等可打印字符允许）。`Authorization`、`X-Api-Key`、`Api-Key`、`Host`、`Content-Length`、`Transfer-Encoding`、`Connection`、`Upgrade`、`Proxy-Authorization`、`Proxy-Authenticate`、`Via`、`TE`、`Trailer`、`Cookie`、`Content-Type`、`User-Agent`、`Anthropic-Version`、`Anthropic-Beta`、`Accept-Encoding` 不允许配置（大小写不敏感）。标准转发路径下网关托管字段（`Content-Type`、`User-Agent`、鉴权头等）始终覆盖同名自定义值；`other` 透传路径下自定义 Header 会覆盖客户端的同名透传值，但 `Authorization` / `X-Api-Key` 仍由网关最后设置。库中已存数据读取时逐键过滤：混入黑名单键或非法值时只丢弃该项，其余仍生效 |
+| custom_headers | object\|null | 否 | null | 渠道级自定义 Header，键值对对象；会附加到该渠道的**所有**上游请求（真实转发、模型测试、模型列表探测、`/api/v1/images/edits` 图片编辑）。最多 20 对，名称最长 128 字符且须为 HTTP token 字符，值最长 2048 字符，名称与值的首尾空白会被修剪，值中不允许换行、控制字符或 Unicode 行分隔符（`U+2028`/`U+2029`）等会让 HTTP 头非法的字符（制表符与中文等可打印字符允许）。`Authorization`、`X-Api-Key`、`Api-Key`、`Host`、`Content-Length`、`Transfer-Encoding`、`Connection`、`Upgrade`、`Proxy-Authorization`、`Proxy-Authenticate`、`Via`、`TE`、`Trailer`、`Cookie`、`Content-Type`、`User-Agent`、`Anthropic-Version`、`Anthropic-Beta`、`Accept-Encoding` 不允许配置（大小写不敏感）。标准转发路径下网关托管字段（`Content-Type`、`User-Agent`、鉴权头等）始终覆盖同名自定义值，客户端透传的 `X-Opencode-Session` 则会被本字段的同名值覆盖；`other` 透传路径下自定义 Header 会覆盖客户端的同名透传值，但 `Authorization` / `X-Api-Key` 仍由网关最后设置。库中已存数据读取时逐键过滤：混入黑名单键或非法值时只丢弃该项，其余仍生效 |
 | group_name | string\|null | 否 | null | 渠道分组名，最长 64 字符，保存时去掉首尾空白；留空或 `null` 表示未分组。**仅用于前端列表组织，不参与请求路由**（既不影响模型选路，也不影响配额与并发统计口径） |
 | retry_status_codes | int[]\|null | 否 | null | 渠道级触发换渠道的状态码列表，元素取值 400-599，最多 64 个，保存时去重升序。上游返回这些状态码时改用同别名的其他候选渠道并计入熔断；`5xx` 无条件生效，不受此列表影响。留空或 `null` 表示沿用系统设置里的全局默认（内置默认 `401`/`402`/`403`/`429`）。单个模型可用模型级 `retry_status_codes` 覆盖。判定只看状态码，不解析响应报文内容 |
 | expires_at | string\|null | 否 | null | 过期时间（本地 datetime，如 `2026-08-01T00:00`），null 或留空表示永不过期；到达该时间后渠道在路由中自动不可用，管理员对任意渠道执行操作后，已过期渠道会被彻底禁用并级联禁用其模型 |
@@ -3303,6 +3303,8 @@ access token 过期但 refresh token 仍有效时按已登录处理（整页表�
 **User-Agent 透传:** 渠道配置了 `user_agent` 时，网关请求固定使用该值；未配置时，如果客户端请求包含 `User-Agent`，网关会原样透传给上游渠道；仍未提供时 OpenAI 协议默认使用 `OpenAI/JS 6.39.0`，Anthropic Messages 协议默认使用 Claude Code UA `claude-cli/2.1.148`。可通过环境变量 `CLAUDE_CODE_USER_AGENT` 覆盖默认 Claude Code UA。
 
 **上游代理:** 渠道配置了 `proxy_url` 时，网关访问该渠道的普通调用、流式调用、模型测试和模型列表探测都会通过该 HTTP(S) 代理转发；未配置时直连上游。
+
+**会话亲和头透传:** 客户端请求带了 `X-Opencode-Session` 时，网关把它的原值透传给上游（标准转发路径的 chat_completions / responses / embeddings / images / anthropic_messages 全部生效）；未携带时不下发该头，也不生成默认值。该头按会话变化，无法用渠道级静态 `custom_headers` 表达，因此由网关单独透传；渠道 `custom_headers` 里配置了同名头时以渠道值为准（键名大小写不敏感）。`other` 通用转发本就原样转发全部请求头，不受此规则影响。
 
 **User-Agent 限制（完整版）:** 支持在「全站 / 渠道 / 模型」三级配置 User-Agent 限制规则，用于控制哪些客户端可以访问网关。规则为 JSON 数组，每条规则结构如下：
 
