@@ -50,6 +50,27 @@ function resolveUpstreamUserAgent(protocol: GatewayProtocol, channelUserAgent?: 
   return protocol === "anthropic_messages" ? CLAUDE_CODE_USER_AGENT : OPENAI_NODE_SDK_USER_AGENT;
 }
 
+// 客户端按会话轮换的亲和头：值每场对话都不同，渠道级静态配置无法表达，
+// 只能从入站请求原值透传。渠道静态值晚于它落位，仍可覆盖它
+const SESSION_AFFINITY_HEADERS = ["x-opencode-session"];
+
+// 用 Headers 做合并：键名大小写不敏感，渠道配置了同一头的不同写法时是覆盖而非并列
+function passthroughSessionHeaders(inboundHeaders?: Headers): Record<string, string> {
+  const headers: Record<string, string> = {};
+  for (const name of SESSION_AFFINITY_HEADERS) {
+    const value = inboundHeaders?.get(name);
+    if (value) headers[name] = value;
+  }
+  return headers;
+}
+
+function mergeHeaders(base: Record<string, string>, extra: Record<string, string>): Record<string, string> {
+  if (Object.keys(base).length === 0) return { ...extra };
+  const merged = new Headers(base);
+  for (const [name, value] of Object.entries(extra)) merged.set(name, value);
+  return Object.fromEntries(merged.entries());
+}
+
 function buildUpstreamHeaders(
   route: RoutedModel,
   protocol: GatewayProtocol,
@@ -58,10 +79,12 @@ function buildUpstreamHeaders(
   const userAgent = resolveUpstreamUserAgent(protocol, route.channel.user_agent, inboundHeaders);
   const apiKey = route.channel.api_key?.trim() ?? "";
 
-  // 自定义 Header 先落位：其后的托管字段（content-type、user-agent、鉴权头等）
-  // 直接覆盖同名键，保证托管字段永远胜出
-  const custom = parseCustomHeaders(route.channel.custom_headers);
-  const customHeaders: Record<string, string> = { ...custom };
+  // 顺序固定为：入站会话亲和头 -> 自定义 Header -> 托管字段（content-type、user-agent、
+  // 鉴权头等），后者覆盖同名键，保证托管字段永远胜出
+  const customHeaders = mergeHeaders(
+    passthroughSessionHeaders(inboundHeaders),
+    parseCustomHeaders(route.channel.custom_headers),
+  );
 
   if (protocol === "anthropic_messages") {
     const headers: Record<string, string> = {
