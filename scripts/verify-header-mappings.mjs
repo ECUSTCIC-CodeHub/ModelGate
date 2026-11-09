@@ -10,14 +10,14 @@ globalThis.fetch = async (_url, init) => {
   return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
 };
 
-function makeRoute({ protocol = "chat_completions", customHeaders = "", headerMappings = "" } = {}) {
+function makeRoute({ protocol = "chat_completions", customHeaders = "", headerMappings = "", apiKey = "sk-up" } = {}) {
   return {
     model: { id: 1, alias: "m", real_model: "real", token_multiplier: 1, request_multiplier: 1 },
     channel: {
       id: 1,
       name: "c",
       base_url: "https://up.example.com",
-      api_key: "sk-up",
+      api_key: apiKey,
       timeout: 10,
       user_agent: null,
       proxy_url: null,
@@ -72,7 +72,10 @@ cases.push(["鉴权头不被映射污染", authWins.get("authorization") === "Be
 
 cases.push(["目标为鉴权头时校验拒绝", validateHeaderMappings([{ from: "x-session-id", to: "authorization" }]).ok === false]);
 cases.push(["名称非法时校验拒绝", validateHeaderMappings([{ from: "x session id", to: "x-a" }]).ok === false]);
-cases.push(["不带连字符的名称被拒绝", validateHeaderMappings([{ from: "sessionid", to: "x-a" }]).ok === false]);
+cases.push(["两端都不带连字符时校验拒绝", validateHeaderMappings([{ from: "sessionid", to: "session" }]).ok === false]);
+// 无连字符的真实头名（referer、origin、traceparent）改名是有意义的用法，只要求一端带连字符
+cases.push(["无连字符的源可映射到带连字符的目标", validateHeaderMappings([{ from: "referer", to: "x-referer" }]).ok === true]);
+cases.push(["带连字符的源可映射到无连字符的目标", validateHeaderMappings([{ from: "x-trace", to: "traceparent" }]).ok === true]);
 cases.push(["目标重复时校验拒绝", validateHeaderMappings([{ from: "x-a", to: "x-c" }, { from: "x-b", to: "X-C" }]).ok === false]);
 cases.push(["超过 10 项校验拒绝", validateHeaderMappings(Array.from({ length: 11 }, (_, i) => ({ from: `x-a${i}`, to: `x-b${i}` }))).ok === false]);
 cases.push(["空值与 null 视为未配置", validateHeaderMappings(null).ok && validateHeaderMappings([]).ok]);
@@ -88,6 +91,55 @@ cases.push(["映射覆盖客户端同名值", overwriteTarget.get("x-b") === "ma
 const dirtyTarget = new Headers();
 applyHeaderMappings(dirtyTarget, [{ from: "x-a", to: "Authorization" }], new Headers({ "x-a": "Bearer stolen" }));
 cases.push(["运行期拦截鉴权目标", dirtyTarget.has("authorization") === false]);
+
+// 手改库值不会经过保存校验，运行期拿到的是原始字符串：带空白或非法字符的名称
+// 直接喂给 Headers.get/set 会抛错，而这个异常在 fetch 的 try 之外，会让整条转发永久 500
+const paddedMapping = new Headers();
+let paddedThrows = false;
+try {
+  applyHeaderMappings(paddedMapping, [{ from: " x-a ", to: " x-b " }], new Headers({ "x-a": "v" }));
+} catch {
+  paddedThrows = true;
+}
+cases.push(["库值名称带空白时不抛错", paddedThrows === false]);
+cases.push(["库值名称带空白时仍能映射", paddedMapping.get("x-b") === "v"]);
+
+const illegalMapping = new Headers();
+let illegalThrows = false;
+try {
+  applyHeaderMappings(illegalMapping, [{ from: "x a", to: "x-b" }], new Headers({ "x-a": "v" }));
+} catch {
+  illegalThrows = true;
+}
+cases.push(["库值名称非法时不抛错", illegalThrows === false]);
+cases.push(["库值名称非法时不下发", illegalMapping.has("x-b") === false]);
+
+// 客户端可控值 + 上游按转发链元数据判权 = 提权通道，运行期与保存期都要挡
+for (const hopHeader of ["x-forwarded-for", "x-real-ip", "x-forwarded-host", "cf-connecting-ip", "sec-fetch-site"]) {
+  cases.push([`保存期拒绝 ${hopHeader}`, validateHeaderMappings([{ from: "x-a", to: hopHeader }]).ok === false]);
+}
+const hopTarget = new Headers();
+applyHeaderMappings(hopTarget, [{ from: "x-a", to: "X-Forwarded-For" }], new Headers({ "x-a": "1.2.3.4" }));
+cases.push(["运行期拦截转发链元数据目标", hopTarget.has("x-forwarded-for") === false]);
+
+// 带了源头但值是空白，等于没带信息，不该凭空下发一个空目标头
+const blankSource = await call(makeRoute({ headerMappings: mapping }), { "x-session-id": "   " });
+cases.push(["源头值为空白时不下发", blankSource.has("x-opencode-session") === false]);
+
+// 落位顺序里的另一条：映射的值压过渠道静态 custom_headers
+const mappingOverStatic = await call(
+  makeRoute({ headerMappings: JSON.stringify([{ from: "x-a", to: "x-b" }]), customHeaders: JSON.stringify({ "x-b": "static" }) }),
+  { "x-a": "mapped" },
+);
+cases.push(["映射覆盖渠道静态自定义 Header", mappingOverStatic.get("x-b") === "mapped"]);
+
+// 渠道没配密钥时托管鉴权头根本不存在，这是「后写覆盖」失效的唯一窗口：
+// 此时若漏了运行期黑名单，客户端值就会被直接写进上游的鉴权头
+const noKeyAuth = await call(
+  makeRoute({ apiKey: "", headerMappings: JSON.stringify([{ from: "x-a", to: "authorization" }]) }),
+  { "x-a": "Bearer stolen" },
+);
+cases.push(["无渠道密钥时鉴权头仍不被污染", noKeyAuth.has("authorization") === false]);
 
 let pass = 0;
 for (const [name, ok] of cases) {
