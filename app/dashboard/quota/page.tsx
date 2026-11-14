@@ -12,12 +12,15 @@ import { useAuthProfile } from "@/components/providers/auth-provider";
 import { authedFetch, getCachedProfile, getOrFetchProfile } from "@/lib/auth/client-auth";
 import { formatNumber, formatTokenCount } from "@/lib/shared/utils";
 import type { PeriodQuotaEntry } from "@/lib/gateway/quota";
+import { isBypassQuotaMode, usesChannelSelfQuota } from "@/lib/gateway/quota-mode";
 import type { QuotaData } from "../_home/dashboard-model";
 
 type ModelQuota = {
   alias: string;
   real_model: string;
+  channel_name: string;
   quota_mode: "follow_group" | "bypass_group" | "independent" | "dual";
+  channel_quota_mode: "follow_group" | "bypass_group" | "independent" | "dual";
   token_multiplier: number;
   request_multiplier: number;
   quota_requests: number | null;
@@ -119,7 +122,12 @@ function ModelPeriodTokens({ model }: { model: ModelQuota }) {
 
 function UserQuotaContent({ quota, modelQuotas }: { quota: QuotaData | null; modelQuotas: ModelQuota[] }) {
   const independentModels = modelQuotas.filter((m) => m.quota_mode === "independent" || m.quota_mode === "dual");
-  const bypassModels = modelQuotas.filter((m) => m.quota_mode === "bypass_group");
+  // 用户限额被跳过有两种来源：模型级绕过，或模型本身跟随用户组但所属渠道绕过。
+  // 已经按独立/双重限制展示的模型不重复列在这里。
+  const bypassModels = modelQuotas.filter((m) =>
+    m.quota_mode === "bypass_group"
+    || (m.quota_mode === "follow_group" && isBypassQuotaMode(m.channel_quota_mode)),
+  );
 
   const resetEntries = independentModels.flatMap((m) =>
     (m.periods ?? [])
@@ -134,7 +142,7 @@ function UserQuotaContent({ quota, modelQuotas }: { quota: QuotaData | null; mod
       {independentModels.length > 0 ? (
         <Card>
           <CardHeader>
-            <SectionTitle title="模型自身配额" description="以下模型配置了模型自身配额；其中双重限制模式的模型同时受用户组配额与速率限制约束。" />
+            <SectionTitle title="模型自身配额" description="以下模型配置了模型自身配额；双重限制模式默认同时受用户组配额与速率限制约束，若所属渠道绕过用户组则仅检查模型自身配额。" />
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
@@ -156,6 +164,11 @@ function UserQuotaContent({ quota, modelQuotas }: { quota: QuotaData | null; mod
                           <span className="font-mono text-sm">{m.alias}</span>
                           {m.alias !== m.real_model ? (
                             <span className="ml-2 text-xs text-[var(--color-foreground-muted)]">({m.real_model})</span>
+                          ) : null}
+                          {m.quota_mode === "dual" && isBypassQuotaMode(m.channel_quota_mode) ? (
+                            <p className="mt-0.5 text-xs text-[var(--color-foreground-muted)]">
+                              {usesChannelSelfQuota(m.channel_quota_mode) ? "渠道绕过用户组限制，渠道配额同时参与判定" : "渠道绕过用户组限制"}
+                            </p>
                           ) : null}
                         </div>
                       </TableCell>
@@ -194,37 +207,46 @@ function UserQuotaContent({ quota, modelQuotas }: { quota: QuotaData | null; mod
       {bypassModels.length > 0 ? (
         <Card>
           <CardHeader>
-            <SectionTitle title="绕过用户组限制的模型" description="以下模型不受用户组配额和速率限制约束，使用量仍计入账户总用量，但配额检查仅受渠道侧或模型自身限制。" />
+            <SectionTitle title="绕过用户组限制的模型" description="以下模型或所属渠道不受用户组配额和速率限制约束，使用量仍计入账户总用量；渠道绕过时还可能受渠道自身配额约束。" />
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-              <Table className="min-w-[400px]">
+              <Table className="min-w-[560px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>模型</TableHead>
-                    <TableHead>配额模式</TableHead>
+                    <TableHead>渠道</TableHead>
+                    <TableHead>绕过来源</TableHead>
                     <TableHead>说明</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {bypassModels.map((m) => (
-                    <TableRow key={`${m.alias}:${m.real_model}`}>
-                      <TableCell>
-                        <div>
-                          <span className="font-mono text-sm">{m.alias}</span>
-                          {m.alias !== m.real_model ? (
-                            <span className="ml-2 text-xs text-[var(--color-foreground-muted)]">({m.real_model})</span>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs">绕过用户组</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-xs text-[var(--color-foreground-muted)]">不受用户组配额与速率限制，使用量计入账户总用量</span>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {bypassModels.map((m) => {
+                    const bypassNote = m.quota_mode === "bypass_group" ? "不受用户组配额与速率限制" : "所属渠道跳过用户组限制";
+                    return (
+                      <TableRow key={`${m.alias}:${m.real_model}`}>
+                        <TableCell>
+                          <div>
+                            <span className="font-mono text-sm">{m.alias}</span>
+                            {m.alias !== m.real_model ? (
+                              <span className="ml-2 text-xs text-[var(--color-foreground-muted)]">({m.real_model})</span>
+                            ) : null}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm text-[var(--color-foreground-muted)]">{m.channel_name}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">
+                            {m.quota_mode === "bypass_group" ? "模型级" : "渠道级"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-xs text-[var(--color-foreground-muted)]">
+                            {bypassNote}，使用量计入账户总用量{usesChannelSelfQuota(m.channel_quota_mode) ? "，渠道配额同时参与判定" : ""}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -288,7 +310,7 @@ export default function QuotaPage() {
       <DashboardShell
         role="admin"
         title="配额与限制"
-        subtitle="系统全局配额概览，查看各用户组和特殊模型的配额使用情况。"
+        subtitle="系统全局配额概览，查看各用户组、渠道和特殊模型的配额使用情况。"
       >
         {loading ? null : <DashboardAdminQuotaCard overview={adminOverview} />}
       </DashboardShell>

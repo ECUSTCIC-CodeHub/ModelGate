@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthProfile } from "@/components/providers/auth-provider";
 import { authedFetch, clearSession, getCachedProfile, loginUrlWithNext, resolveAuthProfile } from "@/lib/auth/client-auth";
+import { isBypassQuotaMode } from "@/lib/gateway/quota-mode";
 import type { QuotaData, Role, Summary } from "./dashboard-model";
 import type { ModelQuotaItem } from "./dashboard-model-quota-card";
 
@@ -48,8 +49,12 @@ export function useDashboardHome() {
         if (modelQuotaResp.ok) {
           const modelQuotaData = await modelQuotaResp.json();
           if (!cancelled) {
-            const all = (modelQuotaData?.data ?? []) as Array<{ quota_mode: string }>;
-            setModelQuotas(all.filter((m) => m.quota_mode === "independent" || m.quota_mode === "bypass_group" || m.quota_mode === "dual") as ModelQuotaItem[]);
+            const all = (modelQuotaData?.data ?? []) as Array<{ quota_mode: string; channel_quota_mode?: string }>;
+            setModelQuotas(all.filter((m) =>
+              m.quota_mode === "dual"
+              || isBypassQuotaMode(m.quota_mode)
+              || (m.quota_mode === "follow_group" && isBypassQuotaMode(m.channel_quota_mode)),
+            ) as ModelQuotaItem[]);
           }
         }
       })

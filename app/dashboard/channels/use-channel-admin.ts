@@ -27,6 +27,7 @@ import {
   formatRetryStatusCodesInput,
 } from "./channel-model";
 import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
+import { normalizeChannelQuotaMode } from "@/lib/gateway/quota-mode";
 import { normalizeRetryStatusCodes } from "@/lib/gateway/upstream-error";
 import type { HeaderMapping } from "@/lib/gateway/custom-headers";
 import { parseMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
@@ -215,6 +216,7 @@ export function useChannelAdmin() {
       weight: row.weight,
       max_concurrency: row.max_concurrency,
       timeout: row.timeout,
+      quota_mode: normalizeChannelQuotaMode(row.quota_mode),
       quota_tokens: row.quota_tokens != null ? String(row.quota_tokens) : "",
       quota_requests: row.quota_requests != null ? String(row.quota_requests) : "",
       period_cycles: cyclesToDrafts(parsePeriodCycles(row.period_cycles)),
@@ -322,6 +324,7 @@ export function useChannelAdmin() {
 
   function buildQuotaPayload(form: ChannelForm) {
     return {
+      quota_mode: form.quota_mode,
       quota_tokens: form.quota_tokens.trim() ? Number(form.quota_tokens) : null,
       quota_requests: form.quota_requests.trim() ? Number(form.quota_requests) : null,
       period_cycles: draftsToPayload(form.period_cycles),

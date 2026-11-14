@@ -5,13 +5,15 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatNumber, formatTokenCount } from "@/lib/shared/utils";
 import type { PeriodQuotaEntry } from "@/lib/gateway/quota";
+import { isBypassQuotaMode, usesChannelSelfQuota } from "@/lib/gateway/quota-mode";
 
 export type ModelQuotaItem = {
   alias: string;
   real_model: string;
   channel_id: number;
   channel_name: string;
-  quota_mode: "bypass_group" | "independent" | "dual";
+  quota_mode: "follow_group" | "bypass_group" | "independent" | "dual";
+  channel_quota_mode: "follow_group" | "bypass_group" | "independent" | "dual";
   quota_requests: number | null;
   quota_tokens: number | null;
   used_requests: number | null;
@@ -56,12 +58,14 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
   return (
     <Card>
       <CardHeader>
-        <SectionTitle title="特殊配额模型" description="绕过账户限制或配置模型自身配额的模型。独立配额与双重限制模型使用模型自身额度；双重限制模式同时受用户组配额约束；绕过账户限制的模型不受账户配额和速率限制。" />
+        <SectionTitle title="特殊配额模型" description="绕过账户限制或配置模型自身配额的模型。独立配额与双重限制模型使用模型自身额度；双重限制通常同时受用户组配额约束，所属渠道绕过用户组时除外；模型或所属渠道绕过用户组的组合不受账户配额和速率限制。" />
       </CardHeader>
       <CardContent>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {modelQuotas.map((m) => {
             const independent = m.quota_mode === "independent" || m.quota_mode === "dual";
+            // 渠道绕过用户组时，即便模型是「双重限制」也不会再检查用户组配额。
+            const channelBypass = m.quota_mode !== "bypass_group" && isBypassQuotaMode(m.channel_quota_mode);
             const cycles = m.periods ?? [];
             return (
               <div key={`${m.alias}:${m.channel_id}`} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-3">
@@ -82,8 +86,16 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     <span className="rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-foreground-muted)]">
-                      {m.quota_mode === "independent" ? "独立配额" : m.quota_mode === "dual" ? "双重限制" : "绕过"}
+                      {m.quota_mode === "independent" ? "独立配额" : m.quota_mode === "dual" ? "双重限制" : channelBypass ? "渠道绕过" : "绕过"}
                     </span>
+                    {m.quota_mode === "dual" && channelBypass ? (
+                      <span
+                        className="rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-foreground-muted)]"
+                        title="所属渠道绕过用户组限制，不再受用户组配额与速率限制约束"
+                      >
+                        渠道绕过
+                      </span>
+                    ) : null}
                     {m.multiplier_schedule_applied ? (
                       <span
                         className="rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-foreground-muted)]"
@@ -129,7 +141,9 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
                     )}
                   </div>
                 ) : (
-                  <p className="text-xs text-[var(--color-foreground-muted)]">不受账户配额限制</p>
+                  <p className="text-xs text-[var(--color-foreground-muted)]">
+                    {usesChannelSelfQuota(m.channel_quota_mode) ? "不受账户配额限制，渠道配额同时参与判定" : "不受账户配额限制"}
+                  </p>
                 )}
               </div>
             );

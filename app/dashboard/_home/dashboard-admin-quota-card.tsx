@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatNumber, formatTokenCount } from "@/lib/shared/utils";
 import type { PeriodQuotaEntry } from "@/lib/gateway/quota";
+import { normalizeChannelQuotaMode, usesChannelSelfQuota, usesModelSelfQuota } from "@/lib/gateway/quota-mode";
+import { CHANNEL_QUOTA_MODE_OPTIONS } from "../channels/channel-model";
 import { quotaProgress } from "./dashboard-formatters";
 
 export type AdminQuotaOverview = {
@@ -25,6 +27,7 @@ export type AdminQuotaOverview = {
   channels: Array<{
     id: number;
     name: string;
+    quota_mode: string;
     model_count: number;
     quota_tokens: number | null;
     quota_requests: number | null;
@@ -52,6 +55,12 @@ export type AdminQuotaOverview = {
 
 function formatRate(value: number, formatter: (value: number | null | undefined) => string) {
   return value < 0 ? "∞" : formatter(value);
+}
+
+// 渠道自身配额只在 independent / dual 下生效，其余模式按「未生效」展示。
+function channelQuotaModeLabel(mode: string): string {
+  const normalized = normalizeChannelQuotaMode(mode);
+  return CHANNEL_QUOTA_MODE_OPTIONS.find((option) => option.value === normalized)?.label ?? normalized;
 }
 
 function QuotaProgress({ remaining, quota }: { remaining: number | null; quota: number | null }) {
@@ -194,7 +203,7 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
       {overview?.channels && overview.channels.length > 0 ? (
         <Card>
           <CardHeader>
-            <SectionTitle title="渠道配额" description="各上游渠道的总配额与使用量。" />
+            <SectionTitle title="渠道配额" description="各上游渠道的配额模式与总配额使用量。" />
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
@@ -202,6 +211,7 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
                 <TableHeader>
                   <TableRow>
                     <TableHead>渠道</TableHead>
+                    <TableHead>配额模式</TableHead>
                     <TableHead>模型数</TableHead>
                     <TableHead>Token 配额</TableHead>
                     <TableHead>请求配额</TableHead>
@@ -212,9 +222,12 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
                   {overview.channels.map((c) => (
                     <TableRow key={c.id}>
                       <TableCell className="font-medium">{c.name}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">{channelQuotaModeLabel(c.quota_mode)}</Badge>
+                      </TableCell>
                       <TableCell>{formatNumber(c.model_count)}</TableCell>
                       <TableCell>
-                        {c.quota_tokens !== null ? (
+                        {usesChannelSelfQuota(c.quota_mode) && c.quota_tokens !== null ? (
                           <div className="space-y-1">
                             <QuotaProgress remaining={c.remaining_tokens} quota={c.quota_tokens} />
                             <p className="text-xs text-[var(--color-foreground-muted)]">
@@ -222,11 +235,13 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
                             </p>
                           </div>
                         ) : (
-                          <span className="text-xs text-[var(--color-foreground-muted)]">不限制</span>
+                          <span className="text-xs text-[var(--color-foreground-muted)]">
+                            {c.quota_tokens === null ? "不限制" : `${formatTokenCount(c.quota_tokens)}（当前模式未生效）`}
+                          </span>
                         )}
                       </TableCell>
                       <TableCell>
-                        {c.quota_requests !== null ? (
+                        {usesChannelSelfQuota(c.quota_mode) && c.quota_requests !== null ? (
                           <div className="space-y-1">
                             <QuotaProgress remaining={c.remaining_requests} quota={c.quota_requests} />
                             <p className="text-xs text-[var(--color-foreground-muted)]">
@@ -234,7 +249,9 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
                             </p>
                           </div>
                         ) : (
-                          <span className="text-xs text-[var(--color-foreground-muted)]">不限制</span>
+                          <span className="text-xs text-[var(--color-foreground-muted)]">
+                            {c.quota_requests === null ? "不限制" : `${formatNumber(c.quota_requests)}（当前模式未生效）`}
+                          </span>
                         )}
                       </TableCell>
                       {(c.periods?.length ?? 0) > 0 ? (
@@ -283,11 +300,11 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
                       <TableCell className="text-sm text-[var(--color-foreground-muted)]">{m.channel_name}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className="text-xs">
-                          {m.quota_mode === "independent" ? "独立配额" : m.quota_mode === "dual" ? "双重限制" : "绕过用户组"}
+                          {m.quota_mode === "independent" ? "独立配额" : m.quota_mode === "dual" ? "双重限制" : m.quota_mode === "follow_group" ? "跟随用户组" : "绕过用户组"}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {(m.quota_mode === "independent" || m.quota_mode === "dual") && m.quota_tokens !== null ? (
+                        {usesModelSelfQuota(m.quota_mode) && m.quota_tokens !== null ? (
                           <div className="space-y-1">
                             <QuotaProgress remaining={m.remaining_tokens} quota={m.quota_tokens} />
                             <p className="text-xs text-[var(--color-foreground-muted)]">
@@ -301,7 +318,7 @@ export function DashboardAdminQuotaCard({ overview }: { overview: AdminQuotaOver
                         )}
                       </TableCell>
                       <TableCell>
-                        {(m.quota_mode === "independent" || m.quota_mode === "dual") && m.quota_requests !== null ? (
+                        {usesModelSelfQuota(m.quota_mode) && m.quota_requests !== null ? (
                           <div className="space-y-1">
                             <QuotaProgress remaining={m.remaining_requests} quota={m.quota_requests} />
                             <p className="text-xs text-[var(--color-foreground-muted)]">

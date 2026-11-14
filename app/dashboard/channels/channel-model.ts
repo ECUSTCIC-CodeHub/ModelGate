@@ -45,6 +45,15 @@ export const QUOTA_MODE_OPTIONS: Array<{ value: ModelQuotaMode; label: string; d
   { value: "dual", label: "双重限制", description: "受用户组配额和速率限制，同时受模型自身配额限制" },
 ];
 
+// 渠道级与模型级共用四种模式，但「自身配额」指渠道自己的 quota_* 与周期档，
+// 默认 dual 与历史行为一致：渠道配额与用户组限制同时生效。
+export const CHANNEL_QUOTA_MODE_OPTIONS: Array<{ value: ModelQuotaMode; label: string; description: string }> = [
+  { value: "follow_group", label: "跟随用户组", description: "仅受用户组配额和速率限制，渠道自身配额不生效" },
+  { value: "bypass_group", label: "绕过用户组", description: "不受用户组配额和速率限制，渠道自身配额也不生效" },
+  { value: "independent", label: "独立配额", description: "不受用户组限制，仅检查渠道自身配额；未填写任何渠道配额时不限制" },
+  { value: "dual", label: "双重限制", description: "受用户组配额和速率限制，同时受渠道自身配额限制（默认，与历史行为一致）" },
+];
+
 export type ModelRow = {
   id: number;
   alias: string;
@@ -83,6 +92,7 @@ export type Channel = {
   weight: number;
   max_concurrency: number;
   timeout: number;
+  quota_mode: ModelQuotaMode;
   quota_tokens: number | null;
   quota_requests: number | null;
   force_include_usage: number;
@@ -130,6 +140,7 @@ export type ChannelForm = {
   weight: number;
   max_concurrency: number;
   timeout: number;
+  quota_mode: ModelQuotaMode;
   quota_tokens: string;
   quota_requests: string;
   period_cycles: PeriodCycleDraft[];
@@ -211,6 +222,7 @@ export const initialChannelForm: ChannelForm = {
   weight: 1,
   max_concurrency: 64,
   timeout: 60,
+  quota_mode: "dual",
   quota_tokens: "",
   quota_requests: "",
   period_cycles: [],
