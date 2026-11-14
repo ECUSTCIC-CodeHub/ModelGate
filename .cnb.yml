@@ -83,6 +83,10 @@
     image: docker.cnb.cool/scaffold/examples/nodejs:latest
     script: |
       node --loader ./scripts/verify-opencode-session-passthrough-loader.mjs scripts/verify-header-mappings.mjs
+  - name: verify channel quota mode
+    image: docker.cnb.cool/scaffold/examples/nodejs:latest
+    script: |
+      node --loader ./scripts/verify-channel-quota-mode-loader.mjs scripts/verify-channel-quota-mode.mjs
 
 .push: &push
   runner:
