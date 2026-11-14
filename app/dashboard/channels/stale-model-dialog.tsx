@@ -77,7 +77,7 @@ export function StaleModelDialog({
         </DialogHeader>
 
         {result ? (
-          <div className="flex min-h-0 flex-col gap-3">
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
             <div className="space-y-1 text-sm">
               <p className="text-[var(--color-foreground)]">渠道：{channelName}</p>
               {allLocal ? (
@@ -119,7 +119,7 @@ export function StaleModelDialog({
               </div>
             </div>
 
-            <div className="max-h-[50vh] overflow-y-auto rounded-xl border border-[var(--color-border)]">
+            <div className="max-h-[50dvh] shrink-0 overflow-y-auto rounded-xl border border-[var(--color-border)]">
               {filtered.length > 0 ? (
                 filtered.map((item) => (
                   <label

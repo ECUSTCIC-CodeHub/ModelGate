@@ -12,7 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { authedFetch } from "@/lib/auth/client-auth";
 import { MARKDOWN_PURIFY_CONFIG } from "@/lib/shared/utils";
 
@@ -71,17 +70,17 @@ export function AnnouncementDialog() {
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onDismiss(); }}>
       <DialogContent className="max-w-lg">
-        <DialogHeader>
+        <DialogHeader className="shrink-0">
           <DialogTitle>{title || "系统公告"}</DialogTitle>
           <DialogDescription>来自管理员的通知</DialogDescription>
         </DialogHeader>
-        <ScrollArea className="min-h-0 flex-1 max-h-[60vh]">
+        <div className="min-h-0 max-h-[60dvh] flex-1 overflow-y-auto overscroll-contain">
           <div
-            className="markdown-body pr-3"
+            className="markdown-body break-words pr-1"
             dangerouslySetInnerHTML={{ __html: html }}
           />
-        </ScrollArea>
-        <DialogFooter>
+        </div>
+        <DialogFooter className="shrink-0">
           <Button onClick={onDismiss}>我知道了</Button>
         </DialogFooter>
       </DialogContent>

@@ -98,7 +98,7 @@ export function EmailSenderDialog({
           <DialogTitle>{editing ? "编辑发件账号" : "新增发件账号"}</DialogTitle>
           <DialogDescription>配置 SMTP 服务器与发件身份，可添加多个账号并按优先级与单日上限分流。</DialogDescription>
         </DialogHeader>
-        <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+        <div className="min-h-0 max-h-[70dvh] flex-1 space-y-3 overflow-y-auto pr-1">
           <div className="space-y-2">
             <Label>账号名称</Label>
             <Input

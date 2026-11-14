@@ -44,8 +44,9 @@ export function UpstreamModelPicker({
           <DialogTitle>选择上游模型</DialogTitle>
           <DialogDescription>已存在于当前渠道的模型会默认勾选并锁定，确认后仅把新选中的模型加入草稿。</DialogDescription>
         </DialogHeader>
-        <div className="flex min-h-0 flex-col gap-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
           <Input
+            className="shrink-0"
             placeholder="搜索模型 ID"
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
@@ -59,7 +60,7 @@ export function UpstreamModelPicker({
               <Button type="button" variant="outline" size="sm" onClick={() => onSelectFiltered(false)}>清空当前筛选</Button>
             </div>
           </div>
-          <div className="min-h-0 max-h-[60vh] flex-1 overflow-y-auto rounded-xl border border-[var(--color-border)]">
+          <div className="max-h-[60dvh] shrink-0 overflow-y-auto rounded-xl border border-[var(--color-border)]">
             {filteredOptions.length > 0 ? (
               filteredOptions.map((item) => (
                 <label

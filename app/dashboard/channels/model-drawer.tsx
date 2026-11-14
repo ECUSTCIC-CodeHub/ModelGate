@@ -87,7 +87,7 @@ export function ModelDrawer({
           <SheetTitle>{editingId === null ? "新增模型映射" : `编辑模型 #${editingId}`}</SheetTitle>
           <SheetDescription>配置 alias、真实模型、所属渠道、公开性与启用状态。</SheetDescription>
         </SheetHeader>
-        <form onSubmit={onSubmit} className="mt-4 space-y-4 overflow-y-auto pr-1">
+        <form onSubmit={onSubmit} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
           {editingId === null ? (
             <>
               <div className="space-y-2">

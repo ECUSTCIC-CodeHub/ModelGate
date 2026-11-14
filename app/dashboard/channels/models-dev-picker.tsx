@@ -86,8 +86,8 @@ export function ModelsDevPicker({
             OpenAI 用 chat_completions 与 responses），单个模型再按名称与输出模态细化。
           </DialogDescription>
         </DialogHeader>
-        <div className="flex min-h-0 flex-col gap-3">
-          <Input placeholder="搜索供应商或模型 ID" value={query} onChange={(event) => setQuery(event.target.value)} />
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+          <Input className="shrink-0" placeholder="搜索供应商或模型 ID" value={query} onChange={(event) => setQuery(event.target.value)} />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-[var(--color-foreground-muted)]">已选择 {selected.size} 个模型。</p>
             <div className="flex gap-2">
@@ -95,7 +95,7 @@ export function ModelsDevPicker({
               <Button type="button" variant="outline" size="sm" onClick={() => selectAllFiltered(false)}>清空当前筛选</Button>
             </div>
           </div>
-          <div className="min-h-0 max-h-[60vh] flex-1 overflow-y-auto rounded-xl border border-[var(--color-border)]">
+          <div className="max-h-[60dvh] shrink-0 overflow-y-auto rounded-xl border border-[var(--color-border)]">
             {filtered.length > 0 ? (
               filtered.map((provider) => (
                 <div key={provider.providerId}>

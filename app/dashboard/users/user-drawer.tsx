@@ -62,7 +62,7 @@ export function UserDrawer({
           <SheetTitle>{editingId === null ? "新增用户" : `编辑用户 #${editingId}`}</SheetTitle>
           <SheetDescription>{editingId === null ? "创建新用户账号并设置初始配额。" : "修改角色、限速、配额与模型访问权限。"}</SheetDescription>
         </SheetHeader>
-        <form onSubmit={(event) => { void onSubmit(event); }} className="mt-4 space-y-4 overflow-y-auto pr-1">
+        <form onSubmit={(event) => { void onSubmit(event); }} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
           <UserBasicFields
             form={form}
             editingId={editingId}

@@ -106,7 +106,7 @@ export function ChannelDrawer({
           <SheetTitle>{editingId === null ? "新增接口渠道" : `编辑渠道 #${editingId}`}</SheetTitle>
           <SheetDescription>配置渠道名称、Base URL、API Key、超时与默认模型草稿。</SheetDescription>
         </SheetHeader>
-        <form onSubmit={onSubmit} className="mt-4 space-y-4 overflow-y-auto pr-1">
+        <form onSubmit={onSubmit} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label>渠道名称</Label>

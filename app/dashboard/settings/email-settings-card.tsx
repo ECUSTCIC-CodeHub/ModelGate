@@ -395,7 +395,7 @@ export function EmailSettingsCard() {
             ) : logs.length === 0 ? (
               <div className="py-8 text-center text-sm text-[var(--color-foreground-muted)]">没有失败的邮件记录。</div>
             ) : (
-              <div className="max-h-[60vh] space-y-2 overflow-y-auto">
+              <div className="min-h-0 max-h-[60dvh] flex-1 space-y-2 overflow-y-auto overscroll-contain pr-1">
                 {logs.map((row) => (
                   <div
                     key={row.id}

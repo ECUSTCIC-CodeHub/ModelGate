@@ -51,7 +51,7 @@ export function GroupDrawer({
           <SheetTitle>{editingId === null ? "新增用户组" : `编辑用户组 #${editingId}`}</SheetTitle>
           <SheetDescription>{editingId === null ? "创建新用户组并配置限流与模型白名单。" : "修改组的限速、配额与模型访问权限。"}</SheetDescription>
         </SheetHeader>
-        <form onSubmit={(event) => { void onSubmit(event); }} className="mt-4 space-y-4 overflow-y-auto pr-1">
+        <form onSubmit={(event) => { void onSubmit(event); }} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
           <GroupBasicFields
             form={form}
             oidcFeatureEnabled={oidcFeatureEnabled}
