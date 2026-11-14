@@ -14,6 +14,7 @@ import { createQueuedUpstreamResponse, normalizeUserAgent } from "@/lib/gateway/
 import { checkUserRateLimit } from "@/lib/gateway/ratelimit";
 import { selectModelRoute, findUaDenyMatchForAlias, findVisionFallbackRoute, findQuotaFallbackRoute, resolveModelFallbackAlias, type RoutedModel } from "@/lib/gateway/router";
 import { getGatewaySettings } from "@/lib/core/settings";
+import { bypassesUserLimits, usesModelSelfQuota } from "@/lib/gateway/quota-mode";
 import { exceedsBodyLimit, resolveBodyLimitBytes } from "@/lib/gateway/body-limit";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { injectModelSystemPrompt } from "@/lib/gateway/model-system-prompt";
@@ -265,7 +266,8 @@ async function runGatewayProtocolRequest(request: Request, inboundAdapter: Gatew
 
   for (;;) {
     const quotaMode = existingRoute.model.quota_mode;
-    const bypassUserLimits = quotaMode === "bypass_group" || quotaMode === "independent";
+    // 用户限额放行由模型级与渠道级共同决定，任一级要求绕过都跳过用户配额与速率检查。
+    const bypassUserLimits = bypassesUserLimits(existingRoute);
 
     // 命中用户定向额度（兑换码）时，跳过用户全局配额检查，由定向额度兜底。
     let redeemCovered = false;
@@ -297,7 +299,7 @@ async function runGatewayProtocolRequest(request: Request, inboundAdapter: Gatew
       }
     }
 
-    if (!exceededReason && (quotaMode === "independent" || quotaMode === "dual")) {
+    if (!exceededReason && usesModelSelfQuota(quotaMode)) {
       const modelQuotaResult = await checkModelQuota(existingRoute.model.id, estimatedTokens);
       if (!modelQuotaResult.ok) {
         exceededReason = modelQuotaResult.reason;
@@ -424,7 +426,7 @@ async function runGatewayProtocolRequest(request: Request, inboundAdapter: Gatew
   // 针对实际选中的候选路由做用户全局配额守卫：命中定向额度或该路由绕过用户限额时放行，
   // 否则需通过用户全局配额与频率限制，避免因上游回退切换到未覆盖渠道时绕过配额检查。
   const userQuotaGuard = async (route: RoutedModel): Promise<{ ok: true; redeemBalanceId?: number | null } | { ok: false; reason: string }> => {
-    const routeBypass = route.model.quota_mode === "bypass_group" || route.model.quota_mode === "independent";
+    const routeBypass = bypassesUserLimits(route);
     if (routeBypass) return { ok: true, redeemBalanceId: null };
     if (settings.runtime_features.redeemCode) {
       const redeem = await findMatchingRedeemBalance(auth.user.id, route.channel.id, route.model.alias);

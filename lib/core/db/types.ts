@@ -12,6 +12,7 @@ export type DbChannel = {
   weight: number;
   max_concurrency: number;
   timeout: number;
+  quota_mode: QuotaMode;
   quota_tokens: number | null;
   quota_requests: number | null;
   quota_period: number | null;
@@ -34,7 +35,9 @@ export type DbChannel = {
   header_mappings: string | null;
 };
 
-export type ModelQuotaMode = "follow_group" | "bypass_group" | "independent" | "dual";
+export type QuotaMode = "follow_group" | "bypass_group" | "independent" | "dual";
+
+export type ModelQuotaMode = QuotaMode;
 
 export type DbModel = {
   id: number;

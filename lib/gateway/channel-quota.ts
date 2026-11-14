@@ -1,7 +1,9 @@
 import { gatewayDb } from "@/lib/core/db";
+import type { QuotaMode } from "@/lib/core/db/types";
 import { modelGateFeatures } from "@/lib/core/features";
 import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
 import { ensureCycleResets } from "@/lib/gateway/period-cycles-reset";
+import { usesChannelSelfQuota } from "@/lib/gateway/quota-mode";
 import { findExceededCycle, toPeriodQuotaEntry, type PeriodQuotaEntry } from "@/lib/gateway/quota";
 
 export type ChannelQuotaInfo = {
@@ -13,13 +15,14 @@ export type ChannelQuotaInfo = {
 export async function checkChannelQuota(channelId: number, estimatedTokens: number): Promise<{ ok: false; reason: string } | { ok: true; quota: ChannelQuotaInfo }> {
   const channel = await gatewayDb.queryOne<{
     id: number;
+    quota_mode: QuotaMode | null;
     quota_tokens: number | null;
     quota_requests: number | null;
     period_used_tokens: number;
     period_used_requests: number;
     period_cycles: string | null;
   }>(
-    `SELECT id, quota_tokens, quota_requests,
+    `SELECT id, quota_mode, quota_tokens, quota_requests,
               period_used_tokens, period_used_requests, period_cycles
               FROM channels WHERE id = ? AND deleted_at IS NULL`,
     [channelId],
@@ -27,6 +30,13 @@ export async function checkChannelQuota(channelId: number, estimatedTokens: numb
 
   if (!channel) {
     return { ok: false, reason: "渠道不存在" };
+  }
+
+  // 配额模式非 independent / dual 时，渠道自身配额不参与判定也不外露额度：
+  // follow_group 只受用户组约束，bypass_group 连用户组也跳过，两者都不该被渠道配额拦住。
+  // 计数器仍在累加（见 addUsage），仅不作检查。
+  if (!usesChannelSelfQuota(channel.quota_mode)) {
+    return { ok: true, quota: { remaining_requests: null, remaining_tokens: null, periods: [] } };
   }
 
   // period_used_* 是「总配额」（quota_requests / quota_tokens）的累计，仍在写入。

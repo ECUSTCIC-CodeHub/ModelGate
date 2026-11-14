@@ -5,6 +5,7 @@ import { ensureAdmin } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
 import { modelGateFeatures } from "@/lib/core/features";
 import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
+import { normalizeChannelQuotaMode, normalizeModelQuotaMode, usesChannelSelfQuota, usesModelSelfQuota } from "@/lib/gateway/quota-mode";
 import { toPeriodQuotaEntry } from "@/lib/gateway/quota";
 
 export async function GET(request: Request) {
@@ -40,6 +41,7 @@ export async function GET(request: Request) {
   const channelRows = await gatewayDb.query<{
     id: number;
     name: string;
+    quota_mode: string;
     quota_tokens: number | null;
     quota_requests: number | null;
     period_used_tokens: number;
@@ -47,7 +49,7 @@ export async function GET(request: Request) {
     period_cycles: string | null;
     model_count: number;
   }>(
-    `SELECT c.id, c.name, c.quota_tokens, c.quota_requests,
+    `SELECT c.id, c.name, c.quota_mode, c.quota_tokens, c.quota_requests,
             c.period_used_tokens, c.period_used_requests, c.period_cycles,
             COALESCE(m_stats.model_count, 0) AS model_count
      FROM channels c
@@ -61,21 +63,24 @@ export async function GET(request: Request) {
 
   const channels = channelRows.map((c) => {
     // 渠道的 quota_tokens / quota_requests 是「总配额」，计数器是 period_used_*，
-    // 至今仍在生效且界面上可编辑（见 checkChannelQuota）。该计数器不随窗口重置。
+    // 仅在独立配额 / 双重限制模式下参与判定（见 checkChannelQuota）。该计数器不随窗口重置。
+    const quotaMode = normalizeChannelQuotaMode(c.quota_mode);
+    const selfQuota = usesChannelSelfQuota(quotaMode);
     const usedTokens = c.period_used_tokens;
     const usedRequests = c.period_used_requests;
 
     return {
       id: c.id,
       name: c.name,
+      quota_mode: quotaMode,
       model_count: c.model_count,
       quota_tokens: c.quota_tokens,
       quota_requests: c.quota_requests,
-      used_tokens: c.quota_tokens !== null ? usedTokens : null,
-      used_requests: c.quota_requests !== null ? usedRequests : null,
-      remaining_tokens: c.quota_tokens !== null ? Math.max(0, c.quota_tokens - usedTokens) : null,
-      remaining_requests: c.quota_requests !== null ? Math.max(0, c.quota_requests - usedRequests) : null,
-      periods: parsePeriodCycles(c.period_cycles).map(toPeriodQuotaEntry),
+      used_tokens: selfQuota && c.quota_tokens !== null ? usedTokens : null,
+      used_requests: selfQuota && c.quota_requests !== null ? usedRequests : null,
+      remaining_tokens: selfQuota && c.quota_tokens !== null ? Math.max(0, c.quota_tokens - usedTokens) : null,
+      remaining_requests: selfQuota && c.quota_requests !== null ? Math.max(0, c.quota_requests - usedRequests) : null,
+      periods: selfQuota ? parsePeriodCycles(c.period_cycles).map(toPeriodQuotaEntry) : [],
     };
   });
 
@@ -116,7 +121,7 @@ export async function GET(request: Request) {
   );
 
   const models = modelRows.map((m) => {
-    const selfQuota = m.quota_mode === "independent" || m.quota_mode === "dual";
+    const selfQuota = usesModelSelfQuota(m.quota_mode);
     // 模型的 quota_tokens / quota_requests 同为「总配额」，计数器是 period_used_*。
     const usedTokens = m.period_used_tokens;
     const usedRequests = m.period_used_requests;
@@ -126,7 +131,7 @@ export async function GET(request: Request) {
       alias: m.alias,
       real_model: m.real_model,
       channel_name: m.channel_name,
-      quota_mode: m.quota_mode,
+      quota_mode: normalizeModelQuotaMode(m.quota_mode),
       quota_requests: m.quota_requests,
       quota_tokens: m.quota_tokens,
       used_requests: selfQuota ? usedRequests : null,

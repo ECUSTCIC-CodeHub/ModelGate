@@ -11,6 +11,7 @@ import { checkUserRateLimit } from "@/lib/gateway/ratelimit";
 import { selectModelRoute, findUaDenyMatchForAlias, resolveModelFallbackAlias } from "@/lib/gateway/router";
 import { resolveClientIp } from "@/lib/core/client-ip";
 import { getGatewaySettings } from "@/lib/core/settings";
+import { bypassesUserLimits, usesModelSelfQuota } from "@/lib/gateway/quota-mode";
 import { resolveTriState } from "@/lib/gateway/user-preferences";
 import { applyHeaderMappings, parseCustomHeaders, parseHeaderMappings } from "@/lib/gateway/custom-headers";
 import { fetchUpstream } from "@/lib/gateway/upstream-proxy";
@@ -195,7 +196,8 @@ async function runMultipartGatewayRequest(request: Request) {
   }
 
   const quotaMode = existingRoute.model.quota_mode;
-  const bypassUserLimits = quotaMode === "bypass_group" || quotaMode === "independent";
+  // 用户限额放行由模型级与渠道级共同决定，任一级要求绕过都跳过用户配额与速率检查。
+  const bypassUserLimits = bypassesUserLimits(existingRoute);
 
   // 命中用户定向额度（兑换码）时，跳过用户全局配额检查，并记录该定向额度供扣减时保持一致。
   let redeemCovered = false;
@@ -229,7 +231,7 @@ async function runMultipartGatewayRequest(request: Request) {
     }
   }
 
-  if (quotaMode === "independent" || quotaMode === "dual") {
+  if (usesModelSelfQuota(quotaMode)) {
     const modelQuotaResult = await checkModelQuota(existingRoute.model.id, estimatedTokens);
     if (!modelQuotaResult.ok) {
       logRejected(429, modelQuotaResult.reason, alias, estimatedTokens);

@@ -7,6 +7,7 @@ import { parseSupportedProtocols, type GatewayProtocol } from "@/lib/gateway/pro
 import { checkScopedUaRestrictions, type UaRestrictionMatch } from "@/lib/gateway/ua-restrictions";
 import { isChannelExpired, isChannelTimeAllowed } from "@/lib/gateway/channel-time";
 import { isModelExpired } from "@/lib/gateway/model-expiry";
+import { bypassesUserLimits, normalizeChannelQuotaMode, normalizeModelQuotaMode } from "@/lib/gateway/quota-mode";
 
 export type RoutedModel = {
   model: DbModel;
@@ -57,6 +58,7 @@ type CandidateRow = {
   channel_weight: number;
   channel_max_concurrency: number;
   timeout: number;
+  channel_quota_mode: ModelQuotaMode | null;
   channel_quota_tokens: number | null;
   channel_quota_requests: number | null;
   channel_quota_period: number | null;
@@ -128,6 +130,7 @@ const LIST_MODEL_ROUTES_SQL = `SELECT
       c.weight as channel_weight,
       c.max_concurrency as channel_max_concurrency,
       c.timeout,
+      c.quota_mode as channel_quota_mode,
       c.quota_tokens as channel_quota_tokens,
       c.quota_requests as channel_quota_requests,
       c.quota_period as channel_quota_period,
@@ -188,7 +191,7 @@ function mapRowToRoute(row: CandidateRow, inboundProtocol?: GatewayProtocol): Ro
       max_concurrency: row.model_max_concurrency,
       copilot_compatibility: row.copilot_compatibility ?? 0,
       supports_vision: row.model_supports_vision ?? 0,
-      quota_mode: row.model_quota_mode ?? "follow_group",
+      quota_mode: normalizeModelQuotaMode(row.model_quota_mode),
       quota_tokens: row.model_quota_tokens,
       quota_requests: row.model_quota_requests,
       quota_period: row.model_quota_period,
@@ -218,6 +221,7 @@ function mapRowToRoute(row: CandidateRow, inboundProtocol?: GatewayProtocol): Ro
       weight: row.channel_weight,
       max_concurrency: effectiveMaxConcurrency(row.channel_max_concurrency, row.model_max_concurrency),
       timeout: row.timeout,
+      quota_mode: normalizeChannelQuotaMode(row.channel_quota_mode),
       quota_tokens: row.channel_quota_tokens,
       quota_requests: row.channel_quota_requests,
       quota_period: row.channel_quota_period,
@@ -431,19 +435,17 @@ export type QuotaFallbackOptions = {
  * 优先使用 preferredAlias 指定的别名；否则在所有已启用模型中按权重自动挑选。
  * 通过 excludeAliases 排除已尝试过的别名与通配符 `*`，避免回环。
  * requireVision 为 true 时（请求含图片），仅考虑 supports_vision=1 的模型。
- * requireBypassUserLimits 为 true 时（用户配额/速率超限），仅考虑计费模式为
- * bypass_group 或 independent 的模型，这类模型不占用户配额，放行后不会被用户限额再次拦截。
+ * requireBypassUserLimits 为 true 时（用户配额/速率超限），仅考虑模型或渠道为
+ * bypass_group / independent 的路由，这类路由不占用户配额，放行后不会被用户限额再次拦截。
  */
 export async function findQuotaFallbackRoute(options: QuotaFallbackOptions): Promise<RoutedModel | null> {
   const excludeSet = new Set(options.excludeAliases ?? []);
-  const isBypassMode = (route: RoutedModel) =>
-    route.model.quota_mode === "bypass_group" || route.model.quota_mode === "independent";
   const checkRoute = async (alias: string): Promise<RoutedModel | null> => {
     if (excludeSet.has(alias) || alias === "*") return null;
     const route = await selectModelRoute(alias, options);
     if (!route) return null;
     if (options.requireVision && route.model.supports_vision !== 1) return null;
-    if (options.requireBypassUserLimits && !isBypassMode(route)) return null;
+    if (options.requireBypassUserLimits && !bypassesUserLimits(route)) return null;
     return route;
   };
 
@@ -459,7 +461,7 @@ export async function findQuotaFallbackRoute(options: QuotaFallbackOptions): Pro
      WHERE m.enabled = 1 AND m.deleted_at IS NULL AND m.alias != '*'
        AND c.enabled = 1 AND c.deleted_at IS NULL
        ${options.requireVision ? "AND m.supports_vision = 1" : ""}
-       ${options.requireBypassUserLimits ? "AND m.quota_mode IN ('bypass_group', 'independent')" : ""}
+       ${options.requireBypassUserLimits ? "AND (m.quota_mode IN ('bypass_group', 'independent') OR c.quota_mode IN ('bypass_group', 'independent'))" : ""}
      ORDER BY m.weight DESC, m.id ASC`,
   );
   for (const row of aliases) {

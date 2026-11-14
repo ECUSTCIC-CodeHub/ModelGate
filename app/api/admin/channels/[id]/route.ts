@@ -18,6 +18,7 @@ import { isMaskedApiKey, looksLikeMaskedApiKey, maskApiKey, resolveSubmittedApiK
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { resolveChannelOwnerId } from "@/lib/services/channel-ownership";
 import { validatePeriodCycles, serializePeriodCycleState, mergeDefinitionOntoState } from "@/lib/gateway/period-cycles";
+import { normalizeChannelQuotaMode, QUOTA_MODES } from "@/lib/gateway/quota-mode";
 
 const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
 
@@ -33,6 +34,7 @@ const updateSchema = z.object({
   weight: z.number().int().min(1).optional(),
   max_concurrency: z.number().int().min(1).optional(),
   timeout: z.number().int().min(1).optional(),
+  quota_mode: z.enum(QUOTA_MODES).optional(),
   quota_tokens: z.number().int().min(0).nullable().optional(),
   quota_requests: z.number().int().min(0).nullable().optional(),
   period_cycles: z.unknown().optional(),
@@ -227,6 +229,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     period_cycles: periodCyclesProvided
       ? periodCycles
       : (existing as { period_cycles?: string | null }).period_cycles ?? null,
+    // 字段缺席保持原值；历史数据缺列或脏值按「双重限制」处理，与建表默认值一致
+    quota_mode:
+      parsed.data.quota_mode ?? normalizeChannelQuotaMode((existing as { quota_mode?: string | null }).quota_mode),
     enabled: nextEnabled,
   };
 
@@ -248,7 +253,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       .execute(
         `UPDATE channels
          SET name = ?, base_url = ?, api_key = ?, supported_protocols = ?, user_agent = ?, proxy_url = ?, enabled = ?, weight = ?, max_concurrency = ?, timeout = ?,
-             quota_tokens = ?, quota_requests = ?, period_cycles = ?, force_include_usage = ?, ua_restrictions = ?, expires_at = ?, time_restrictions = ?, custom_headers = ?, request_body_omit = ?, group_name = ?, retry_status_codes = ?, header_mappings = ?, api_key_private = ?, created_by = ?
+             quota_mode = ?, quota_tokens = ?, quota_requests = ?, period_cycles = ?, force_include_usage = ?, ua_restrictions = ?, expires_at = ?, time_restrictions = ?, custom_headers = ?, request_body_omit = ?, group_name = ?, retry_status_codes = ?, header_mappings = ?, api_key_private = ?, created_by = ?
          WHERE id = ?`,
         [
           (merged as { name: string }).name,
@@ -261,6 +266,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           (merged as { weight: number }).weight,
           (merged as { max_concurrency: number }).max_concurrency,
           (merged as { timeout: number }).timeout,
+          (merged as { quota_mode: string }).quota_mode,
           (merged as { quota_tokens: number | null }).quota_tokens ?? null,
           (merged as { quota_requests: number | null }).quota_requests ?? null,
           (merged as { period_cycles: string | null }).period_cycles,

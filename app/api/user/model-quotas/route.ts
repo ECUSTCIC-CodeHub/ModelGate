@@ -9,6 +9,7 @@ import { getUserScope, listRedeemScopes, scopeCoversPair, scopesCoverPair } from
 import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
 import { toPeriodQuotaEntry } from "@/lib/gateway/quota";
 import { parseMultiplierSchedules, resolveEffectiveMultiplier } from "@/lib/gateway/multiplier-schedule";
+import { normalizeChannelQuotaMode, normalizeModelQuotaMode, usesModelSelfQuota } from "@/lib/gateway/quota-mode";
 
 export async function GET(request: Request) {
   const guard = await ensureUser(request);
@@ -30,7 +31,8 @@ export async function GET(request: Request) {
     channel_id: number;
     channel_name: string;
     is_public: number;
-    quota_mode: string;
+    quota_mode: string | null;
+    channel_quota_mode: string | null;
     quota_tokens: number | null;
     quota_requests: number | null;
     period_used_tokens: number;
@@ -41,6 +43,7 @@ export async function GET(request: Request) {
     request_multiplier: number;
   }>(
     `SELECT m.id, m.alias, m.real_model, m.channel_id, c.name AS channel_name, m.is_public, m.quota_mode,
+            c.quota_mode AS channel_quota_mode,
             m.quota_tokens, m.quota_requests,
             m.period_used_tokens, m.period_used_requests, m.period_cycles,
             m.multiplier_schedules,
@@ -70,7 +73,8 @@ export async function GET(request: Request) {
   const now = new Date();
   const data = accessible.map((m) => {
     // 模型的 quota_tokens / quota_requests 是「总配额」，计数器是 period_used_*。
-    const selfQuota = m.quota_mode === "independent" || m.quota_mode === "dual";
+    const quotaMode = normalizeModelQuotaMode(m.quota_mode);
+    const selfQuota = usesModelSelfQuota(quotaMode);
     const usedTokens = m.period_used_tokens;
     const usedRequests = m.period_used_requests;
     const periods = selfQuota ? parsePeriodCycles(m.period_cycles).map(toPeriodQuotaEntry) : [];
@@ -83,7 +87,9 @@ export async function GET(request: Request) {
       real_model: m.real_model,
       channel_id: m.channel_id,
       channel_name: m.channel_name,
-      quota_mode: m.quota_mode,
+      quota_mode: quotaMode,
+      // 渠道配额模式影响用户限额是否被跳过，与模型级一起决定最终生效口径。
+      channel_quota_mode: normalizeChannelQuotaMode(m.channel_quota_mode),
       token_multiplier: m.token_multiplier ?? 1,
       request_multiplier: m.request_multiplier ?? 1,
       effective_token_multiplier: effective.token_multiplier,

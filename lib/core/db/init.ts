@@ -343,6 +343,9 @@ async function ensureAllColumns(db: DatabaseAdapter) {
   await db.ensureColumn("channels", "user_agent", "user_agent TEXT DEFAULT ''");
   await db.ensureColumn("channels", "proxy_url", "proxy_url TEXT DEFAULT ''");
   await db.ensureColumn("channels", "max_concurrency", "max_concurrency INTEGER DEFAULT 64");
+  // 用 VARCHAR 而非 TEXT：MySQL 的 ADD COLUMN 会剥掉 TEXT 类型的 DEFAULT，
+  // 导致老库新增列后旧行为 NULL（渠道配额被静默关闭）。VARCHAR 在 SQLite 同样可用。
+  await db.ensureColumn("channels", "quota_mode", `quota_mode VARCHAR(32) DEFAULT 'dual'`);
   await db.ensureColumn("channels", "quota_tokens", "quota_tokens INTEGER");
   await db.ensureColumn("channels", "quota_requests", "quota_requests INTEGER");
   await db.ensureColumn("channels", "quota_period", "quota_period INTEGER");

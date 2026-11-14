@@ -6,6 +6,7 @@ import { buildUpstreamUrl, fetchUpstreamRequest } from "@/lib/gateway/proxy";
 import { listModelRoutes, type RoutedModel } from "@/lib/gateway/router";
 import { createCandidateQueue, MAX_CANDIDATE_VISITS } from "@/lib/gateway/candidate-queue";
 import { resolveRetryStatusCodes, shouldRetryUpstreamStatus } from "@/lib/gateway/upstream-error";
+import { usesModelSelfQuota } from "@/lib/gateway/quota-mode";
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 
 type ChannelAcquireResult = Awaited<ReturnType<typeof acquireChannel>>;
@@ -181,7 +182,7 @@ export async function requestUpstreamWithFallback({
   // 候选路由的模型独立配额检查：quota_mode 非 independent/dual 时直接放行（返回 null 配额信息）。
   // 配额不足时返回 reason，由调用方排除该候选继续选路。
   const checkCandidateModelQuota = async (route: RoutedModel): Promise<{ ok: true; quota: ModelQuotaInfo | null } | { ok: false; reason: string }> => {
-    if (route.model.quota_mode !== "independent" && route.model.quota_mode !== "dual") return { ok: true, quota: null };
+    if (!usesModelSelfQuota(route.model.quota_mode)) return { ok: true, quota: null };
     const result = await deps.checkModelQuota(route.model.id, estimatedTokens);
     if (!result.ok) {
       lastModelQuotaReason = result.reason;

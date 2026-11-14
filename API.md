@@ -262,6 +262,7 @@ X-Model-Period-Quota-Requests-<id>: <remaining>
 
 | 字段 | 类型 | 说明 |
 |:---|:---|:---|
+| channel_quota_mode | enum | 所属渠道的配额模式（`follow_group` / `bypass_group` / `independent` / `dual`），用于判断用户限额是否被渠道侧跳过；不包含渠道配额数值 |
 | effective_token_multiplier | number | 当前时刻实际生效的 Token 倍率 |
 | effective_request_multiplier | number | 当前时刻实际生效的请求倍率 |
 | multiplier_schedule_applied | bool | 当前是否命中某个分时档位 |
@@ -1341,6 +1342,7 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
     {
       "id": 1,
       "name": "OpenAI",
+      "quota_mode": "dual",
       "model_count": 2,
       "quota_tokens": 1000000,
       "quota_requests": null,
@@ -1401,6 +1403,8 @@ Claim 表达式示例：`role == "certified"`、`tags contains "先锋会员"`�
 > `groups` / `channels` / `models` 各项均带 `periods` 数组（多档重置周期的当前状态，见「多档重置周期」一节）；用户组自身不持有运行时计数，其 `periods` 只反映定义值，`used_*` 恒为 0。
 >
 > 用户组配额为每用户独立生效的限制，非总量池。`bypass_group` 模型的 `used_*`、`remaining_*` 为 `null`，其 `periods` 为 `[]`。
+>
+> `channels` 各项的 `quota_mode` 为渠道配额模式（见「速率限制与配额」）。渠道自身配额仅在 `independent` / `dual` 下生效：其余模式下 `used_*`、`remaining_*` 为 `null`，`periods` 为 `[]`，`quota_tokens` / `quota_requests` 仍回显配置值。
 
 ---
 
@@ -1579,6 +1583,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
       "weight": 1,
       "max_concurrency": 64,
       "timeout": 60,
+      "quota_mode": "dual",
       "created_by_username": "admin",
       "models": [
         {
@@ -1621,6 +1626,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
   "weight": 1,
   "max_concurrency": 64,
   "timeout": 60,
+  "quota_mode": "dual",
   "quota_tokens": 1000000,
   "quota_requests": null,
   "period_cycles": [
@@ -1664,9 +1670,10 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | weight | int | 否 | 1 | 路由权重 |
 | max_concurrency | int | 否 | 64 | 最大并发数 |
 | timeout | int | 否 | 60 | 超时时间（秒） |
-| quota_tokens | int\|null | 否 | null | 渠道总 Token 配额，null 表示不限制 |
-| quota_requests | int\|null | 否 | null | 渠道总请求配额，null 表示不限制 |
-| period_cycles | object[] | 否 | [] | 多档重置周期，见「多档重置周期」一节；为空数组表示清空已有档位（仅完整版） |
+| quota_mode | enum | 否 | "dual" | 渠道配额模式：`follow_group`（跟随用户组：仅受用户组配额和速率限制，渠道自身配额不生效）/ `bypass_group`（绕过用户组：用户组配额、速率限制与渠道自身配额均不生效）/ `independent`（独立配额：跳过用户组限制，使用渠道自身配额）/ `dual`（双重限制：同时受用户组配额与速率限制和渠道自身配额约束）。默认 `dual` 与历史行为一致 |
+| quota_tokens | int\|null | 否 | null | 渠道总 Token 配额，null 表示不限制；仅 `quota_mode` 为 `independent` / `dual` 时参与判定 |
+| quota_requests | int\|null | 否 | null | 渠道总请求配额，null 表示不限制；仅 `quota_mode` 为 `independent` / `dual` 时参与判定 |
+| period_cycles | object[] | 否 | [] | 多档重置周期，见「多档重置周期」一节；为空数组表示清空已有档位（仅完整版）；仅 `quota_mode` 为 `independent` / `dual` 时参与判定 |
 | force_include_usage | bool | 否 | true | 流式请求时向上游发送 `stream_options.include_usage`，设为 false 可兼容不支持该参数的上游（如微软） |
 | request_body_omit | array\|null | 否 | null | 渠道级请求体字段剔除列表，字符串数组，元素为要从上游请求体中删除的**顶层**字段名（如 `["metadata"]`）。发往该渠道上游的所有请求都会先删除这些字段，用于兼容不接受特定字段的上游（如智谱不接受 `metadata`）。最多 16 项，单个字段名最长 64 字符且须为 `[A-Za-z_][A-Za-z0-9_]*` 形态的顶层字段名（不支持 `a.b`、`a[0]` 这类嵌套路径写法）；重复项自动去重，空字符串项被忽略。`model`、`messages`、`input`、`contents`、`prompt`、`system`、`stream` 承载请求语义，不允许剔除。留空或 null 表示不剔除。读取时容错：脏数据或含非法项时整份退回「不剔除」。`other` 通用转发路径请求体原样转发，该配置对其不生效 |
 | header_mappings | object[]\|null | 否 | null | 渠道级请求头映射，元素形如 `{"from":"x-session-id","to":"X-Opencode-Session"}`，表示把客户端请求里的 `from` 头**改名**后以 `to` 发往该渠道上游，值始终取自客户端。用于不同客户端与上游对同一语义使用不同头名的场景（如客户端的 `X-Session-Id` 映射成上游要的 `X-Opencode-Session`）。最多 10 项；两端名称须为 HTTP token 字符、最长 128 字符，且至少一端需带连字符（两端都不带时大概率是把源与目标写反了，写反会表现为「配了不生效」）；`to` 不允许是 `Authorization`、`X-Api-Key`、`Host`、`Content-Type`、`User-Agent` 等网关托管头，也不允许是 `X-Forwarded-For`、`X-Real-IP`、`X-Forwarded-Host`、`Forwarded`、`CF-Connecting-IP`、`X-Original-URL`、`Sec-Fetch-*` 这类转发链元数据（与 `custom_headers` 同一份黑名单），`to` 大小写不敏感地不允许重复。客户端未携带 `from`、或携带的 `from` 值为空时不下发 `to`，网关不会凭空造值。生效路径：标准转发（`chat_completions` / `responses` / `embeddings` / `images` / `anthropic_messages`）、`/api/v1/images/edits`、`other` 透传。优先级低于托管字段，高于 `custom_headers`；`other` 透传路径下会覆盖客户端的同名透传值。模型测试与模型列表探测不携带客户端请求，故不生效。读取时容错：脏数据逐项丢弃，非法项不影响其余项 |
@@ -2547,7 +2554,9 @@ access token 过期但 refresh token 仍有效时按已登录处理（整页表�
 
 ### GET /api/user/model-quotas
 
-获取当前用户有权访问的所有模型列表，包含配额信息和计费倍率。先前仅返回 `independent` 和 `bypass_group` 的模型，现已扩展为返回所有权限内模型。
+获取当前用户有权访问的所有模型列表，包含配额信息和计费倍率。先前仅返回 `independent` 和 `bypass_group` 的模型，现已扩展为返回所有权限内模型；同时回传所属渠道的配额模式，便于客户端判断用户限额是否被渠道侧跳过。
+
+模型的 `quota_mode` 与所属渠道的 `channel_quota_mode` 共同决定用户限额是否生效：任一级为 `bypass_group` / `independent` 时，该组合跳过用户配额与速率限制。`channel_quota_mode` 只回传模式，不回传渠道配额用量；模型自身的 `quota_*`、`used_*`、`remaining_*`、`periods` 仍仅在模型为 `independent` / `dual` 时返回。
 
 **认证:** 用户
 
@@ -2561,6 +2570,7 @@ access token 过期但 refresh token 仍有效时按已登录处理（整页表�
       "channel_id": 1,
       "channel_name": "OpenAI 主渠道",
       "quota_mode": "independent",
+      "channel_quota_mode": "dual",
       "token_multiplier": 1.5,
       "request_multiplier": 1,
       "effective_token_multiplier": 0.75,
@@ -3361,7 +3371,7 @@ OpenAI Chat Completions 兼容端点。
 
 > 当系统设置开启「达到限额后自动路由」全局开关，若用户配额、速率限制（RPM/QPS/TPM）或模型独立配额（`quota_mode=independent` / `dual`）达到上限，网关会自动改路由到其他可用模型：优先使用管理员指定的全局别名，仍为空时从已启用且当前用户可见的模型中按权重自动挑选。请求包含图片时只会路由到标记「支持识图」的模型。
 >
-> 限额类型不同，候选模型范围不同：**模型独立配额超限**（`independent` / `dual`）时，候选为任意其他可用模型；**用户配额或速率限制超限**时，候选只包含计费模式为 `bypass_group` 或 `independent`（即不占用户配额）的模型。网关会按权重逐个尝试候选模型并重新检查限额，命中可通过的即采用；全部候选都不可用或仍超限则返回 429。为防止回环，已尝试过的别名会逐步排除，累计尝试上限 10 次。用户级限额检查在整个路由过程中只执行一次并缓存复用，模型独立配额针对每个候选模型重新检查。该功能仅在对话类协议（Chat Completions / Responses / Anthropic Messages / Embeddings）生效，图片生成协议不接入。
+> 限额类型不同，候选模型范围不同：**模型独立配额超限**（`independent` / `dual`）时，候选为任意其他可用模型；**用户配额或速率限制超限**时，候选只包含模型或渠道为 `bypass_group` / `independent`（即不占用户配额）的路由。网关会按权重逐个尝试候选模型并重新检查限额，命中可通过的即采用；全部候选都不可用或仍超限则返回 429。为防止回环，已尝试过的别名会逐步排除，累计尝试上限 10 次。用户级限额检查在整个路由过程中只执行一次并缓存复用，模型独立配额针对每个候选模型重新检查。该功能仅在对话类协议（Chat Completions / Responses / Anthropic Messages / Embeddings）生效，图片生成协议不接入。
 >
 > 请求包含图片时，为保证路由后请求仍能成功，候选模型必须标记「支持识图」。这与「图片自动路由到识图模型」属不同动机（后者是因为目标模型不支持识图而换，前者是限额路由为了保证成功率），单独关闭「图片自动路由」开关不影响限额路由对识图候选的要求。
 
@@ -3391,7 +3401,7 @@ X-Channel-Period-Quota-Tokens-Remaining: 1800000
 X-Channel-Period-Quota-Reset: 2026-05-08T00:00:00.000Z
 ```
 
-> `X-Quota-*` 和 `X-Period-Quota-*` 为用户级配额；`X-Channel-Quota-*` 和 `X-Channel-Period-Quota-*` 为渠道级配额；`X-Model-Quota-*` 和 `X-Model-Period-Quota-*` 为模型级配额（仅 `quota_mode = independent` / `dual` 时返回）。配额头仅在配置了对应配额时返回；精简版不会返回 `X-Period-*`、`X-Channel-Period-*` 和 `X-Model-Period-*` 响应头。
+> `X-Quota-*` 和 `X-Period-Quota-*` 为用户级配额；`X-Channel-Quota-*` 和 `X-Channel-Period-Quota-*` 为渠道级配额（仅渠道 `quota_mode = independent` / `dual` 时返回）；`X-Model-Quota-*` 和 `X-Model-Period-Quota-*` 为模型级配额（仅 `quota_mode = independent` / `dual` 时返回）。配额头仅在配置了对应配额时返回；精简版不会返回 `X-Period-*`、`X-Channel-Period-*` 和 `X-Model-Period-*` 响应头。
 
 ---
 
@@ -3810,11 +3820,17 @@ curl https://your-domain:3000/api/v1/rerank \
 
 - **RPM / QPS / TPM:** 用户级速率限制，`-1` 表示不限制
 - **quota_tokens / quota_requests:** 总量配额，`null` 表示不限制（用户级 `null` 表示继承组，`-1` 表示显式不限制并覆盖组）
-- **渠道配额:** 渠道可独立配置总量配额和周期配额，与用户/组配额同时生效，任一耗尽返回 429
-- **模型配额模式:** 模型的 `quota_mode` 控制配额检查和用量计入行为
+- **渠道配额:** 渠道可配置总量配额和周期配额。是否参与判定、是否放行用户组限制由渠道的 `quota_mode` 控制，与模型的 `quota_mode` 相互独立：任一级要求绕过用户组限制（模型或渠道为 `bypass_group` / `independent`）即跳过用户配额与速率检查；渠道自身配额仅在渠道为 `independent` / `dual` 时检查，耗尽返回 429
+- **渠道配额模式:** 渠道的 `quota_mode` 控制渠道自身配额与用户组限制的生效关系（默认 `dual`，与历史行为一致）
+  - `follow_group`：仅受用户组配额和速率限制，渠道自身配额及其周期档不生效，用量仍累加到渠道计数器
+  - `bypass_group`：跳过用户组配额检查和速率限制检查，渠道自身配额也不生效
+  - `independent`：跳过用户组限制，改为检查渠道自身的配额配置；未配置任何渠道配额与周期档时该渠道不受配额约束
+  - `dual`：同时受用户组配额与速率限制和渠道自身配额约束，任一超限即拒绝
+  - 未识别的模式取值按 `dual` 处理，避免脏数据静默关闭渠道配额
+- **模型配额模式:** 模型的 `quota_mode` 控制模型自身配额与用户组限制的生效关系
   - `follow_group`（默认）：受用户组配额和速率限制约束，用量计入用户配额
-  - `bypass_group`：跳过用户组配额检查和速率限制检查，用量不计入用户配额
-  - `independent`：跳过用户组限制，改为检查模型自身的配额配置，用量不计入用户配额
+  - `bypass_group`：跳过用户组配额检查和速率限制检查，用量仍计入账户总用量，只是不参与用户配额拦截
+  - `independent`：跳过用户组限制，改为检查模型自身的配额配置，用量仍计入账户总用量，只是不参与用户配额拦截
   - `dual`：同时受用户组配额与速率限制和模型自身配额约束，任一超限即拒绝，用量同时计入用户配额与模型配额
 - **模型独立配额在候选实例上检查:** `independent` / `dual` 模型的配额检查覆盖实际请求的每个候选实例。请求先按权重选定首选模型检查配额，上游失败切换渠道（多渠道重试）后，若新的候选模型为 `independent` / `dual`，网关同样在请求前检查其配额；配额不足的候选被跳过继续选路，全部候选均不可用（含配额不足）时返回 429，不会出现配额检查与实际扣量模型不一致的情况
 - **模型倍率:** `token_multiplier` 和 `request_multiplier` 控制计费扣量
