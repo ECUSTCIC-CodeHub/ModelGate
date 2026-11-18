@@ -2383,8 +2383,8 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 为 DeepSeek Harness（DSH）插件 `dsh-cic` 提供授权与密钥投递。全程是 OAuth 授权码模式，明文密钥不经过浏览器：
 
 1. DSH 插件在本机 `127.0.0.1` 起回调服务器，在系统浏览器打开 `/dsh/authorize?port={端口}&session={会话标识}`
-2. 用户确认后，服务端新建一枚专用密钥（名称固定为 `dsh`）与一次性兑换码
-3. 服务端 303 跳转浏览器到 `http://127.0.0.1:{端口}/callback?code={兑换码}&session={会话标识}`
+2. 用户确认后，服务端新建一枚专用密钥（名称固定为 `dsh`）与一次性兑换码，303 跳到 GET `/dsh/authorize/success`，成功页展示这 8 位兑换码；刷新成功页只是重拉 GET，不会重复建密钥
+3. 成功页提供「前往本机自动接入」链接（新标签页打开 `http://127.0.0.1:{端口}/callback?code={兑换码}&session={会话标识}`）；自动接入连不上时，用户可复制页面上的兑换码，粘贴到 DSH 卡片完成兑换
 4. DSH 从 `code` 取兑换码，自己调 `POST /api/user/dsh/redeem` 换取明文密钥，写入本地凭据
 
 服务端**不**主动向本机端口投递明文密钥：插件的回调服务器只接受 `GET /callback` 与 `GET /health`，多一条直投路径只会让投递失败连累已建好的密钥。
@@ -2462,7 +2462,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 ### POST /api/user/dsh/authorize-confirm
 
-`/dsh/authorize` 确认按钮的提交目标：建密钥、发兑换码、303 跳回本机回调。
+`/dsh/authorize` 确认按钮的提交目标：建密钥、发兑换码，然后 303 到 GET `/dsh/authorize/success` 展示这 8 位兑换码。采用 POST-Redirect-GET，刷新成功页不会重复建密钥。
 
 **认证:** 用户；必须同源，`GET` 返回 405
 
@@ -2477,12 +2477,12 @@ access token 过期但 refresh token 仍有效时按已登录处理（整页表�
 | 字段 | 类型 | 必填 | 说明 |
 |:---|:---|:---|:---|
 | port | string | 是 | 1-65535，DSH 本机监听端口 |
-| session | string | 否 | 会话标识，最长 128；落库为 `client_id` 并原样带回回调 URL |
+| session | string | 否 | 会话标识，仅允许 `A-Z a-z 0-9 . _ -`，长 1-128；落库为 `client_id` 并原样带到回调 URL。它要过表单编码、查询串编码与 HTML 转义三道手，字符集必须窄，否则值会在链路里漂移，插件比对自己发起的会话时会把合法回调当他人会话丢弃 |
 
 **响应:**
-- `303`：`Location: http://127.0.0.1:{port}/callback?code={code}&session={session}`（无 `session` 时不带该参数）。明文密钥不出现在跳转地址里
+- `303`：`Location: /dsh/authorize/success?code={code}`。跳转地址上只放兑换码，密钥掩码、有效期、回调端口与会话都由成功页按码回查 `dsh_enrollments`，不重复声明服务端已经记下的事实，也就不进浏览器历史和跨站 `Referer`
 - `303`（未登录）：`Location: /login?next={授权页}`，见上
-- `400`：参数无效，或密钥/待兑换码已达上限
+- `400`：参数无效（`port` 越界或 `session` 不符合上述字符集），或密钥/待兑换码已达上限
 - `403`：来源不合法
 - `503`：服务繁忙（如数据库连接池饱和），响应为 HTML 页面，带 `retry-after`
 - `500`：内部错误，响应为 HTML 页面，不含内部错误详情
@@ -2492,6 +2492,16 @@ access token 过期但 refresh token 仍有效时按已登录处理（整页表�
 ### GET /dsh/authorize（页面路由）
 
 授权确认页。缺少或非法的 `port` 时渲染「参数无效」；未登录时 302 到 `/login?next=`（保留 `port` 与 `session`）。
+
+### GET /dsh/authorize/success（页面路由）
+
+授权成功页，由 `/api/user/dsh/authorize-confirm` 303 跳转而来，只接受 `code` 一个参数。
+
+页面按 `code` 回查 `dsh_enrollments`，要求记录仍是 `pending`、未过期且对应密钥仍可用；任一条不满足都 302 回 `/dsh/authorize`，避免用一串手写参数渲染出「授权成功」的假页面。展示内容全部取自库：兑换码、「复制」按钮、密钥掩码（首 10 位 + 尾 4 位）、有效期（上海时区，5 分钟），以及「前往本机自动接入」链接。
+
+回调地址由落库的 `callback_url` 重新拼装，只按原串校验 `http://127.0.0.1:{1-65535}/callback` 前缀，`code` 与 `session` 由服务端自己编码拼入，不解析外部传入的 URL，也就不存在解析与序列化之间的偏差。`target="_blank"` + `rel="noopener noreferrer"` 保证本页保留，回调失败时用户仍可复制页面上的码贴到 DSH 卡片完成接入。明文密钥不出现。
+
+此页不做任何写操作，刷新安全；兑换码被使用或过期后本页自动回到 `/dsh/authorize`。
 
 ### 过期清理
 

@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { ensureUserWithRefresh } from "@/lib/auth/guards";
 import { dbCapacityResponse, jsonError } from "@/lib/core/http";
+import { htmlEscape } from "@/lib/core/html";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { enrollDsh } from "@/lib/services/dsh-enroll";
 
@@ -10,9 +11,18 @@ import { enrollDsh } from "@/lib/services/dsh-enroll";
  * POST /api/user/dsh/authorize-confirm  (表单：port, session?)
  *
  * /dsh/authorize 的「确认登录」由同源 HTML 表单提交到这里。颁发一枚 DSH
- * 专用密钥 + 一次性兑换码，然后 303 跳回 http://127.0.0.1:{port}/callback?code=xxx。
+ * 专用密钥 + 一次性兑换码，然后 303 到 GET /dsh/authorize/success：成功页展示
+ * 8 位兑换码供抄录，并提供「前往本机 DSH 自动接入」链接把码带回
+ * http://127.0.0.1:{port}/callback。
+ *
+ * 不在确认时直接 303 跳本机回调：OIDC 主路径一旦失败（回调端口被占、防火墙拦截、
+ * 浏览器标签被关等），用户需要在浏览器里拿到码做备用兑换。POST 改 303 到 GET
+ * 成功页，既保留展示码的能力，又让刷新只重拉 GET，不会重复建密钥。
+ *
  * 明文密钥不出现在跳转地址里，DSH 拿到码后自己调 /api/user/dsh/redeem 换取。
  * 必须用 POST：每次确认都会新建密钥，不是幂等读取，不能挂在 GET 上。
+ * 成功页地址只带兑换码：密钥掩码、有效期、回调端口与会话都由成功页按码回查，
+ * 这些事实不进 Location，免得写进浏览器历史和跨站 Referer。
  */
 
 const ConfirmSchema = z.object({
@@ -23,7 +33,9 @@ const ConfirmSchema = z.object({
       const n = Number(v);
       return n > 0 && n < 65536;
     }),
-  session: z.string().max(128).optional(),
+  // 会话标识只用来让插件认领自己发起的那次回调，字符集必须窄：它要过表单编码、
+  // 查询串编码和 HTML 转义三道手，含 & + % 的值会在链路里漂移，插件比对上就丢了。
+  session: z.string().regex(/^[A-Za-z0-9._-]{1,128}$/).optional(),
 });
 
 const FAILURE_MESSAGES = {
@@ -97,7 +109,7 @@ async function isSameOrigin(request: Request): Promise<boolean> {
 }
 
 function htmlError(message: string, status: number) {
-  const safe = message.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[c] ?? c);
+  const safe = htmlEscape(message);
   return new Response(
     `<!doctype html><meta charset="utf-8"><title>授权失败</title>` +
       `<div style="padding:40px;text-align:center;font-family:system-ui,sans-serif">` +
@@ -106,7 +118,6 @@ function htmlError(message: string, status: number) {
   );
 }
 
-// 整页表单提交不能把 JSON 丢给浏览器，容量错误也渲染成 HTML，并保留 retry-after。
 function htmlBusy(retryAfter: string | null) {
   const response = htmlError("服务繁忙，请稍后重试", 503);
   if (retryAfter) response.headers.set("retry-after", retryAfter);
@@ -151,7 +162,7 @@ export async function POST(request: Request) {
     port: String(form.get("port") ?? ""),
     session: form.get("session") ? String(form.get("session")) : undefined,
   });
-  if (!parsed.success) return htmlError("参数无效：需要 port（1-65535）", 400);
+  if (!parsed.success) return htmlError("参数无效：需要 port（1-65535），session 仅允许字母数字与 . _ -", 400);
 
   const { port, session } = parsed.data;
   const callbackUrl = `http://127.0.0.1:${port}/callback`;
@@ -163,15 +174,16 @@ export async function POST(request: Request) {
     });
     if (!result.ok) return htmlError(FAILURE_MESSAGES[result.reason], 400);
 
-    // session 交由 DSH 自己比对：浏览器跳回来时带上它，插件只认自己发起的那个会话
-    const query = new URLSearchParams({ code: result.enrollment.code });
-    if (session) query.set("session", session);
-
+    // PRG：POST 只建一次密钥和兑换码，随后 303 到 GET 成功页。浏览器地址栏停在
+    // GET 地址，刷新不会重放创建动作。Location 里只放兑换码，回调地址与会话按码
+    // 回查，不在跳转地址上重复声明服务端已经记下的事实。
+    const successParams = new URLSearchParams({ code: result.enrollment.code });
     return new Response(null, {
       status: 303,
       headers: {
-        Location: `${callbackUrl}?${query.toString()}`,
+        Location: `/dsh/authorize/success?${successParams.toString()}`,
         "cache-control": "no-store",
+        "referrer-policy": "no-referrer",
       },
     });
   } catch (err) {

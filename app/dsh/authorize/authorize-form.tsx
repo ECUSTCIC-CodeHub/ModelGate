@@ -4,8 +4,9 @@ import { useState } from "react";
 
 /**
  * /dsh/authorize 的确认按钮。确认动作是 POST（会新建密钥，不可幂等），
- * 所以页面用一份隐藏表单提交，由服务端 303 把浏览器带到 DSH 的本机回调，
- * 再由 DSH 用一次性兑换码换回密钥。
+ * 所以页面用一份隐藏表单提交。提交后服务端 303 到 GET 成功页展示 8 位一次性兑换码：DSH 主路径
+ * 用「前往自动接入」把该码回传本机回调换取密钥；若回调失败，用户可复制页面上的
+ * 码粘贴到 DSH 卡片完成备用兑换。明文密钥不经过浏览器。
  */
 export function AuthorizeForm({
   port,
@@ -49,8 +50,8 @@ export function AuthorizeForm({
         <p style={{ color: "#666", margin: "0 0 24px", fontSize: "14px", lineHeight: 1.6 }}>
           当前已登录账号：<strong style={{ color: "#333" }}>{username}</strong>
           <br />
-          确认后浏览器会跳回本机 DSH（端口 {port}），由 DSH 用一次性兑换码换取本次
-          新建的网关密钥。
+          确认后本页会展示一枚 8 位一次性兑换码；DSH 用它换取本次新建的网关密钥。
+          若自动接入未成功，可复制该码到 DSH 卡片完成接入。
         </p>
         <form method="post" action="/api/user/dsh/authorize-confirm" onSubmit={handleSubmit}>
           <input type="hidden" name="port" value={port} />
@@ -71,11 +72,11 @@ export function AuthorizeForm({
               transition: "background 0.2s",
             }}
           >
-            {loading ? "正在跳转…" : "确认登录到 DSH"}
+            {loading ? "正在确认…" : "确认登录到 DSH"}
           </button>
         </form>
         <p style={{ color: "#999", margin: "20px 0 0", fontSize: "12px" }}>
-          密钥不会显示在此页面，也不会经过浏览器，只由 DSH 通过兑换码取回。
+          明文密钥不会显示在此页面，只由 DSH 用兑换码取回。
         </p>
       </div>
     </div>

@@ -220,6 +220,7 @@ export async function redeemEnrollCode(
   return { ok: true, key: keyRow.key, keyId: enrollment.key_id };
 }
 
-function maskKey(key: string): string {
+/** 密钥掩码：首 10 位 + 尾 4 位，与密钥列表页展示口径一致。 */
+export function maskKey(key: string): string {
   return key.length > 14 ? `${key.slice(0, 10)}...${key.slice(-4)}` : `${key.slice(0, 4)}...`;
 }

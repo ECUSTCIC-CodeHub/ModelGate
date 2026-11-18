@@ -8,9 +8,11 @@ import { AuthorizeForm } from "./authorize-form";
 /**
  * /dsh/authorize?port=XXX&session=YYY
  *
- * DSH 插件在系统浏览器里打开本页。已登录时显示确认按钮，确认后由
- * /api/user/dsh/authorize-confirm 颁发兑换码并 303 回
- * http://127.0.0.1:{port}/callback?code=xxx&session=YYY；未登录则先走 OIDC 登录再回来。
+ * DSH 插件在系统浏览器里打开本页。已登录时显示确认按钮，确认后提交到
+ * /api/user/dsh/authorize-confirm 颁发兑换码并 303 到 GET /dsh/authorize/success：
+ * 成功页展示 8 位兑换码，并提供「前往本机自动接入」把码带到
+ * http://127.0.0.1:{port}/callback；若回调失败，用户可复制页面上的码粘贴到 DSH 卡片
+ * 完成备用兑换。POST-Redirect-GET 保证刷新成功页不会重复建密钥。未登录则先走 OIDC 登录再回来。
  */
 export default async function DshAuthorizePage({
   searchParams,
