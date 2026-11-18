@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { AuthShell } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -64,13 +65,8 @@ export function BindForm({ allowCreate }: { allowCreate: boolean }) {
   const loading = loadingLink || loadingCreate;
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-4 py-8">
-      <div className="w-full max-w-sm space-y-4">
-        <div className="space-y-2 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-foreground)]">ModelGate</h1>
-          <p className="text-sm text-[var(--color-foreground-muted)]">OIDC 身份验证成功，请选择以下方式继续</p>
-        </div>
-
+    <AuthShell subtitle="OIDC 身份验证成功，请选择以下方式继续">
+      <div className="space-y-4">
         {allowCreate ? (
           <Card>
             <CardHeader>
@@ -130,6 +126,6 @@ export function BindForm({ allowCreate }: { allowCreate: boolean }) {
           </CardContent>
         </Card>
       </div>
-    </main>
+    </AuthShell>
   );
 }
