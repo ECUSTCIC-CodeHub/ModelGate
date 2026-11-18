@@ -1,12 +1,12 @@
 export const dynamic = "force-dynamic";
 
-import { ensureWebUser } from "@/lib/auth/guards";
+import { ensureUser } from "@/lib/auth/guards";
 import { jsonOk } from "@/lib/core/http";
 import { listAccessibleModels } from "@/lib/gateway/model-access";
 import { getGatewaySettings, parseModelBrandGroups } from "@/lib/core/settings";
 
 export async function GET(request: Request) {
-  const guard = await ensureWebUser(request);
+  const guard = await ensureUser(request);
   if ("error" in guard) return guard.error;
 
   const [models, settings] = await Promise.all([

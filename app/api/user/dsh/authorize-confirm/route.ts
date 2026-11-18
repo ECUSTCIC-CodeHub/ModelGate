@@ -149,6 +149,8 @@ export async function POST(request: Request) {
     if (guard.error.status === 503) return htmlBusy(guard.error.headers.get("retry-after"));
     return guard.error;
   }
+  // 同源校验只挡浏览器发起的跨站表单；非浏览器客户端可自行构造 Sec-Fetch-Site / Origin，
+  // 所以这里真正的门槛是上面 ensureUserWithRefresh 拒绝 API Key
   if (!(await isSameOrigin(request))) return htmlError("请求来源不合法", 403);
 
   let form: FormData;

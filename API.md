@@ -307,7 +307,37 @@ x-api-key: sk-gw-xxxxx
 ?api_key=sk-gw-xxxxx
 ```
 
-请求头方式优先级更高，也更推荐；query 鉴权会被所有支持 API Key 的端点识别，包括 `/api/v1/*`、`/api/ollama/*`、`/api/user/*`、`/api/dashboard/*` 和 `/api/admin/*`。
+请求头方式优先级更高，也更推荐；query 鉴权会被所有支持 API Key 的端点识别，包括 `/api/v1/*`、`/api/ollama/*` 以及下文列出的只读用户接口。
+
+**API Key 不是账号凭据。** 它只用于调用模型与查询自己的只读用量数据，不能用于任何凭据读写、账号设置或账号级动作。这类接口（密钥管理、兑换码核销、DSH 授权、修改密码、OIDC 绑定、个人设置、以及管理端所有写操作与明文密钥读取）一律只接受 Web 会话，用 API Key 调用返回 403：
+
+```json
+{
+  "error": {
+    "message": "该接口涉及账号凭据，请使用网页登录后操作",
+    "type": "invalid_request_error",
+    "param": "None",
+    "code": "403"
+  }
+}
+```
+
+拒绝发生在鉴权阶段，与同源 / CSRF 校验无关：非浏览器客户端可以自行构造 `Sec-Fetch-Site`、`Origin`，因此不能靠同源校验兜底。
+
+拒绝范围只覆盖「凭据读写 + 账号级动作」，只读查询一律保持可用，避免打断既有的脚本化调用：
+
+| 接口 | API Key |
+|:---|:---|
+| `GET /api/user/quota`、`GET /api/user/model-quotas`、`GET /api/user/logs/chat` | 接受（只读、不含凭据） |
+| `GET /api/dashboard/available-models` | 接受（只读，可见模型列表；DSH 客户端用 API Key 发现模型） |
+| `GET /api/user/redeem`、`POST /api/user/redeem` | 不接受 |
+| `GET/POST /api/user/keys`、`PUT/DELETE /api/user/keys/:id` | 不接受 |
+| `POST /api/user/dsh/enroll`、`POST /api/user/dsh/authorize-confirm` | 不接受 |
+| 其余 `/api/dashboard/*`（日志、汇总、个人设置、资料与密码、公告、主题偏好等） | 不接受 |
+| `/api/admin/*` 的其余接口（含写操作，如 `POST /api/admin/users`、`PUT /api/admin/settings`、`POST /api/admin/email/senders`） | 接受（管理员密钥，与 Web 会话同权） |
+| `POST /api/admin/email/send` | 不接受（接受任意收件人，需限定 Web 会话） |
+
+**迁移提示：** 之前用 `Authorization: Bearer sk-gw-...` 脚本化调用上表中「不接受」的接口的用法会开始返回 403。这些接口没有 API Key 替代路径；脚本需要改用账号密码调用 `/api/auth/login` 换取 access token 后再带上 `Authorization: Bearer <access_token>`（或直接复用登录返回的 Cookie）。只读用量查询与 DSH 授权链路不受影响：DSH 的授权确认页是整页表单提交，本身走 Web 会话。
 
 Ollama 兼容接口仅位于 `/api/ollama/*` 下。支持三种传递 API Key 的方式：
 
@@ -2313,7 +2343,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 获取当前用户的 API 密钥列表。
 
-**认证:** 用户
+**认证:** 用户（仅限 web 登录，不接受 API Key）
 
 **响应 (200):**
 ```json
@@ -2337,7 +2367,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 创建新的 API 密钥。
 
-**认证:** 用户
+**认证:** 用户（仅限 web 登录，不接受 API Key）
 
 **请求体:**
 ```json
@@ -2355,7 +2385,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 更新密钥备注或启用状态。
 
-**认证:** 用户
+**认证:** 用户（仅限 web 登录，不接受 API Key）
 
 **请求体:**
 ```json
@@ -2369,7 +2399,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 删除密钥（软删除）。
 
-**认证:** 用户
+**认证:** 用户（仅限 web 登录，不接受 API Key）
 
 **响应 (200):**
 ```json
@@ -2395,7 +2425,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 创建一次授权会话，返回兑换码（不返回明文密钥）。供不经过授权页的调用方使用，下发路径需自行完成兑换。
 
-**认证:** 用户
+**认证:** 用户（仅限 web 登录，不接受 API Key）
 
 **请求体:**
 ```json
@@ -2464,7 +2494,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 `/dsh/authorize` 确认按钮的提交目标：建密钥、发兑换码，然后 303 到 GET `/dsh/authorize/success` 展示这 8 位兑换码。采用 POST-Redirect-GET，刷新成功页不会重复建密钥。
 
-**认证:** 用户；必须同源，`GET` 返回 405
+**认证:** 用户（仅限 web 登录，不接受 API Key）；必须同源，`GET` 返回 405
 
 access token 过期但 refresh token 仍有效时按已登录处理（整页表单提交没有客户端 `authedFetch` 的「401 → 刷新 → 重试」）；两者都失效时不是返回 `401` JSON，而是 `303` 回 `/login?next=`（`next` 取自同源 `Referer` 的 `/dsh/authorize?...`，取不到时退回 `/dsh/authorize`），登录完成后回到同一张确认页
 
@@ -2667,7 +2697,7 @@ access token 过期但 refresh token 仍有效时按已登录处理（整页表�
 
 兑换兑换码，为当前用户创建一条定向额度。
 
-**认证:** 用户
+**认证:** 用户（仅限 web 登录，不接受 API Key）
 
 **限流:** 按 IP 维度限流（在鉴权之前生效，未登录请求同样计数）：60 秒滑动窗口内每 IP 最多 10 次，第 11 次起返回 429 并携带 `retry-after` 响应头（剩余等待秒数）。仅限本接口的 POST 方法。客户端 IP 取自 `eo-client-ip` / `x-forwarded-for` / `x-real-ip` 请求头（依次优先，取第一个值）；**部署前提**：必须在反向代理层覆写这些头（而非透传客户端自带值），否则攻击者可伪造头绕过限流。限流状态存于进程内存，键数有 10000 上界（超出按最旧淘汰），多实例部署时各实例独立计数。
 
@@ -2748,7 +2778,7 @@ access token 过期但 refresh token 仍有效时按已登录处理（整页表�
 
 获取当前用户的定向额度列表与兑换记录。
 
-**认证:** 用户
+**认证:** 用户（仅限 web 登录，不接受 API Key）
 
 **响应 (200):**
 ```json

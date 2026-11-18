@@ -87,6 +87,10 @@
     image: docker.cnb.cool/scaffold/examples/nodejs:latest
     script: |
       node --loader ./scripts/verify-channel-quota-mode-loader.mjs scripts/verify-channel-quota-mode.mjs
+  - name: verify auth scope
+    image: docker.cnb.cool/scaffold/examples/nodejs:latest
+    script: |
+      node --loader ./scripts/verify-auth-scope-stubs.mjs scripts/verify-auth-scope.mjs
 
 .push: &push
   runner:

@@ -224,14 +224,16 @@ MySQL 模式下表结构会在首次连接时自动创建，无需手动导入�
 
 | 接口范围 | 权限要求 |
 |----------|----------|
-| `/api/admin/*` | 管理员角色 |
-| `/api/dashboard/*` | 已认证 Web 用户，按接口返回本人或管理员可见数据 |
-| `/api/user/*` | 已认证用户，仅限本人资源 |
+| `/api/admin/*` | 管理员角色（接受 API Key，仅 `POST /api/admin/email/send` 要求 Web 会话） |
+| `/api/dashboard/*` | 已认证用户，按接口返回本人或管理员可见数据（可用模型列表接受 API Key） |
+| `/api/user/*` | 已认证用户，仅限本人资源（凭据类接口仅限 Web 会话） |
 | `/api/v1/*`、`/api/ollama/*` | API Key 认证 |
 
-所有接口均支持两种认证方式：
-- **Session 认证**：JWT Cookie（Web 控制台自动管理）
-- **API Key 认证**：`Authorization: Bearer sk-gw-...`、`x-api-key: sk-gw-...`，或 query 参数 `?token=sk-gw-...` / `?api_key=sk-gw-...`
+账号凭据相关接口（`/api/user/*` 的密钥管理与兑换码、`/api/user/dsh/*`、`/api/auth/*`、`/api/dashboard/*` 中除可用模型列表外的接口、以及发信接口 `POST /api/admin/email/send`）只接受 **Session 认证**：JWT Cookie 或 `Authorization: Bearer <access_token>`，由 Web 控制台自动管理。
+
+**API Key 认证**（`Authorization: Bearer sk-gw-...`、`x-api-key: sk-gw-...`，或 query 参数 `?token=sk-gw-...` / `?api_key=sk-gw-...`）用于调用网关端点，以及配额、用量日志、可用模型列表这类只读接口；`/api/admin/*`（除发信）同样接受管理员密钥。
+
+API Key 不是账号凭据：它不能读取、创建或删除密钥，不能核销兑换码，不能走 DSH 授权，也不能改密码或账号设置。用 API Key 调用这些接口会返回 403 `该接口涉及账号凭据，请使用网页登录后操作`。需要脚本化管理操作时，先用 `/api/auth/login` 换取 access token 再调用。
 
 Query 鉴权主要用于无法自定义请求头的客户端；能设置请求头时仍推荐使用 `Authorization` 或 `x-api-key`。
 
@@ -239,7 +241,7 @@ Ollama 兼容接口仅放在 `/api/ollama/*` 下。可以通过请求头、query
 
 ## 用户 API 接入指南
 
-用户生成的 API Key（`sk-gw-*`）除了调用网关端点外，还可以调用以下用户自助接口：
+用户生成的 API Key（`sk-gw-*`）除了调用网关端点外，还可以调用以下只读的自助查询接口（密钥管理、兑换码、DSH 授权等凭据类接口不接受 API Key，需使用 Web 会话）：
 
 ### 配额查询
 
@@ -281,28 +283,35 @@ curl http://localhost:3000/api/user/quota \
 
 > `total` 为终身配额，`period` 为周期性配额（到期自动重置），`rate` 为实时限流参数。值为 `null` 或 `-1` 表示无限制。
 
-### 密钥管理
+### 密钥管理（仅限 Web 会话，不接受 API Key）
+
+密钥列表返回明文，创建与删除直接改变账号凭据，因此这些接口只接受 Web 会话。脚本里先用账号密码登录，把返回的 `access_token` 带在请求头上：
 
 ```bash
+# 登录换取 access token
+TOKEN=$(curl -s http://localhost:3000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username": "your-name", "password": "your-password"}' | jq -r '.access_token')
+
 # 查看所有密钥
 curl http://localhost:3000/api/user/keys \
-  -H 'Authorization: Bearer sk-gw-xxxx'
+  -H "Authorization: Bearer $TOKEN"
 
 # 创建密钥
 curl -X POST http://localhost:3000/api/user/keys \
-  -H 'Authorization: Bearer sk-gw-xxxx' \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{}'
 
 # 启用/禁用密钥
 curl -X PUT http://localhost:3000/api/user/keys/{id} \
-  -H 'Authorization: Bearer sk-gw-xxxx' \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"enabled": false}'
 
 # 删除密钥
 curl -X DELETE http://localhost:3000/api/user/keys/{id} \
-  -H 'Authorization: Bearer sk-gw-xxxx'
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ### 使用日志

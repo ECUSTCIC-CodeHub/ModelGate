@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { ensureUser } from "@/lib/auth/guards";
+import { ensureWebUser } from "@/lib/auth/guards";
 import { jsonError, jsonOk, dbCapacityResponse } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { enrollDsh } from "@/lib/services/dsh-enroll";
@@ -18,7 +18,7 @@ const FAILURE_MESSAGES = {
 } as const;
 
 export async function POST(request: Request) {
-  const guard = await ensureUser(request);
+  const guard = await ensureWebUser(request);
   if ("error" in guard) return guard.error;
 
   const body = await readJsonBodyCapped(request);

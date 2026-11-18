@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { requireRedeemCodeFeature } from "@/lib/core/features";
 import { getGatewaySettings } from "@/lib/core/settings";
-import { ensureUser } from "@/lib/auth/guards";
+import { ensureWebUser } from "@/lib/auth/guards";
 import { dbCapacityResponse, jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { gatewayDb } from "@/lib/core/db";
@@ -65,7 +65,7 @@ export async function GET(request: Request) {
   const unavailable = requireRedeemCodeFeature(settings);
   if (unavailable) return unavailable;
 
-  const guard = await ensureUser(request);
+  const guard = await ensureWebUser(request);
   if ("error" in guard) return guard.error;
 
   try {
@@ -103,7 +103,7 @@ export async function POST(request: Request) {
     return jsonError("兑换请求过于频繁，请稍后再试", 429, {}, { "retry-after": String(rate.retryAfterSeconds) });
   }
 
-  const guard = await ensureUser(request);
+  const guard = await ensureWebUser(request);
   if ("error" in guard) return guard.error;
 
   const body = await readJsonBodyCapped(request);
