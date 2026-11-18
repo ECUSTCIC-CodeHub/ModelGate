@@ -1,13 +1,13 @@
 export const dynamic = "force-dynamic";
 
 import { gatewayDb } from "@/lib/core/db";
-import { ensureAdmin } from "@/lib/auth/guards";
+import { ensureAdminWeb } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { testUpstreamModel } from "@/lib/gateway/proxy";
 import type { GatewayProtocol } from "@/lib/gateway/protocols";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
-  const guard = await ensureAdmin(request);
+  const guard = await ensureAdminWeb(request);
   if ("error" in guard) return guard.error;
 
   const { id } = await context.params;

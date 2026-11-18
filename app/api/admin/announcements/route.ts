@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { requireFeature } from "@/lib/core/features";
-import { ensureAdmin } from "@/lib/auth/guards";
+import { ensureAdmin, ensureAdminWeb } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { gatewayDb } from "@/lib/core/db";
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
   const unavailable = requireFeature("announcement");
   if (unavailable) return unavailable;
 
-  const guard = await ensureAdmin(request);
+  const guard = await ensureAdminWeb(request);
   if ("error" in guard) return guard.error;
 
   const body = await readJsonBodyCapped(request);

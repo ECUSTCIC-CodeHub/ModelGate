@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { z } from "zod";
-import { ensureAdmin } from "@/lib/auth/guards";
+import { ensureAdminWeb } from "@/lib/auth/guards";
 import { gatewayDb } from "@/lib/core/db";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { fetchUpstreamModelIds } from "@/lib/gateway/upstream-model-list";
@@ -33,7 +33,7 @@ type StoredChannel = {
 };
 
 export async function POST(request: Request) {
-  const guard = await ensureAdmin(request);
+  const guard = await ensureAdminWeb(request);
   if ("error" in guard) return guard.error;
 
   const body = await readJsonBodyCapped(request);

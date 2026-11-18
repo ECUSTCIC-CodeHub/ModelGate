@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { requireRedeemCodeFeature } from "@/lib/core/features";
 import { getGatewaySettings } from "@/lib/core/settings";
-import { ensureAdmin } from "@/lib/auth/guards";
+import { ensureAdmin, ensureAdminWeb } from "@/lib/auth/guards";
 import { busyErrorResponse, jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { listExistingChannelIds } from "@/lib/gateway/channel-access";
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
   const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
   if (unavailable) return unavailable;
 
-  const guard = await ensureAdmin(request);
+  const guard = await ensureAdminWeb(request);
   if ("error" in guard) return guard.error;
 
   const bodyResult = await readJsonBodyCapped(request);
@@ -169,7 +169,7 @@ export async function PUT(request: Request) {
   const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
   if (unavailable) return unavailable;
 
-  const guard = await ensureAdmin(request);
+  const guard = await ensureAdminWeb(request);
   if ("error" in guard) return guard.error;
 
   const bodyResult = await readJsonBodyCapped(request);
@@ -203,7 +203,7 @@ export async function DELETE(request: Request) {
   const unavailable = requireRedeemCodeFeature(await getGatewaySettings());
   if (unavailable) return unavailable;
 
-  const guard = await ensureAdmin(request);
+  const guard = await ensureAdminWeb(request);
   if ("error" in guard) return guard.error;
 
   const bodyResult = await readJsonBodyCapped(request);

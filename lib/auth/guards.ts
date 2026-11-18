@@ -4,6 +4,10 @@ import { dbCapacityResponse, jsonError } from "@/lib/core/http";
 
 const API_KEY_FORBIDDEN_MESSAGE = "该接口涉及账号凭据，请使用网页登录后操作";
 
+// 管理端「读放行、写收紧」的分界线按请求方法判定，而不是靠每个 route 记得换 guard：
+// 一处漏改就等于把改上游地址、建 admin 的能力重新交回给一枚泄漏的 sk-gw-*。
+const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
 // 账号 / 凭据管理类接口的准入：只认 Web 会话，拒绝 API Key。
 // API Key 是模型调用令牌，不应具备账号级能力，否则任何一枚 key 泄漏都等于账号失守。
 export function apiKeyForbiddenResponse() {
@@ -15,24 +19,28 @@ export function apiKeyForbiddenResponse() {
 // 前端集中跳转登录页重登，把登录接口和连接池一起压垮。
 async function resolveAuth(
   request: Request,
-  { allowRefresh = false }: { allowRefresh?: boolean } = {},
-): Promise<{ auth: AuthContext | null } | { capacity: Response }> {
+  { allowRefresh = false, allowApiKey = true }: { allowRefresh?: boolean; allowApiKey?: boolean } = {},
+): Promise<{ auth: AuthContext | null; apiKeyRejected?: boolean } | { capacity: Response }> {
   try {
     const webAuth = allowRefresh ? await requireWebAuthWithRefresh(request) : await requireWebAuth(request);
     if (webAuth) return { auth: webAuth };
 
     const apiKeyResult = await checkApiKeyAuth(request);
-    if (apiKeyResult.ok) {
-      return {
-        auth: {
-          user: sanitizeUser(apiKeyResult.context.user),
-          token: apiKeyResult.context.key.key,
-          authSource: "apikey",
-        },
-      };
+    if (!apiKeyResult.ok) return { auth: null };
+
+    // 由 guard 自己按方法把关，调用点写错也兜得住；403 文案与凭据类接口分开，
+    // 免得持钥方被提示去「网页登录后操作」却看不出是方法不对。
+    if (!allowApiKey && !READ_METHODS.has(request.method.toUpperCase())) {
+      return { auth: null, apiKeyRejected: true };
     }
 
-    return { auth: null };
+    return {
+      auth: {
+        user: sanitizeUser(apiKeyResult.context.user),
+        token: apiKeyResult.context.key.key,
+        authSource: "apikey",
+      },
+    };
   } catch (err) {
     const capacity = dbCapacityResponse(err);
     if (capacity) return { capacity };
@@ -40,11 +48,15 @@ async function resolveAuth(
   }
 }
 
-// 管理端通用准入，API Key 也放行：管理端数据读取（渠道、模型、用户、日志）原本就接受
-// 管理员密钥，收掉会打断既有脚本查询，收益也小。凭据读取（明文渠道密钥）与发信走 ensureAdminWeb。
+// 管理端只读准入，API Key 也放行：数据读取（渠道、模型、用户、日志）继续接受管理员密钥，
+// 收掉会打断既有脚本查询，收益也小。写操作在这里同样会被挡下（按方法判定），
+// 凭据读取（明文渠道密钥）与发信走 ensureAdminWeb。
 export async function ensureAdmin(request: Request) {
-  const resolved = await resolveAuth(request);
+  const resolved = await resolveAuth(request, { allowApiKey: false });
   if ("capacity" in resolved) return { error: resolved.capacity };
+  if (resolved.apiKeyRejected) {
+    return { error: jsonError("管理端写操作不接受 API Key，请使用网页登录后操作", 403) };
+  }
   const auth = resolved.auth;
   if (!auth) {
     return { error: jsonError("未登录或登录已过期", 401) };
@@ -55,7 +67,9 @@ export async function ensureAdmin(request: Request) {
   return { auth };
 }
 
-// 派发敏感动作（发信）与读取管理端凭据时必须走这里，调用点由 verify-auth-scope 守住。
+// 管理端写操作、派发敏感动作（发信）与读取凭据时必须走这里，调用点由 verify-auth-scope 守住。
+// 一枚泄漏的 sk-gw-* 能改渠道 base_url、建 admin、改任意用户密码、覆盖 webhook_secret，
+// 等于整站接管，因此写操作不接受 API Key。
 export async function ensureAdminWeb(request: Request) {
   const resolved = await resolveAuth(request);
   if ("capacity" in resolved) return { error: resolved.capacity };

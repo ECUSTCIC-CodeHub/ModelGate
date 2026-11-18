@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { requireFeature } from "@/lib/core/features";
-import { ensureAdmin } from "@/lib/auth/guards";
+import { ensureAdminWeb } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { gatewayDb } from "@/lib/core/db";
@@ -19,7 +19,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const unavailable = requireFeature("announcement");
   if (unavailable) return unavailable;
 
-  const guard = await ensureAdmin(request);
+  const guard = await ensureAdminWeb(request);
   if ("error" in guard) return guard.error;
 
   const { id: idStr } = await context.params;
@@ -80,7 +80,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
   const unavailable = requireFeature("announcement");
   if (unavailable) return unavailable;
 
-  const guard = await ensureAdmin(request);
+  const guard = await ensureAdminWeb(request);
   if ("error" in guard) return guard.error;
 
   const { id: idStr } = await context.params;

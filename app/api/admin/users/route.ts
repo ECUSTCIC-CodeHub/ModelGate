@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { hashPassword } from "@/lib/auth/auth";
 import { gatewayDb } from "@/lib/core/db";
-import { ensureAdmin } from "@/lib/auth/guards";
+import { ensureAdmin, ensureAdminWeb } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { getEffectiveLimits, getUserGroup, type EffectiveLimitsInput } from "@/lib/gateway/effective-limits";
 import { modelGateFeatures } from "@/lib/core/features";
@@ -190,7 +190,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const guard = await ensureAdmin(request);
+  const guard = await ensureAdminWeb(request);
   if ("error" in guard) return guard.error;
 
   const body = await readJsonBodyCapped(request);

@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { gatewayDb } from "@/lib/core/db";
-import { ensureAdmin } from "@/lib/auth/guards";
+import { ensureAdminWeb } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { fetchUpstreamModelIds } from "@/lib/gateway/upstream-model-list";
@@ -16,7 +16,7 @@ const bodySchema = z.object({
 });
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
-  const guard = await ensureAdmin(request);
+  const guard = await ensureAdminWeb(request);
   if ("error" in guard) return guard.error;
 
   const { id } = await context.params;

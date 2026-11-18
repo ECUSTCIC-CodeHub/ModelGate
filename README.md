@@ -224,16 +224,16 @@ MySQL 模式下表结构会在首次连接时自动创建，无需手动导入�
 
 | 接口范围 | 权限要求 |
 |----------|----------|
-| `/api/admin/*` | 管理员角色（接受 API Key，仅 `POST /api/admin/email/send` 要求 Web 会话） |
+| `/api/admin/*` | 管理员角色（`GET` 接受 API Key，写操作与发信 `POST /api/admin/email/send` 要求 Web 会话） |
 | `/api/dashboard/*` | 已认证用户，按接口返回本人或管理员可见数据（可用模型列表接受 API Key） |
 | `/api/user/*` | 已认证用户，仅限本人资源（凭据类接口仅限 Web 会话） |
 | `/api/v1/*`、`/api/ollama/*` | API Key 认证 |
 
-账号凭据相关接口（`/api/user/*` 的密钥管理与兑换码、`/api/user/dsh/*`、`/api/auth/*`、`/api/dashboard/*` 中除可用模型列表外的接口、以及发信接口 `POST /api/admin/email/send`）只接受 **Session 认证**：JWT Cookie 或 `Authorization: Bearer <access_token>`，由 Web 控制台自动管理。
+账号凭据相关接口（`/api/user/*` 的密钥管理与兑换码、`/api/user/dsh/*`、`/api/auth/*`、`/api/dashboard/*` 中除可用模型列表外的接口、以及管理端所有写操作与发信接口 `POST /api/admin/email/send`）只接受 **Session 认证**：JWT Cookie 或 `Authorization: Bearer <access_token>`，由 Web 控制台自动管理。
 
-**API Key 认证**（`Authorization: Bearer sk-gw-...`、`x-api-key: sk-gw-...`，或 query 参数 `?token=sk-gw-...` / `?api_key=sk-gw-...`）用于调用网关端点，以及配额、用量日志、可用模型列表这类只读接口；`/api/admin/*`（除发信）同样接受管理员密钥。
+**API Key 认证**（`Authorization: Bearer sk-gw-...`、`x-api-key: sk-gw-...`，或 query 参数 `?token=sk-gw-...` / `?api_key=sk-gw-...`）用于调用网关端点，以及配额、用量日志、可用模型列表这类只读接口；管理端的 `GET` 接口同样接受管理员密钥，写操作不接受。
 
-API Key 不是账号凭据：它不能读取、创建或删除密钥，不能核销兑换码，不能走 DSH 授权，也不能改密码或账号设置。用 API Key 调用这些接口会返回 403 `该接口涉及账号凭据，请使用网页登录后操作`。需要脚本化管理操作时，先用 `/api/auth/login` 换取 access token 再调用。
+API Key 不是账号凭据：它不能读取、创建或删除密钥，不能核销兑换码，不能走 DSH 授权，也不能改密码或账号设置；管理端写操作（建号、改渠道、改全局设置等）同样不接受，否则一枚泄漏的管理员密钥就能改上游地址、建管理员账号、覆盖 webhook secret，等于整站接管。用 API Key 调用这些接口会返回 403 `该接口涉及账号凭据，请使用网页登录后操作`。需要脚本化管理操作时，先用 `/api/auth/login` 换取 access token 再调用。
 
 Query 鉴权主要用于无法自定义请求头的客户端；能设置请求头时仍推荐使用 `Authorization` 或 `x-api-key`。
 

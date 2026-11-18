@@ -4,7 +4,7 @@ import { z } from "zod";
 import { hashPassword } from "@/lib/auth/auth";
 import { gatewayDb, ensureDbReady } from "@/lib/core/db";
 import { modelGateFeatures, requireFeature } from "@/lib/core/features";
-import { ensureAdmin } from "@/lib/auth/guards";
+import { ensureAdminWeb } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { listExistingModelAliases, parseAllowedModelAliases, stringifyAllowedModelAliases } from "@/lib/gateway/model-access";
 import { softDeleteUser } from "@/lib/services/soft-delete-service";
@@ -52,7 +52,7 @@ function normalizeQuota(value: number | null | undefined) {
 }
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
-  const guard = await ensureAdmin(request);
+  const guard = await ensureAdminWeb(request);
   if ("error" in guard) return guard.error;
 
   const { id } = await context.params;
@@ -404,7 +404,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 }
 
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
-  const guard = await ensureAdmin(request);
+  const guard = await ensureAdminWeb(request);
   if ("error" in guard) return guard.error;
 
   const { id } = await context.params;

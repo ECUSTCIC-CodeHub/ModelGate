@@ -309,7 +309,7 @@ x-api-key: sk-gw-xxxxx
 
 请求头方式优先级更高，也更推荐；query 鉴权会被所有支持 API Key 的端点识别，包括 `/api/v1/*`、`/api/ollama/*` 以及下文列出的只读用户接口。
 
-**API Key 不是账号凭据。** 它只用于调用模型与查询自己的只读用量数据，不能用于任何凭据读写、账号设置或账号级动作。这类接口（密钥管理、兑换码核销、DSH 授权、修改密码、OIDC 绑定、个人设置、以及管理端所有写操作与明文密钥读取）一律只接受 Web 会话，用 API Key 调用返回 403：
+**API Key 不是账号凭据。** 它只用于调用模型与查询自己的只读用量数据，不能用于任何凭据读写、账号设置或账号级动作。这类接口（密钥管理、兑换码核销、DSH 授权、修改密码、OIDC 绑定、个人设置、以及管理端所有写操作与明文密钥读取）一律只接受 Web 会话，用 API Key 调用返回 403（管理端写操作的提示文案为 `管理端写操作不接受 API Key，请使用网页登录后操作`）：
 
 ```json
 {
@@ -334,10 +334,11 @@ x-api-key: sk-gw-xxxxx
 | `GET/POST /api/user/keys`、`PUT/DELETE /api/user/keys/:id` | 不接受 |
 | `POST /api/user/dsh/enroll`、`POST /api/user/dsh/authorize-confirm` | 不接受 |
 | 其余 `/api/dashboard/*`（日志、汇总、个人设置、资料与密码、公告、主题偏好等） | 不接受 |
-| `/api/admin/*` 的其余接口（含写操作，如 `POST /api/admin/users`、`PUT /api/admin/settings`、`POST /api/admin/email/senders`） | 接受（管理员密钥，与 Web 会话同权） |
-| `POST /api/admin/email/send` | 不接受（接受任意收件人，需限定 Web 会话） |
+| `/api/admin/*` 的写操作（`POST` / `PUT` / `PATCH` / `DELETE`，如 `POST /api/admin/users`、`PUT /api/admin/settings`、`PUT /api/admin/channels/:id`） | 不接受（写操作能把上游地址改向、建管理员账号、覆盖 webhook secret，等于整站接管）。拒绝按请求方法在鉴权层兜底，不依赖单个路由是否记得收紧 |
+| `/api/admin/*` 的 `GET` 查询（渠道、模型、用户、日志、分组、公告、发件账号等） | 接受（管理员密钥，只读） |
+| `GET /api/admin/channels/:id/api-key` | 不接受（读取明文渠道密钥） |
 
-**迁移提示：** 之前用 `Authorization: Bearer sk-gw-...` 脚本化调用上表中「不接受」的接口的用法会开始返回 403。这些接口没有 API Key 替代路径；脚本需要改用账号密码调用 `/api/auth/login` 换取 access token 后再带上 `Authorization: Bearer <access_token>`（或直接复用登录返回的 Cookie）。只读用量查询与 DSH 授权链路不受影响：DSH 的授权确认页是整页表单提交，本身走 Web 会话。
+**迁移提示：** 之前用 `Authorization: Bearer sk-gw-...` 脚本化调用上表中「不接受」的接口的用法会返回 403。这些接口没有 API Key 替代路径；脚本需要改用账号密码调用 `/api/auth/login` 换取 access token 后再带上 `Authorization: Bearer <access_token>`（或直接复用登录返回的 Cookie）。这条覆盖管理端写操作，例如批量建号、用脚本改渠道、CI 里调 admin 接口的用法。只读用量查询、管理端 `GET` 查询与 DSH 授权链路不受影响：DSH 的授权确认页是整页表单提交，本身走 Web 会话。
 
 Ollama 兼容接口仅位于 `/api/ollama/*` 下。支持三种传递 API Key 的方式：
 
@@ -1760,7 +1761,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 按需取回单个渠道的 API Key 明文。列表、创建与更新响应始终只返回脱敏值，明文只在此接口单次返回，避免明文随列表批量下发后在浏览器侧长期驻留。
 
-**认证:** 管理员
+**认证:** 管理员，仅限 Web 会话（API Key 调用返回 403）
 
 > 可见性判定与列表、更新响应完全一致：`api_key_private` 为 0 的渠道任意管理员可取；为 1 的渠道仅添加人可取；无添加人（`created_by` 为空，或其指向的用户已失效）的渠道任意管理员可取。无权限时返回 403「该渠道的 API Key 仅添加人可见」。
 

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { gatewayDb } from "@/lib/core/db";
 import { validateClaimExpr } from "@/lib/shared/claim-expr";
 import { modelGateFeatures } from "@/lib/core/features";
-import { ensureAdmin } from "@/lib/auth/guards";
+import { ensureAdmin, ensureAdminWeb } from "@/lib/auth/guards";
 import { jsonError, jsonOk } from "@/lib/core/http";
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { listExistingChannelIds, parseAllowedChannelIds, stringifyAllowedChannelIds } from "@/lib/gateway/channel-access";
@@ -64,7 +64,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const guard = await ensureAdmin(request);
+  const guard = await ensureAdminWeb(request);
   if ("error" in guard) return guard.error;
 
   const body = await readJsonBodyCapped(request);
