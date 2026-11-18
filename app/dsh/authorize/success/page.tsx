@@ -1,10 +1,14 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
+import { AuthShell } from "@/components/auth/auth-shell";
+import { buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { gatewayDb } from "@/lib/core/db";
 import { parseStoredUtc, toShanghaiDatetimeNoMs } from "@/lib/core/db/datetime";
-import { htmlEscape } from "@/lib/core/html";
 import { maskKey } from "@/lib/services/dsh-enroll";
+import { cn } from "@/lib/shared/utils";
+import { CopyCode } from "./copy-code";
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_PATTERN = new RegExp(`^[${CODE_ALPHABET}]{8}$`);
@@ -77,52 +81,6 @@ async function loadSuccessView(code: string): Promise<SuccessView | null> {
   return { code: row.code, maskedKey: maskKey(keyRow.key), expiresText: toShanghaiDatetimeNoMs(expiresAt), callbackUrl: callbackUrl ?? "" };
 }
 
-function htmlAuthorizeSuccess(view: SuccessView): string {
-  const { code, maskedKey, expiresText, callbackUrl } = view;
-  const jump = callbackUrl
-    ? `<a class="jump" href="${htmlEscape(callbackUrl)}" target="_blank" rel="noopener noreferrer">打开本机 DSH，前往自动接入</a>`
-    : `<p class="sub">本次授权没有登记可回调的本机地址，请复制下方兑换码到 DSH 插件完成接入。</p>`;
-  return (
-    `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>授权成功</title>` +
-    `<style>` +
-    `body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#f5f5f5}` +
-    `.wrap{min-height:100vh;display:flex;align-items:center;justify-content:center}` +
-    `.card{max-width:540px;width:92%;background:#fff;border-radius:16px;padding:40px 36px;box-shadow:0 4px 24px rgba(0,0,0,.08);text-align:center}` +
-    `h1{font-size:20px;margin:0 0 8px}` +
-    `.sub{color:#666;font-size:14px;line-height:1.6;margin:0 0 24px}` +
-    `.code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:30px;letter-spacing:6px;color:#1f8f55;background:#eefaf2;border:1px solid #cdeedd;border-radius:10px;padding:16px 8px;margin:0 0 14px;user-select:all}` +
-    `button.copy{font:inherit;font-size:14px;padding:8px 22px;border:none;border-radius:8px;background:#2f9e63;color:#fff;cursor:pointer;font-weight:500}` +
-    `button.copy.done{background:#aaa}` +
-    `.jump{display:inline-block;font-size:15px;padding:12px 28px;border-radius:8px;background:#2f9e63;color:#fff;text-decoration:none;font-weight:500;margin:18px 0 14px}` +
-    `.meta{color:#999;font-size:12px;margin:0 0 16px}` +
-    `.note{color:#555;font-size:13px;line-height:1.7;text-align:left;background:#fafafa;border-radius:10px;padding:12px 14px;margin:0}` +
-    `.note b{color:#333}` +
-    `</style>` +
-    `<div class="wrap"><div class="card">` +
-    `<h1>授权成功，兑换码已生成</h1>` +
-    `<p class="sub">这是 DSH 自动接入失败时的<b>备用兑换凭据</b>。本页在兑换码有效期内可重新打开。</p>` +
-    `<div class="code" id="codeBox">${htmlEscape(code)}</div>` +
-    `<button class="copy" id="copyBtn">复制兑换码</button>` +
-    `<br>` +
-    jump +
-    `<p class="meta">密钥：${htmlEscape(maskedKey)} · 有效期至 ${htmlEscape(expiresText)}（5 分钟）</p>` +
-    `<p class="note">` +
-    `<b>如果自动接入没成功</b>（端口被占用、防火墙拦截、标签页被关等），` +
-    `回到本页复制上方 8 位兑换码，粘贴到 DSH 插件的「用兑换码接入」输入框提交即可。` +
-    `兑换码一次性，被使用或过期后立即失效。` +
-    `</p>` +
-    `</div></div>` +
-    `<script>` +
-    `(function(){var b=document.getElementById("copyBtn"),x=document.getElementById("codeBox");if(!b||!x)return;` +
-    `b.addEventListener("click",function(){var s=window.getSelection(),r=document.createRange();r.selectNodeContents(x);s.removeAllRanges();s.addRange(r);` +
-    `try{document.execCommand("copy");}catch(e){}` +
-    `if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(x.textContent.trim());}` +
-    `b.classList.add("done");b.textContent="已复制";` +
-    `setTimeout(function(){b.classList.remove("done");b.textContent="复制兑换码";},2000);});})();` +
-    `</script>`
-  );
-}
-
 export default async function DshAuthorizeSuccessPage({
   searchParams,
 }: {
@@ -141,13 +99,41 @@ export default async function DshAuthorizeSuccessPage({
   if (!view) redirect("/dsh/authorize");
 
   return (
-    <div
-      style={{
-        padding: "40px",
-        textAlign: "center",
-        fontFamily: "system-ui, sans-serif",
-      }}
-      dangerouslySetInnerHTML={{ __html: htmlAuthorizeSuccess(view) }}
-    />
+    <AuthShell subtitle="DSH 接入授权" width="wide">
+      <Card>
+        <CardHeader>
+          <CardTitle>授权成功，兑换码已生成</CardTitle>
+          <CardDescription>这是 DSH 自动接入失败时的备用兑换凭据。本页在兑换码有效期内可重新打开。</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <CopyCode code={view.code} />
+
+          {view.callbackUrl ? (
+            <a
+              href={view.callbackUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn(buttonVariants(), "w-full")}
+            >
+              打开本机 DSH，前往自动接入
+            </a>
+          ) : (
+            <p className="text-sm leading-6 text-[var(--color-foreground-muted)]">
+              本次授权没有登记可回调的本机地址，请复制上方兑换码到 DSH 插件完成接入。
+            </p>
+          )}
+
+          <p className="text-xs leading-5 text-[var(--color-foreground-subtle)]">
+            密钥：{view.maskedKey} · 有效期至 {view.expiresText}（5 分钟）
+          </p>
+
+          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-3 text-sm leading-6 text-[var(--color-foreground-muted)]">
+            <strong className="font-medium text-[var(--color-foreground)]">如果自动接入没成功</strong>
+            （端口被占用、防火墙拦截、标签页被关等），回到本页复制上方 8 位兑换码，粘贴到 DSH 插件的「用兑换码接入」输入框提交即可。
+            兑换码一次性，被使用或过期后立即失效。
+          </div>
+        </CardContent>
+      </Card>
+    </AuthShell>
   );
 }

@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getServerProfileFromCookieStore } from "@/lib/auth/auth";
+import { AuthShell } from "@/components/auth/auth-shell";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuthorizeForm } from "./authorize-form";
 
 /**
@@ -26,10 +28,19 @@ export default async function DshAuthorizePage({
   const portNum = Number(port);
   if (!port || !/^\d+$/.test(port) || portNum <= 0 || portNum >= 65536) {
     return (
-      <div style={{ padding: "40px", textAlign: "center", fontFamily: "system-ui, sans-serif" }}>
-        <h1>参数无效</h1>
-        <p>缺少有效的 port 参数。请从 DSH 插件中点击登录按钮重新发起。</p>
-      </div>
+      <AuthShell subtitle="DSH 接入授权">
+        <Card>
+          <CardHeader>
+            <CardTitle>参数无效</CardTitle>
+            <CardDescription>缺少有效的 port 参数</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm leading-6 text-[var(--color-foreground-muted)]">
+              请从 DSH 插件中点击登录按钮重新发起。
+            </p>
+          </CardContent>
+        </Card>
+      </AuthShell>
     );
   }
 
@@ -38,5 +49,9 @@ export default async function DshAuthorizePage({
     redirect(`/login?next=${encodeURIComponent(selfPath)}`);
   }
 
-  return <AuthorizeForm port={port} session={session ?? null} username={profile.username} />;
+  return (
+    <AuthShell subtitle="DSH 接入授权">
+      <AuthorizeForm port={port} session={session ?? null} username={profile.username} />
+    </AuthShell>
+  );
 }
