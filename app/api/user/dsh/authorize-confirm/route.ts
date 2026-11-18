@@ -2,8 +2,8 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { ensureUserWithRefresh } from "@/lib/auth/guards";
+import { authPageHtml } from "@/lib/core/auth-page";
 import { dbCapacityResponse, jsonError } from "@/lib/core/http";
-import { htmlEscape } from "@/lib/core/html";
 import { getGatewaySettings } from "@/lib/core/settings";
 import { enrollDsh } from "@/lib/services/dsh-enroll";
 
@@ -108,18 +108,32 @@ async function isSameOrigin(request: Request): Promise<boolean> {
   return false;
 }
 
-function htmlError(message: string, status: number) {
-  const safe = htmlEscape(message);
-  return new Response(
-    `<!doctype html><meta charset="utf-8"><title>授权失败</title>` +
-      `<div style="padding:40px;text-align:center;font-family:system-ui,sans-serif">` +
-      `<h1 style="font-size:20px">授权失败</h1><p style="color:#666">${safe}</p></div>`,
-    { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } },
-  );
+/**
+ * 错误页的页脚动作按原因分开：参数/来源问题要用户重新发起，服务繁忙只是等一会儿。
+ * 混用会让同一张卡片里「稍后重试」和「重新发起登录」互相打架。
+ */
+const ERROR_FOOTERS = {
+  retry: "请回到 DSH 插件重新发起登录。",
+  busy: "稍等片刻后回到 DSH 插件重试即可，本次没有创建任何密钥。",
+} as const;
+
+async function htmlError(message: string, status: number, footer: string = ERROR_FOOTERS.retry, theme = true) {
+  const body = await authPageHtml({
+    title: "授权失败",
+    heading: "授权失败",
+    message,
+    footer,
+    theme,
+  });
+  return new Response(body, {
+    status,
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+  });
 }
 
-function htmlBusy(retryAfter: string | null) {
-  const response = htmlError("服务繁忙，请稍后重试", 503);
+async function htmlBusy(retryAfter: string | null) {
+  // 走到这里说明数据库已经饱和，主题色那一次读库也跳过，先把 503 送出去。
+  const response = await htmlError("服务繁忙，请稍后重试", 503, ERROR_FOOTERS.busy, false);
   if (retryAfter) response.headers.set("retry-after", retryAfter);
   return response;
 }
