@@ -55,7 +55,7 @@ export function formatScheduleMultipliers(item: ScheduleTextItem): string {
   return parts.length > 0 ? parts.join(" / ") : "沿用下级倍率";
 }
 
-// 一层档位整理成若干行，时间按 timeZone 换算；activeIndex 那一行标注「当前生效」。
+// 一层档位整理成若干行，时间按 timeZone 换算；activeIndex 那一行标注「此刻命中」。
 // 换算不可行（时区数据异常）时退回 UTC 原值并注明，避免展示出错位的时间。
 export function describeScheduleWindows(
   schedules: ScheduleTextItem[],
@@ -150,11 +150,13 @@ function appendPrefixed(lines: string[], prefix: string, list: ScheduleTextItem[
   if (list.length === 0) return;
   const listed = list.slice(0, MAX_LISTED_WINDOWS);
   const activeIndex = activeScheduleIndex(list, now);
-  for (const line of describeScheduleWindows(listed, timeZone, activeIndex)) lines.push(`· ${prefix} ${line}`);
-  if (list.length > listed.length) lines.push(`· ${prefix} 还有 ${list.length - listed.length} 档未列出`);
+  // 命中的那档被折叠时先补一行：否则尾部补行会被整体行数上限截掉，
+  // 最需要知道「现在哪档」的时候反而看不到
   if (activeIndex !== null && activeIndex >= listed.length) {
     lines.push(`· ${prefix} 此刻命中：${describeScheduleWindows([list[activeIndex]], timeZone, 0)[0]}`);
   }
+  for (const line of describeScheduleWindows(listed, timeZone, activeIndex)) lines.push(`· ${prefix} ${line}`);
+  if (list.length > listed.length) lines.push(`· ${prefix} 还有 ${list.length - listed.length} 档未列出`);
 }
 
 // 用户侧（模型列表、首页配额卡）：一个别名可能挂多条渠道，按渠道分组列出各自的档位，

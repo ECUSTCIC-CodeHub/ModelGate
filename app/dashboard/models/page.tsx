@@ -138,13 +138,15 @@ function scheduleSourceLabel(row: ModelItem): string {
 }
 
 // 各渠道的分时档清单：时间按浏览者时区换算，并标出此刻命中的那一档
-function scheduleWindowLines(row: ModelItem): string[] {
+function scheduleWindowLines(row: ModelItem, now: Date): string[] {
   return describeChannelSchedules(
     row.channels.map((channel) => ({
       channelName: channel.channel_name,
       modelSchedules: channel.multiplier_schedules,
       channelSchedules: channel.channel_multiplier_schedules,
     })),
+    undefined,
+    now,
   );
 }
 
@@ -342,12 +344,15 @@ export default function AvailableModelsPage() {
   }, [filtered, sortField, sortOrder]);
 
   // 每行的档位清单只算一次：Token 与请求两列、卡片与列表共用同一份，
-  // 避免每次重渲染按渠道×层×档位重复做时区换算
+  // 避免每次重渲染按渠道×层×档位重复做时区换算。
+  // 结果含「此刻命中」标注，所以要按分钟失效，否则页面停着不动标注会一直停在加载那一刻
+  const minuteBucket = Math.floor(Date.now() / 60_000);
   const scheduleLinesById = useMemo(() => {
+    const at = new Date(minuteBucket * 60_000);
     const map = new Map<string, string[]>();
-    for (const row of rows) map.set(row.id, scheduleWindowLines(row));
+    for (const row of rows) map.set(row.id, scheduleWindowLines(row, at));
     return map;
-  }, [rows]);
+  }, [rows, minuteBucket]);
 
   function renderMultiplier(row: ModelItem, type: "token" | "request") {
     const effectiveMin = type === "token" ? row.effective_token_multiplier_min : row.effective_request_multiplier_min;
