@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { wallTimeToUtc, utcTimeToWall } from "@/lib/shared/timezone";
+import { browserTimeZone, wallTimeToUtc, utcTimeToWall } from "@/lib/shared/timezone";
 
 export type TimeWindowDraft = {
   days: number[]; // 1..7 周一..周日
@@ -77,14 +77,6 @@ export function jsonToWindows(raw: string | undefined | null, timeZone: string =
       });
   } catch {
     return [];
-  }
-}
-
-function browserTimeZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  } catch {
-    return "UTC";
   }
 }
 

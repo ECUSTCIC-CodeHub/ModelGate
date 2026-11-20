@@ -1,7 +1,7 @@
 import { normalizeRetryStatusCodes } from "@/lib/gateway/upstream-error";
 import { parseMultiplierSchedules, resolveLayeredMultiplier, type MultiplierSchedule } from "@/lib/gateway/multiplier-schedule";
 import type { PeriodCycleDraft } from "@/app/dashboard/period-cycle-fields";
-import type { MultiplierScheduleDraft } from "@/app/dashboard/multiplier-schedule-fields";
+import type { MultiplierScheduleDraft } from "@/lib/shared/multiplier-schedule-tz";
 
 export type Protocol = "chat_completions" | "responses" | "anthropic_messages" | "embeddings" | "images" | "other";
 

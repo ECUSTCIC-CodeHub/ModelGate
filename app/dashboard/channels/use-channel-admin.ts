@@ -32,7 +32,7 @@ import { normalizeRetryStatusCodes } from "@/lib/gateway/upstream-error";
 import type { HeaderMapping } from "@/lib/gateway/custom-headers";
 import { parseMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
 import { cyclesToDrafts, draftsToPayload } from "@/app/dashboard/period-cycle-fields";
-import { scheduleDraftsToPayload, schedulesToDrafts } from "@/app/dashboard/multiplier-schedule-fields";
+import { scheduleDraftsToPayload, schedulesToDrafts } from "@/lib/shared/multiplier-schedule-tz";
 import { useChannelRecords } from "./use-channel-records";
 import { useModelCleanup } from "./use-model-cleanup";
 import { useUpstreamModelPicker } from "./use-upstream-model-picker";
@@ -616,8 +616,6 @@ export function useChannelAdmin() {
       quota_tokens: form.quota_tokens.trim() ? Number(form.quota_tokens) : null,
       quota_requests: form.quota_requests.trim() ? Number(form.quota_requests) : null,
       period_cycles: draftsToPayload(form.period_cycles),
-      // 精简版没有分时倍率判定，客户端不发该字段，避免把渠道上的既有配置顺手清空
-      ...(modelGateFeatures.periodQuota ? { multiplier_schedules: scheduleDraftsToPayload(form.multiplier_schedules) } : {}),
     };
   }
 
@@ -731,15 +729,24 @@ export function useChannelAdmin() {
       return;
     }
 
+    const body: Record<string, unknown> = {
+      ...modelForm,
+      expires_at: expiresAtFromInputValue(modelForm.expires_at),
+      ua_restrictions: modelForm.ua_restrictions,
+      retry_status_codes: normalizeRetryStatusCodes(modelForm.retry_status_codes),
+      ...buildModelQuotaPayload(modelForm),
+    };
+    // 草稿里的分时档是浏览器墙上时间，必须换算成 UTC 再提交；
+    // 精简版没有分时倍率判定，省略该字段让服务端保持原值，不能把草稿原样透传
+    if (modelGateFeatures.periodQuota) {
+      body.multiplier_schedules = scheduleDraftsToPayload(modelForm.multiplier_schedules);
+    } else {
+      delete body.multiplier_schedules;
+    }
+
     const response = await authedFetch(`/api/admin/models/${modelEditingId}`, {
       method: "PUT",
-      body: JSON.stringify({
-        ...modelForm,
-        expires_at: expiresAtFromInputValue(modelForm.expires_at),
-        ua_restrictions: modelForm.ua_restrictions,
-        retry_status_codes: normalizeRetryStatusCodes(modelForm.retry_status_codes),
-        ...buildModelQuotaPayload(modelForm),
-      }),
+      body: JSON.stringify(body),
     });
     const data = await response.json().catch(() => null);
     if (response.ok) {

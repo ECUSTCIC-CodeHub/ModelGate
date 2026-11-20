@@ -1,14 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/shared/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  findShadowedDraftIndexes,
-  isScheduleDraftDiscarded,
-  type ScheduleDraftWindow,
-} from "@/lib/shared/multiplier-shadow";
+import { findShadowedDraftIndexes } from "@/lib/shared/multiplier-shadow";
+import { browserTimeZone } from "@/lib/shared/timezone";
+import type { MultiplierScheduleDraft } from "@/lib/shared/multiplier-schedule-tz";
 
 export const WEEKDAY_OPTIONS = [
   { value: 1, label: "一" },
@@ -20,8 +19,8 @@ export const WEEKDAY_OPTIONS = [
   { value: 7, label: "日" },
 ] as const;
 
-export type MultiplierScheduleDraft = ScheduleDraftWindow & { key: string };
-
+// 草稿里的时分与星期都是浏览器时区的墙上时间，与「过期时间」一样只在表单里本地化；
+// 载入走 schedulesToDrafts、提交走 scheduleDraftsToPayload 做换算，落库仍是 UTC。
 export function newScheduleDraft(): MultiplierScheduleDraft {
   return {
     key: `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
@@ -31,52 +30,6 @@ export function newScheduleDraft(): MultiplierScheduleDraft {
     token_multiplier: "",
     request_multiplier: "",
   };
-}
-
-export function scheduleDraftsToPayload(drafts: MultiplierScheduleDraft[]): Array<{
-  days: number[];
-  start: string;
-  end: string;
-  token_multiplier: number | null;
-  request_multiplier: number | null;
-}> {
-  const out: Array<{
-    days: number[];
-    start: string;
-    end: string;
-    token_multiplier: number | null;
-    request_multiplier: number | null;
-  }> = [];
-  for (const draft of drafts) {
-    if (isScheduleDraftDiscarded(draft)) continue;
-    const tokens = draft.token_multiplier.trim() === "" ? null : Number(draft.token_multiplier);
-    const requests = draft.request_multiplier.trim() === "" ? null : Number(draft.request_multiplier);
-    out.push({
-      days: draft.days,
-      start: draft.start,
-      end: draft.end,
-      token_multiplier: tokens,
-      request_multiplier: requests,
-    });
-  }
-  return out;
-}
-
-export function schedulesToDrafts(schedules: Array<{
-  days: number[];
-  start: string;
-  end: string;
-  token_multiplier: number | null;
-  request_multiplier: number | null;
-}>): MultiplierScheduleDraft[] {
-  return schedules.map((schedule, index) => ({
-    key: `s${index}`,
-    days: schedule.days,
-    start: schedule.start,
-    end: schedule.end,
-    token_multiplier: schedule.token_multiplier === null ? "" : String(schedule.token_multiplier),
-    request_multiplier: schedule.request_multiplier === null ? "" : String(schedule.request_multiplier),
-  }));
 }
 
 type MultiplierScheduleFieldsProps = {
@@ -97,10 +50,18 @@ export function MultiplierScheduleFields({
   baseRequestMultiplier,
   hint,
 }: MultiplierScheduleFieldsProps) {
+  // 时区名只能在挂载后读到：首帧不带标签渲染，避免服务端与客户端输出不一致。
+  // 草稿本身已经是墙上时间，输入框内容不依赖这里，不存在闪一下的情况。
+  const [timeZone, setTimeZone] = useState<string | null>(null);
+  useEffect(() => {
+    setTimeZone(browserTimeZone());
+  }, []);
+
   const update = (key: string, patch: Partial<MultiplierScheduleDraft>) => {
     onChange(drafts.map((draft) => (draft.key === key ? { ...draft, ...patch } : draft)));
   };
 
+  // 覆盖判定按草稿（墙上时间）逐分钟对齐即可：整段平移是双射，档位之间的覆盖关系不变。
   const shadowedIndexes = findShadowedDraftIndexes(drafts);
 
   const toggleDay = (key: string, day: number) => {
@@ -121,7 +82,9 @@ export function MultiplierScheduleFields({
           {baseTokenMultiplier === null || baseRequestMultiplier === null
             ? "基础倍率"
             : `上方基础倍率（${baseTokenMultiplier}x / ${baseRequestMultiplier}x）`}
-          。时段时间按 UTC 解释，可跨零点；多档同时命中时按从上到下的顺序取第一档，后面的档位此时不生效。留空的维度沿用下层倍率。
+          。时段时间按你的浏览器时区
+          {timeZone === null ? "" : `（${timeZone}）`}
+          填写，保存时自动换算为 UTC；可跨零点；多档同时命中时按从上到下的顺序取第一档，后面的档位此时不生效。留空的维度沿用下层倍率。
         </p>
         {hint ? <p className="mt-1 text-xs text-[var(--color-foreground-muted)]">{hint}</p> : null}
       </div>
@@ -157,11 +120,11 @@ export function MultiplierScheduleFields({
 
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-2">
-              <Label>开始时间（UTC，HH:MM）</Label>
+              <Label>开始时间（本地，HH:MM）</Label>
               <Input type="time" value={draft.start} onChange={(e) => update(draft.key, { start: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label>结束时间（UTC，HH:MM）</Label>
+              <Label>结束时间（本地，HH:MM）</Label>
               <Input type="time" value={draft.end} onChange={(e) => update(draft.key, { end: e.target.value })} />
             </div>
             <div className="space-y-2">

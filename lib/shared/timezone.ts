@@ -1,5 +1,14 @@
-// 时区相关的墙上时间换算。用于渠道时段限制：编辑时按用户所选/浏览器时区，
+// 时区相关的墙上时间换算。用于渠道时段限制与分时倍率：编辑时按用户所选/浏览器时区，
 // 存储与运行时判断按 UTC。所有函数纯计算，前后端通用。
+
+// 浏览器时区；取不到时退回 UTC，保证换算始终有确定输入。
+export function browserTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
 
 function partsInTimeZone(date: Date, timeZone: string): { hour: string; minute: string; weekday: string } {
   const fmt = new Intl.DateTimeFormat("en-US", {
