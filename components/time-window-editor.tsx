@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { isIncompleteWindow, windowToUtc, windowToWall, type WallClockWindow } from "@/lib/shared/time-window";
+import { isConvertibleWindow, isIncompleteWindow, windowToUtc, windowToWall, type WallClockWindow } from "@/lib/shared/time-window";
 
 // 行的 start/end 是「编辑时区」的墙上时间：提交时换成 UTC 时分存库，回显时再换回来。
 // 时区由父级表单持有（time_restrictions_time_zone），否则父级按浏览器时区回填 JSON 会把
@@ -147,8 +147,10 @@ export function TimeWindowEditor({
           </div>
           {isIncompleteWindow(win) ? (
             <p className="text-xs text-[var(--color-foreground-muted)]">本时段未填完（未选星期或未填时间），保存时会被忽略。</p>
-          ) : win.start === win.end ? (
-            <p className="text-xs text-[var(--color-danger)]">开始时间不能等于结束时间。</p>
+          ) : !isConvertibleWindow(win) ? (
+            <p className="text-xs text-[var(--color-danger)]">
+              {win.start === win.end ? "开始时间不能等于结束时间。" : "时间格式异常，请重新选择开始与结束时间。"}
+            </p>
           ) : null}
         </div>
       ))}

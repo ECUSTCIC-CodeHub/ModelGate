@@ -162,10 +162,18 @@ export function parseTimeWindows(
       : [];
     // 历史数据里可能是单小时位（9:30）：补零后再交给校验与换算，
     // 否则 <input type="time"> 会把它渲染成空框，看起来像没配
+    const rawStart = typeof record.start === "string" ? record.start.trim() : "";
+    const rawEnd = typeof record.end === "string" ? record.end.trim() : "";
     const start = normalizeClockTime(record.start);
     const end = normalizeClockTime(record.end);
-    const window = { days, start, end };
+    const window = { days, start: start || rawStart, end: end || rawEnd };
     const index = windows.length;
+    // 原文有值却归一失败 = 数据坏了，必须报给调用方；当成「未填完」会在保存时被静默丢弃
+    if ((rawStart !== "" && start === "") || (rawEnd !== "" && end === "")) {
+      failed.push(index);
+      windows.push(window);
+      continue;
+    }
     if (isIncompleteWindow(window) || !isConvertibleWindow(window)) {
       windows.push(window);
       continue;

@@ -23,44 +23,62 @@ function normalizeClockTime(value: unknown): string | null {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
-export function parseTimeRestrictions(raw: string | null | undefined): TimeWindow[] {
-  if (!raw) return [];
+// 三态：未配置（含空数组）、配置损坏、可用配置。
+// 三者不能折叠成「有没有 windows」：空数组是合法的「不限制」，
+// 而配了一堆却一条都用不了说明数据坏了，要按拒绝处理并告警。
+type RestrictionsState = { kind: "empty" | "broken" | "ok"; windows: TimeWindow[]; dropped: number };
+
+function parseRestrictionsState(raw: string | null | undefined): RestrictionsState {
+  if (!raw || raw.trim() === "") return { kind: "empty", windows: [], dropped: 0 };
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return [];
+    return { kind: "broken", windows: [], dropped: 0 };
   }
-  if (!Array.isArray(parsed)) return [];
+  if (!Array.isArray(parsed)) return { kind: "broken", windows: [], dropped: 0 };
+  if (parsed.length === 0) return { kind: "empty", windows: [], dropped: 0 };
+
   const windows: TimeWindow[] = [];
+  let dropped = 0;
   for (const item of parsed) {
-    if (!item || typeof item !== "object") continue;
+    if (!item || typeof item !== "object") {
+      dropped += 1;
+      continue;
+    }
     const record = item as Record<string, unknown>;
-    if (!Array.isArray(record.days)) continue;
-    const days = record.days
-      .map((d) => Number(d))
-      .filter((d) => Number.isInteger(d) && d >= 1 && d <= 7);
-    if (days.length === 0) continue;
+    const days = Array.isArray(record.days)
+      ? record.days
+        .map((d) => Number(d))
+        .filter((d) => Number.isInteger(d) && d >= 1 && d <= 7)
+      : [];
     const start = normalizeClockTime(record.start);
     const end = normalizeClockTime(record.end);
-    if (!start || !end) continue;
     // 首尾相同的行永远不命中，等同于没配；丢掉它才能让「整份配置都无效」走到不可用分支
-    if (start === end) continue;
-    windows.push({ days: [...new Set(days)], start, end });
+    if (days.length === 0 || !start || !end || start === end) {
+      dropped += 1;
+      continue;
+    }
+    windows.push({ days: [...new Set(days)].sort((a, b) => a - b), start, end });
     if (windows.length >= MAX_WINDOWS) break;
   }
-  return windows;
+  return { kind: windows.length > 0 ? "ok" : "broken", windows, dropped };
 }
 
-const BROKEN_LOG_INTERVAL_MS = 60_000;
-let lastBrokenLogAt = 0;
+export function parseTimeRestrictions(raw: string | null | undefined): TimeWindow[] {
+  return parseRestrictionsState(raw).windows;
+}
 
-function logBrokenTimeRestrictions(raw: string | null | undefined) {
-  if (!raw || raw.trim() === "") return;
+const RESTRICTION_LOG_INTERVAL_MS = 60_000;
+let lastRestrictionLogAt = 0;
+
+// 路由热路径按分钟级节流：损坏或部分丢弃都要留痕，但每 60s 每个进程最多一条
+function logRestrictionProblem(message: string, raw: string | null | undefined) {
   const nowMs = Date.now();
-  if (nowMs - lastBrokenLogAt < BROKEN_LOG_INTERVAL_MS) return;
-  lastBrokenLogAt = nowMs;
-  console.warn(`[channel-time] time_restrictions 解析不出任何时段，按不限制处理：${raw.slice(0, 120)}`);
+  if (nowMs - lastRestrictionLogAt < RESTRICTION_LOG_INTERVAL_MS) return;
+  lastRestrictionLogAt = nowMs;
+  const preview = raw ? raw.slice(0, 120) : "";
+  console.warn(`[channel-time] ${message}：${preview}`);
 }
 
 // 未配置时段则不限制（始终允许）；配置后仅窗口内允许。
@@ -69,16 +87,19 @@ function logBrokenTimeRestrictions(raw: string | null | undefined) {
 // 跨零点窗口的凌晨段归属**前一日**的 days（22:00-06:00 勾周一 = 周一 22:00 至周二 06:00），
 // 与编辑器里「结束时间早于开始时间表示跨午夜」的表述一致。
 export function isChannelTimeAllowed(raw: string | null | undefined, now: Date = new Date()): boolean {
-  // 未配置 = 不限制；配了但一条都解析不出来 = 无法确认是否允许，按拒绝处理并告警。
-  // 后者不能落到"不限制"上：配置损坏会让一条本该限时段的渠道静默变成 24/7 可用。
-  if (!raw || raw.trim() === "") return true;
-  const windows = parseTimeRestrictions(raw);
-  if (windows.length === 0) {
-    logBrokenTimeRestrictions(raw);
+  const state = parseRestrictionsState(raw);
+  if (state.kind === "empty") return true;
+  // 配了但一条都用不了：无法确认是否该放行，按拒绝处理并告警，
+  // 不能落到「不限制」上，否则配置损坏会让渠道静默变成 24/7 可用
+  if (state.kind === "broken") {
+    logRestrictionProblem("time_restrictions 没有可用时段，按不可用处理", raw);
     return false;
   }
+  if (state.dropped > 0) {
+    logRestrictionProblem(`time_restrictions 有 ${state.dropped} 个时段非法已忽略`, raw);
+  }
   const { day, minutes } = utcWallTime(now);
-  return windows.some((win) => matchesWindow(win, day, minutes));
+  return state.windows.some((win) => matchesWindow(win, day, minutes));
 }
 
 export function isChannelExpired(expiresAt: string | Date | null | undefined): boolean {
