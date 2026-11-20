@@ -224,7 +224,7 @@ export function useChannelAdmin() {
     if (timeRestrictionsBroken) {
       toast({
         variant: "error",
-        description: "该渠道的限制时段配置无法解析，当前对所有请求不可用；请重新配置或清空后保存。",
+        description: "该渠道的限制时段配置无法解析，当前对所有请求不可用；请重新填写时段，或点「取消限制」清空后再保存。",
         durationMs: 6000,
       });
     }
@@ -513,7 +513,7 @@ export function useChannelAdmin() {
       delete updateBody.time_restrictions;
       toast({
         variant: "info",
-        description: "限制时段配置已损坏且未回填，本次不会修改该字段；请重新填写时段后再保存。",
+        description: "本次未修改限制时段，该渠道仍对所有请求不可用；如需取消限制，请点「取消限制」后再保存。",
         durationMs: 6000,
       });
     }

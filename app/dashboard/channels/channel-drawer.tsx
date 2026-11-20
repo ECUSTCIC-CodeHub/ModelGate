@@ -342,6 +342,21 @@ export function ChannelDrawer({
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label>限制时段</Label>
+              {form.time_restrictions_broken ? (
+                <div className="space-y-2 rounded-lg border border-[var(--color-destructive)]/40 p-3">
+                  <p className="text-xs text-[var(--color-destructive)]">
+                    保存的时段配置无法解析，该渠道当前对所有请求不可用。重新填写时段后保存即可恢复。
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onFormChange({ time_restrictions_broken: false })}
+                  >
+                    取消限制（清空时段）
+                  </Button>
+                </div>
+              ) : null}
               <TimeWindowEditor
                 windows={form.time_restrictions}
                 timeZone={form.time_restrictions_time_zone}
