@@ -69,6 +69,13 @@ export function parseTimeRestrictions(raw: string | null | undefined): TimeWindo
   return parseRestrictionsState(raw).windows;
 }
 
+// 供管理端与运行时共用同一份三态判断：
+// none = 未配置（不限制）、ok = 正常限制、broken = 配了但一条都用不了（渠道不可用）
+export function describeTimeRestrictions(raw: string | null | undefined): "none" | "ok" | "broken" {
+  const kind = parseRestrictionsState(raw).kind;
+  return kind === "empty" ? "none" : kind;
+}
+
 const RESTRICTION_LOG_INTERVAL_MS = 60_000;
 // 按告警类型分别节流：共用一条时间戳会让「整份损坏」把「部分丢弃」的告警长期压掉
 const restrictionLogAt = new Map<string, number>();

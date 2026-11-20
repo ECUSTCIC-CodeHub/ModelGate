@@ -33,6 +33,7 @@ import type { HeaderMapping } from "@/lib/gateway/custom-headers";
 import { parseMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
 import { cyclesToDrafts, draftsToPayload } from "@/app/dashboard/period-cycle-fields";
 import { scheduleDraftsToPayload, schedulesToDrafts } from "@/lib/shared/multiplier-schedule-tz";
+import { describeTimeRestrictions } from "@/lib/gateway/channel-time";
 import { parseTimeWindows, serializeTimeWindows } from "@/lib/shared/time-window";
 import { browserTimeZone } from "@/lib/shared/timezone";
 import { useChannelRecords } from "./use-channel-records";
@@ -218,7 +219,8 @@ export function useChannelAdmin() {
     // 每次打开都按当前浏览器时区把库里的 UTC 时段换算成墙上时间；时区变了只在本次编辑内有效
     const timeZone = browserTimeZone();
     const timeRestrictions = parseTimeWindows(row.time_restrictions ?? "", timeZone);
-    if (timeRestrictions.broken) {
+    // 与运行时判定、列表徽标共用同一份三态判断：broken 时该渠道此刻对所有请求不可用
+    if (describeTimeRestrictions(row.time_restrictions ?? "") === "broken") {
       toast({
         variant: "error",
         description: "该渠道的限制时段配置无法解析，当前对所有请求不可用；请重新配置或清空后保存。",
@@ -386,6 +388,19 @@ export function useChannelAdmin() {
       toast({
         variant: "error",
         description: `剔除字段每行一个顶层字段名（最多 ${REQUEST_BODY_OMIT_MAX_ENTRIES} 项，单个最长 ${REQUEST_BODY_OMIT_FIELD_NAME_MAX_LENGTH} 字符，仅允许字母、数字与下划线）。`,
+      });
+      return;
+    }
+
+    // 未选星期的行表达不了任何限制，静默丢弃等于把这条限制删掉；
+    // 要求显式选星期或删除该行，避免「以为还在限制、其实已经放开」
+    const unassigned = channelForm.time_restrictions
+      .map((win, index) => (win.days.length === 0 ? index + 1 : 0))
+      .filter((position) => position > 0);
+    if (unassigned.length > 0) {
+      toast({
+        variant: "error",
+        description: `第 ${unassigned.join("、")} 个限制时段未选生效星期，请选择星期或删除该行后再保存。`,
       });
       return;
     }

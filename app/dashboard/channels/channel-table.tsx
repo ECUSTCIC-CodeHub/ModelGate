@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useResizableColumns, type ColumnWidthDef } from "@/lib/shared/use-resizable-columns";
 import { Eraser, Loader2, Pencil, Plus, Power, Trash2 } from "lucide-react";
+import { describeTimeRestrictions } from "@/lib/gateway/channel-time";
 import { parseSupportedProtocols, shortProtocolLabel, type Channel } from "./channel-model";
 
 function isExpired(exp?: string | Date | null): boolean {
@@ -18,20 +19,19 @@ function isExpired(exp?: string | Date | null): boolean {
   return !Number.isNaN(t) && t <= Date.now();
 }
 
-function hasTimeWindow(tr?: string | null): boolean {
-  if (!tr) return false;
+// 三态与运行时、回填共用同一份判断：none 不限制 / ok 限时段 / broken 渠道不可用
+function renderTimeRestrictionBadge(tr?: string | null) {
+  let state: "none" | "ok" | "broken" = "none";
   try {
-    const arr = JSON.parse(tr);
-    return Array.isArray(arr) && arr.length > 0;
+    state = describeTimeRestrictions(tr);
   } catch {
-    return false;
+    state = "none";
   }
-}
-
-// 配了时段却一条都用不了：网关会按「不可用」处理，列表上必须能看出来
-function isTimeWindowBroken(tr?: string | null): boolean {
-  if (!tr || tr.trim() === "") return false;
-  return hasTimeWindow(tr) && parseTimeRestrictions(tr).length === 0;
+  if (state === "broken") {
+    return <Badge variant="destructive" title="限制时段配置无法解析，该渠道当前对所有请求不可用；请编辑后重新保存">时段异常</Badge>;
+  }
+  if (state === "ok") return <Badge variant="outline">限时段</Badge>;
+  return null;
 }
 
 export function ChannelTable({
@@ -131,11 +131,7 @@ export function ChannelTable({
                   {isExpired(row.expires_at) && (
                     <Badge variant="destructive" title="过期渠道在路由中已不可用，将在管理员下次操作任意渠道后自动禁用">已过期</Badge>
                   )}
-                  {isTimeWindowBroken(row.time_restrictions) ? (
-                    <Badge variant="destructive" title="限制时段配置无法解析，该渠道当前对所有请求不可用；请编辑后重新保存">时段异常</Badge>
-                  ) : hasTimeWindow(row.time_restrictions) ? (
-                    <Badge variant="outline">限时段</Badge>
-                  ) : null}
+                  {renderTimeRestrictionBadge(row.time_restrictions)}
                 </div>
               </TableCell>
               <TableCell>

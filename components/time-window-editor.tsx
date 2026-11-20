@@ -146,7 +146,7 @@ export function TimeWindowEditor({
             </div>
           </div>
           {win.days.length === 0 ? (
-            <p className="text-xs text-[var(--color-foreground-muted)]">未选生效星期，保存时该行会被忽略。</p>
+            <p className="text-xs text-[var(--color-foreground-muted)]">未选生效星期，请选择星期或删除该行，否则无法保存。</p>
           ) : !isConvertibleWindow(win) ? (
             <p className="text-xs text-[var(--color-danger)]">
               {win.start === win.end

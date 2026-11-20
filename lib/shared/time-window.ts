@@ -18,10 +18,8 @@ export type WallClockWindow = {
 export type WindowConversionResult = {
   // 转换后的窗口；换算不可行的行保留原值
   windows: WallClockWindow[];
-  // 换算不可行的行下标（保留原值），调用方据此提示并阻断保存
+  // 填写有误或换算不可行的行下标（保留原值），调用方据此提示并阻断保存
   failed: number[];
-  // 原文非空却一条可用时段都解析不出来：网关会按「不可用」处理，必须让管理端看到
-  broken: boolean;
 };
 
 const DAYS_PER_WEEK = 7;
@@ -151,28 +149,27 @@ export function parseTimeWindows(
   timeZone: string,
   base: Date = new Date(),
 ): WindowConversionResult {
-  if (!raw || raw.trim() === "") return { windows: [], failed: [], broken: false };
+  if (!raw || raw.trim() === "") return { windows: [], failed: [] };
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return { windows: [], failed: [], broken: true };
+    return { windows: [], failed: [] };
   }
-  if (!Array.isArray(parsed)) return { windows: [], failed: [], broken: true };
-  if (parsed.length === 0) return { windows: [], failed: [], broken: false };
+  if (!Array.isArray(parsed)) return { windows: [], failed: [] };
+  if (parsed.length === 0) return { windows: [], failed: [] };
 
   const windows: WallClockWindow[] = [];
   const failed: number[] = [];
   for (const item of parsed) {
     if (!item || typeof item !== "object") continue;
     const record = item as Record<string, unknown>;
-    const days = Array.isArray(record.days)
-      ? [...new Set(
-        record.days
-          .map((day) => Number(day))
-          .filter((day) => Number.isInteger(day) && day >= 1 && day <= 7),
-      )].sort((a, b) => a - b)
-      : [];
+    const rawDays = Array.isArray(record.days) ? record.days : [];
+    const days = [...new Set(
+      rawDays
+        .map((day) => Number(day))
+        .filter((day) => Number.isInteger(day) && day >= 1 && day <= 7),
+    )].sort((a, b) => a - b);
     // 历史数据里可能是单小时位（9:30）：补零后再交给校验与换算，
     // 否则 <input type="time"> 会把它渲染成空框，看起来像没配
     const rawStart = typeof record.start === "string" ? record.start.trim() : "";
@@ -181,8 +178,10 @@ export function parseTimeWindows(
     const end = normalizeClockTime(record.end);
     const window = { days, start: start || rawStart, end: end || rawEnd };
     const index = windows.length;
-    // 原文有值却归一失败 = 数据坏了，必须报给调用方；当成「未填完」会在保存时被静默丢弃
-    if ((rawStart !== "" && start === "") || (rawEnd !== "" && end === "")) {
+    // 原文有值却归一失败、或写了星期但一个都认不出 = 数据坏了，必须报给调用方；
+    // 当成「未填完 / 未选星期」会在保存时被静默丢弃，等于无声解除限制
+    const daysMalformed = rawDays.length > 0 && days.length === 0;
+    if (daysMalformed || (rawStart !== "" && start === "") || (rawEnd !== "" && end === "")) {
       failed.push(index);
       windows.push(window);
       continue;
@@ -199,6 +198,5 @@ export function parseTimeWindows(
     }
     windows.push(converted);
   }
-  // 一条可用时段都没解析出来：网关会按「不可用」处理，界面上必须能看出来
-  return { windows, failed, broken: windows.length === 0 };
+  return { windows, failed };
 }

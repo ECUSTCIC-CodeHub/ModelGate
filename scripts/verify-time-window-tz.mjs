@@ -13,7 +13,12 @@
 import assert from "node:assert/strict";
 import { findEffectiveScheduleIndex } from "@/lib/gateway/multiplier-schedule";
 import { findShadowedDraftIndexes } from "@/lib/shared/multiplier-shadow";
-import { isChannelTimeAllowed, parseTimeRestrictions, validateTimeRestrictions } from "@/lib/gateway/channel-time";
+import {
+  describeTimeRestrictions,
+  isChannelTimeAllowed,
+  parseTimeRestrictions,
+  validateTimeRestrictions,
+} from "@/lib/gateway/channel-time";
 import {
   matchesWindow,
   parseTimeWindows,
@@ -212,10 +217,22 @@ check("回填时格式异常的时段报 failed，不会被当成未填完静默
   );
   assert.deepEqual(parsed.failed, [0]);
   assert.deepEqual(parsed.windows, [{ days: [1], start: "24:00", end: "18:00" }]);
-  // 整份都不可用：要把 broken 报给管理端，否则界面看起来像「没配」
-  assert.equal(parsed.broken, false, "有可用行时不算整体损坏");
-  assert.equal(parseTimeWindows("not-json", "UTC", base).broken, true);
-  assert.equal(parseTimeWindows("[]", "UTC", base).broken, false);
+  // 星期写了但一个都认不出：同样算填写有误，不能伪装成「未选星期」
+  const badDays = parseTimeWindows(
+    JSON.stringify([{ days: [0, 8], start: "09:00", end: "18:00" }]),
+    "UTC",
+    base,
+  );
+  assert.deepEqual(badDays.failed, [0]);
+});
+
+check("三态判断与运行时、管理端同源", () => {
+  assert.equal(describeTimeRestrictions(""), "none");
+  assert.equal(describeTimeRestrictions("[]"), "none");
+  assert.equal(describeTimeRestrictions(JSON.stringify([{ days: [1], start: "09:00", end: "18:00" }])), "ok");
+  assert.equal(describeTimeRestrictions("not-json"), "broken");
+  assert.equal(describeTimeRestrictions("{}"), "broken");
+  assert.equal(describeTimeRestrictions(JSON.stringify([{ days: [1], start: "10:00", end: "10:00" }])), "broken");
 });
 
 check("选了星期但时分非法时阻断保存，未选星期的空行才允许忽略", () => {
