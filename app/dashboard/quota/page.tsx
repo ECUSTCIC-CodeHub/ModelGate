@@ -32,7 +32,6 @@ type ModelQuota = {
   periods?: PeriodQuotaEntry[];
   effective_token_multiplier?: number;
   effective_request_multiplier?: number;
-  multiplier_schedule_applied?: boolean;
 };
 
 function QuotaBar({ used, total }: { used: number; total: number | null }) {

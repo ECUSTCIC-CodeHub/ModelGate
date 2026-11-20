@@ -283,7 +283,7 @@ X-Model-Period-Quota-Requests-<id>: <remaining>
 | channel_quota_mode | enum | 所属渠道的配额模式（`follow_group` / `bypass_group` / `independent` / `dual`），用于判断用户限额是否被渠道侧跳过；不包含渠道配额数值 |
 | effective_token_multiplier | number | 当前时刻实际生效的 Token 倍率 |
 | effective_request_multiplier | number | 当前时刻实际生效的请求倍率 |
-| multiplier_schedule_applied | bool | 当前是否命中分时档位（渠道级或模型级任一命中即为 true） |
+| multiplier_schedule_applied | bool | 当前是否命中分时档位（渠道级或模型级任一命中即为 true）；只表示此刻的命中状态，不用于决定「分时」标签是否显示 |
 | multiplier_schedules | object[] | 模型级分时档原样数组（`days`/`start`/`end` 为 UTC），供前端按浏览者时区写成「分时 T 0.5x 00:00–08:00」标签 |
 | channel_multiplier_schedules | object[] | 渠道级分时档原样数组，口径同上 |
 

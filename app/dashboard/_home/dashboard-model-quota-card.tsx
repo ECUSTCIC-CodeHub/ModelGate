@@ -24,7 +24,6 @@ export type ModelQuotaItem = {
   periods?: PeriodQuotaEntry[];
   effective_token_multiplier?: number;
   effective_request_multiplier?: number;
-  multiplier_schedule_applied?: boolean;
   // 两层档位原样带回（UTC），前端按浏览器时区写成「分时 T 0.5x 00:00–08:00」
   multiplier_schedules?: ScheduleTextItem[];
   channel_multiplier_schedules?: ScheduleTextItem[];
@@ -93,7 +92,7 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
                       <p className="truncate text-xs text-[var(--color-foreground-muted)]">{m.channel_name}</p>
                     ) : null}
                   </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
+                  <div className="flex max-w-[60%] flex-wrap items-center justify-end gap-1.5">
                     <span className="rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-foreground-muted)]">
                       {m.quota_mode === "independent" ? "独立配额" : m.quota_mode === "dual" ? "双重限制" : channelBypass ? "渠道绕过" : "绕过"}
                     </span>
@@ -106,8 +105,8 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
                       </span>
                     ) : null}
                     {scheduleTag ? (
-                      // 不截断：标签本身就承担「说清倍率与时段」的职责，卡片宽度也放得下
-                      <span className="rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-foreground-muted)]">
+                      // 标签自己说明倍率与时段，不靠悬浮；放不下时换行而不是截断成看不懂的半句
+                      <span className="max-w-full break-words rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-foreground-muted)]">
                         分时 {scheduleTag}
                       </span>
                     ) : null}
@@ -115,11 +114,9 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
                 </div>
                 {independent ? (
                   <div className="space-y-1">
-                    {m.multiplier_schedule_applied ? (
-                      <p className="text-xs text-[var(--color-foreground-muted)]">
-                        生效倍率 T {m.effective_token_multiplier ?? 1}x / R {m.effective_request_multiplier ?? 1}x
-                      </p>
-                    ) : null}
+                    <p className="text-xs text-[var(--color-foreground-muted)]">
+                      生效倍率 T {m.effective_token_multiplier ?? 1}x / R {m.effective_request_multiplier ?? 1}x
+                    </p>
                     {m.quota_requests === null && m.quota_tokens === null && cycles.length === 0 ? (
                       <p className="text-xs text-[var(--color-foreground-muted)]">未配置模型配额</p>
                     ) : (
