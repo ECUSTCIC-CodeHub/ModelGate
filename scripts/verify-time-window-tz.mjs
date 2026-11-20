@@ -13,7 +13,7 @@
 import assert from "node:assert/strict";
 import { findEffectiveScheduleIndex } from "@/lib/gateway/multiplier-schedule";
 import { findShadowedDraftIndexes } from "@/lib/shared/multiplier-shadow";
-import { isChannelTimeAllowed, parseTimeRestrictions } from "@/lib/gateway/channel-time";
+import { isChannelTimeAllowed, parseTimeRestrictions, validateTimeRestrictions } from "@/lib/gateway/channel-time";
 import {
   matchesWindow,
   parseTimeWindows,
@@ -168,6 +168,36 @@ check("首尾相同的时段整天都不放行", () => {
 check("限制时段解析补零：9:30 归一化为 09:30", () => {
   const json = JSON.stringify([{ days: [1], start: "9:30", end: "18:00" }]);
   assert.deepEqual(parseTimeRestrictions(json), [{ days: [1], start: "09:30", end: "18:00" }]);
+});
+
+check("写侧先归一化再校验：9:30 与 09:30 视为同一时刻", () => {
+  assert.equal(validateTimeRestrictions([{ days: [1], start: "9:30", end: "09:30" }]).valid, false);
+  assert.deepEqual(
+    validateTimeRestrictions([{ days: [1], start: "9:30", end: "18:00" }]),
+    { valid: true, windows: [{ days: [1], start: "09:30", end: "18:00" }] },
+  );
+});
+
+check("历史单小时位数据在编辑器里补零而不是变成空框", () => {
+  const parsed = parseTimeWindows(
+    JSON.stringify([{ days: [1], start: "9:30", end: "18:00" }]),
+    "UTC",
+    new Date(BASE_MS_LIST[0]),
+  );
+  assert.deepEqual(parsed.failed, []);
+  assert.deepEqual(parsed.windows, [{ days: [1], start: "09:30", end: "18:00" }]);
+});
+
+check("限制时段配置损坏时按拒绝处理，而不是悄悄放开", () => {
+  const now = new Date(Date.UTC(2024, 0, 1, 5, 0, 0));
+  assert.equal(isChannelTimeAllowed("", now), true, "未配置 = 不限制");
+  assert.equal(isChannelTimeAllowed(null, now), true, "未配置 = 不限制");
+  assert.equal(isChannelTimeAllowed("not-json", now), false, "解析失败 = 拒绝");
+  assert.equal(
+    isChannelTimeAllowed(JSON.stringify([{ days: [1], start: "10:00", end: "10:00" }]), now),
+    false,
+    "整份配置都是无效行 = 拒绝",
+  );
 });
 
 check("渠道可用时段：墙上时间窗口与换算后的 UTC 窗口逐分钟一致", () => {

@@ -13,8 +13,10 @@ export type TimeWindow = {
 // 写入侧允许单小时位（9:30），编辑器与判定都按两位时分处理：
 // 这里统一补零，避免历史数据在编辑器里显示成空框、被当成"未配置"
 function normalizeClockTime(value: unknown): string | null {
-  if (typeof value !== "string" || !TIME_RE.test(value)) return null;
-  const [h, m] = value.split(":");
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!TIME_RE.test(trimmed)) return null;
+  const [h, m] = trimmed.split(":");
   const hour = Number(h);
   const minute = Number(m);
   if (hour > 23 || minute > 59) return null;
@@ -42,6 +44,8 @@ export function parseTimeRestrictions(raw: string | null | undefined): TimeWindo
     const start = normalizeClockTime(record.start);
     const end = normalizeClockTime(record.end);
     if (!start || !end) continue;
+    // 首尾相同的行永远不命中，等同于没配；丢掉它才能让「整份配置都无效」走到不可用分支
+    if (start === end) continue;
     windows.push({ days: [...new Set(days)], start, end });
     if (windows.length >= MAX_WINDOWS) break;
   }
@@ -65,12 +69,13 @@ function logBrokenTimeRestrictions(raw: string | null | undefined) {
 // 跨零点窗口的凌晨段归属**前一日**的 days（22:00-06:00 勾周一 = 周一 22:00 至周二 06:00），
 // 与编辑器里「结束时间早于开始时间表示跨午夜」的表述一致。
 export function isChannelTimeAllowed(raw: string | null | undefined, now: Date = new Date()): boolean {
+  // 未配置 = 不限制；配了但一条都解析不出来 = 无法确认是否允许，按拒绝处理并告警。
+  // 后者不能落到"不限制"上：配置损坏会让一条本该限时段的渠道静默变成 24/7 可用。
+  if (!raw || raw.trim() === "") return true;
   const windows = parseTimeRestrictions(raw);
   if (windows.length === 0) {
-    // 原文非空却解析不出任何时段说明配置已损坏：继续保持"不限制"的历史行为，
-    // 但留一条限频告警，避免渠道在无人察觉的情况下变成 24/7 可用
     logBrokenTimeRestrictions(raw);
-    return true;
+    return false;
   }
   const { day, minutes } = utcWallTime(now);
   return windows.some((win) => matchesWindow(win, day, minutes));
@@ -107,12 +112,11 @@ export function validateTimeRestrictions(input: unknown): { valid: true; windows
     if (!Array.isArray(record.days)) return { valid: false, error: `第 ${i + 1} 个时段缺少 days。` };
     const days = record.days.filter((d) => Number.isInteger(d) && d >= 1 && d <= 7);
     if (days.length === 0) return { valid: false, error: `第 ${i + 1} 个时段的 days 必须为 1-7 的星期。` };
-    const start = typeof record.start === "string" ? record.start : "";
-    const end = typeof record.end === "string" ? record.end : "";
-    if (!TIME_RE.test(start) || !TIME_RE.test(end)) return { valid: false, error: `第 ${i + 1} 个时段的 start/end 格式应为 HH:MM。` };
-    const [sh, sm] = start.split(":").map(Number);
-    const [eh, em] = end.split(":").map(Number);
-    if (sh > 23 || sm > 59 || eh > 23 || em > 59) return { valid: false, error: `第 ${i + 1} 个时段的时间超出范围。` };
+    // 先归一化再比较：9:30 与 09:30 是同一个时刻，按字符串比会漏掉「首尾相同」，
+    // 落库后又会被判定为不命中，等于把渠道配成永久不可用
+    const start = normalizeClockTime(record.start);
+    const end = normalizeClockTime(record.end);
+    if (!start || !end) return { valid: false, error: `第 ${i + 1} 个时段的 start/end 格式应为 HH:MM。` };
     if (start === end) return { valid: false, error: `第 ${i + 1} 个时段的开始时间不能等于结束时间。` };
     windows.push({ days: [...new Set(days)], start, end });
   }

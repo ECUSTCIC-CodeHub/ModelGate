@@ -156,7 +156,7 @@ export function TimeWindowEditor({
         <Plus className="h-4 w-4" /> 添加时段
       </Button>
       <p className="text-xs text-[var(--color-foreground-muted)]">
-        配置后渠道仅在这些时段内可用，最多 {MAX_WINDOWS} 个时段；结束时间早于开始时间表示跨午夜。留空则不限制。
+        配置后渠道仅在这些时段内可用，最多 {MAX_WINDOWS} 个时段；结束时间早于开始时间表示跨午夜（凌晨段归所选星期的前一天），需要全天可用请填 <code>00:00-23:59</code>。留空则不限制。
       </p>
     </div>
   );

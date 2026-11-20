@@ -119,6 +119,19 @@ export function serializeTimeWindows(
   return { json: JSON.stringify(out), failed };
 }
 
+// 历史数据可能带单小时位（9:30），统一补零成 09:30；非法值返回空串由上层按未填完处理
+const LENIENT_TIME_RE = /^(\d{1,2}):(\d{2})$/;
+
+function normalizeClockTime(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const match = LENIENT_TIME_RE.exec(value.trim());
+  if (!match) return "";
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) return "";
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
 // 落库 JSON => 编辑器行：UTC 时分按所选时区换算成墙上时间。
 // 脏数据逐项丢弃；换算不可行的行保留原值并记下下标。
 export function parseTimeWindows(
@@ -147,8 +160,10 @@ export function parseTimeWindows(
           .filter((day) => Number.isInteger(day) && day >= 1 && day <= 7),
       )].sort((a, b) => a - b)
       : [];
-    const start = typeof record.start === "string" ? record.start : "";
-    const end = typeof record.end === "string" ? record.end : "";
+    // 历史数据里可能是单小时位（9:30）：补零后再交给校验与换算，
+    // 否则 <input type="time"> 会把它渲染成空框，看起来像没配
+    const start = normalizeClockTime(record.start);
+    const end = normalizeClockTime(record.end);
     const window = { days, start, end };
     const index = windows.length;
     if (isIncompleteWindow(window) || !isConvertibleWindow(window)) {
