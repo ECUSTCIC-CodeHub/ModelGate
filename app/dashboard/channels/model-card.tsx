@@ -14,13 +14,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { effectiveMultiplierOf, parseSupportedProtocols, shortProtocolLabel, type ModelWithChannel } from "./channel-model";
 import { parseMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
 import { ModelActions } from "./model-actions";
-import { ScheduleSourceTag } from "./schedule-source-tag";
-import { describeScheduleSource } from "@/lib/shared/multiplier-source";
-import { describeScheduleTooltip } from "@/lib/shared/multiplier-schedule-text";
+import { summarizeScheduleTag } from "@/lib/shared/multiplier-schedule-text";
 
 function isExpired(exp?: string | Date | null): boolean {
   if (!exp) return false;
@@ -46,34 +43,22 @@ export function ModelCard({
   selection?: { checked: boolean; onToggle: () => void };
 }) {
   const [confirmToggle, setConfirmToggle] = useState(false);
-  // 按分钟缓存：搜索、勾选等本地状态会整表重渲染，没必要每次都重算时区换算
-  const minuteBucket = Math.floor(Date.now() / 60_000);
-  const { effective, scheduleTooltip } = useMemo(() => {
-    const at = new Date(minuteBucket * 60_000);
-    const resolved = effectiveMultiplierOf(model, at);
-    const modelSchedules = parseMultiplierSchedules(model.multiplier_schedules);
+  // 按模型缓存：搜索、勾选等本地状态会整表重渲染，没必要每次都重算时区换算。
+  // 分时标签只描述「配了什么」，与此刻是否命中无关
+  const { effective, scheduleTag } = useMemo(() => {
+    const resolved = effectiveMultiplierOf(model);
     return {
       effective: resolved,
-      scheduleTooltip: describeScheduleTooltip({
-        baseToken: model.token_multiplier ?? 1,
-        baseRequest: model.request_multiplier ?? 1,
-        effectiveToken: resolved.token_multiplier,
-        effectiveRequest: resolved.request_multiplier,
-        scheduleApplied: resolved.schedule_applied,
-        source: resolved.schedule_applied
-          ? describeScheduleSource({
-            tokenFromModelSchedule: resolved.token_from_model_schedule,
-            requestFromModelSchedule: resolved.request_from_model_schedule,
-            tokenScheduled: resolved.token_scheduled,
-            requestScheduled: resolved.request_scheduled,
-          })
-          : undefined,
-        modelSchedules,
+      scheduleTag: summarizeScheduleTag({
+        modelSchedules: parseMultiplierSchedules(model.multiplier_schedules),
         channelSchedules: model.channel_multiplier_schedules,
-        now: at,
+        tokenFromModelSchedule: resolved.token_from_model_schedule,
+        requestFromModelSchedule: resolved.request_from_model_schedule,
+        tokenScheduled: resolved.token_scheduled,
+        requestScheduled: resolved.request_scheduled,
       }),
     };
-  }, [model, minuteBucket]);
+  }, [model]);
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 transition-shadow hover:shadow-[var(--shadow-md)]">
@@ -113,19 +98,13 @@ export function ModelCard({
         <Badge variant="outline">
           实际 {Math.max(1, model.weight) * Math.max(1, model.channel_weight)}x
         </Badge>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Badge variant="outline" className="cursor-default">
-              T {effective.token_multiplier}x
-              <ScheduleSourceTag fromModel={effective.token_from_model_schedule} scheduled={effective.token_scheduled} />
-              {" / "}R {effective.request_multiplier}x
-              <ScheduleSourceTag fromModel={effective.request_from_model_schedule} scheduled={effective.request_scheduled} />
-            </Badge>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="max-w-80 whitespace-pre-line text-xs">
-            {scheduleTooltip}
-          </TooltipContent>
-        </Tooltip>
+        <Badge variant="outline">T {effective.token_multiplier}x / R {effective.request_multiplier}x</Badge>
+        {scheduleTag ? (
+          // 配了分时就一直挂着，标签本身写清倍率与时段
+          <Badge variant="outline" className="max-w-full truncate font-normal text-[var(--color-accent)]">
+            分时 {scheduleTag}
+          </Badge>
+        ) : null}
         <Badge variant={model.is_public ? "default" : "secondary"}>
           {model.is_public ? "公开" : "白名单"}
         </Badge>

@@ -28,12 +28,12 @@ import {
 } from "@/lib/shared/time-window";
 import { scheduleDraftsToPayload, schedulesToDrafts } from "@/lib/shared/multiplier-schedule-tz";
 import {
-  describeChannelSchedules,
-  describeScheduleTooltip,
   describeScheduleWindows,
   formatScheduleDays,
   formatScheduleMultipliers,
   formatScheduleTime,
+  summarizeChannelScheduleTags,
+  summarizeScheduleTag,
 } from "@/lib/shared/multiplier-schedule-text";
 
 let passed = 0;
@@ -424,42 +424,58 @@ check("分时档文案：星期、跨零点与倍率", () => {
   );
 });
 
-check("分时档文案：按浏览者时区展示，并标出当前命中的档", () => {
+check("分时档清单：按浏览者时区展示每档的时段与倍率（仅用于编辑器/排障）", () => {
   // 库里存的是 UTC：周四 16:00-00:00 = 东八区周五 00:00-08:00；周五 00:00-08:00（UTC）= 周五 08:00-16:00
   const schedules = [
     { days: [4], start: "16:00", end: "00:00", token_multiplier: 0.5, request_multiplier: null },
     { days: [5], start: "00:00", end: "08:00", token_multiplier: 1.5, request_multiplier: 2 },
   ];
-  const lines = describeScheduleWindows(schedules, "Asia/Shanghai");
-  assert.deepEqual(lines, [
+  assert.deepEqual(describeScheduleWindows(schedules, "Asia/Shanghai"), [
     "周五 00:00–08:00 · Token 0.5x",
     "周五 08:00–16:00 · Token 1.5x / 请求 2x",
   ]);
-  // 2024-01-05T00:30Z = 东八区周五 08:30，命中的是第二档
-  const now = new Date(Date.UTC(2024, 0, 5, 0, 30));
-  const marked = describeScheduleWindows(schedules, "Asia/Shanghai", 1);
-  assert.equal(marked[1], "周五 08:00–16:00 · Token 1.5x / 请求 2x（此刻命中）");
-  const tooltip = describeScheduleTooltip({
-    baseToken: 1,
-    baseRequest: 1,
-    effectiveToken: 1.5,
-    effectiveRequest: 2,
-    scheduleApplied: true,
-    source: "两个维度都来自模型级分时档",
-    modelSchedules: schedules,
-    now,
-    timeZone: "Asia/Shanghai",
-  });
-  assert.match(tooltip, /当前时段生效 Token 1\.5x \/ 请求 2x/);
-  assert.match(tooltip, /模型级：/);
-  assert.match(tooltip, /（此刻命中）/);
-  const grouped = describeChannelSchedules(
-    [{ channelName: "渠道 A", modelSchedules: schedules }],
-    "Asia/Shanghai",
-    now,
+});
+
+check("分时标签：直接写出维度、倍率与时段，与当前是否命中无关", () => {
+  // 标签是列表上唯一的分时信息，不再有悬浮明细，所以必须自带时段
+  const schedules = [
+    { days: [4], start: "16:00", end: "00:00", token_multiplier: 0.5, request_multiplier: null },
+    { days: [5], start: "00:00", end: "08:00", token_multiplier: 1.5, request_multiplier: 2 },
+  ];
+  assert.equal(
+    summarizeScheduleTag({ modelSchedules: schedules }, "Asia/Shanghai"),
+    "T 0.5x 周五 00:00–08:00、1.5x 周五 08:00–16:00 · R 2x 周五 08:00–16:00",
   );
-  assert.equal(grouped[0], "· 模型档 周五 00:00–08:00 · Token 0.5x");
-  assert.match(grouped[grouped.length - 1], /浏览器时区（Asia\/Shanghai）/);
+  // 全周生效不写星期，省下的宽度留给时段（用 UTC 断言，避免再叠一层换算）
+  assert.equal(
+    summarizeScheduleTag(
+      { channelSchedules: [{ days: [1, 2, 3, 4, 5, 6, 7], start: "00:00", end: "08:00", token_multiplier: 2, request_multiplier: null }] },
+      "UTC",
+    ),
+    "T 2x 00:00–08:00",
+  );
+  // 没配任何档位就不出标签
+  assert.equal(summarizeScheduleTag({ modelSchedules: [], channelSchedules: [] }), null);
+  // 超过两档折叠
+  const many = [0, 1, 2].map((index) => ({
+    days: [1],
+    start: `0${index}:00`,
+    end: `0${index + 1}:00`,
+    token_multiplier: 1 + index,
+    request_multiplier: null,
+  }));
+  assert.equal(summarizeScheduleTag({ modelSchedules: many }, "UTC"), "T 1x 周一 00:00–01:00、2x 周一 01:00–02:00 等3档");
+});
+
+check("多渠道标签去重并截断", () => {
+  const schedules = [{ days: [1, 2, 3, 4, 5, 6, 7], start: "00:00", end: "08:00", token_multiplier: 0.5, request_multiplier: null }];
+  const same = summarizeChannelScheduleTags([{ modelSchedules: schedules }, { modelSchedules: schedules }], "UTC");
+  assert.equal(same, "T 0.5x 00:00–08:00");
+  const other = [{ days: [1, 2, 3, 4, 5, 6, 7], start: "08:00", end: "16:00", token_multiplier: 2, request_multiplier: null }];
+  assert.equal(
+    summarizeChannelScheduleTags([{ modelSchedules: schedules }, { modelSchedules: other }], "UTC"),
+    "T 0.5x 00:00–08:00 · T 2x 08:00–16:00",
+  );
 });
 
 console.log("");

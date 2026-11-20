@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { TableCell, TableRow } from "@/components/ui/table";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,9 +19,7 @@ import { parseMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
 import type { ModelWithChannel } from "./channel-model";
 import { effectiveMultiplierOf, parseSupportedProtocols, shortProtocolLabel } from "./channel-model";
 import { ModelActions } from "./model-actions";
-import { ScheduleSourceTag } from "./schedule-source-tag";
-import { describeScheduleSource } from "@/lib/shared/multiplier-source";
-import { describeScheduleTooltip } from "@/lib/shared/multiplier-schedule-text";
+import { summarizeScheduleTag } from "@/lib/shared/multiplier-schedule-text";
 
 function isExpired(exp?: string | Date | null): boolean {
   if (!exp) return false;
@@ -50,35 +47,22 @@ export function ModelListRow({
   selection?: { checked: boolean; onToggle: () => void };
 }) {
   const [confirmToggle, setConfirmToggle] = useState(false);
-  // 按分钟缓存：搜索、勾选等本地状态会让整表重渲染，没必要每次都重算时区换算。
-  // 生效值与档位标注共用同一个时点，避免跨分钟时出现「未命中」却标了「此刻命中」
-  const minuteBucket = Math.floor(Date.now() / 60_000);
-  const { effective, scheduleTooltip } = useMemo(() => {
-    const at = new Date(minuteBucket * 60_000);
-    const resolved = effectiveMultiplierOf(model, at);
-    const modelSchedules = parseMultiplierSchedules(model.multiplier_schedules);
+  // 按模型缓存：搜索、勾选等本地状态会让整表重渲染，没必要每次都重算时区换算。
+  // 分时标签只描述「配了什么」，与此刻是否命中无关，所以不需要跟着时间失效
+  const { effective, scheduleTag } = useMemo(() => {
+    const resolved = effectiveMultiplierOf(model);
     return {
       effective: resolved,
-      scheduleTooltip: describeScheduleTooltip({
-        baseToken: model.token_multiplier ?? 1,
-        baseRequest: model.request_multiplier ?? 1,
-        effectiveToken: resolved.token_multiplier,
-        effectiveRequest: resolved.request_multiplier,
-        scheduleApplied: resolved.schedule_applied,
-        source: resolved.schedule_applied
-          ? describeScheduleSource({
-            tokenFromModelSchedule: resolved.token_from_model_schedule,
-            requestFromModelSchedule: resolved.request_from_model_schedule,
-            tokenScheduled: resolved.token_scheduled,
-            requestScheduled: resolved.request_scheduled,
-          })
-          : undefined,
-        modelSchedules,
+      scheduleTag: summarizeScheduleTag({
+        modelSchedules: parseMultiplierSchedules(model.multiplier_schedules),
         channelSchedules: model.channel_multiplier_schedules,
-        now: at,
+        tokenFromModelSchedule: resolved.token_from_model_schedule,
+        requestFromModelSchedule: resolved.request_from_model_schedule,
+        tokenScheduled: resolved.token_scheduled,
+        requestScheduled: resolved.request_scheduled,
       }),
     };
-  }, [model, minuteBucket]);
+  }, [model]);
 
   return (
     <TableRow className="group">
@@ -125,22 +109,19 @@ export function ModelListRow({
         {Math.max(1, model.weight) * Math.max(1, model.channel_weight)}x
       </TableCell>
       <TableCell className="whitespace-nowrap font-mono text-xs">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div tabIndex={0} className="cursor-default text-[var(--color-foreground-secondary)]">
-              T {effective.token_multiplier}x
-              <ScheduleSourceTag fromModel={effective.token_from_model_schedule} scheduled={effective.token_scheduled} />
-              {" / "}R {effective.request_multiplier}x
-              <ScheduleSourceTag fromModel={effective.request_from_model_schedule} scheduled={effective.request_scheduled} />
-            </div>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="max-w-80 whitespace-pre-line text-xs">
-            {scheduleTooltip}
-          </TooltipContent>
-        </Tooltip>
-        <p className="text-[10px] text-[var(--color-foreground-muted)]">
-          基础 T {model.token_multiplier ?? 1}x / R {model.request_multiplier ?? 1}x
-        </p>
+        <div className="text-[var(--color-foreground-secondary)]">
+          T {effective.token_multiplier}x / R {effective.request_multiplier}x
+        </div>
+        {scheduleTag ? (
+          // 配了分时就一直挂着，标签本身写清倍率与时段
+          <p className="mt-0.5 max-w-72 truncate text-[10px] text-[var(--color-accent)]">
+            分时 {scheduleTag}
+          </p>
+        ) : (
+          <p className="text-[10px] text-[var(--color-foreground-muted)]">
+            基础 T {model.token_multiplier ?? 1}x / R {model.request_multiplier ?? 1}x
+          </p>
+        )}
       </TableCell>
       <TableCell className="whitespace-nowrap">{model.max_concurrency > 0 ? model.max_concurrency : "继承渠道"}</TableCell>
       <TableCell>

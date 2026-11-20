@@ -18,9 +18,7 @@ import { cn } from "@/lib/shared/utils";
 import { getApiMessage } from "@/lib/shared/api-message";
 import { authedFetch, ensureLoggedIn, getCachedProfile } from "@/lib/auth/client-auth";
 import { shortProtocolLabel, type Protocol } from "@/app/dashboard/channels/channel-model";
-import { ScheduleSourceTag } from "@/app/dashboard/channels/schedule-source-tag";
-import { describeAggregatedScheduleSource, describeScheduleSource } from "@/lib/shared/multiplier-source";
-import { describeChannelSchedules } from "@/lib/shared/multiplier-schedule-text";
+import { summarizeChannelScheduleTags } from "@/lib/shared/multiplier-schedule-text";
 
 type ScheduleWindow = {
   days: number[];
@@ -118,48 +116,19 @@ type ModelItem = {
   channels: ChannelMultiplier[];
 };
 
-// 一条别名此刻的倍率来源。只有一个渠道时能按这一条渠道的维度来源直说；
-// 多渠道时聚合值只代表「至少一条渠道命中模型档」，措辞必须留余地，
-// 否则单渠道场景会出现「请求倍率没有渠道由模型级分时档覆盖」这种像在说整体的句子。
-function scheduleSourceLabel(row: ModelItem): string {
-  const onlyChannel = row.channels.length === 1 ? row.channels[0] : null;
-  if (onlyChannel) {
-    return describeScheduleSource({
-      tokenFromModelSchedule: onlyChannel.token_multiplier_from_model_schedule,
-      requestFromModelSchedule: onlyChannel.request_multiplier_from_model_schedule,
-      tokenScheduled: onlyChannel.token_multiplier_scheduled,
-      requestScheduled: onlyChannel.request_multiplier_scheduled,
-    });
-  }
-  return describeAggregatedScheduleSource({
-    tokenFromModelSchedule: row.token_multiplier_from_model_schedule,
-    requestFromModelSchedule: row.request_multiplier_from_model_schedule,
-  });
-}
-
-// 各渠道的分时档清单：时间按浏览者时区换算，并标出此刻命中的那一档
-function scheduleWindowLines(row: ModelItem, now: Date): string[] {
-  return describeChannelSchedules(
+// 一行的分时标签：`T 0.5x 00:00–08:00 · R 2x 22:00–次日 06:00`。
+// 只描述配了什么，与此刻是否命中无关；多渠道时按档位去重，避免标签过长。
+function scheduleTagOf(row: ModelItem): string | null {
+  return summarizeChannelScheduleTags(
     row.channels.map((channel) => ({
-      channelName: channel.channel_name,
       modelSchedules: channel.multiplier_schedules,
       channelSchedules: channel.channel_multiplier_schedules,
+      tokenFromModelSchedule: channel.token_multiplier_from_model_schedule,
+      requestFromModelSchedule: channel.request_multiplier_from_model_schedule,
+      tokenScheduled: channel.token_multiplier_scheduled,
+      requestScheduled: channel.request_multiplier_scheduled,
     })),
-    undefined,
-    now,
   );
-}
-
-// 悬浮说明的第一行：两个视图（列表 / 卡片）必须一样，
-// 否则卡片上写着生效值、提示里只写基础倍率，看起来像两边对不上
-function multiplierTooltipHead(row: ModelItem, type: "token" | "request"): string {
-  const baseMin = type === "token" ? row.token_multiplier_min : row.request_multiplier_min;
-  const baseMax = type === "token" ? row.token_multiplier_max : row.request_multiplier_max;
-  const baseLabel = baseMin !== baseMax ? `${baseMin}x ~ ${baseMax}x` : `${baseMin}x`;
-  const scheduled = type === "token" ? row.token_multiplier_scheduled : row.request_multiplier_scheduled;
-  return scheduled
-    ? `当前时段生效倍率，基础倍率 ${baseLabel}；${scheduleSourceLabel(row)}`
-    : `基础倍率 ${baseLabel}`;
 }
 
 type SortField = "id" | "effective_token_multiplier" | "effective_request_multiplier" | "weight" | "effective_weight";
@@ -176,8 +145,6 @@ export default function AvailableModelsPage() {
   const initialProfile = useAuthProfile();
   const [role, setRole] = useState<"admin" | "user">(() => initialProfile?.role ?? getCachedProfile()?.role ?? "user");
   const [rows, setRows] = useState<ModelItem[]>([]);
-  // 数据加载时刻，用来让「此刻命中」标注与服务端算出的数值保持同一时点
-  const [rowsLoadedAt, setRowsLoadedAt] = useState(0);
   const [metricsMap, setMetricsMap] = useState<Record<string, ModelMetrics>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -257,9 +224,6 @@ export default function AvailableModelsPage() {
         }
 
         setRows(data?.data ?? []);
-        // 与数据同一时刻取「现在」：页面上显示的生效倍率由服务端在请求时算好，
-        // 档位标注必须用同一个时点，否则跨档位时会标着「此刻命中」却配着旧数值
-        setRowsLoadedAt(Date.now());
         if (Array.isArray(data?.brand_groups)) {
           setBrandGroups(data.brand_groups.filter(
             (g: unknown): g is BrandGroup => !!g && typeof g === "object" && typeof (g as BrandGroup).label === "string" && typeof (g as BrandGroup).pattern === "string",
@@ -348,24 +312,22 @@ export default function AvailableModelsPage() {
     return sorted;
   }, [filtered, sortField, sortOrder]);
 
-  // 每行的档位清单只算一次：Token 与请求两列、卡片与列表共用同一份，
-  // 避免每次重渲染按渠道×层×档位重复做时区换算。
-  // 时点固定为数据加载时刻：服务端算出的生效倍率就是那一刻的值，跟着页面停留时的
-  // 「现在」重算标注会和旁边显示的数值打架（要换档就重新加载页面）
-  const scheduleLinesById = useMemo(() => {
-    const at = new Date(rowsLoadedAt || Date.now());
-    const map = new Map<string, string[]>();
-    for (const row of rows) map.set(row.id, scheduleWindowLines(row, at));
+  // 每行的分时标签只算一次：列表与卡片共用，避免每次重渲染重复做时区换算。
+  // 标签只描述配置（不看当前时刻），所以不需要跟着时间失效
+  const scheduleTagById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of rows) {
+      const tag = scheduleTagOf(row);
+      if (tag) map.set(row.id, tag);
+    }
     return map;
-  }, [rows, rowsLoadedAt]);
+  }, [rows]);
 
   function renderMultiplier(row: ModelItem, type: "token" | "request") {
     const effectiveMin = type === "token" ? row.effective_token_multiplier_min : row.effective_request_multiplier_min;
     const effectiveMax = type === "token" ? row.effective_token_multiplier_max : row.effective_request_multiplier_max;
     const hasRange = effectiveMin !== effectiveMax;
     const hasMultipleChannels = row.channels.length > 1;
-    // 按维度判：只有 Token 命中分时档时，请求列不该跟着标「分时」。
-    const scheduled = type === "token" ? row.token_multiplier_scheduled : row.request_multiplier_scheduled;
     const emphasized = effectiveMin !== 1 || effectiveMax !== 1 || hasRange;
     const expanded = expandedIds.has(row.id);
     const label = hasRange ? `${effectiveMin}x ~ ${effectiveMax}x` : `${effectiveMin}x`;
@@ -373,42 +335,24 @@ export default function AvailableModelsPage() {
       ? "text-[var(--color-accent)] font-semibold"
       : "text-[var(--color-foreground-muted)]";
 
-    const content = (
-      <>
-        <span className={cn("font-mono text-sm", tone)}>{label}</span>
-        {scheduled ? (
-          <span className="text-[10px] text-[var(--color-foreground-muted)]">分时</span>
-        ) : null}
-      </>
-    );
+    const content = <span className={cn("font-mono text-sm", tone)}>{label}</span>;
 
-    // 来源按维度判：模型档只填了 token 时，请求倍率仍是渠道档或基础倍率给的，笼统说「模型/渠道」会指错。
-    const tooltipLines = [multiplierTooltipHead(row, type), ...(scheduleLinesById.get(row.id) ?? [])];
-
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          {hasMultipleChannels ? (
-            <button
-              type="button"
-              onClick={() => toggleExpand(row.id)}
-              aria-expanded={expanded}
-              aria-controls={`expand-${row.id}`}
-              aria-label={expanded ? "收起渠道信息" : "展开渠道信息"}
-              className="inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 transition-colors hover:bg-[var(--color-surface-hover)]"
-            >
-              {content}
-              <ChevronDown className={cn("h-3.5 w-3.5 text-[var(--color-foreground-muted)] transition-transform", expanded && "rotate-180")} />
-            </button>
-          ) : (
-            <span tabIndex={0} className="inline-flex cursor-default items-center gap-1 px-2 py-1">{content}</span>
-          )}
-        </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-80 whitespace-pre-line text-xs">
-          {tooltipLines.join("\n")}
-        </TooltipContent>
-      </Tooltip>
-    );
+    if (hasMultipleChannels) {
+      return (
+        <button
+          type="button"
+          onClick={() => toggleExpand(row.id)}
+          aria-expanded={expanded}
+          aria-controls={`expand-${row.id}`}
+          aria-label={expanded ? "收起渠道信息" : "展开渠道信息"}
+          className="inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 transition-colors hover:bg-[var(--color-surface-hover)]"
+        >
+          {content}
+          <ChevronDown className={cn("h-3.5 w-3.5 text-[var(--color-foreground-muted)] transition-transform", expanded && "rotate-180")} />
+        </button>
+      );
+    }
+    return <span className="inline-flex cursor-default items-center gap-1 px-2 py-1">{content}</span>;
   }
 
   function renderWeight(row: ModelItem, type: "weight" | "effective_weight") {
@@ -584,11 +528,18 @@ export default function AvailableModelsPage() {
                         {sorted.map((row) => {
                           const hasMultipleChannels = row.channels.length > 1;
                           const expanded = expandedIds.has(row.id);
+                          const rowTag = scheduleTagById.get(row.id);
                           return (
                             <Fragment key={row.id}>
                               <TableRow>
                                 <TableCell>
                                   <div className="font-mono text-sm">{row.id}</div>
+                                  {rowTag ? (
+                                    // 配了分时就一直挂着，标签本身写清倍率与时段
+                                    <div className="mt-0.5 max-w-56 truncate text-[10px] text-[var(--color-accent)]">
+                                      分时 {rowTag}
+                                    </div>
+                                  ) : null}
                                   {row.supports_vision ? <Badge variant="default" className="mt-1">识图</Badge> : null}
                                 </TableCell>
                                 <TableCell>
@@ -631,17 +582,9 @@ export default function AvailableModelsPage() {
                                     </TableCell>
                                     <TableCell className="text-center font-mono text-sm">
                                       {ch.effective_token_multiplier}x
-                                      <ScheduleSourceTag
-                                        fromModel={ch.token_multiplier_from_model_schedule}
-                                        scheduled={ch.token_multiplier_scheduled}
-                                      />
                                     </TableCell>
                                     <TableCell className="text-center font-mono text-sm">
                                       {ch.effective_request_multiplier}x
-                                      <ScheduleSourceTag
-                                        fromModel={ch.request_multiplier_from_model_schedule}
-                                        scheduled={ch.request_multiplier_scheduled}
-                                      />
                                     </TableCell>
                                     <TableCell className="text-center font-mono text-sm">{ch.weight}x</TableCell>
                                     <TableCell className="text-center font-mono text-sm">{ch.effective_weight}x</TableCell>
@@ -661,7 +604,7 @@ export default function AvailableModelsPage() {
                       const hasTokenRange = row.effective_token_multiplier_min !== row.effective_token_multiplier_max;
                       const hasRequestRange = row.effective_request_multiplier_min !== row.effective_request_multiplier_max;
                       const hasMultipleChannels = row.channels.length > 1;
-                      const scheduled = row.multiplier_schedule_applied;
+                      const rowTag = scheduleTagById.get(row.id);
 
                       return (
                         <div
@@ -684,49 +627,32 @@ export default function AvailableModelsPage() {
 
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex flex-wrap gap-1.5">
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className={cn(
-                                    "inline-flex cursor-default items-center rounded-md border px-2 py-0.5 text-xs font-mono",
-                                    row.effective_token_multiplier_min !== 1 || row.effective_token_multiplier_max !== 1
-                                      ? "border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] text-[var(--color-accent)]"
-                                      : "border-[var(--color-border)] bg-[var(--color-surface-hover)] text-[var(--color-foreground-secondary)]"
-                                  )}>
-                                    Token {hasTokenRange
-                                      ? row.effective_token_multiplier_min + "x~" + row.effective_token_multiplier_max + "x"
-                                      : row.effective_token_multiplier_min + "x"}
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" className="max-w-80 whitespace-pre-line text-xs">
-                                  {[multiplierTooltipHead(row, "token"), ...(scheduleLinesById.get(row.id) ?? [])].join("\n")}
-                                </TooltipContent>
-                              </Tooltip>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className={cn(
-                                    "inline-flex cursor-default items-center rounded-md border px-2 py-0.5 text-xs font-mono",
-                                    row.effective_request_multiplier_min !== 1 || row.effective_request_multiplier_max !== 1
-                                      ? "border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] text-[var(--color-accent)]"
-                                      : "border-[var(--color-border)] bg-[var(--color-surface-hover)] text-[var(--color-foreground-secondary)]"
-                                  )}>
-                                    请求 {hasRequestRange
-                                      ? row.effective_request_multiplier_min + "x~" + row.effective_request_multiplier_max + "x"
-                                      : row.effective_request_multiplier_min + "x"}
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" className="max-w-80 whitespace-pre-line text-xs">
-                                  {[multiplierTooltipHead(row, "request"), ...(scheduleLinesById.get(row.id) ?? [])].join("\n")}
-                                </TooltipContent>
-                              </Tooltip>
-                              {scheduled ? (
+                              <span className={cn(
+                                "inline-flex cursor-default items-center rounded-md border px-2 py-0.5 text-xs font-mono",
+                                row.effective_token_multiplier_min !== 1 || row.effective_token_multiplier_max !== 1
+                                  ? "border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] text-[var(--color-accent)]"
+                                  : "border-[var(--color-border)] bg-[var(--color-surface-hover)] text-[var(--color-foreground-secondary)]"
+                              )}>
+                                Token {hasTokenRange
+                                  ? row.effective_token_multiplier_min + "x~" + row.effective_token_multiplier_max + "x"
+                                  : row.effective_token_multiplier_min + "x"}
+                              </span>
+                              <span className={cn(
+                                "inline-flex cursor-default items-center rounded-md border px-2 py-0.5 text-xs font-mono",
+                                row.effective_request_multiplier_min !== 1 || row.effective_request_multiplier_max !== 1
+                                  ? "border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] text-[var(--color-accent)]"
+                                  : "border-[var(--color-border)] bg-[var(--color-surface-hover)] text-[var(--color-foreground-secondary)]"
+                              )}>
+                                请求 {hasRequestRange
+                                  ? row.effective_request_multiplier_min + "x~" + row.effective_request_multiplier_max + "x"
+                                  : row.effective_request_multiplier_min + "x"}
+                              </span>
+                              {rowTag ? (
+                                // 配了分时就一直挂着，标签本身写清倍率与时段
                                 <span
-                                  className="inline-flex items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-foreground-secondary)]"
-                                  title={[
-                                    `当前时段生效倍率已按分时档覆盖：${scheduleSourceLabel(row)}`,
-                                    ...(scheduleLinesById.get(row.id) ?? []),
-                                  ].join("\n")}
+                                  className="inline-flex max-w-full items-center truncate rounded-md border border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-accent)]"
                                 >
-                                  分时
+                                  分时 {rowTag}
                                 </span>
                               ) : null}
                               {row.supports_vision ? (
@@ -812,17 +738,9 @@ export default function AvailableModelsPage() {
                                     <span className="font-mono text-[var(--color-foreground-muted)]">W{ch.effective_weight}</span>
                                     <span className={cn("font-mono", ch.effective_token_multiplier !== 1 && "text-[var(--color-accent)] font-semibold")}>
                                       T{ch.effective_token_multiplier}x
-                                      <ScheduleSourceTag
-                                        fromModel={ch.token_multiplier_from_model_schedule}
-                                        scheduled={ch.token_multiplier_scheduled}
-                                      />
                                     </span>
                                     <span className={cn("font-mono", ch.effective_request_multiplier !== 1 && "text-[var(--color-accent)] font-semibold")}>
                                       R{ch.effective_request_multiplier}x
-                                      <ScheduleSourceTag
-                                        fromModel={ch.request_multiplier_from_model_schedule}
-                                        scheduled={ch.request_multiplier_scheduled}
-                                      />
                                     </span>
                                   </div>
                                 </div>

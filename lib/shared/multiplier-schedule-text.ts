@@ -3,7 +3,7 @@
 // 纯函数，前后端都能用；只负责「怎么说」，不参与判定。
 
 import { browserTimeZone } from "@/lib/shared/timezone";
-import { matchesWindow, windowToWall, type WallClockWindow } from "@/lib/shared/time-window";
+import { windowToWall, type WallClockWindow } from "@/lib/shared/time-window";
 
 export type ScheduleTextItem = WallClockWindow & {
   token_multiplier: number | null;
@@ -11,6 +11,8 @@ export type ScheduleTextItem = WallClockWindow & {
 };
 
 const WEEKDAY_LABELS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+// 标签上最多列两档，再多就写「等 N 档」，避免把表格撑变形
+const MAX_TAG_WINDOWS = 2;
 
 function weekdayLabel(day: number): string {
   return WEEKDAY_LABELS[(((day - 1) % WEEKDAY_LABELS.length) + WEEKDAY_LABELS.length) % WEEKDAY_LABELS.length];
@@ -55,132 +57,110 @@ export function formatScheduleMultipliers(item: ScheduleTextItem): string {
   return parts.length > 0 ? parts.join(" / ") : "沿用下级倍率";
 }
 
-// 一层档位整理成若干行，时间按 timeZone 换算；activeIndex 那一行标注「此刻命中」。
-// 换算不可行（时区数据异常）时退回 UTC 原值并注明，避免展示出错位的时间。
+// 完整清单（悬浮时看全部档位）：`周五 00:00–08:00 · Token 0.5x`
 export function describeScheduleWindows(
   schedules: ScheduleTextItem[],
   timeZone: string = browserTimeZone(),
-  activeIndex: number | null = null,
 ): string[] {
-  return schedules.map((item, index) => {
+  return schedules.map((item) => {
     const wall = windowToWall(item, timeZone);
     const text = wall ?? item;
     const place = wall ? "" : "（UTC，当前时区无法换算）";
-    // 只说「命中」不说「生效」：两层可能同时命中，谁生效还要看层优先级，
-    // 标成「生效」会让被覆盖那层也写着同一个词，和页面上的数值打架
-    const active = activeIndex === index ? "（此刻命中）" : "";
-    return `${formatScheduleDays(text.days)} ${formatScheduleTime(text.start, text.end)} · ${formatScheduleMultipliers(item)}${place}${active}`;
+    return `${formatScheduleDays(text.days)} ${formatScheduleTime(text.start, text.end)} · ${formatScheduleMultipliers(item)}${place}`;
   });
 }
 
-// 单层最多列这么多档，再多就折叠成「还有 N 档」，避免 tooltip 长到看不完
-const MAX_LISTED_WINDOWS = 6;
-// 用户侧按渠道分组时可能更啰嗦，整体再设一个上限
-const MAX_TOOLTIP_LINES = 12;
-
-// 此刻命中的档位下标：与网关同一份 matchesWindow 判定，只是这里按 UTC 取当前的星期与分钟，
-// 不引 gateway 层，保持 shared 只依赖 shared。
-function activeScheduleIndex(schedules: ScheduleTextItem[], now: Date): number | null {
-  const utcDay = now.getUTCDay();
-  const day = utcDay === 0 ? 7 : utcDay;
-  const minutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-  for (let index = 0; index < schedules.length; index += 1) {
-    if (matchesWindow(schedules[index], day, minutes)) return index;
-  }
-  return null;
-}
-
-function appendLayer(lines: string[], heading: string, list: ScheduleTextItem[], timeZone: string, now: Date) {
-  if (list.length === 0) return;
-  lines.push(`${heading}：`);
-  const listed = list.slice(0, MAX_LISTED_WINDOWS);
-  const activeIndex = activeScheduleIndex(list, now);
-  for (const line of describeScheduleWindows(listed, timeZone, activeIndex)) lines.push(`· ${line}`);
-  if (list.length > listed.length) lines.push(`· …还有 ${list.length - listed.length} 档`);
-  // 命中的那档被折叠掉时单独补一行，否则用户看不到「现在是哪档」；行尾不再重复标注
-  if (activeIndex !== null && activeIndex >= listed.length) {
-    const activeLine = describeScheduleWindows([list[activeIndex]], timeZone, null)[0];
-    lines.push(`· 此刻命中：${activeLine}`);
-  }
-}
-
-// 渠道页的列表行与卡片共用同一段悬浮说明：现在多少钱、哪个档位在生效、每档具体是什么时候。
-export function describeScheduleTooltip(params: {
-  baseToken: number;
-  baseRequest: number;
-  effectiveToken: number;
-  effectiveRequest: number;
-  scheduleApplied: boolean;
-  // describeScheduleSource 的结论，调用点已经算好，这里只负责拼句子
-  source?: string;
+export type ScheduleTagInput = {
   modelSchedules?: ScheduleTextItem[];
   channelSchedules?: ScheduleTextItem[];
-  timeZone?: string;
-  now?: Date;
-}): string {
-  const timeZone = params.timeZone ?? browserTimeZone();
-  const now = params.now ?? new Date();
-  const lines: string[] = [];
-  lines.push(
-    params.scheduleApplied
-      ? `当前时段生效 Token ${params.effectiveToken}x / 请求 ${params.effectiveRequest}x${params.source ? `；${params.source}` : ""}。`
-      : "当前时段未命中任何分时档，生效倍率等于基础倍率。",
-  );
-  lines.push(`基础倍率 Token ${params.baseToken}x / 请求 ${params.baseRequest}x。`);
-
-  const modelSchedules = params.modelSchedules ?? [];
-  const channelSchedules = params.channelSchedules ?? [];
-  if (modelSchedules.length === 0 && channelSchedules.length === 0) return lines.join("\n");
-
-  lines.push("");
-  lines.push(`分时档（时间按浏览器时区 ${timeZone} 显示；模型级优先，同层多档命中取最上面一档）`);
-  appendLayer(lines, "模型级", modelSchedules, timeZone, now);
-  appendLayer(lines, "渠道级", channelSchedules, timeZone, now);
-  return lines.join("\n");
-}
-
-export type ChannelScheduleInput = {
-  channelName?: string;
-  modelSchedules?: ScheduleTextItem[];
-  channelSchedules?: ScheduleTextItem[];
+  // 该维度此刻由哪一层给（true=模型档），用于挑出真正生效的那层的档位
+  tokenFromModelSchedule?: boolean;
+  requestFromModelSchedule?: boolean;
+  tokenScheduled?: boolean;
+  requestScheduled?: boolean;
 };
 
-// 用户侧（模型列表、首页配额卡）的单层清单：带「模型档 / 渠道档」前缀，同样只换算前 6 档
-function appendPrefixed(lines: string[], prefix: string, list: ScheduleTextItem[], timeZone: string, now: Date) {
-  if (list.length === 0) return;
-  const listed = list.slice(0, MAX_LISTED_WINDOWS);
-  const activeIndex = activeScheduleIndex(list, now);
-  // 命中的那档被折叠时先补一行：否则尾部补行会被整体行数上限截掉，
-  // 最需要知道「现在哪档」的时候反而看不到。这里不再让行尾重复标注一次
-  if (activeIndex !== null && activeIndex >= listed.length) {
-    lines.push(`· ${prefix} 此刻命中：${describeScheduleWindows([list[activeIndex]], timeZone, null)[0]}`);
-  }
-  for (const line of describeScheduleWindows(listed, timeZone, activeIndex)) lines.push(`· ${prefix} ${line}`);
-  if (list.length > listed.length) lines.push(`· ${prefix} 还有 ${list.length - listed.length} 档未列出`);
+type DimensionKey = "token_multiplier" | "request_multiplier";
+
+type LayerHint = {
+  fromModelSchedule?: boolean;
+  scheduled?: boolean;
+};
+
+// 该维度用哪一层的档位：模型档命中就看模型档；只有渠道档命中就看渠道档；
+// 当前没命中时，模型层配了这个维度就以模型层为准（模型级优先），否则看渠道层。
+function pickLayerWindows(
+  dimension: DimensionKey,
+  modelSchedules: ScheduleTextItem[],
+  channelSchedules: ScheduleTextItem[],
+  hint: LayerHint,
+): ScheduleTextItem[] {
+  const configured = (list: ScheduleTextItem[]) => list.filter((item) => item[dimension] !== null);
+  if (hint.fromModelSchedule) return configured(modelSchedules);
+  if (hint.scheduled) return configured(channelSchedules);
+  const modelWindows = configured(modelSchedules);
+  return modelWindows.length > 0 ? modelWindows : configured(channelSchedules);
 }
 
-// 用户侧（模型列表、首页配额卡）：一个别名可能挂多条渠道，按渠道分组列出各自的档位，
-// 行数过多时截断，并在末尾统一说明时区与优先级口径。
-export function describeChannelSchedules(
-  inputs: ChannelScheduleInput[],
+function summarizeDimension(
+  label: string,
+  dimension: DimensionKey,
+  windows: ScheduleTextItem[],
+  timeZone: string,
+): string | null {
+  if (windows.length === 0) return null;
+  const listed = windows.slice(0, MAX_TAG_WINDOWS).map((item) => {
+    const wall = windowToWall(item, timeZone) ?? item;
+    // 全周生效就不写星期，省下的宽度留给时段
+    const days = wall.days.length === 7 ? "" : `${formatScheduleDays(wall.days)} `;
+    return `${item[dimension]}x ${days}${formatScheduleTime(wall.start, wall.end)}`;
+  });
+  const more = windows.length > listed.length ? ` 等${windows.length}档` : "";
+  return `${label} ${listed.join("、")}${more}`;
+}
+
+// 标签文案：`T 0.5x 00:00–08:00 · R 2x 22:00–次日 06:00`
+// 只描述「配了什么」，与此刻是否命中无关——配了分时的模型始终要能看出来。
+export function summarizeScheduleTag(input: ScheduleTagInput, timeZone: string = browserTimeZone()): string | null {
+  const modelSchedules = input.modelSchedules ?? [];
+  const channelSchedules = input.channelSchedules ?? [];
+  const parts = [
+    summarizeDimension(
+      "T",
+      "token_multiplier",
+      pickLayerWindows("token_multiplier", modelSchedules, channelSchedules, {
+        fromModelSchedule: input.tokenFromModelSchedule,
+        scheduled: input.tokenScheduled,
+      }),
+      timeZone,
+    ),
+    summarizeDimension(
+      "R",
+      "request_multiplier",
+      pickLayerWindows("request_multiplier", modelSchedules, channelSchedules, {
+        fromModelSchedule: input.requestFromModelSchedule,
+        scheduled: input.requestScheduled,
+      }),
+      timeZone,
+    ),
+  ].filter((part): part is string => part !== null);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+// 一个别名挂多条渠道时：各渠道档位常常完全相同，去重后最多留两段，避免标签过长
+export function summarizeChannelScheduleTags(
+  inputs: ScheduleTagInput[],
   timeZone: string = browserTimeZone(),
-  now: Date = new Date(),
-): string[] {
-  const multipleChannels = inputs.length > 1;
-  const lines: string[] = [];
+): string | null {
+  const seen = new Set<string>();
   for (const input of inputs) {
-    const modelSchedules = input.modelSchedules ?? [];
-    const channelSchedules = input.channelSchedules ?? [];
-    if (modelSchedules.length === 0 && channelSchedules.length === 0) continue;
-    if (multipleChannels && input.channelName) lines.push(`${input.channelName}：`);
-    appendPrefixed(lines, "模型档", modelSchedules, timeZone, now);
-    appendPrefixed(lines, "渠道档", channelSchedules, timeZone, now);
+    const tag = summarizeScheduleTag(input, timeZone);
+    if (tag) seen.add(tag);
+    if (seen.size > MAX_TAG_WINDOWS) break;
   }
-  if (lines.length === 0) return [];
-  const capped = lines.slice(0, MAX_TOOLTIP_LINES);
-  if (lines.length > capped.length) capped.push(`· …还有 ${lines.length - capped.length} 行`);
-  capped.push(
-    `时间按你的浏览器时区（${timeZone}）显示；模型级优先，同层多档命中取最上面一档，未命中任何档位时使用基础倍率。`,
-  );
-  return capped;
+  if (seen.size === 0) return null;
+  const tags = [...seen];
+  const listed = tags.slice(0, MAX_TAG_WINDOWS);
+  const more = tags.length > listed.length ? ` 等${tags.length}种` : "";
+  return `${listed.join(" · ")}${more}`;
 }

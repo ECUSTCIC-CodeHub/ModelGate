@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatNumber, formatTokenCount } from "@/lib/shared/utils";
 import type { PeriodQuotaEntry } from "@/lib/gateway/quota";
 import { isBypassQuotaMode, usesChannelSelfQuota } from "@/lib/gateway/quota-mode";
-import { describeChannelSchedules, type ScheduleTextItem } from "@/lib/shared/multiplier-schedule-text";
+import { summarizeScheduleTag, type ScheduleTextItem } from "@/lib/shared/multiplier-schedule-text";
 
 export type ModelQuotaItem = {
   alias: string;
@@ -25,7 +25,7 @@ export type ModelQuotaItem = {
   effective_token_multiplier?: number;
   effective_request_multiplier?: number;
   multiplier_schedule_applied?: boolean;
-  // 两层档位原样带回（UTC），挂在「分时」标记的悬浮提示里按浏览器时区说明
+  // 两层档位原样带回（UTC），前端按浏览器时区写成「分时 T 0.5x 00:00–08:00」
   multiplier_schedules?: ScheduleTextItem[];
   channel_multiplier_schedules?: ScheduleTextItem[];
 };
@@ -71,6 +71,11 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
             // 渠道绕过用户组时，即便模型是「双重限制」也不会再检查用户组配额。
             const channelBypass = m.quota_mode !== "bypass_group" && isBypassQuotaMode(m.channel_quota_mode);
             const cycles = m.periods ?? [];
+            // 配了分时就一直挂着，标签本身写清倍率与时段
+            const scheduleTag = summarizeScheduleTag({
+              modelSchedules: m.multiplier_schedules,
+              channelSchedules: m.channel_multiplier_schedules,
+            });
             return (
               <div key={`${m.alias}:${m.channel_id}`} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
@@ -100,17 +105,9 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
                         渠道绕过
                       </span>
                     ) : null}
-                    {m.multiplier_schedule_applied ? (
-                      <span
-                        className="rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-foreground-muted)]"
-                        title={
-                          describeChannelSchedules([{
-                            modelSchedules: m.multiplier_schedules,
-                            channelSchedules: m.channel_multiplier_schedules,
-                          }]).join("\n") || "当前时段命中分时倍率"
-                        }
-                      >
-                        分时
+                    {scheduleTag ? (
+                      <span className="max-w-40 truncate rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-foreground-muted)]">
+                        分时 {scheduleTag}
                       </span>
                     ) : null}
                   </div>
