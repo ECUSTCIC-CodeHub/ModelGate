@@ -38,11 +38,21 @@ const modelBoth = { days: [5], start: "00:00", end: "12:00", token_multiplier: 0
 
 check("两层都未命中回退基础倍率", () => {
   const r = resolveLayeredMultiplier(2, 4, [[], []], saturday10);
-  assert.deepEqual(r, { token_multiplier: 2, request_multiplier: 4, schedule_applied: false });
+  assert.deepEqual(r, {
+    token_multiplier: 2,
+    request_multiplier: 4,
+    schedule_applied: false,
+    token_source: null,
+    request_source: null,
+    token_schedule_index: null,
+    request_schedule_index: null,
+  });
 });
 
 check("只有渠道档命中：覆盖基础倍率", () => {
   const r = resolveLayeredMultiplier(2, 4, [[], [channelWeekday]], friday10);
+  assert.equal(r.token_source, 1);
+  assert.equal(r.request_source, null);
   assert.equal(r.token_multiplier, 0.5);
   assert.equal(r.request_multiplier, 4);
   assert.equal(r.schedule_applied, true);
@@ -57,6 +67,9 @@ check("模型档与渠道档都命中：模型档维度优先", () => {
 
 check("模型档留空维度由渠道档补上", () => {
   const r = resolveLayeredMultiplier(2, 4, [[modelTokenOnly], [channelWeekdayBoth]], friday10);
+  // token 来自模型档（第 0 层），request 来自渠道档（第 1 层）
+  assert.equal(r.token_source, 0);
+  assert.equal(r.request_source, 1);
   assert.equal(r.token_multiplier, 0.2);
   assert.equal(r.request_multiplier, 3);
   assert.equal(r.schedule_applied, true);
@@ -95,6 +108,13 @@ check("同一层多档命中取第一档", () => {
   const first = { days: [5], start: "00:00", end: "12:00", token_multiplier: 0.4, request_multiplier: null };
   const second = { days: [5], start: "00:00", end: "12:00", token_multiplier: 0.9, request_multiplier: null };
   assert.equal(resolveLayeredMultiplier(1, 1, [[first, second]], friday10).token_multiplier, 0.4);
+});
+
+check("重复档位命中时按下标而不是按内容定位", () => {
+  // 两档内容完全一致时，按对象反查会永远拿到第 0 档，展示侧就会标错「命中第几档」
+  const dup = { days: [5], start: "00:00", end: "12:00", token_multiplier: 0.4, request_multiplier: null };
+  const r = resolveLayeredMultiplier(1, 1, [[dup, { ...dup }]], friday10);
+  assert.equal(r.token_schedule_index, 0);
 });
 
 check("解析脏数据不抛错，非法档位被丢弃", () => {

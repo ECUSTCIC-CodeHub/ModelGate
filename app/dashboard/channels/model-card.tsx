@@ -14,8 +14,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { parseSupportedProtocols, shortProtocolLabel, type ModelWithChannel } from "./channel-model";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { effectiveMultiplierOf, parseSupportedProtocols, shortProtocolLabel, type ModelWithChannel } from "./channel-model";
 import { ModelActions } from "./model-actions";
+import { EffectiveScheduleTag } from "./effective-schedule-tag";
 
 function isExpired(exp?: string | Date | null): boolean {
   if (!exp) return false;
@@ -41,6 +43,7 @@ export function ModelCard({
   selection?: { checked: boolean; onToggle: () => void };
 }) {
   const [confirmToggle, setConfirmToggle] = useState(false);
+  const effective = effectiveMultiplierOf(model);
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 transition-shadow hover:shadow-[var(--shadow-md)]">
@@ -80,9 +83,22 @@ export function ModelCard({
         <Badge variant="outline">
           实际 {Math.max(1, model.weight) * Math.max(1, model.channel_weight)}x
         </Badge>
-        <Badge variant="outline">
-          T {model.token_multiplier ?? 1}x / R {model.request_multiplier ?? 1}x
-        </Badge>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="outline" className="cursor-default">
+              T {effective.token_multiplier}x / R {effective.request_multiplier}x
+              {effective.schedule_applied ? <EffectiveScheduleTag /> : null}
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-64 text-xs">
+            基础倍率 T {model.token_multiplier ?? 1}x / R {model.request_multiplier ?? 1}x。
+            {effective.schedule_applied
+              ? `当前时段命中${
+                  effective.token_from_model_schedule || effective.request_from_model_schedule ? "模型级" : "渠道级"
+                }分时档，显示的是实际生效倍率。`
+              : "当前时段未命中分时档。"}
+          </TooltipContent>
+        </Tooltip>
         <Badge variant={model.is_public ? "default" : "secondary"}>
           {model.is_public ? "公开" : "白名单"}
         </Badge>

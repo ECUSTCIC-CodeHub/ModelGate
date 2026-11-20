@@ -18,7 +18,7 @@ import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { stringifyCustomHeaders, stringifyHeaderMappings, validateCustomHeaders, validateHeaderMappings } from "@/lib/gateway/custom-headers";
 import { stringifyRequestBodyOmit, validateRequestBodyOmit } from "@/lib/gateway/request-body-omit";
 import { validatePeriodCycles, serializePeriodCycles } from "@/lib/gateway/period-cycles";
-import { validateMultiplierSchedules, normalizeMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
+import { normalizeMultiplierSchedules, parseMultiplierSchedules, validateMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
 import { serializeRetryStatusCodes } from "@/lib/gateway/upstream-error";
 import { QUOTA_MODES } from "@/lib/gateway/quota-mode";
 
@@ -146,6 +146,9 @@ export async function GET(request: Request) {
     return {
       ...channel,
       api_key: canView ? maskApiKey(channel.api_key as string | null) : null,
+      // 渠道分时档是模型定价的一层，模型侧展示生效倍率时必须知道这一层配了什么，否则界面上只会凭空多出一个倍率。
+      // 解析后的档位随列表下发，前端不必再各写一遍 JSON 解析。
+      multiplier_schedule_list: parseMultiplierSchedules((channel as { multiplier_schedules?: string | null }).multiplier_schedules ?? null),
       can_view_api_key: canView,
       can_manage_api_key_privacy: canManagePrivacy,
       models: grouped.get(channel.id) ?? [],

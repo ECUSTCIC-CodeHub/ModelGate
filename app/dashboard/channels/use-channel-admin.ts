@@ -820,6 +820,7 @@ export function useChannelAdmin() {
       channel_name: channel.name,
       channel_weight: channel.weight,
       channel_enabled: channel.enabled,
+      channel_multiplier_schedules: channel.multiplier_schedule_list ?? parseMultiplierSchedules(channel.multiplier_schedules),
     })),
   );
   const selectedChannel = channels.find((item) => item.id === modelForm.channel_id);

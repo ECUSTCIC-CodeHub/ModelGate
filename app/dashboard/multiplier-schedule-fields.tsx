@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/shared/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -81,6 +82,55 @@ export function schedulesToDrafts(schedules: Array<{
   }));
 }
 
+type ScheduleWindow = Pick<MultiplierScheduleDraft, "days" | "start" | "end">;
+
+function toMinutes(value: string): number | null {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+// 把一档展开成「星期 + 分钟区间」片段，跨零点的拆成两段并归属对应的那几天。
+// 判定口径与网关 windowMatches 一致：凌晨段算前一日，且两端都含。
+function expandWindow(window: ScheduleWindow): Array<{ day: number; start: number; end: number }> {
+  const start = toMinutes(window.start);
+  const end = toMinutes(window.end);
+  if (start === null || end === null || start === end) return [];
+  const segments: Array<{ day: number; start: number; end: number }> = [];
+  for (const day of window.days) {
+    if (end > start) {
+      segments.push({ day, start, end });
+      continue;
+    }
+    segments.push({ day, start, end: 24 * 60 });
+    const nextDay = day === 7 ? 1 : day + 1;
+    segments.push({ day: nextDay, start: 0, end });
+  }
+  return segments;
+}
+
+// 找出永远轮不到的档位下标。多档同时命中时网关按数组顺序取第一档，
+// 被前面的档整段覆盖的档等于白配，界面上必须说清楚，否则改价时只会以为是没生效。
+function findShadowedSchedules(drafts: MultiplierScheduleDraft[]): Set<number> {
+  const expanded = drafts.map(expandWindow);
+  const shadowed = new Set<number>();
+  for (let i = 0; i < expanded.length; i += 1) {
+    if (expanded[i].length === 0) continue;
+    let covered = true;
+    for (const segment of expanded[i]) {
+      const hit = expanded.some((other, j) =>
+        j < i && other.some((o) => o.day === segment.day && o.start <= segment.start && o.end >= segment.end),
+      );
+      if (!hit) {
+        covered = false;
+        break;
+      }
+    }
+    if (covered) shadowed.add(i);
+  }
+  return shadowed;
+}
+
 type MultiplierScheduleFieldsProps = {
   drafts: MultiplierScheduleDraft[];
   onChange: (drafts: MultiplierScheduleDraft[]) => void;
@@ -102,6 +152,8 @@ export function MultiplierScheduleFields({
   const update = (key: string, patch: Partial<MultiplierScheduleDraft>) => {
     onChange(drafts.map((draft) => (draft.key === key ? { ...draft, ...patch } : draft)));
   };
+
+  const shadowedIndexes = findShadowedSchedules(drafts);
 
   const toggleDay = (key: string, day: number) => {
     const draft = drafts.find((item) => item.key === key);
@@ -130,8 +182,14 @@ export function MultiplierScheduleFields({
         <p className="text-xs text-[var(--color-foreground-muted)]">未配置分时倍率，全部请求使用基础倍率。</p>
       ) : null}
 
-      {drafts.map((draft) => (
-        <div key={draft.key} className="space-y-3 rounded-lg border border-[var(--color-border)] p-3">
+      {drafts.map((draft, index) => (
+        <div
+          key={draft.key}
+          className={cn(
+            "space-y-3 rounded-lg border p-3",
+            shadowedIndexes.has(index) ? "border-[var(--color-destructive)]/40" : "border-[var(--color-border)]",
+          )}
+        >
           <div className="space-y-2">
             <Label>生效星期</Label>
             <div className="flex flex-wrap gap-1">
@@ -181,6 +239,12 @@ export function MultiplierScheduleFields({
               />
             </div>
           </div>
+
+          {shadowedIndexes.has(index) ? (
+            <p className="text-xs text-[var(--color-destructive)]">
+              该档位被上方更靠前的档位整段覆盖，永远不会生效。多档同时命中时按从上到下的顺序取第一档。
+            </p>
+          ) : null}
 
           <Button
             type="button"

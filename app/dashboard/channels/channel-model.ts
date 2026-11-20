@@ -1,4 +1,5 @@
 import { normalizeRetryStatusCodes } from "@/lib/gateway/upstream-error";
+import { parseMultiplierSchedules, resolveLayeredMultiplier, type MultiplierSchedule } from "@/lib/gateway/multiplier-schedule";
 import type { PeriodCycleDraft } from "@/app/dashboard/period-cycle-fields";
 import type { MultiplierScheduleDraft } from "@/app/dashboard/multiplier-schedule-fields";
 
@@ -106,6 +107,8 @@ export type Channel = {
   group_name: string;
   retry_status_codes: string | null;
   multiplier_schedules: string | null;
+  // 渠道分时档的解析结果（GET /api/admin/channels 下发），模型侧展示生效倍率时要用
+  multiplier_schedule_list?: MultiplierSchedule[];
   created_by?: number | null;
   created_by_username?: string | null;
   api_key_private?: number | null;
@@ -211,7 +214,34 @@ export type ModelWithChannel = ModelRow & {
   channel_name: string;
   channel_weight: number;
   channel_enabled: number;
+  channel_multiplier_schedules: MultiplierSchedule[];
 };
+
+export type ModelEffectiveMultiplier = {
+  token_multiplier: number;
+  request_multiplier: number;
+  schedule_applied: boolean;
+  // 该维度由模型自己的分时档决定（否则由渠道档补足或就是基础倍率）
+  token_from_model_schedule: boolean;
+  request_from_model_schedule: boolean;
+};
+
+// 模型映射列表要回答「这条线此刻什么价」，与计费必须同口径，所以直接用网关的同一份分层解析，
+// 不在管理端另写一遍「模型档优先、渠道档补空维度」。
+export function effectiveMultiplierOf(model: ModelRow & { channel_multiplier_schedules: MultiplierSchedule[] }): ModelEffectiveMultiplier {
+  const resolved = resolveLayeredMultiplier(
+    model.token_multiplier ?? 1,
+    model.request_multiplier ?? 1,
+    [parseMultiplierSchedules(model.multiplier_schedules), model.channel_multiplier_schedules],
+  );
+  return {
+    token_multiplier: resolved.token_multiplier,
+    request_multiplier: resolved.request_multiplier,
+    schedule_applied: resolved.schedule_applied,
+    token_from_model_schedule: resolved.token_source === 0,
+    request_from_model_schedule: resolved.request_source === 0,
+  };
+}
 
 export const initialChannelForm: ChannelForm = {
   name: "",

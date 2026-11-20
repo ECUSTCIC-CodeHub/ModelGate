@@ -28,6 +28,8 @@ type ChannelMultiplier = {
   effective_token_multiplier: number;
   effective_request_multiplier: number;
   multiplier_schedule_applied: boolean;
+  token_multiplier_from_model_schedule: boolean;
+  request_multiplier_from_model_schedule: boolean;
   weight: number;
   effective_weight: number;
 };
@@ -88,6 +90,8 @@ type ModelItem = {
   effective_request_multiplier_min: number;
   effective_request_multiplier_max: number;
   multiplier_schedule_applied: boolean;
+  token_multiplier_from_model_schedule: boolean;
+  request_multiplier_from_model_schedule: boolean;
   weight_min: number;
   weight_max: number;
   effective_weight_min: number;
@@ -302,8 +306,14 @@ export default function AvailableModelsPage() {
       </>
     );
 
+    const sources = type === "token"
+      ? row.channels.filter((c) => c.token_multiplier_from_model_schedule).length
+      : row.channels.filter((c) => c.request_multiplier_from_model_schedule).length;
+    // 模型档与渠道档都会导致「显示值和配置值对不上」，来源要分开写：模型档是单个模型的特殊价，
+    // 渠道档是整条线的默认价，用户排查定价时的第一反应就是问「这价谁定的」。
+    const scheduleSource = sources > 0 ? "模型分时档" : "渠道分时档";
     const tooltip = scheduled
-      ? `当前时段生效倍率，基础倍率 ${baseLabel}`
+      ? `当前时段生效倍率，基础倍率 ${baseLabel}；命中的是${scheduleSource}`
       : `基础倍率 ${baseLabel}`;
 
     return (
@@ -550,15 +560,17 @@ export default function AvailableModelsPage() {
                                     </TableCell>
                                     <TableCell className="text-center font-mono text-sm">
                                       {ch.effective_token_multiplier}x
-                                      {ch.multiplier_schedule_applied ? (
-                                        <span className="ml-1 text-[10px] text-[var(--color-foreground-muted)]">分时</span>
-                                      ) : null}
+                                      <ScheduleSourceTag
+                                        applied={ch.effective_token_multiplier !== ch.token_multiplier}
+                                        fromModel={ch.token_multiplier_from_model_schedule}
+                                      />
                                     </TableCell>
                                     <TableCell className="text-center font-mono text-sm">
                                       {ch.effective_request_multiplier}x
-                                      {ch.multiplier_schedule_applied ? (
-                                        <span className="ml-1 text-[10px] text-[var(--color-foreground-muted)]">分时</span>
-                                      ) : null}
+                                      <ScheduleSourceTag
+                                        applied={ch.effective_request_multiplier !== ch.request_multiplier}
+                                        fromModel={ch.request_multiplier_from_model_schedule}
+                                      />
                                     </TableCell>
                                     <TableCell className="text-center font-mono text-sm">{ch.weight}x</TableCell>
                                     <TableCell className="text-center font-mono text-sm">{ch.effective_weight}x</TableCell>
@@ -642,7 +654,7 @@ export default function AvailableModelsPage() {
                               {scheduled ? (
                                 <span
                                   className="inline-flex items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-foreground-secondary)]"
-                                  title="当前时段命中分时倍率，显示的倍率已按分时档覆盖"
+                                  title={`当前时段命中${row.token_multiplier_from_model_schedule || row.request_multiplier_from_model_schedule ? "模型" : "渠道"}分时档，显示的倍率已按分时档覆盖`}
                                 >
                                   分时
                                 </span>
@@ -728,8 +740,20 @@ export default function AvailableModelsPage() {
                                   </Tooltip>
                                   <div className="flex items-center gap-2">
                                     <span className="font-mono text-[var(--color-foreground-muted)]">W{ch.effective_weight}</span>
-                                    <span className={cn("font-mono", ch.effective_token_multiplier !== 1 && "text-[var(--color-accent)] font-semibold")}>T{ch.effective_token_multiplier}x</span>
-                                    <span className={cn("font-mono", ch.effective_request_multiplier !== 1 && "text-[var(--color-accent)] font-semibold")}>R{ch.effective_request_multiplier}x</span>
+                                    <span className={cn("font-mono", ch.effective_token_multiplier !== 1 && "text-[var(--color-accent)] font-semibold")}>
+                                      T{ch.effective_token_multiplier}x
+                                      <ScheduleSourceTag
+                                        applied={ch.effective_token_multiplier !== ch.token_multiplier}
+                                        fromModel={ch.token_multiplier_from_model_schedule}
+                                      />
+                                    </span>
+                                    <span className={cn("font-mono", ch.effective_request_multiplier !== 1 && "text-[var(--color-accent)] font-semibold")}>
+                                      R{ch.effective_request_multiplier}x
+                                      <ScheduleSourceTag
+                                        applied={ch.effective_request_multiplier !== ch.request_multiplier}
+                                        fromModel={ch.request_multiplier_from_model_schedule}
+                                      />
+                                    </span>
                                   </div>
                                 </div>
                               ))}
@@ -785,6 +809,20 @@ function SortButton({
         )}
       </span>
     </TableHead>
+  );
+}
+
+// 生效倍率与基础倍率不一致就是命中了分时档，此时才需要解释来源；
+// 一致时（哪怕恰好命中了一档同值配置）标出来只会让人去找一个并不存在的差异。
+function ScheduleSourceTag({ applied, fromModel }: { applied: boolean; fromModel: boolean }) {
+  if (!applied) return null;
+  return (
+    <span
+      className="ml-1 text-[10px] font-normal text-[var(--color-foreground-muted)]"
+      title={fromModel ? "当前时段由该模型的模型级分时档覆盖" : "当前时段由所属渠道的渠道级分时档覆盖"}
+    >
+      {fromModel ? "模型分时" : "渠道分时"}
+    </span>
   );
 }
 

@@ -285,6 +285,14 @@ X-Model-Period-Quota-Requests-<id>: <remaining>
 
 > 渠道级与模型级的倍率通过同一个解析函数逐层覆盖，计费与 `effective_*` 展示永远同口径，不会出现「界面显示与实扣不一致」。
 
+**前端展示口径**
+
+管理端与用户端的三处界面都只打**生效倍率**，基础倍率放在悬浮提示里，避免「显示值和配置值对不上」被当成 bug：
+
+- `/dashboard/models`（用户视角）：主数值为生效倍率并按它排序；命中分时档时跟一个细体「分时」小标；展开渠道明细后，每个渠道单独标注该维度的来源（`xxx_multiplier_from_model_schedule` 为真标「模型分时」，否则标「渠道分时」），因为同一渠道下不同别名可以命中不同的层。
+- `/dashboard/channels` 的模型映射列表与卡片（管理员配置）：显示的同样是生效倍率 + 「分时」小标，第二行以更小的字号给基础倍率，悬浮提示写清命中的是模型级还是渠道级分时档。
+- 分时倍率编辑器：多档同时命中时按数组顺序取第一档，被上方档位整段覆盖的档位在界面上直接标红提示「永远不会生效」，避免排了半天发现改了价没变化。
+
 > 精简版不支持该字段，渠道与模型上的提交都会被忽略，倍率始终等于基础倍率。
 
 ## 认证方式
@@ -1617,6 +1625,8 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 
 > `api_key` 一律以脱敏形式返回（`****` 加末四位；密钥长度不超过 8 位时全部为 `****`；未配置时为空字符串），不再返回明文。需要明文时由添加人调用下方「获取渠道 API Key 明文」接口按需单次取回。
 
+> 每个渠道额外返回 `multiplier_schedule_list`，为 `multiplier_schedules` 解析后的对象数组（字段同「分时倍率」一节，非法档位已被过滤）。管理端的模型列表要展示「此刻生效倍率」，必须知道所属渠道那一层配了什么，解析结果随列表下发可免得前端各写一遍。
+
 **响应 (200):**
 ```json
 {
@@ -1627,6 +1637,9 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
       "base_url": "https://api.openai.com/v1",
       "api_key": "****abcd",
       "supported_protocols": "[\"chat_completions\"]",
+      "multiplier_schedule_list": [
+        { "days": [1, 2, 3, 4, 5], "start": "00:00", "end": "08:00", "token_multiplier": 0.5, "request_multiplier": null }
+      ],
       "user_agent": "OpenAI/JS 6.39.0",
       "enabled": 1,
       "weight": 1,
@@ -3140,14 +3153,16 @@ access token 过期但 refresh token 仍有效时按已登录处理（整页表�
       "effective_request_multiplier_min": 1,
       "effective_request_multiplier_max": 1,
       "multiplier_schedule_applied": true,
+      "token_multiplier_from_model_schedule": true,
+      "request_multiplier_from_model_schedule": false,
       "max_effective_weight": 4,
       "weight_min": 1,
       "weight_max": 2,
       "effective_weight_min": 2,
       "effective_weight_max": 4,
       "channels": [
-        { "channel_id": 1, "channel_name": "openai-official", "token_multiplier": 2, "request_multiplier": 1, "effective_token_multiplier": 1, "effective_request_multiplier": 1, "multiplier_schedule_applied": true, "weight": 2, "effective_weight": 4 },
-        { "channel_id": 2, "channel_name": "openai-mirror", "token_multiplier": 1, "request_multiplier": 1, "effective_token_multiplier": 1, "effective_request_multiplier": 1, "multiplier_schedule_applied": false, "weight": 1, "effective_weight": 2 }
+        { "channel_id": 1, "channel_name": "openai-official", "token_multiplier": 2, "request_multiplier": 1, "effective_token_multiplier": 1, "effective_request_multiplier": 1, "multiplier_schedule_applied": true, "token_multiplier_from_model_schedule": true, "request_multiplier_from_model_schedule": false, "weight": 2, "effective_weight": 4 },
+        { "channel_id": 2, "channel_name": "openai-mirror", "token_multiplier": 1, "request_multiplier": 1, "effective_token_multiplier": 1, "effective_request_multiplier": 1, "multiplier_schedule_applied": false, "token_multiplier_from_model_schedule": false, "request_multiplier_from_model_schedule": false, "weight": 1, "effective_weight": 2 }
       ]
     },
     { "id": "claude-3", "object": "model", "supports_vision": false, "supported_protocols": ["anthropic_messages", "chat_completions"], "token_multiplier": 1.5, "request_multiplier": 1, "token_multiplier_min": 1.5, "token_multiplier_max": 1.5, "request_multiplier_min": 1, "request_multiplier_max": 1, "max_effective_weight": 1, "weight_min": 1, "weight_max": 1, "effective_weight_min": 1, "effective_weight_max": 1, "channels": [{ "channel_id": 3, "channel_name": "anthropic-main", "token_multiplier": 1.5, "request_multiplier": 1, "weight": 1, "effective_weight": 1 }] }
@@ -3156,6 +3171,8 @@ access token 过期但 refresh token 仍有效时按已登录处理（整页表�
 ```
 
 > `effective_token_multiplier_*` / `effective_request_multiplier_*` 为**当前时刻实际生效**的倍率范围（已按分时倍率覆盖，口径与计费一致），`multiplier_schedule_applied` 表示当前是否命中分时档位；`channels[]` 里的 `effective_*` 为单个渠道的生效倍率。分时倍率见「分时倍率」一节。
+
+> `token_multiplier_from_model_schedule` / `request_multiplier_from_model_schedule` 表示该维度的生效倍率是否由**模型级**分时档决定：为 `false` 时表示由渠道级分时档补足（或根本没有命中分时档，此时生效值等于基础值）。模型级要求所有渠道中至少一个渠道的该维度来自模型档；`channels[]` 里为单个渠道各自的来源。前端据此在生效倍率旁标注「模型分时 / 渠道分时」，让用户知道这个价格是谁定的。
 
 > `token_multiplier` 和 `request_multiplier` 为**基础**计费倍率（取所有渠道中的最低值，不含分时覆盖），实际扣量 = 使用量 × 生效倍率。`token_multiplier_min/max` 和 `request_multiplier_min/max` 为各渠道倍率范围。`weight_min/max` 为各渠道模型权重范围（模型权重为配置原始值，不做下限钳制；字段为 NULL 时按 1 处理），`effective_weight_min/max` 为各渠道有效权重范围（有效权重 = max(1, 模型权重) × max(1, 渠道权重)，计算时对权重取下限 1），`max_effective_weight` 为该模型所有渠道中的最大有效权重，列表按此降序排列。`channels` 包含各渠道的倍率（基础 + 生效）、模型权重（`weight`）与有效权重（`effective_weight`）明细，按有效权重降序排列。`supported_protocols` 为该模型各渠道所支持协议的并集，取值：`chat_completions` / `responses` / `anthropic_messages` / `embeddings` / `images` / `other`。`brand_groups` 为管理员在系统设置中配置的模型品牌分组规则，前端据此按模型 ID 前缀归组筛选。
 

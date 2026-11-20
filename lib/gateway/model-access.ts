@@ -131,6 +131,10 @@ export type AccessibleModelChannel = {
   effective_request_multiplier: number;
   // 当前是否命中分时档位（模型档或渠道档任一命中）
   multiplier_schedule_applied: boolean;
+  // 生效倍率来自哪一层：true 表示该维度由模型自己的分时档决定，false 表示由渠道分时档补足。
+  // 同一渠道下不同别名命中不同层，明细里要分开标，否则用户看不出为什么同渠道价格不一样。
+  token_multiplier_from_model_schedule: boolean;
+  request_multiplier_from_model_schedule: boolean;
   weight: number;
   effective_weight: number;
 };
@@ -195,6 +199,8 @@ export async function listAccessibleModels(user: Pick<DbUser, "id" | "role" | "g
       effective_token_multiplier: effective.token_multiplier,
       effective_request_multiplier: effective.request_multiplier,
       multiplier_schedule_applied: effective.schedule_applied,
+      token_multiplier_from_model_schedule: effective.token_source === 0,
+      request_multiplier_from_model_schedule: effective.request_source === 0,
       weight: row.model_weight ?? 1,
       effective_weight: ew,
     };

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,8 +17,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type { ModelWithChannel } from "./channel-model";
-import { parseSupportedProtocols, shortProtocolLabel } from "./channel-model";
+import { effectiveMultiplierOf, parseSupportedProtocols, shortProtocolLabel } from "./channel-model";
 import { ModelActions } from "./model-actions";
+import { EffectiveScheduleTag } from "./effective-schedule-tag";
 
 function isExpired(exp?: string | Date | null): boolean {
   if (!exp) return false;
@@ -45,6 +47,7 @@ export function ModelListRow({
   selection?: { checked: boolean; onToggle: () => void };
 }) {
   const [confirmToggle, setConfirmToggle] = useState(false);
+  const effective = effectiveMultiplierOf(model);
 
   return (
     <TableRow className="group">
@@ -90,8 +93,25 @@ export function ModelListRow({
       <TableCell className="whitespace-nowrap text-sm text-[var(--color-foreground-secondary)]">
         {Math.max(1, model.weight) * Math.max(1, model.channel_weight)}x
       </TableCell>
-      <TableCell className="whitespace-nowrap font-mono text-xs text-[var(--color-foreground-secondary)]">
-        T {model.token_multiplier ?? 1}x / R {model.request_multiplier ?? 1}x
+      <TableCell className="whitespace-nowrap font-mono text-xs">
+        <div className="text-[var(--color-foreground-secondary)]">
+          T {effective.token_multiplier}x / R {effective.request_multiplier}x
+          {effective.schedule_applied ? <EffectiveScheduleTag /> : null}
+        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <p className="cursor-default text-[10px] text-[var(--color-foreground-muted)]">
+              基础 T {model.token_multiplier ?? 1}x / R {model.request_multiplier ?? 1}x
+            </p>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-64 text-xs">
+            {effective.schedule_applied
+              ? `当前时段生效倍率为 ${effective.token_multiplier}x / ${effective.request_multiplier}x，命中${
+                  effective.token_from_model_schedule || effective.request_from_model_schedule ? "模型级" : "渠道级"
+                }分时档；基础倍率仅在没有分时档命中时使用。`
+              : "当前时段未命中任何分时档，生效倍率等于基础倍率。"}
+          </TooltipContent>
+        </Tooltip>
       </TableCell>
       <TableCell className="whitespace-nowrap">{model.max_concurrency > 0 ? model.max_concurrency : "继承渠道"}</TableCell>
       <TableCell>

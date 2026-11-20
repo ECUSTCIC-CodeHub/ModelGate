@@ -145,19 +145,36 @@ export type ResolvedMultiplier = {
   token_multiplier: number;
   request_multiplier: number;
   schedule_applied: boolean;
+  // 各维度最终值来自 layers 的哪一层（0 为最高优先级层），未命中任何档位时为 null。
+  // 维度级而不是层级：模型档只填了 token 时，request 的来源仍是渠道档，展示侧要说清这点。
+  token_source: number | null;
+  request_source: number | null;
+  // 命中的档位在该层数组里的下标，便于展示「第几档」
+  token_schedule_index: number | null;
+  request_schedule_index: number | null;
 };
+
+// 取请求时刻第一个命中的档位下标；未配置或都未命中时返回 null。
+// 下标而不是对象：同一份档位 JSON 里可以有完全相同的两档，按对象反查会张冠李戴。
+export function findEffectiveScheduleIndex(
+  schedules: MultiplierSchedule[],
+  now: Date = new Date(),
+): number | null {
+  if (schedules.length === 0) return null;
+  const { day, minutes } = utcWallTime(now);
+  for (let i = 0; i < schedules.length; i += 1) {
+    if (windowMatches(schedules[i], day, minutes)) return i;
+  }
+  return null;
+}
 
 // 取请求时刻第一个命中的档位；未配置或都未命中时返回 null。
 export function findEffectiveSchedule(
   schedules: MultiplierSchedule[],
   now: Date = new Date(),
 ): MultiplierSchedule | null {
-  if (schedules.length === 0) return null;
-  const { day, minutes } = utcWallTime(now);
-  for (const schedule of schedules) {
-    if (windowMatches(schedule, day, minutes)) return schedule;
-  }
-  return null;
+  const index = findEffectiveScheduleIndex(schedules, now);
+  return index === null ? null : schedules[index];
 }
 
 // 按优先级逐层解析请求时刻的倍率：layers 里靠前的层优先，每一层只覆盖自己填了的维度，
@@ -176,16 +193,33 @@ export function resolveLayeredMultiplier(
   let tokenMultiplier = baseTokenMultiplier;
   let requestMultiplier = baseRequestMultiplier;
   let scheduleApplied = false;
+  let tokenSource: number | null = null;
+  let requestSource: number | null = null;
+  let tokenScheduleIndex: number | null = null;
+  let requestScheduleIndex: number | null = null;
   for (let i = layers.length - 1; i >= 0; i -= 1) {
-    const hit = findEffectiveSchedule(layers[i], now);
-    if (!hit) continue;
+    const index = findEffectiveScheduleIndex(layers[i], now);
+    if (index === null) continue;
+    const hit = layers[i][index];
     scheduleApplied = true;
-    if (hit.token_multiplier !== null) tokenMultiplier = hit.token_multiplier;
-    if (hit.request_multiplier !== null) requestMultiplier = hit.request_multiplier;
+    if (hit.token_multiplier !== null) {
+      tokenMultiplier = hit.token_multiplier;
+      tokenSource = i;
+      tokenScheduleIndex = index;
+    }
+    if (hit.request_multiplier !== null) {
+      requestMultiplier = hit.request_multiplier;
+      requestSource = i;
+      requestScheduleIndex = index;
+    }
   }
   return {
     token_multiplier: tokenMultiplier,
     request_multiplier: requestMultiplier,
     schedule_applied: scheduleApplied,
+    token_source: tokenSource,
+    request_source: requestSource,
+    token_schedule_index: tokenScheduleIndex,
+    request_schedule_index: requestScheduleIndex,
   };
 }
