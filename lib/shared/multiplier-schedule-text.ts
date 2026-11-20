@@ -10,9 +10,10 @@ export type ScheduleTextItem = WallClockWindow & {
   request_multiplier: number | null;
 };
 
+// 档位清单最多列这么多行，悬浮一般也放得下，再多就折叠成「还有 N 档」
+const MAX_LISTED_WINDOWS = 8;
+
 const WEEKDAY_LABELS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
-// 标签上最多列两档，再多就写「等 N 档」，避免把表格撑变形
-const MAX_TAG_WINDOWS = 2;
 
 function weekdayLabel(day: number): string {
   return WEEKDAY_LABELS[(((day - 1) % WEEKDAY_LABELS.length) + WEEKDAY_LABELS.length) % WEEKDAY_LABELS.length];
@@ -57,6 +58,16 @@ export function formatScheduleMultipliers(item: ScheduleTextItem): string {
   return parts.length > 0 ? parts.join(" / ") : "沿用下级倍率";
 }
 
+// 单档文案：`周五 00:00–08:00 · Token 0.5x`，时间按浏览者时区换算
+function describeWindow(item: ScheduleTextItem, timeZone: string): string {
+  // 首尾相同是非法配置（网关不命中），别按跨零点写成「全天」
+  if (item.start === item.end) return `${formatScheduleMultipliers(item)} · 时段配置无效`;
+  const wall = windowToWall(item, timeZone);
+  const text = wall ?? item;
+  const place = wall ? "" : "（UTC，当前时区无法换算）";
+  return `${formatScheduleDays(text.days)} ${formatScheduleTime(text.start, text.end)} · ${formatScheduleMultipliers(item)}${place}`;
+}
+
 export type ScheduleTagInput = {
   modelSchedules?: ScheduleTextItem[];
   channelSchedules?: ScheduleTextItem[];
@@ -64,73 +75,68 @@ export type ScheduleTagInput = {
 
 type DimensionKey = "token_multiplier" | "request_multiplier";
 
-// 该维度取哪一层的档位：模型层配了就用模型层（模型级优先），否则用渠道层。
-// 只看「配了什么」，不看此刻是否命中——标签内容不能随时刻漂移
-function pickLayerWindows(
-  dimension: DimensionKey,
-  modelSchedules: ScheduleTextItem[],
-  channelSchedules: ScheduleTextItem[],
-): ScheduleTextItem[] {
-  const configured = (list: ScheduleTextItem[]) => list.filter((item) => item[dimension] !== null);
-  const modelWindows = configured(modelSchedules);
-  return modelWindows.length > 0 ? modelWindows : configured(channelSchedules);
-}
-
-function summarizeDimension(
-  label: string,
-  dimension: DimensionKey,
-  windows: ScheduleTextItem[],
-  timeZone: string,
-): string | null {
-  if (windows.length === 0) return null;
-  const listed = windows.slice(0, MAX_TAG_WINDOWS).map((item) => {
-    const wall = windowToWall(item, timeZone);
-    // 首尾相同是非法配置（网关不命中），别按跨零点写成「全天」
-    if (item.start === item.end) return `${item[dimension]}x 时段配置无效`;
-    const text = wall ?? item;
-    // 全周生效就不写星期，省下的宽度留给时段
-    const days = text.days.length === 7 ? "" : `${formatScheduleDays(text.days)} `;
-    return `${item[dimension]}x ${days}${formatScheduleTime(text.start, text.end)}`;
-  });
-  const more = windows.length > listed.length ? ` 等${windows.length}档` : "";
-  return `${label} ${listed.join("、")}${more}`;
-}
-
-// 标签文案：`T 0.5x 00:00–08:00 · R 2x 22:00–次日 06:00`
-// 只描述「配了什么」，与此刻是否命中无关——配了分时的模型始终要能看出来。
-export function summarizeScheduleTag(input: ScheduleTagInput, timeZone: string = browserTimeZone()): string | null {
+// 「分时」标签只做标记，具体时段与倍率放悬浮：标签本身不应该撑开表格列。
+// 只要配了任一维度的档位就有标签，与此刻是否命中无关。
+export function hasSchedule(input: ScheduleTagInput): boolean {
   const modelSchedules = input.modelSchedules ?? [];
   const channelSchedules = input.channelSchedules ?? [];
-  const parts = [
-    summarizeDimension(
-      "T",
-      "token_multiplier",
-      pickLayerWindows("token_multiplier", modelSchedules, channelSchedules),
-      timeZone,
-    ),
-    summarizeDimension(
-      "R",
-      "request_multiplier",
-      pickLayerWindows("request_multiplier", modelSchedules, channelSchedules),
-      timeZone,
-    ),
-  ].filter((part): part is string => part !== null);
-  return parts.length > 0 ? parts.join(" · ") : null;
+  return modelSchedules.length > 0 || channelSchedules.length > 0;
 }
 
-// 一个别名挂多条渠道时：各渠道档位常常完全相同，去重后最多留两段，避免标签过长
-export function summarizeChannelScheduleTags(
-  inputs: ScheduleTagInput[],
+// 逐档清单（不含时区说明，便于多处拼装后再统一追加一次）
+function scheduleLayers(input: ScheduleTagInput, timeZone: string): string[] {
+  const lines: string[] = [];
+  const appendLayer = (heading: string, list: ScheduleTextItem[]) => {
+    if (list.length === 0) return;
+    lines.push(`${heading}：`);
+    for (const item of list.slice(0, MAX_LISTED_WINDOWS)) lines.push(`· ${describeWindow(item, timeZone)}`);
+    // 截断按层计，文案要写清是哪一层还剩几档
+    if (list.length > MAX_LISTED_WINDOWS) lines.push(`· …${heading}还有 ${list.length - MAX_LISTED_WINDOWS} 档`);
+  };
+  appendLayer("模型级", input.modelSchedules ?? []);
+  appendLayer("渠道级", input.channelSchedules ?? []);
+  return lines;
+}
+
+function timeZoneHint(timeZone: string): string {
+  return `时间按你的浏览器时区（${timeZone}）显示；模型级优先，同层多档命中取最上面一档。`;
+}
+
+// 悬浮内容：逐档列出时段与倍率，并说明时间口径与优先级
+export function describeScheduleDetail(
+  input: ScheduleTagInput,
   timeZone: string = browserTimeZone(),
-): string | null {
-  const seen: string[] = [];
-  for (const input of inputs) {
-    const tag = summarizeScheduleTag(input, timeZone);
-    if (tag && !seen.includes(tag)) seen.push(tag);
+): string {
+  const layers = scheduleLayers(input, timeZone);
+  if (layers.length === 0) return "";
+  return [...layers, timeZoneHint(timeZone)].join("\n");
+}
+
+// 一个别名挂多条渠道时：档位完全相同的渠道归成一段，段首标出是哪些渠道，
+// 时区与优先级说明只追加一次；档位不同的渠道各自成段，不会互相串台
+export function describeChannelScheduleDetail(
+  entries: Array<{ input: ScheduleTagInput; channelName?: string }>,
+  timeZone: string = browserTimeZone(),
+): string {
+  const groups = new Map<string, { block: string; names: string[] }>();
+  for (const { input, channelName } of entries) {
+    const layers = scheduleLayers(input, timeZone);
+    if (layers.length === 0) continue;
+    const block = layers.join("\n");
+    const group = groups.get(block) ?? { block, names: [] };
+    if (channelName) group.names.push(channelName);
+    groups.set(block, group);
   }
-  if (seen.length === 0) return null;
-  const listed = seen.slice(0, MAX_TAG_WINDOWS);
-  const more = seen.length > listed.length ? ` 等${seen.length}种` : "";
-  // 多渠道之间用分号，避免与维度之间的「·」混在一起
-  return `${listed.join("；")}${more}`;
+  if (groups.size === 0) return "";
+
+  const blocks = [...groups.values()].map(({ block, names }) =>
+    names.length > 0 ? `${names.join("、")}：\n${block}` : block,
+  );
+  return [...blocks, timeZoneHint(timeZone)].join("\n\n");
+}
+
+// 某个维度是否配了档位：只用来决定「分时」标记出不出，按维度判避免请求列跟着 Token 一起标
+export function hasDimensionSchedule(input: ScheduleTagInput, dimension: "token" | "request"): boolean {
+  const key: DimensionKey = dimension === "token" ? "token_multiplier" : "request_multiplier";
+  return [...(input.modelSchedules ?? []), ...(input.channelSchedules ?? [])].some((item) => item[key] !== null);
 }

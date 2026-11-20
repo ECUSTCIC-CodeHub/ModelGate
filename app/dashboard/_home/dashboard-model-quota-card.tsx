@@ -3,10 +3,11 @@
 import { SectionTitle } from "@/components/dashboard/section-title";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatNumber, formatTokenCount } from "@/lib/shared/utils";
 import type { PeriodQuotaEntry } from "@/lib/gateway/quota";
 import { isBypassQuotaMode, usesChannelSelfQuota } from "@/lib/gateway/quota-mode";
-import { summarizeScheduleTag, type ScheduleTextItem } from "@/lib/shared/multiplier-schedule-text";
+import { describeScheduleDetail, hasSchedule, type ScheduleTextItem } from "@/lib/shared/multiplier-schedule-text";
 
 export type ModelQuotaItem = {
   alias: string;
@@ -70,11 +71,12 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
             // 渠道绕过用户组时，即便模型是「双重限制」也不会再检查用户组配额。
             const channelBypass = m.quota_mode !== "bypass_group" && isBypassQuotaMode(m.channel_quota_mode);
             const cycles = m.periods ?? [];
-            // 配了分时就一直挂着，标签本身写清倍率与时段
-            const scheduleTag = summarizeScheduleTag({
+            // 配了分时就一直打标，具体时段与倍率放在悬浮里
+            const scheduleInput = {
               modelSchedules: m.multiplier_schedules,
               channelSchedules: m.channel_multiplier_schedules,
-            });
+            };
+            const scheduleDetail = hasSchedule(scheduleInput) ? describeScheduleDetail(scheduleInput) : "";
             return (
               <div key={`${m.alias}:${m.channel_id}`} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
@@ -92,7 +94,7 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
                       <p className="truncate text-xs text-[var(--color-foreground-muted)]">{m.channel_name}</p>
                     ) : null}
                   </div>
-                  <div className="flex max-w-[60%] flex-wrap items-center justify-end gap-1.5">
+                  <div className="flex shrink-0 items-center gap-1.5">
                     <span className="rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-foreground-muted)]">
                       {m.quota_mode === "independent" ? "独立配额" : m.quota_mode === "dual" ? "双重限制" : channelBypass ? "渠道绕过" : "绕过"}
                     </span>
@@ -104,11 +106,22 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
                         渠道绕过
                       </span>
                     ) : null}
-                    {scheduleTag ? (
-                      // 标签自己说明倍率与时段，不靠悬浮；放不下时换行而不是截断成看不懂的半句
-                      <span className="max-w-full break-words rounded-md bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-foreground-muted)]">
-                        分时 {scheduleTag}
-                      </span>
+                    {scheduleDetail ? (
+                      // 只打标记，具体时段与倍率悬浮可见，避免把卡片标题挤成两三行
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label="查看分时档位"
+                            className="cursor-default rounded-md bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-foreground-muted)]"
+                          >
+                            分时
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-80 whitespace-pre-line text-xs">
+                          {scheduleDetail}
+                        </TooltipContent>
+                      </Tooltip>
                     ) : null}
                   </div>
                 </div>

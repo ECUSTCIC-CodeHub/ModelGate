@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,7 +18,7 @@ import {
 import { effectiveMultiplierOf, parseSupportedProtocols, shortProtocolLabel, type ModelWithChannel } from "./channel-model";
 import { parseMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
 import { ModelActions } from "./model-actions";
-import { summarizeScheduleTag } from "@/lib/shared/multiplier-schedule-text";
+import { describeScheduleDetail, hasSchedule } from "@/lib/shared/multiplier-schedule-text";
 
 function isExpired(exp?: string | Date | null): boolean {
   if (!exp) return false;
@@ -45,14 +46,15 @@ export function ModelCard({
   const [confirmToggle, setConfirmToggle] = useState(false);
   // 按模型缓存：搜索、勾选等本地状态会整表重渲染，没必要每次都重算时区换算。
   // 分时标签只描述「配了什么」，与此刻是否命中无关
-  const { effective, scheduleTag } = useMemo(() => {
+  const { effective, scheduleDetail } = useMemo(() => {
     const resolved = effectiveMultiplierOf(model);
+    const input = {
+      modelSchedules: parseMultiplierSchedules(model.multiplier_schedules),
+      channelSchedules: model.channel_multiplier_schedules,
+    };
     return {
       effective: resolved,
-      scheduleTag: summarizeScheduleTag({
-        modelSchedules: parseMultiplierSchedules(model.multiplier_schedules),
-        channelSchedules: model.channel_multiplier_schedules,
-      }),
+      scheduleDetail: hasSchedule(input) ? describeScheduleDetail(input) : "",
     };
   }, [model]);
 
@@ -95,11 +97,22 @@ export function ModelCard({
           实际 {Math.max(1, model.weight) * Math.max(1, model.channel_weight)}x
         </Badge>
         <Badge variant="outline">T {effective.token_multiplier}x / R {effective.request_multiplier}x</Badge>
-        {scheduleTag ? (
-          // 配了分时就一直挂着，标签本身写清倍率与时段
-          <Badge variant="outline" className="max-w-full truncate font-normal text-[var(--color-accent)]">
-            分时 {scheduleTag}
-          </Badge>
+        {scheduleDetail ? (
+          // 配了分时就一直挂着标记，具体时段与倍率放在悬浮里
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label="查看分时档位"
+                className="inline-flex cursor-default items-center rounded-full border border-[var(--color-border)] px-2 py-0.5 text-xs font-normal text-[var(--color-accent)]"
+              >
+                分时
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-80 whitespace-pre-line text-xs">
+              {scheduleDetail}
+            </TooltipContent>
+          </Tooltip>
         ) : null}
         <Badge variant={model.is_public ? "default" : "secondary"}>
           {model.is_public ? "公开" : "白名单"}

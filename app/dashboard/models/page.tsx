@@ -18,7 +18,14 @@ import { cn } from "@/lib/shared/utils";
 import { getApiMessage } from "@/lib/shared/api-message";
 import { authedFetch, ensureLoggedIn, getCachedProfile } from "@/lib/auth/client-auth";
 import { shortProtocolLabel, type Protocol } from "@/app/dashboard/channels/channel-model";
-import { summarizeChannelScheduleTags } from "@/lib/shared/multiplier-schedule-text";
+import { browserTimeZone } from "@/lib/shared/timezone";
+import {
+  describeChannelScheduleDetail,
+  describeScheduleDetail,
+  hasDimensionSchedule,
+  hasSchedule,
+  type ScheduleTagInput,
+} from "@/lib/shared/multiplier-schedule-text";
 
 type ScheduleWindow = {
   days: number[];
@@ -106,14 +113,42 @@ type ModelItem = {
   channels: ChannelMultiplier[];
 };
 
-// 一行的分时标签：`T 0.5x 00:00–08:00 · R 2x 22:00–次日 06:00`。
-// 只描述配了什么，与此刻是否命中无关；多渠道时按档位去重，避免标签过长。
-function scheduleTagOf(row: ModelItem): string | null {
-  return summarizeChannelScheduleTags(
-    row.channels.map((channel) => ({
-      modelSchedules: channel.multiplier_schedules,
-      channelSchedules: channel.channel_multiplier_schedules,
-    })),
+function channelScheduleInput(channel: ChannelMultiplier): ScheduleTagInput {
+  return {
+    modelSchedules: channel.multiplier_schedules,
+    channelSchedules: channel.channel_multiplier_schedules,
+  };
+}
+
+// 逐渠道说明的键：渠道名不保证唯一，用渠道 id；
+// 同一渠道挂多个映射模型时模型级档位各不相同，所以再带上 real_model
+function channelKey(channel: ChannelMultiplier): string {
+  return `${channel.channel_id}-${channel.real_model}`;
+}
+
+type ChannelSchedule = { detail: string; token: boolean; request: boolean };
+
+type RowSchedule = ChannelSchedule & { byChannel: Map<string, ChannelSchedule> };
+
+// 「分时」标记：标签只做标记，具体时段与倍率悬浮可见。
+// 用 button 保证键盘用户也能展开；inline 布局避免把倍率挤到下一行
+function ScheduleMarker({ detail }: { detail: string }) {
+  if (!detail) return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label="查看分时档位"
+          className="ml-1.5 inline-flex cursor-default items-center rounded-md border border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] px-1.5 py-0.5 align-middle text-[10px] font-medium text-[var(--color-accent)]"
+        >
+          分时
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-80 whitespace-pre-line text-xs">
+        {detail}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -298,13 +333,38 @@ export default function AvailableModelsPage() {
     return sorted;
   }, [filtered, sortField, sortOrder]);
 
-  // 每行的分时标签只算一次：列表与卡片共用，避免每次重渲染重复做时区换算。
-  // 标签只描述配置（不看当前时刻），所以不需要跟着时间失效
-  const scheduleTagById = useMemo(() => {
-    const map = new Map<string, string>();
+  // 每行的分时悬浮内容只算一次：列表与卡片共用，避免每次重渲染重复做时区换算。
+  // 内容只描述配置（不看当前时刻），所以不需要跟着时间失效。
+  // 同时按维度记下这一行有没有对应维度的档位，倍率列据此决定带不带「分时」标记；
+  // 逐渠道的说明也一并缓存，展开行直接用，不再每次渲染重算时区换算
+  const scheduleByRowId = useMemo(() => {
+    const timeZone = browserTimeZone();
+    const map = new Map<string, RowSchedule>();
     for (const row of rows) {
-      const tag = scheduleTagOf(row);
-      if (tag) map.set(row.id, tag);
+      const inputs = row.channels.map((channel) => ({
+        input: channelScheduleInput(channel),
+        channelName: channel.channel_name,
+      }));
+      if (!inputs.some(({ input }) => hasSchedule(input))) continue;
+      map.set(row.id, {
+        detail: describeChannelScheduleDetail(inputs, timeZone),
+        token: inputs.some(({ input }) => hasDimensionSchedule(input, "token")),
+        request: inputs.some(({ input }) => hasDimensionSchedule(input, "request")),
+        byChannel: new Map(
+          row.channels.map((channel, index) => {
+            const input = inputs[index].input;
+            return [
+              channelKey(channel),
+              {
+                // 没有档位时 describeScheduleDetail 本身就返回空串
+                detail: describeScheduleDetail(input, timeZone),
+                token: hasDimensionSchedule(input, "token"),
+                request: hasDimensionSchedule(input, "request"),
+              },
+            ];
+          }),
+        ),
+      });
     }
     return map;
   }, [rows]);
@@ -321,24 +381,32 @@ export default function AvailableModelsPage() {
       ? "text-[var(--color-accent)] font-semibold"
       : "text-[var(--color-foreground-muted)]";
 
-    const content = <span className={cn("font-mono text-sm", tone)}>{label}</span>;
-
-    if (hasMultipleChannels) {
-      return (
-        <button
-          type="button"
-          onClick={() => toggleExpand(row.id)}
-          aria-expanded={expanded}
-          aria-controls={`expand-${row.id}`}
-          aria-label={expanded ? "收起渠道信息" : "展开渠道信息"}
-          className="inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 transition-colors hover:bg-[var(--color-surface-hover)]"
-        >
-          {content}
-          <ChevronDown className={cn("h-3.5 w-3.5 text-[var(--color-foreground-muted)] transition-transform", expanded && "rotate-180")} />
-        </button>
-      );
-    }
-    return <span className="inline-flex cursor-default items-center gap-1 px-2 py-1">{content}</span>;
+    const schedule = scheduleByRowId.get(row.id);
+    const marked = type === "token" ? schedule?.token : schedule?.request;
+    // 标记必须与展开按钮平级：分时标记自己也是 button，套进去既是非法嵌套，
+    // 点击还会冒泡把整行展开/收起
+    return (
+      <span className="inline-flex items-center gap-1">
+        {hasMultipleChannels ? (
+          <button
+            type="button"
+            onClick={() => toggleExpand(row.id)}
+            aria-expanded={expanded}
+            aria-controls={`expand-${row.id}`}
+            aria-label={expanded ? "收起渠道信息" : "展开渠道信息"}
+            className="inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 transition-colors hover:bg-[var(--color-surface-hover)]"
+          >
+            <span className={cn("font-mono text-sm", tone)}>{label}</span>
+            <ChevronDown className={cn("h-3.5 w-3.5 text-[var(--color-foreground-muted)] transition-transform", expanded && "rotate-180")} />
+          </button>
+        ) : (
+          <span className="inline-flex cursor-default items-center gap-1 px-2 py-1">
+            <span className={cn("font-mono text-sm", tone)}>{label}</span>
+          </span>
+        )}
+        {marked && schedule?.detail ? <ScheduleMarker detail={schedule.detail} /> : null}
+      </span>
+    );
   }
 
   function renderWeight(row: ModelItem, type: "weight" | "effective_weight") {
@@ -514,18 +582,12 @@ export default function AvailableModelsPage() {
                         {sorted.map((row) => {
                           const hasMultipleChannels = row.channels.length > 1;
                           const expanded = expandedIds.has(row.id);
-                          const rowTag = scheduleTagById.get(row.id);
+                          const rowSchedule = scheduleByRowId.get(row.id);
                           return (
                             <Fragment key={row.id}>
                               <TableRow>
                                 <TableCell>
                                   <div className="font-mono text-sm">{row.id}</div>
-                                  {rowTag ? (
-                                    // 配了分时就一直挂着，标签本身写清倍率与时段
-                                    <div className="mt-0.5 max-w-56 truncate text-[10px] text-[var(--color-accent)]">
-                                      分时 {rowTag}
-                                    </div>
-                                  ) : null}
                                   {row.supports_vision ? <Badge variant="default" className="mt-1">识图</Badge> : null}
                                 </TableCell>
                                 <TableCell>
@@ -554,29 +616,36 @@ export default function AvailableModelsPage() {
                                 </TableCell>
                               </TableRow>
                               {expanded && hasMultipleChannels ? (
-                                row.channels.map((ch, chIdx) => (
-                                  <TableRow
-                                    key={`${ch.channel_id}-${ch.real_model}`}
-                                    id={chIdx === 0 ? `expand-${row.id}` : undefined}
-                                    className="bg-[var(--color-surface-hover)]/40 hover:bg-[var(--color-surface-hover)]/40"
-                                  >
-                                    <TableCell className="pl-10 text-sm text-[var(--color-foreground-secondary)]">{ch.channel_name}</TableCell>
-                                    <TableCell>
-                                      {ch.real_model !== row.id ? (
-                                        <span className="text-xs text-[var(--color-foreground-muted)]">{ch.real_model}</span>
-                                      ) : null}
-                                    </TableCell>
-                                    <TableCell className="text-center font-mono text-sm">
-                                      {ch.effective_token_multiplier}x
-                                    </TableCell>
-                                    <TableCell className="text-center font-mono text-sm">
-                                      {ch.effective_request_multiplier}x
-                                    </TableCell>
-                                    <TableCell className="text-center font-mono text-sm">{ch.weight}x</TableCell>
-                                    <TableCell className="text-center font-mono text-sm">{ch.effective_weight}x</TableCell>
-                                    <TableCell />
-                                  </TableRow>
-                                ))
+                                row.channels.map((ch, chIdx) => {
+                                  const channelSchedule = rowSchedule?.byChannel.get(channelKey(ch));
+                                  return (
+                                    <TableRow
+                                      key={`${ch.channel_id}-${ch.real_model}`}
+                                      id={chIdx === 0 ? `expand-${row.id}` : undefined}
+                                      className="bg-[var(--color-surface-hover)]/40 hover:bg-[var(--color-surface-hover)]/40"
+                                    >
+                                      <TableCell className="pl-10 text-sm text-[var(--color-foreground-secondary)]">
+                                        <span className="truncate">{ch.channel_name}</span>
+                                      </TableCell>
+                                      <TableCell>
+                                        {ch.real_model !== row.id ? (
+                                          <span className="text-xs text-[var(--color-foreground-muted)]">{ch.real_model}</span>
+                                        ) : null}
+                                      </TableCell>
+                                      <TableCell className="text-center font-mono text-sm">
+                                        {ch.effective_token_multiplier}x
+                                        {channelSchedule?.token ? <ScheduleMarker detail={channelSchedule.detail} /> : null}
+                                      </TableCell>
+                                      <TableCell className="text-center font-mono text-sm">
+                                        {ch.effective_request_multiplier}x
+                                        {channelSchedule?.request ? <ScheduleMarker detail={channelSchedule.detail} /> : null}
+                                      </TableCell>
+                                      <TableCell className="text-center font-mono text-sm">{ch.weight}x</TableCell>
+                                      <TableCell className="text-center font-mono text-sm">{ch.effective_weight}x</TableCell>
+                                      <TableCell />
+                                    </TableRow>
+                                  );
+                                })
                               ) : null}
                             </Fragment>
                           );
@@ -590,7 +659,7 @@ export default function AvailableModelsPage() {
                       const hasTokenRange = row.effective_token_multiplier_min !== row.effective_token_multiplier_max;
                       const hasRequestRange = row.effective_request_multiplier_min !== row.effective_request_multiplier_max;
                       const hasMultipleChannels = row.channels.length > 1;
-                      const rowTag = scheduleTagById.get(row.id);
+                      const schedule = scheduleByRowId.get(row.id);
 
                       return (
                         <div
@@ -633,13 +702,9 @@ export default function AvailableModelsPage() {
                                   ? row.effective_request_multiplier_min + "x~" + row.effective_request_multiplier_max + "x"
                                   : row.effective_request_multiplier_min + "x"}
                               </span>
-                              {rowTag ? (
-                                // 配了分时就一直挂着，标签本身写清倍率与时段
-                                <span
-                                  className="inline-flex max-w-full items-center truncate rounded-md border border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-accent)]"
-                                >
-                                  分时 {rowTag}
-                                </span>
+                              {schedule?.detail ? (
+                                // 卡片上不分列，整行一个标记就够了；倍率时段悬浮可见
+                                <ScheduleMarker detail={schedule.detail} />
                               ) : null}
                               {row.supports_vision ? (
                                 <span className="inline-flex items-center rounded-md border border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] px-2 py-0.5 text-xs font-medium text-[var(--color-accent)]">

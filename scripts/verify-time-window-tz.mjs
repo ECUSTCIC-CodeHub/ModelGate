@@ -28,11 +28,12 @@ import {
 } from "@/lib/shared/time-window";
 import { scheduleDraftsToPayload, schedulesToDrafts } from "@/lib/shared/multiplier-schedule-tz";
 import {
+  describeChannelScheduleDetail,
+  describeScheduleDetail,
   formatScheduleDays,
   formatScheduleMultipliers,
   formatScheduleTime,
-  summarizeChannelScheduleTags,
-  summarizeScheduleTag,
+  hasSchedule,
 } from "@/lib/shared/multiplier-schedule-text";
 
 let passed = 0;
@@ -423,56 +424,79 @@ check("分时档文案：星期、跨零点与倍率", () => {
   );
 });
 
-check("分时标签：直接写出维度、倍率与时段，与当前是否命中无关", () => {
-  // 标签是列表上唯一的分时信息，不再有悬浮明细，所以必须自带时段
-  const schedules = [
+check("分时标记只看是否配了档位，与此刻是否命中无关", () => {
+  const schedules = [{ days: [1], start: "00:00", end: "08:00", token_multiplier: 0.5, request_multiplier: null }];
+  assert.equal(hasSchedule({ modelSchedules: schedules }), true);
+  assert.equal(hasSchedule({ channelSchedules: schedules }), true);
+  assert.equal(hasSchedule({ modelSchedules: [], channelSchedules: [] }), false);
+  assert.equal(hasSchedule({}), false);
+});
+
+check("分时悬浮说明：逐档列出时段与倍率，并说明时区与优先级", () => {
+  // 库里存的是 UTC：周四 16:00-00:00 = 东八区周五 00:00-08:00；周五 00:00-08:00（UTC）= 周五 08:00-16:00
+  const modelSchedules = [
     { days: [4], start: "16:00", end: "00:00", token_multiplier: 0.5, request_multiplier: null },
     { days: [5], start: "00:00", end: "08:00", token_multiplier: 1.5, request_multiplier: 2 },
   ];
+  const detail = describeScheduleDetail({ modelSchedules }, "Asia/Shanghai");
   assert.equal(
-    summarizeScheduleTag({ modelSchedules: schedules }, "Asia/Shanghai"),
-    "T 0.5x 周五 00:00–08:00、1.5x 周五 08:00–16:00 · R 2x 周五 08:00–16:00",
+    detail,
+    [
+      "模型级：",
+      "· 周五 00:00–08:00 · Token 0.5x",
+      "· 周五 08:00–16:00 · Token 1.5x / 请求 2x",
+      "时间按你的浏览器时区（Asia/Shanghai）显示；模型级优先，同层多档命中取最上面一档。",
+    ].join("\n"),
   );
-  // 全周生效不写星期，省下的宽度留给时段（用 UTC 断言，避免再叠一层换算）
-  assert.equal(
-    summarizeScheduleTag(
-      { channelSchedules: [{ days: [1, 2, 3, 4, 5, 6, 7], start: "00:00", end: "08:00", token_multiplier: 2, request_multiplier: null }] },
-      "UTC",
-    ),
-    "T 2x 00:00–08:00",
-  );
-  // 没配任何档位就不出标签
-  assert.equal(summarizeScheduleTag({ modelSchedules: [], channelSchedules: [] }), null);
-  // 超过两档折叠
-  const many = [0, 1, 2].map((index) => ({
-    days: [1],
-    start: `0${index}:00`,
-    end: `0${index + 1}:00`,
-    token_multiplier: 1 + index,
-    request_multiplier: null,
-  }));
-  assert.equal(summarizeScheduleTag({ modelSchedules: many }, "UTC"), "T 1x 周一 00:00–01:00、2x 周一 01:00–02:00 等3档");
-  // 模型层配了就是模型层，不看此刻是否命中：标签内容不能随时刻漂移
-  const modelLayer = [{ days: [1, 2, 3, 4, 5, 6, 7], start: "00:00", end: "08:00", token_multiplier: 0.5, request_multiplier: null }];
-  const channelLayer = [{ days: [1, 2, 3, 4, 5, 6, 7], start: "08:00", end: "16:00", token_multiplier: 2, request_multiplier: 3 }];
-  assert.equal(
-    summarizeScheduleTag({ modelSchedules: modelLayer, channelSchedules: channelLayer }, "UTC"),
-    "T 0.5x 00:00–08:00 · R 3x 08:00–16:00",
-  );
-  // 首尾相同是非法配置，不能按跨零点写成「全天」
+  // 没配档位就没有悬浮内容
+  assert.equal(describeScheduleDetail({ modelSchedules: [] }), "");
+  // 首尾相同的非法配置不能按跨零点写成「全天」
   const broken = [{ days: [1], start: "10:00", end: "10:00", token_multiplier: 0.5, request_multiplier: null }];
-  assert.equal(summarizeScheduleTag({ modelSchedules: broken }, "UTC"), "T 0.5x 时段配置无效");
+  assert.match(describeScheduleDetail({ modelSchedules: broken }, "UTC"), /Token 0\.5x · 时段配置无效/);
 });
 
-check("多渠道标签去重并截断", () => {
+check("多渠道悬浮说明：档位相同的渠道归一段并标出渠道名，不同的各自成段", () => {
   const schedules = [{ days: [1, 2, 3, 4, 5, 6, 7], start: "00:00", end: "08:00", token_multiplier: 0.5, request_multiplier: null }];
-  const same = summarizeChannelScheduleTags([{ modelSchedules: schedules }, { modelSchedules: schedules }], "UTC");
-  assert.equal(same, "T 0.5x 00:00–08:00");
-  const other = [{ days: [1, 2, 3, 4, 5, 6, 7], start: "08:00", end: "16:00", token_multiplier: 2, request_multiplier: null }];
-  assert.equal(
-    summarizeChannelScheduleTags([{ modelSchedules: schedules }, { modelSchedules: other }], "UTC"),
-    "T 0.5x 00:00–08:00；T 2x 08:00–16:00",
+  const same = describeChannelScheduleDetail(
+    [
+      { channelName: "渠道 A", input: { modelSchedules: schedules } },
+      { channelName: "渠道 B", input: { modelSchedules: schedules } },
+    ],
+    "UTC",
   );
+  assert.equal((same.match(/模型级：/g) ?? []).length, 1);
+  assert.match(same, /渠道 A、渠道 B：\n模型级：/);
+  // 时区与优先级说明只追加一次，放在末尾
+  assert.equal((same.match(/时间按你的浏览器时区/g) ?? []).length, 1);
+  assert.ok(same.endsWith("取最上面一档。"));
+
+  const other = [{ days: [1, 2, 3, 4, 5, 6, 7], start: "08:00", end: "16:00", token_multiplier: 2, request_multiplier: null }];
+  const mixed = describeChannelScheduleDetail(
+    [
+      { channelName: "渠道 A", input: { modelSchedules: schedules } },
+      { channelName: "渠道 B", input: { modelSchedules: other } },
+    ],
+    "UTC",
+  );
+  assert.equal((mixed.match(/模型级：/g) ?? []).length, 2);
+  assert.match(mixed, /渠道 A：\n模型级：\n· 每天 00:00–08:00 · Token 0\.5x/);
+  assert.match(mixed, /渠道 B：\n模型级：\n· 每天 08:00–16:00 · Token 2x/);
+
+  // 没配档位的渠道不出现在悬浮里
+  assert.equal(describeChannelScheduleDetail([{ channelName: "渠道 A", input: { modelSchedules: [] } }], "UTC"), "");
+});
+
+check("分时悬浮截断按层计数，文案写清是哪一层还剩几档", () => {
+  const many = (base) => Array.from({ length: 10 }, (_, index) => ({
+    days: [1],
+    start: `${String(index).padStart(2, "0")}:00`,
+    end: `${String(index + 1).padStart(2, "0")}:00`,
+    token_multiplier: base + index,
+    request_multiplier: null,
+  }));
+  const detail = describeScheduleDetail({ modelSchedules: many(1), channelSchedules: many(2) }, "UTC");
+  assert.match(detail, /· …模型级还有 2 档/);
+  assert.match(detail, /· …渠道级还有 2 档/);
 });
 
 console.log("");

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,7 +20,7 @@ import { parseMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
 import type { ModelWithChannel } from "./channel-model";
 import { effectiveMultiplierOf, parseSupportedProtocols, shortProtocolLabel } from "./channel-model";
 import { ModelActions } from "./model-actions";
-import { summarizeScheduleTag } from "@/lib/shared/multiplier-schedule-text";
+import { describeScheduleDetail, hasSchedule } from "@/lib/shared/multiplier-schedule-text";
 
 function isExpired(exp?: string | Date | null): boolean {
   if (!exp) return false;
@@ -49,14 +50,15 @@ export function ModelListRow({
   const [confirmToggle, setConfirmToggle] = useState(false);
   // 按模型缓存：搜索、勾选等本地状态会让整表重渲染，没必要每次都重算时区换算。
   // 分时标签只描述「配了什么」，与此刻是否命中无关，所以不需要跟着时间失效
-  const { effective, scheduleTag } = useMemo(() => {
+  const { effective, scheduleDetail } = useMemo(() => {
     const resolved = effectiveMultiplierOf(model);
+    const input = {
+      modelSchedules: parseMultiplierSchedules(model.multiplier_schedules),
+      channelSchedules: model.channel_multiplier_schedules,
+    };
     return {
       effective: resolved,
-      scheduleTag: summarizeScheduleTag({
-        modelSchedules: parseMultiplierSchedules(model.multiplier_schedules),
-        channelSchedules: model.channel_multiplier_schedules,
-      }),
+      scheduleDetail: hasSchedule(input) ? describeScheduleDetail(input) : "",
     };
   }, [model]);
 
@@ -108,12 +110,23 @@ export function ModelListRow({
         <div className="text-[var(--color-foreground-secondary)]">
           T {effective.token_multiplier}x / R {effective.request_multiplier}x
         </div>
-        {scheduleTag ? (
-          // 配了分时就一直挂着，标签本身写清倍率与时段；基础倍率同样保留，便于对照
+        {scheduleDetail ? (
+          // 配了分时就一直挂着标记，具体时段与倍率放在悬浮里，免得撑开列宽
           <>
-            <p className="mt-0.5 max-w-72 truncate text-[10px] text-[var(--color-accent)]">
-              分时 {scheduleTag}
-            </p>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="查看分时档位"
+                  className="mt-0.5 inline-block cursor-default text-[10px] text-[var(--color-accent)]"
+                >
+                  分时
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-80 whitespace-pre-line text-xs">
+                {scheduleDetail}
+              </TooltipContent>
+            </Tooltip>
             <p className="text-[10px] text-[var(--color-foreground-muted)]">
               基础 T {model.token_multiplier ?? 1}x / R {model.request_multiplier ?? 1}x
             </p>
