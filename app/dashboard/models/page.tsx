@@ -25,6 +25,9 @@ type ChannelMultiplier = {
   real_model: string;
   token_multiplier: number;
   request_multiplier: number;
+  effective_token_multiplier: number;
+  effective_request_multiplier: number;
+  multiplier_schedule_applied: boolean;
   weight: number;
   effective_weight: number;
 };
@@ -80,6 +83,11 @@ type ModelItem = {
   token_multiplier_max: number;
   request_multiplier_min: number;
   request_multiplier_max: number;
+  effective_token_multiplier_min: number;
+  effective_token_multiplier_max: number;
+  effective_request_multiplier_min: number;
+  effective_request_multiplier_max: number;
+  multiplier_schedule_applied: boolean;
   weight_min: number;
   weight_max: number;
   effective_weight_min: number;
@@ -88,7 +96,7 @@ type ModelItem = {
   channels: ChannelMultiplier[];
 };
 
-type SortField = "id" | "token_multiplier" | "request_multiplier" | "weight" | "effective_weight";
+type SortField = "id" | "effective_token_multiplier" | "effective_request_multiplier" | "weight" | "effective_weight";
 type SortOrder = "asc" | "desc";
 
 type ModelMetrics = {
@@ -251,11 +259,11 @@ export default function AvailableModelsPage() {
         case "id":
           cmp = a.id.localeCompare(b.id);
           break;
-        case "token_multiplier":
-          cmp = a.token_multiplier - b.token_multiplier;
+        case "effective_token_multiplier":
+          cmp = a.effective_token_multiplier_min - b.effective_token_multiplier_min;
           break;
-        case "request_multiplier":
-          cmp = a.request_multiplier - b.request_multiplier;
+        case "effective_request_multiplier":
+          cmp = a.effective_request_multiplier_min - b.effective_request_multiplier_min;
           break;
         case "weight":
           cmp = a.weight_max - b.weight_max;
@@ -270,36 +278,55 @@ export default function AvailableModelsPage() {
   }, [filtered, sortField, sortOrder]);
 
   function renderMultiplier(row: ModelItem, type: "token" | "request") {
-    const multiplier = type === "token" ? row.token_multiplier : row.request_multiplier;
-    const min = type === "token" ? row.token_multiplier_min : row.request_multiplier_min;
-    const max = type === "token" ? row.token_multiplier_max : row.request_multiplier_max;
-    const hasRange = min !== max;
+    const effectiveMin = type === "token" ? row.effective_token_multiplier_min : row.effective_request_multiplier_min;
+    const effectiveMax = type === "token" ? row.effective_token_multiplier_max : row.effective_request_multiplier_max;
+    const baseMin = type === "token" ? row.token_multiplier_min : row.request_multiplier_min;
+    const baseMax = type === "token" ? row.token_multiplier_max : row.request_multiplier_max;
+    const hasRange = effectiveMin !== effectiveMax;
     const hasMultipleChannels = row.channels.length > 1;
-    const emphasized = multiplier !== 1 || (hasMultipleChannels && hasRange);
+    const scheduled = row.multiplier_schedule_applied;
+    const emphasized = effectiveMin !== 1 || effectiveMax !== 1 || hasRange;
     const expanded = expandedIds.has(row.id);
+    const label = hasRange ? `${effectiveMin}x ~ ${effectiveMax}x` : `${effectiveMin}x`;
+    const baseLabel = baseMin !== baseMax ? `${baseMin}x ~ ${baseMax}x` : `${baseMin}x`;
+    const tone = emphasized
+      ? "text-[var(--color-accent)] font-semibold"
+      : "text-[var(--color-foreground-muted)]";
 
-    if (hasMultipleChannels) {
-      return (
-        <button
-          type="button"
-          onClick={() => toggleExpand(row.id)}
-          aria-expanded={expanded}
-          aria-controls={`expand-${row.id}`}
-          aria-label={expanded ? "收起渠道信息" : "展开渠道信息"}
-          className="inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 font-mono text-sm transition-colors hover:bg-[var(--color-surface-hover)]"
-        >
-          <span className={emphasized ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]"}>
-            {hasRange ? `${min}x ~ ${max}x` : `${multiplier}x`}
-          </span>
-          <ChevronDown className={cn("h-3.5 w-3.5 text-[var(--color-foreground-muted)] transition-transform", expanded && "rotate-180")} />
-        </button>
-      );
-    }
+    const content = (
+      <>
+        <span className={cn("font-mono text-sm", tone)}>{label}</span>
+        {scheduled ? (
+          <span className="text-[10px] text-[var(--color-foreground-muted)]">分时</span>
+        ) : null}
+      </>
+    );
+
+    const tooltip = scheduled
+      ? `当前时段生效倍率，基础倍率 ${baseLabel}`
+      : `基础倍率 ${baseLabel}`;
 
     return (
-      <span className={cn("font-mono text-sm", emphasized ? "text-[var(--color-accent)] font-semibold" : "text-[var(--color-foreground-muted)]")}>
-        {multiplier}x
-      </span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {hasMultipleChannels ? (
+            <button
+              type="button"
+              onClick={() => toggleExpand(row.id)}
+              aria-expanded={expanded}
+              aria-controls={`expand-${row.id}`}
+              aria-label={expanded ? "收起渠道信息" : "展开渠道信息"}
+              className="inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 transition-colors hover:bg-[var(--color-surface-hover)]"
+            >
+              {content}
+              <ChevronDown className={cn("h-3.5 w-3.5 text-[var(--color-foreground-muted)] transition-transform", expanded && "rotate-180")} />
+            </button>
+          ) : (
+            <span className="inline-flex cursor-default items-center gap-1 px-2 py-1">{content}</span>
+          )}
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">{tooltip}</TooltipContent>
+      </Tooltip>
     );
   }
 
@@ -443,17 +470,17 @@ export default function AvailableModelsPage() {
                           <TableHead>协议</TableHead>
                           <SortButton
                             label="Token 倍率"
-                            field="token_multiplier"
+                            field="effective_token_multiplier"
                             currentField={sortField}
                             order={sortOrder}
-                            onClick={() => handleSort("token_multiplier")}
+                            onClick={() => handleSort("effective_token_multiplier")}
                           />
                           <SortButton
                             label="请求倍率"
-                            field="request_multiplier"
+                            field="effective_request_multiplier"
                             currentField={sortField}
                             order={sortOrder}
-                            onClick={() => handleSort("request_multiplier")}
+                            onClick={() => handleSort("effective_request_multiplier")}
                           />
                           <SortButton
                             label="权重"
@@ -521,8 +548,18 @@ export default function AvailableModelsPage() {
                                         <span className="text-xs text-[var(--color-foreground-muted)]">{ch.real_model}</span>
                                       ) : null}
                                     </TableCell>
-                                    <TableCell className="text-center font-mono text-sm">{ch.token_multiplier}x</TableCell>
-                                    <TableCell className="text-center font-mono text-sm">{ch.request_multiplier}x</TableCell>
+                                    <TableCell className="text-center font-mono text-sm">
+                                      {ch.effective_token_multiplier}x
+                                      {ch.multiplier_schedule_applied ? (
+                                        <span className="ml-1 text-[10px] text-[var(--color-foreground-muted)]">分时</span>
+                                      ) : null}
+                                    </TableCell>
+                                    <TableCell className="text-center font-mono text-sm">
+                                      {ch.effective_request_multiplier}x
+                                      {ch.multiplier_schedule_applied ? (
+                                        <span className="ml-1 text-[10px] text-[var(--color-foreground-muted)]">分时</span>
+                                      ) : null}
+                                    </TableCell>
                                     <TableCell className="text-center font-mono text-sm">{ch.weight}x</TableCell>
                                     <TableCell className="text-center font-mono text-sm">{ch.effective_weight}x</TableCell>
                                     <TableCell />
@@ -538,9 +575,10 @@ export default function AvailableModelsPage() {
                 ) : (
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {sorted.map((row) => {
-                      const hasTokenRange = row.token_multiplier_min !== row.token_multiplier_max;
-                      const hasRequestRange = row.request_multiplier_min !== row.request_multiplier_max;
+                      const hasTokenRange = row.effective_token_multiplier_min !== row.effective_token_multiplier_max;
+                      const hasRequestRange = row.effective_request_multiplier_min !== row.effective_request_multiplier_max;
                       const hasMultipleChannels = row.channels.length > 1;
+                      const scheduled = row.multiplier_schedule_applied;
 
                       return (
                         <div
@@ -563,22 +601,52 @@ export default function AvailableModelsPage() {
 
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex flex-wrap gap-1.5">
-                              <span className={cn(
-                                "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-mono",
-                                row.token_multiplier !== 1
-                                  ? "border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] text-[var(--color-accent)]"
-                                  : "border-[var(--color-border)] bg-[var(--color-surface-hover)] text-[var(--color-foreground-secondary)]"
-                              )}>
-                                Token {hasTokenRange ? row.token_multiplier_min + "x~" + row.token_multiplier_max + "x" : row.token_multiplier + "x"}
-                              </span>
-                              <span className={cn(
-                                "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-mono",
-                                row.request_multiplier !== 1
-                                  ? "border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] text-[var(--color-accent)]"
-                                  : "border-[var(--color-border)] bg-[var(--color-surface-hover)] text-[var(--color-foreground-secondary)]"
-                              )}>
-                                请求 {hasRequestRange ? row.request_multiplier_min + "x~" + row.request_multiplier_max + "x" : row.request_multiplier + "x"}
-                              </span>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className={cn(
+                                    "inline-flex cursor-default items-center rounded-md border px-2 py-0.5 text-xs font-mono",
+                                    row.effective_token_multiplier_min !== 1 || row.effective_token_multiplier_max !== 1
+                                      ? "border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] text-[var(--color-accent)]"
+                                      : "border-[var(--color-border)] bg-[var(--color-surface-hover)] text-[var(--color-foreground-secondary)]"
+                                  )}>
+                                    Token {hasTokenRange
+                                      ? row.effective_token_multiplier_min + "x~" + row.effective_token_multiplier_max + "x"
+                                      : row.effective_token_multiplier_min + "x"}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="text-xs">
+                                  基础倍率 {row.token_multiplier_min !== row.token_multiplier_max
+                                    ? row.token_multiplier_min + "x~" + row.token_multiplier_max + "x"
+                                    : row.token_multiplier_min + "x"}
+                                </TooltipContent>
+                              </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className={cn(
+                                    "inline-flex cursor-default items-center rounded-md border px-2 py-0.5 text-xs font-mono",
+                                    row.effective_request_multiplier_min !== 1 || row.effective_request_multiplier_max !== 1
+                                      ? "border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] text-[var(--color-accent)]"
+                                      : "border-[var(--color-border)] bg-[var(--color-surface-hover)] text-[var(--color-foreground-secondary)]"
+                                  )}>
+                                    请求 {hasRequestRange
+                                      ? row.effective_request_multiplier_min + "x~" + row.effective_request_multiplier_max + "x"
+                                      : row.effective_request_multiplier_min + "x"}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="text-xs">
+                                  基础倍率 {row.request_multiplier_min !== row.request_multiplier_max
+                                    ? row.request_multiplier_min + "x~" + row.request_multiplier_max + "x"
+                                    : row.request_multiplier_min + "x"}
+                                </TooltipContent>
+                              </Tooltip>
+                              {scheduled ? (
+                                <span
+                                  className="inline-flex items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-foreground-secondary)]"
+                                  title="当前时段命中分时倍率，显示的倍率已按分时档覆盖"
+                                >
+                                  分时
+                                </span>
+                              ) : null}
                               {row.supports_vision ? (
                                 <span className="inline-flex items-center rounded-md border border-[var(--color-accent)]/20 bg-[var(--color-accent-muted)] px-2 py-0.5 text-xs font-medium text-[var(--color-accent)]">
                                   识图
@@ -660,8 +728,8 @@ export default function AvailableModelsPage() {
                                   </Tooltip>
                                   <div className="flex items-center gap-2">
                                     <span className="font-mono text-[var(--color-foreground-muted)]">W{ch.effective_weight}</span>
-                                    <span className={cn("font-mono", ch.token_multiplier !== 1 && "text-[var(--color-accent)] font-semibold")}>T{ch.token_multiplier}x</span>
-                                    <span className={cn("font-mono", ch.request_multiplier !== 1 && "text-[var(--color-accent)] font-semibold")}>R{ch.request_multiplier}x</span>
+                                    <span className={cn("font-mono", ch.effective_token_multiplier !== 1 && "text-[var(--color-accent)] font-semibold")}>T{ch.effective_token_multiplier}x</span>
+                                    <span className={cn("font-mono", ch.effective_request_multiplier !== 1 && "text-[var(--color-accent)] font-semibold")}>R{ch.effective_request_multiplier}x</span>
                                   </div>
                                 </div>
                               ))}

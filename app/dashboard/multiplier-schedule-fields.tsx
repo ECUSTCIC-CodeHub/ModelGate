@@ -84,8 +84,12 @@ export function schedulesToDrafts(schedules: Array<{
 type MultiplierScheduleFieldsProps = {
   drafts: MultiplierScheduleDraft[];
   onChange: (drafts: MultiplierScheduleDraft[]) => void;
-  baseTokenMultiplier: number;
-  baseRequestMultiplier: number;
+  // 基础倍率用于提示文案；渠道级没有单一基础倍率（每个模型不同），传 null 时省略该提示。
+  // 渠道级还需要额外说明与模型侧档位的优先级关系，由 hint 传入。
+  baseTokenMultiplier: number | null;
+  baseRequestMultiplier: number | null;
+  // 渠道级额外说明生效顺序（渠道档比模型档低），模型级不需要
+  hint?: string;
 };
 
 export function MultiplierScheduleFields({
@@ -93,6 +97,7 @@ export function MultiplierScheduleFields({
   onChange,
   baseTokenMultiplier,
   baseRequestMultiplier,
+  hint,
 }: MultiplierScheduleFieldsProps) {
   const update = (key: string, patch: Partial<MultiplierScheduleDraft>) => {
     onChange(drafts.map((draft) => (draft.key === key ? { ...draft, ...patch } : draft)));
@@ -112,8 +117,13 @@ export function MultiplierScheduleFields({
       <div>
         <p className="text-sm font-medium text-[var(--color-foreground)]">分时倍率</p>
         <p className="text-xs text-[var(--color-foreground-muted)]">
-          命中时段的请求按该档倍率计费，未命中时段沿用上方基础倍率（{baseTokenMultiplier}x / {baseRequestMultiplier}x）。时段时间按 UTC 解释，可跨零点；多档同时命中时按从上到下的顺序取第一档。留空的维度沿用基础倍率。
+          命中时段的请求按该档倍率计费，未命中时段沿用
+          {baseTokenMultiplier === null || baseRequestMultiplier === null
+            ? "基础倍率"
+            : `上方基础倍率（${baseTokenMultiplier}x / ${baseRequestMultiplier}x）`}
+          。时段时间按 UTC 解释，可跨零点；多档同时命中时按从上到下的顺序取第一档。留空的维度沿用基础倍率。
         </p>
+        {hint ? <p className="mt-1 text-xs text-[var(--color-foreground-muted)]">{hint}</p> : null}
       </div>
 
       {drafts.length === 0 ? (

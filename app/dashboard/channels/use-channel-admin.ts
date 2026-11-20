@@ -229,6 +229,7 @@ export function useChannelAdmin() {
       header_mappings: formatHeaderMappingsInput(row.header_mappings),
       group_name: row.group_name ?? "",
       retry_status_codes: formatRetryStatusCodesInput(row.retry_status_codes),
+      multiplier_schedules: schedulesToDrafts(parseMultiplierSchedules(row.multiplier_schedules)),
     });
     setChannelModels([baseDraft(supportedProtocols)]);
     setChannelDrawerOpen(true);
@@ -328,6 +329,8 @@ export function useChannelAdmin() {
       quota_tokens: form.quota_tokens.trim() ? Number(form.quota_tokens) : null,
       quota_requests: form.quota_requests.trim() ? Number(form.quota_requests) : null,
       period_cycles: draftsToPayload(form.period_cycles),
+      // 精简版没有分时倍率判定，客户端不发该字段，避免把渠道上的既有配置顺手清空
+      ...(modelGateFeatures.periodQuota ? { multiplier_schedules: scheduleDraftsToPayload(form.multiplier_schedules) } : {}),
     };
   }
 
@@ -613,7 +616,8 @@ export function useChannelAdmin() {
       quota_tokens: form.quota_tokens.trim() ? Number(form.quota_tokens) : null,
       quota_requests: form.quota_requests.trim() ? Number(form.quota_requests) : null,
       period_cycles: draftsToPayload(form.period_cycles),
-      multiplier_schedules: scheduleDraftsToPayload(form.multiplier_schedules),
+      // 精简版没有分时倍率判定，客户端不发该字段，避免把渠道上的既有配置顺手清空
+      ...(modelGateFeatures.periodQuota ? { multiplier_schedules: scheduleDraftsToPayload(form.multiplier_schedules) } : {}),
     };
   }
 

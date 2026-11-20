@@ -28,6 +28,7 @@ import { ModelDraftCard } from "./model-draft-card";
 import { ChannelQuotaFields } from "./channel-quota-fields";
 import { UaRestrictionsEditor, type UaRestrictionRuleDraft, rulesToJson, jsonToRules } from "@/components/ua-restrictions-editor";
 import { TimeWindowEditor, jsonToWindows } from "@/components/time-window-editor";
+import { MultiplierScheduleFields } from "@/app/dashboard/multiplier-schedule-fields";
 import {
   protocolOptions,
   type ChannelForm,
@@ -348,6 +349,15 @@ export function ChannelDrawer({
               <p className="text-xs text-[var(--color-foreground-muted)]">
                 配置后渠道仅在这些时段内可用。留空则不限制。
               </p>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <MultiplierScheduleFields
+                drafts={form.multiplier_schedules}
+                onChange={(drafts) => onFormChange({ multiplier_schedules: drafts })}
+                baseTokenMultiplier={null}
+                baseRequestMultiplier={null}
+                hint="渠道档对下属全部模型生效，用于整条渠道统一定价；模型自己也配了分时档位时以模型为准（渠道档只补模型留空的维度），需要单个模型差异化时在模型侧配置。"
+              />
             </div>
           </div>
 

@@ -8,7 +8,7 @@ import { parseAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { getUserScope, listRedeemScopes, scopeCoversPair, scopesCoverPair } from "@/lib/services/redeem-authorization";
 import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
 import { toPeriodQuotaEntry } from "@/lib/gateway/quota";
-import { parseMultiplierSchedules, resolveEffectiveMultiplier } from "@/lib/gateway/multiplier-schedule";
+import { parseMultiplierSchedules, resolveLayeredMultiplier } from "@/lib/gateway/multiplier-schedule";
 import { normalizeChannelQuotaMode, normalizeModelQuotaMode, usesModelSelfQuota } from "@/lib/gateway/quota-mode";
 
 export async function GET(request: Request) {
@@ -39,6 +39,7 @@ export async function GET(request: Request) {
     period_used_requests: number;
     period_cycles: string | null;
     multiplier_schedules: string | null;
+    channel_multiplier_schedules: string | null;
     token_multiplier: number;
     request_multiplier: number;
   }>(
@@ -46,7 +47,7 @@ export async function GET(request: Request) {
             c.quota_mode AS channel_quota_mode,
             m.quota_tokens, m.quota_requests,
             m.period_used_tokens, m.period_used_requests, m.period_cycles,
-            m.multiplier_schedules,
+            m.multiplier_schedules, c.multiplier_schedules AS channel_multiplier_schedules,
             m.token_multiplier, m.request_multiplier
      FROM models m
      JOIN channels c ON c.id = m.channel_id
@@ -78,9 +79,13 @@ export async function GET(request: Request) {
     const usedTokens = m.period_used_tokens;
     const usedRequests = m.period_used_requests;
     const periods = selfQuota ? parsePeriodCycles(m.period_cycles).map(toPeriodQuotaEntry) : [];
-    // 展示当下实际生效的倍率：分时倍率命中时覆盖基础倍率。
-    const schedules = parseMultiplierSchedules(m.multiplier_schedules);
-    const effective = resolveEffectiveMultiplier(m.token_multiplier ?? 1, m.request_multiplier ?? 1, schedules, now);
+    // 展示当下实际生效的倍率，与计费口径一致：模型档优先，渠道档只补模型留空的维度。
+    const effective = resolveLayeredMultiplier(
+      m.token_multiplier ?? 1,
+      m.request_multiplier ?? 1,
+      [parseMultiplierSchedules(m.multiplier_schedules), parseMultiplierSchedules(m.channel_multiplier_schedules)],
+      now,
+    );
 
     return {
       alias: m.alias,

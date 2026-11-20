@@ -2,6 +2,7 @@ import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { getUserAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { getUserGroup } from "@/lib/gateway/effective-limits";
 import { parseSupportedProtocols, type GatewayProtocol } from "@/lib/gateway/protocols";
+import { parseMultiplierSchedules, resolveLayeredMultiplier } from "@/lib/gateway/multiplier-schedule";
 import { getUserScope, listRedeemScopes, scopeCoversPair, scopesCoverPair, scopesHaveAlias } from "@/lib/services/redeem-authorization";
 
 export function parseAllowedModelAliases(raw: string | null | undefined) {
@@ -57,8 +58,9 @@ const ENABLED_MODEL_ALIAS_SQL = `SELECT 1
    LIMIT 1`;
 
 const ACCESSIBLE_MODEL_ROWS_SQL = `SELECT m.alias, m.real_model, m.is_public, m.created_at, m.token_multiplier, m.request_multiplier, m.supports_vision, m.supported_protocols,
+      m.multiplier_schedules AS model_multiplier_schedules,
       m.weight AS model_weight,
-      c.id AS channel_id, c.name AS channel_name, c.weight AS channel_weight
+      c.id AS channel_id, c.name AS channel_name, c.weight AS channel_weight, c.multiplier_schedules AS channel_multiplier_schedules
    FROM models m
    JOIN channels c ON c.id = m.channel_id
    WHERE m.enabled = 1
@@ -124,6 +126,11 @@ export type AccessibleModelChannel = {
   real_model: string;
   token_multiplier: number;
   request_multiplier: number;
+  // 当前时刻实际生效的倍率：模型分时档优先，渠道分时档只补模型留空的维度
+  effective_token_multiplier: number;
+  effective_request_multiplier: number;
+  // 当前是否命中分时档位（模型档或渠道档任一命中）
+  multiplier_schedule_applied: boolean;
   weight: number;
   effective_weight: number;
 };
@@ -139,6 +146,11 @@ export type AccessibleModel = {
   token_multiplier_max: number;
   request_multiplier_min: number;
   request_multiplier_max: number;
+  effective_token_multiplier_min: number;
+  effective_token_multiplier_max: number;
+  effective_request_multiplier_min: number;
+  effective_request_multiplier_max: number;
+  multiplier_schedule_applied: boolean;
   weight_min: number;
   weight_max: number;
   effective_weight_min: number;
@@ -153,26 +165,47 @@ export async function listAccessibleModelAliases(user: Pick<DbUser, "id" | "role
 }
 
 export async function listAccessibleModels(user: Pick<DbUser, "id" | "role" | "group_id" | "allowed_model_aliases">): Promise<AccessibleModel[]> {
-  const rows = await gatewayDb.query<{ alias: string; real_model: string; is_public: number; created_at: string | null; token_multiplier: number; request_multiplier: number; supports_vision: number; supported_protocols: string; model_weight: number; channel_id: number; channel_name: string; channel_weight: number }>(ACCESSIBLE_MODEL_ROWS_SQL);
+  const rows = await gatewayDb.query<{ alias: string; real_model: string; is_public: number; created_at: string | null; token_multiplier: number; request_multiplier: number; supports_vision: number; supported_protocols: string; model_multiplier_schedules: string | null; model_weight: number; channel_id: number; channel_name: string; channel_weight: number; channel_multiplier_schedules: string | null }>(ACCESSIBLE_MODEL_ROWS_SQL);
   const allowedChannelIds = await getUserAllowedChannelIds(user);
   const allowedChannelSet = allowedChannelIds ? new Set(allowedChannelIds) : null;
 
   type Accumulator = { alias: string; created_at: string | null; supports_vision: number; supported_protocols: Set<GatewayProtocol>; channels: AccessibleModelChannel[] };
   const visible = new Map<string, Accumulator>();
 
+  // 生效倍率按请求时刻算一次：模型档优先，渠道档只补模型留空的维度。
+  // 列表面板展示的是「现在下单什么价」，因此以生效值为准，基础倍率仅作参考。
+  const now = new Date();
   const processRow = (row: typeof rows[number]) => {
     const tm = row.token_multiplier ?? 1;
     const rm = row.request_multiplier ?? 1;
     const ew = Math.max(1, row.model_weight ?? 1) * Math.max(1, row.channel_weight ?? 1);
     const sv = row.supports_vision ?? 0;
+    const effective = resolveLayeredMultiplier(
+      tm,
+      rm,
+      [parseMultiplierSchedules(row.model_multiplier_schedules), parseMultiplierSchedules(row.channel_multiplier_schedules)],
+      now,
+    );
+    const channel: AccessibleModelChannel = {
+      channel_id: row.channel_id,
+      channel_name: row.channel_name,
+      real_model: row.real_model,
+      token_multiplier: tm,
+      request_multiplier: rm,
+      effective_token_multiplier: effective.token_multiplier,
+      effective_request_multiplier: effective.request_multiplier,
+      multiplier_schedule_applied: effective.schedule_applied,
+      weight: row.model_weight ?? 1,
+      effective_weight: ew,
+    };
     const current = visible.get(row.alias);
     if (!current) {
-      visible.set(row.alias, { alias: row.alias, created_at: row.created_at, supports_vision: sv, supported_protocols: new Set(parseSupportedProtocols(row.supported_protocols)), channels: [{ channel_id: row.channel_id, channel_name: row.channel_name, real_model: row.real_model, token_multiplier: tm, request_multiplier: rm, weight: row.model_weight ?? 1, effective_weight: ew }] });
+      visible.set(row.alias, { alias: row.alias, created_at: row.created_at, supports_vision: sv, supported_protocols: new Set(parseSupportedProtocols(row.supported_protocols)), channels: [channel] });
     } else {
       if ((row.created_at ?? "") > (current.created_at ?? "")) current.created_at = row.created_at;
       if (sv > current.supports_vision) current.supports_vision = sv;
       for (const p of parseSupportedProtocols(row.supported_protocols)) current.supported_protocols.add(p);
-      current.channels.push({ channel_id: row.channel_id, channel_name: row.channel_name, real_model: row.real_model, token_multiplier: tm, request_multiplier: rm, weight: row.model_weight ?? 1, effective_weight: ew });
+      current.channels.push(channel);
     }
   };
 
@@ -199,6 +232,8 @@ export async function listAccessibleModels(user: Pick<DbUser, "id" | "role" | "g
     .map((item) => {
       const tms = item.channels.map((c) => c.token_multiplier);
       const rms = item.channels.map((c) => c.request_multiplier);
+      const etms = item.channels.map((c) => c.effective_token_multiplier);
+      const erms = item.channels.map((c) => c.effective_request_multiplier);
       const ws = item.channels.map((c) => c.weight);
       const ews = item.channels.map((c) => c.effective_weight);
       return {
@@ -212,6 +247,11 @@ export async function listAccessibleModels(user: Pick<DbUser, "id" | "role" | "g
         token_multiplier_max: Math.max(...tms),
         request_multiplier_min: Math.min(...rms),
         request_multiplier_max: Math.max(...rms),
+        effective_token_multiplier_min: Math.min(...etms),
+        effective_token_multiplier_max: Math.max(...etms),
+        effective_request_multiplier_min: Math.min(...erms),
+        effective_request_multiplier_max: Math.max(...erms),
+        multiplier_schedule_applied: item.channels.some((c) => c.multiplier_schedule_applied),
         weight_min: Math.min(...ws),
         weight_max: Math.max(...ws),
         effective_weight_min: Math.min(...ews),

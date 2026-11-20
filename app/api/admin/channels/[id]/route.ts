@@ -18,6 +18,7 @@ import { isMaskedApiKey, looksLikeMaskedApiKey, maskApiKey, resolveSubmittedApiK
 import { readJsonBodyCapped } from "@/lib/core/request-body";
 import { resolveChannelOwnerId } from "@/lib/services/channel-ownership";
 import { validatePeriodCycles, serializePeriodCycleState, mergeDefinitionOntoState } from "@/lib/gateway/period-cycles";
+import { validateMultiplierSchedules, normalizeMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
 import { normalizeChannelQuotaMode, QUOTA_MODES } from "@/lib/gateway/quota-mode";
 
 const proxyUrlSchema = z.string().max(1000).optional().refine(isValidProxyUrl);
@@ -47,6 +48,7 @@ const updateSchema = z.object({
   request_body_omit: z.array(z.string()).nullable().optional(),
   group_name: z.string().max(64).nullable().optional(),
   retry_status_codes: z.array(z.number().int().min(400).max(599)).max(64).nullable().optional(),
+  multiplier_schedules: z.unknown().optional(),
 });
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -77,6 +79,19 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
   const existing = await gatewayDb.queryOne("SELECT * FROM channels WHERE id = ? AND deleted_at IS NULL", [id]);
   if (!existing) return jsonError("渠道不存在", 404);
+
+  // 字段缺席保持原值，传 [] 或 null 清空渠道分时倍率。
+  // 先确认渠道存在再校验，避免对不存在的渠道返回参数错误。
+  let channelMultiplierSchedules: string | null = null;
+  let channelMultiplierSchedulesProvided = false;
+  if (parsed.data.multiplier_schedules !== undefined) {
+    const validation = validateMultiplierSchedules(parsed.data.multiplier_schedules);
+    if (!validation.valid) return jsonError(validation.error, 400);
+    channelMultiplierSchedules = modelGateFeatures.periodQuota
+      ? normalizeMultiplierSchedules(validation.schedules) || null
+      : null;
+    channelMultiplierSchedulesProvided = true;
+  }
 
   let periodCycles: string | null = null;
   let periodCyclesProvided = false;
@@ -221,6 +236,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       parsed.data.retry_status_codes === undefined
         ? (existing as { retry_status_codes?: string | null }).retry_status_codes ?? null
         : serializeRetryStatusCodes(parsed.data.retry_status_codes),
+    multiplier_schedules: channelMultiplierSchedulesProvided
+      ? channelMultiplierSchedules
+      : (existing as { multiplier_schedules?: string | null }).multiplier_schedules ?? null,
     time_restrictions:
       timeRestrictions === null
         ? (existing as { time_restrictions?: string | null }).time_restrictions ?? ""
@@ -253,7 +271,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       .execute(
         `UPDATE channels
          SET name = ?, base_url = ?, api_key = ?, supported_protocols = ?, user_agent = ?, proxy_url = ?, enabled = ?, weight = ?, max_concurrency = ?, timeout = ?,
-             quota_mode = ?, quota_tokens = ?, quota_requests = ?, period_cycles = ?, force_include_usage = ?, ua_restrictions = ?, expires_at = ?, time_restrictions = ?, custom_headers = ?, request_body_omit = ?, group_name = ?, retry_status_codes = ?, header_mappings = ?, api_key_private = ?, created_by = ?
+             quota_mode = ?, quota_tokens = ?, quota_requests = ?, period_cycles = ?, force_include_usage = ?, ua_restrictions = ?, expires_at = ?, time_restrictions = ?, custom_headers = ?, request_body_omit = ?, group_name = ?, retry_status_codes = ?, header_mappings = ?, multiplier_schedules = ?, api_key_private = ?, created_by = ?
          WHERE id = ?`,
         [
           (merged as { name: string }).name,
@@ -283,6 +301,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
           (merged as { group_name: string }).group_name || null,
           (merged as { retry_status_codes: string | null }).retry_status_codes ?? null,
           (merged as { header_mappings: string }).header_mappings || null,
+          (merged as { multiplier_schedules: string | null }).multiplier_schedules ?? null,
           nextPrivate,
           nextCreatedBy,
           id,

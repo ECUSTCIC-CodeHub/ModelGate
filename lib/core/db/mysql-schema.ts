@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS channels (
   period_cycles TEXT DEFAULT NULL,
   group_name TEXT DEFAULT NULL,
   retry_status_codes TEXT DEFAULT NULL,
-  header_mappings TEXT DEFAULT NULL
+  header_mappings TEXT DEFAULT NULL,
+  multiplier_schedules TEXT DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS models (

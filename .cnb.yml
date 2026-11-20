@@ -91,6 +91,10 @@
     image: docker.cnb.cool/scaffold/examples/nodejs:latest
     script: |
       node --loader ./scripts/verify-auth-scope-stubs.mjs scripts/verify-auth-scope.mjs
+  - name: verify multiplier layering
+    image: docker.cnb.cool/scaffold/examples/nodejs:latest
+    script: |
+      node --loader ./scripts/verify-channel-quota-mode-loader.mjs scripts/verify-multiplier-layering.mjs
 
 .push: &push
   runner:

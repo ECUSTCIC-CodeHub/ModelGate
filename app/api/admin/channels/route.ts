@@ -54,6 +54,7 @@ const createSchema = z.object({
   request_body_omit: z.array(z.string()).optional(),
   group_name: z.string().max(64).nullable().optional(),
   retry_status_codes: z.array(z.number().int().min(400).max(599)).max(64).nullable().optional(),
+  multiplier_schedules: z.unknown().optional(),
   models: z
     .array(
       z.object({
@@ -181,6 +182,12 @@ export async function POST(request: Request) {
     ? serializePeriodCycles(periodCyclesResult.cycles ?? []) || null
     : null;
 
+  const channelSchedulesResult = validateMultiplierSchedules(parsed.data.multiplier_schedules ?? []);
+  if (!channelSchedulesResult.valid) return jsonError(channelSchedulesResult.error, 400);
+  const channelMultiplierSchedules = modelGateFeatures.periodQuota
+    ? normalizeMultiplierSchedules(channelSchedulesResult.schedules) || null
+    : null;
+
   let expiresAt: string | null = null;
   const expiresRaw = parsed.data.expires_at?.trim() ?? "";
   if (expiresRaw) {
@@ -216,8 +223,8 @@ export async function POST(request: Request) {
     const channelEnabled = parsed.data.enabled === false ? 0 : 1;
     const result = await tx
       .execute(
-        `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_mode, quota_tokens, quota_requests, period_cycles, force_include_usage, ua_restrictions, expires_at, time_restrictions, custom_headers, request_body_omit, group_name, retry_status_codes, header_mappings, created_by, api_key_private)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO channels (name, base_url, api_key, supported_protocols, user_agent, proxy_url, enabled, weight, max_concurrency, timeout, quota_mode, quota_tokens, quota_requests, period_cycles, force_include_usage, ua_restrictions, expires_at, time_restrictions, custom_headers, request_body_omit, group_name, retry_status_codes, header_mappings, multiplier_schedules, created_by, api_key_private)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           parsed.data.name,
           parsed.data.base_url,
@@ -242,6 +249,7 @@ export async function POST(request: Request) {
           parsed.data.group_name?.trim() || null,
           serializeRetryStatusCodes(parsed.data.retry_status_codes),
           stringifyHeaderMappings(headerMappingsResult.mappings),
+          channelMultiplierSchedules,
           guard.auth.user.id,
           parsed.data.api_key_private === true ? 1 : 0,
         ],
