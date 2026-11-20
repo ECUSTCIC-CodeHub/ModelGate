@@ -217,6 +217,13 @@ export function useChannelAdmin() {
     const canViewKey = row.can_view_api_key === true;
     // 每次打开都按当前浏览器时区把库里的 UTC 时段换算成墙上时间；时区变了只在本次编辑内有效
     const timeZone = browserTimeZone();
+    const timeRestrictions = parseTimeWindows(row.time_restrictions ?? "", timeZone);
+    if (timeRestrictions.failed.length > 0) {
+      toast({
+        variant: "error",
+        description: `第 ${timeRestrictions.failed.map((index) => index + 1).join("、")} 个限制时段回填时无法换算，请重新填写后再保存。`,
+      });
+    }
     setChannelEditingId(row.id);
     setChannelEditingCanViewApiKey(canViewKey);
     setChannelEditingCanManagePrivacy(row.can_manage_api_key_privacy === true);
@@ -242,7 +249,7 @@ export function useChannelAdmin() {
       force_include_usage: row.force_include_usage === 1,
       ua_restrictions: row.ua_restrictions ?? "",
       expires_at: expiresAtToInputValue(row.expires_at),
-      time_restrictions: parseTimeWindows(row.time_restrictions ?? "", timeZone).windows,
+      time_restrictions: timeRestrictions.windows,
       time_restrictions_time_zone: timeZone,
       custom_headers: formatCustomHeadersInput(row.custom_headers),
       request_body_omit: formatRequestBodyOmitInput(row.request_body_omit),

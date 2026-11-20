@@ -53,6 +53,9 @@ export function matchesWindow(window: WallClockWindow, day: number, minutes: num
   if (!Number.isInteger(sh) || !Number.isInteger(sm) || !Number.isInteger(eh) || !Number.isInteger(em)) return false;
   const startM = sh * 60 + sm;
   const endM = eh * 60 + em;
+  // 首尾相同是非法配置（服务端也会拒绝）：按「不命中」处理，
+  // 与编辑器标红、覆盖判定丢弃该行保持同一口径，不能把它当成跨零点而整天放行
+  if (endM === startM) return false;
   if (endM > startM) {
     return window.days.includes(day) && minutes >= startM && minutes <= endM;
   }

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/shared/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { findShadowedDraftIndexes } from "@/lib/shared/multiplier-shadow";
+import { findShadowedDraftIndexes, isScheduleDraftDiscarded } from "@/lib/shared/multiplier-shadow";
 import { browserTimeZone } from "@/lib/shared/timezone";
 import type { MultiplierScheduleDraft } from "@/lib/shared/multiplier-schedule-tz";
 
@@ -151,7 +151,9 @@ export function MultiplierScheduleFields({
             </div>
           </div>
 
-          {draft.start === draft.end ? (
+          {isScheduleDraftDiscarded(draft) ? (
+            <p className="text-xs text-[var(--color-foreground-muted)]">本档未选生效星期或两个倍率都留空，保存时会被丢弃。</p>
+          ) : draft.start === draft.end ? (
             <p className="text-xs text-[var(--color-destructive)]">开始时间不能等于结束时间，否则保存会被服务端拒绝。</p>
           ) : null}
 

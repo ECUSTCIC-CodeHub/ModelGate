@@ -13,7 +13,7 @@
 import assert from "node:assert/strict";
 import { findEffectiveScheduleIndex } from "@/lib/gateway/multiplier-schedule";
 import { findShadowedDraftIndexes } from "@/lib/shared/multiplier-shadow";
-import { isChannelTimeAllowed } from "@/lib/gateway/channel-time";
+import { isChannelTimeAllowed, parseTimeRestrictions } from "@/lib/gateway/channel-time";
 import {
   matchesWindow,
   parseTimeWindows,
@@ -155,6 +155,19 @@ check("跨零点窗口的凌晨段归属前一日", () => {
   assert.equal(matchesWindow(window, 2, 5 * 60), true, "周二 05:00");
   assert.equal(matchesWindow(window, 1, 5 * 60), false, "周一 05:00 不在窗口内");
   assert.equal(matchesWindow(window, 2, 23 * 60), false, "周二 23:00 不在窗口内");
+});
+
+check("首尾相同的时段整天都不放行", () => {
+  const window = { days: [1], start: "10:00", end: "10:00" };
+  for (let minute = 0; minute < 1440; minute += 1) {
+    if (matchesWindow(window, 1, minute)) assert.fail(`minute=${minute} 不该命中`);
+  }
+  assert.equal(isChannelTimeAllowed(JSON.stringify([window]), new Date(Date.UTC(2024, 0, 1, 10, 0, 0))), false);
+});
+
+check("限制时段解析补零：9:30 归一化为 09:30", () => {
+  const json = JSON.stringify([{ days: [1], start: "9:30", end: "18:00" }]);
+  assert.deepEqual(parseTimeRestrictions(json), [{ days: [1], start: "09:30", end: "18:00" }]);
 });
 
 check("渠道可用时段：墙上时间窗口与换算后的 UTC 窗口逐分钟一致", () => {

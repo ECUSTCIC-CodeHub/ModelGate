@@ -10,6 +10,17 @@ export type TimeWindow = {
   end: string; // HH:MM
 };
 
+// 写入侧允许单小时位（9:30），编辑器与判定都按两位时分处理：
+// 这里统一补零，避免历史数据在编辑器里显示成空框、被当成"未配置"
+function normalizeClockTime(value: unknown): string | null {
+  if (typeof value !== "string" || !TIME_RE.test(value)) return null;
+  const [h, m] = value.split(":");
+  const hour = Number(h);
+  const minute = Number(m);
+  if (hour > 23 || minute > 59) return null;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
 export function parseTimeRestrictions(raw: string | null | undefined): TimeWindow[] {
   if (!raw) return [];
   let parsed: unknown;
@@ -28,16 +39,24 @@ export function parseTimeRestrictions(raw: string | null | undefined): TimeWindo
       .map((d) => Number(d))
       .filter((d) => Number.isInteger(d) && d >= 1 && d <= 7);
     if (days.length === 0) continue;
-    const start = typeof record.start === "string" ? record.start : "";
-    const end = typeof record.end === "string" ? record.end : "";
-    if (!TIME_RE.test(start) || !TIME_RE.test(end)) continue;
-    const [sh, sm] = start.split(":").map(Number);
-    const [eh, em] = end.split(":").map(Number);
-    if (sh > 23 || sm > 59 || eh > 23 || em > 59) continue;
+    const start = normalizeClockTime(record.start);
+    const end = normalizeClockTime(record.end);
+    if (!start || !end) continue;
     windows.push({ days: [...new Set(days)], start, end });
     if (windows.length >= MAX_WINDOWS) break;
   }
   return windows;
+}
+
+const BROKEN_LOG_INTERVAL_MS = 60_000;
+let lastBrokenLogAt = 0;
+
+function logBrokenTimeRestrictions(raw: string | null | undefined) {
+  if (!raw || raw.trim() === "") return;
+  const nowMs = Date.now();
+  if (nowMs - lastBrokenLogAt < BROKEN_LOG_INTERVAL_MS) return;
+  lastBrokenLogAt = nowMs;
+  console.warn(`[channel-time] time_restrictions 解析不出任何时段，按不限制处理：${raw.slice(0, 120)}`);
 }
 
 // 未配置时段则不限制（始终允许）；配置后仅窗口内允许。
@@ -47,7 +66,12 @@ export function parseTimeRestrictions(raw: string | null | undefined): TimeWindo
 // 与编辑器里「结束时间早于开始时间表示跨午夜」的表述一致。
 export function isChannelTimeAllowed(raw: string | null | undefined, now: Date = new Date()): boolean {
   const windows = parseTimeRestrictions(raw);
-  if (windows.length === 0) return true;
+  if (windows.length === 0) {
+    // 原文非空却解析不出任何时段说明配置已损坏：继续保持"不限制"的历史行为，
+    // 但留一条限频告警，避免渠道在无人察觉的情况下变成 24/7 可用
+    logBrokenTimeRestrictions(raw);
+    return true;
+  }
   const { day, minutes } = utcWallTime(now);
   return windows.some((win) => matchesWindow(win, day, minutes));
 }
