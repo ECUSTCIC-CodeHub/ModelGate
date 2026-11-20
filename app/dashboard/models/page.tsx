@@ -148,6 +148,18 @@ function scheduleWindowLines(row: ModelItem): string[] {
   );
 }
 
+// 悬浮说明的第一行：两个视图（列表 / 卡片）必须一样，
+// 否则卡片上写着生效值、提示里只写基础倍率，看起来像两边对不上
+function multiplierTooltipHead(row: ModelItem, type: "token" | "request"): string {
+  const baseMin = type === "token" ? row.token_multiplier_min : row.request_multiplier_min;
+  const baseMax = type === "token" ? row.token_multiplier_max : row.request_multiplier_max;
+  const baseLabel = baseMin !== baseMax ? `${baseMin}x ~ ${baseMax}x` : `${baseMin}x`;
+  const scheduled = type === "token" ? row.token_multiplier_scheduled : row.request_multiplier_scheduled;
+  return scheduled
+    ? `当前时段生效倍率，基础倍率 ${baseLabel}；${scheduleSourceLabel(row)}`
+    : `基础倍率 ${baseLabel}`;
+}
+
 type SortField = "id" | "effective_token_multiplier" | "effective_request_multiplier" | "weight" | "effective_weight";
 type SortOrder = "asc" | "desc";
 
@@ -340,8 +352,6 @@ export default function AvailableModelsPage() {
   function renderMultiplier(row: ModelItem, type: "token" | "request") {
     const effectiveMin = type === "token" ? row.effective_token_multiplier_min : row.effective_request_multiplier_min;
     const effectiveMax = type === "token" ? row.effective_token_multiplier_max : row.effective_request_multiplier_max;
-    const baseMin = type === "token" ? row.token_multiplier_min : row.request_multiplier_min;
-    const baseMax = type === "token" ? row.token_multiplier_max : row.request_multiplier_max;
     const hasRange = effectiveMin !== effectiveMax;
     const hasMultipleChannels = row.channels.length > 1;
     // 按维度判：只有 Token 命中分时档时，请求列不该跟着标「分时」。
@@ -349,7 +359,6 @@ export default function AvailableModelsPage() {
     const emphasized = effectiveMin !== 1 || effectiveMax !== 1 || hasRange;
     const expanded = expandedIds.has(row.id);
     const label = hasRange ? `${effectiveMin}x ~ ${effectiveMax}x` : `${effectiveMin}x`;
-    const baseLabel = baseMin !== baseMax ? `${baseMin}x ~ ${baseMax}x` : `${baseMin}x`;
     const tone = emphasized
       ? "text-[var(--color-accent)] font-semibold"
       : "text-[var(--color-foreground-muted)]";
@@ -364,12 +373,7 @@ export default function AvailableModelsPage() {
     );
 
     // 来源按维度判：模型档只填了 token 时，请求倍率仍是渠道档或基础倍率给的，笼统说「模型/渠道」会指错。
-    const tooltipLines = [
-      scheduled
-        ? `当前时段生效倍率，基础倍率 ${baseLabel}；${scheduleSourceLabel(row)}`
-        : `基础倍率 ${baseLabel}`,
-      ...(scheduleLinesById.get(row.id) ?? []),
-    ];
+    const tooltipLines = [multiplierTooltipHead(row, type), ...(scheduleLinesById.get(row.id) ?? [])];
 
     return (
       <Tooltip>
@@ -684,12 +688,7 @@ export default function AvailableModelsPage() {
                                   </span>
                                 </TooltipTrigger>
                                 <TooltipContent side="top" className="max-w-80 whitespace-pre-line text-xs">
-                                  {[
-                                    `基础倍率 ${row.token_multiplier_min !== row.token_multiplier_max
-                                      ? row.token_multiplier_min + "x~" + row.token_multiplier_max + "x"
-                                      : row.token_multiplier_min + "x"}${row.token_multiplier_scheduled ? `；${scheduleSourceLabel(row)}` : ""}`,
-                                    ...(scheduleLinesById.get(row.id) ?? []),
-                                  ].join("\n")}
+                                  {[multiplierTooltipHead(row, "token"), ...(scheduleLinesById.get(row.id) ?? [])].join("\n")}
                                 </TooltipContent>
                               </Tooltip>
                               <Tooltip>
@@ -706,12 +705,7 @@ export default function AvailableModelsPage() {
                                   </span>
                                 </TooltipTrigger>
                                 <TooltipContent side="top" className="max-w-80 whitespace-pre-line text-xs">
-                                  {[
-                                    `基础倍率 ${row.request_multiplier_min !== row.request_multiplier_max
-                                      ? row.request_multiplier_min + "x~" + row.request_multiplier_max + "x"
-                                      : row.request_multiplier_min + "x"}${row.request_multiplier_scheduled ? `；${scheduleSourceLabel(row)}` : ""}`,
-                                    ...(scheduleLinesById.get(row.id) ?? []),
-                                  ].join("\n")}
+                                  {[multiplierTooltipHead(row, "request"), ...(scheduleLinesById.get(row.id) ?? [])].join("\n")}
                                 </TooltipContent>
                               </Tooltip>
                               {scheduled ? (

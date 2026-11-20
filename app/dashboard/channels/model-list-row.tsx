@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
@@ -50,30 +50,35 @@ export function ModelListRow({
   selection?: { checked: boolean; onToggle: () => void };
 }) {
   const [confirmToggle, setConfirmToggle] = useState(false);
-  // 生效值与档位标注必须用同一个时点，否则跨分钟时会出现「未命中」却标了「当前生效」
-  const now = new Date();
-  const effective = effectiveMultiplierOf(model, now);
-  // 「分时」必须说清是哪一段时间、什么价：把两层档位都列出来，并标出此刻命中的那档
-  const modelSchedules = parseMultiplierSchedules(model.multiplier_schedules);
-  const channelSchedules = model.channel_multiplier_schedules;
-  const scheduleTooltip = describeScheduleTooltip({
-    baseToken: model.token_multiplier ?? 1,
-    baseRequest: model.request_multiplier ?? 1,
-    effectiveToken: effective.token_multiplier,
-    effectiveRequest: effective.request_multiplier,
-    scheduleApplied: effective.schedule_applied,
-    source: effective.schedule_applied
-      ? describeScheduleSource({
-        tokenFromModelSchedule: effective.token_from_model_schedule,
-        requestFromModelSchedule: effective.request_from_model_schedule,
-        tokenScheduled: effective.token_scheduled,
-        requestScheduled: effective.request_scheduled,
-      })
-      : undefined,
-    modelSchedules,
-    channelSchedules,
-    now,
-  });
+  // 按分钟缓存：搜索、勾选等本地状态会让整表重渲染，没必要每次都重算时区换算。
+  // 生效值与档位标注共用同一个时点，避免跨分钟时出现「未命中」却标了「此刻命中」
+  const minuteBucket = Math.floor(Date.now() / 60_000);
+  const { effective, scheduleTooltip } = useMemo(() => {
+    const at = new Date(minuteBucket * 60_000);
+    const resolved = effectiveMultiplierOf(model, at);
+    const modelSchedules = parseMultiplierSchedules(model.multiplier_schedules);
+    return {
+      effective: resolved,
+      scheduleTooltip: describeScheduleTooltip({
+        baseToken: model.token_multiplier ?? 1,
+        baseRequest: model.request_multiplier ?? 1,
+        effectiveToken: resolved.token_multiplier,
+        effectiveRequest: resolved.request_multiplier,
+        scheduleApplied: resolved.schedule_applied,
+        source: resolved.schedule_applied
+          ? describeScheduleSource({
+            tokenFromModelSchedule: resolved.token_from_model_schedule,
+            requestFromModelSchedule: resolved.request_from_model_schedule,
+            tokenScheduled: resolved.token_scheduled,
+            requestScheduled: resolved.request_scheduled,
+          })
+          : undefined,
+        modelSchedules,
+        channelSchedules: model.channel_multiplier_schedules,
+        now: at,
+      }),
+    };
+  }, [model, minuteBucket]);
 
   return (
     <TableRow className="group">

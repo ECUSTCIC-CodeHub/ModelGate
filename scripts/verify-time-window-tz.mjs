@@ -438,7 +438,7 @@ check("分时档文案：按浏览者时区展示，并标出当前命中的档"
   // 2024-01-05T00:30Z = 东八区周五 08:30，命中的是第二档
   const now = new Date(Date.UTC(2024, 0, 5, 0, 30));
   const marked = describeScheduleWindows(schedules, "Asia/Shanghai", 1);
-  assert.equal(marked[1], "周五 08:00–16:00 · Token 1.5x / 请求 2x（当前生效）");
+  assert.equal(marked[1], "周五 08:00–16:00 · Token 1.5x / 请求 2x（此刻命中）");
   const tooltip = describeScheduleTooltip({
     baseToken: 1,
     baseRequest: 1,
@@ -452,7 +452,7 @@ check("分时档文案：按浏览者时区展示，并标出当前命中的档"
   });
   assert.match(tooltip, /当前时段生效 Token 1\.5x \/ 请求 2x/);
   assert.match(tooltip, /模型级：/);
-  assert.match(tooltip, /（当前生效）/);
+  assert.match(tooltip, /（此刻命中）/);
   const grouped = describeChannelSchedules(
     [{ channelName: "渠道 A", modelSchedules: schedules }],
     "Asia/Shanghai",

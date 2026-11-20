@@ -66,7 +66,9 @@ export function describeScheduleWindows(
     const wall = windowToWall(item, timeZone);
     const text = wall ?? item;
     const place = wall ? "" : "（UTC，当前时区无法换算）";
-    const active = activeIndex === index ? "（当前生效）" : "";
+    // 只说「命中」不说「生效」：两层可能同时命中，谁生效还要看层优先级，
+    // 标成「生效」会让被覆盖那层也写着同一个词，和页面上的数值打架
+    const active = activeIndex === index ? "（此刻命中）" : "";
     return `${formatScheduleDays(text.days)} ${formatScheduleTime(text.start, text.end)} · ${formatScheduleMultipliers(item)}${place}${active}`;
   });
 }
@@ -98,7 +100,7 @@ function appendLayer(lines: string[], heading: string, list: ScheduleTextItem[],
   // 命中的那档被折叠掉时单独补一行，否则用户看不到「现在是哪档」
   if (activeIndex !== null && activeIndex >= listed.length) {
     const activeLine = describeScheduleWindows([list[activeIndex]], timeZone, 0)[0];
-    lines.push(`· 当前生效：${activeLine}`);
+    lines.push(`· 此刻命中：${activeLine}`);
   }
 }
 
@@ -131,7 +133,7 @@ export function describeScheduleTooltip(params: {
   if (modelSchedules.length === 0 && channelSchedules.length === 0) return lines.join("\n");
 
   lines.push("");
-  lines.push(`分时档（时间按浏览器时区 ${timeZone} 显示；多档同时命中取最上面一档）`);
+  lines.push(`分时档（时间按浏览器时区 ${timeZone} 显示；模型级优先，同层多档命中取最上面一档）`);
   appendLayer(lines, "模型级", modelSchedules, timeZone, now);
   appendLayer(lines, "渠道级", channelSchedules, timeZone, now);
   return lines.join("\n");
@@ -143,8 +145,20 @@ export type ChannelScheduleInput = {
   channelSchedules?: ScheduleTextItem[];
 };
 
+// 用户侧（模型列表、首页配额卡）的单层清单：带「模型档 / 渠道档」前缀，同样只换算前 6 档
+function appendPrefixed(lines: string[], prefix: string, list: ScheduleTextItem[], timeZone: string, now: Date) {
+  if (list.length === 0) return;
+  const listed = list.slice(0, MAX_LISTED_WINDOWS);
+  const activeIndex = activeScheduleIndex(list, now);
+  for (const line of describeScheduleWindows(listed, timeZone, activeIndex)) lines.push(`· ${prefix} ${line}`);
+  if (list.length > listed.length) lines.push(`· ${prefix} 还有 ${list.length - listed.length} 档未列出`);
+  if (activeIndex !== null && activeIndex >= listed.length) {
+    lines.push(`· ${prefix} 此刻命中：${describeScheduleWindows([list[activeIndex]], timeZone, 0)[0]}`);
+  }
+}
+
 // 用户侧（模型列表、首页配额卡）：一个别名可能挂多条渠道，按渠道分组列出各自的档位，
-// 行数过多时截断，并在末尾统一说明时区口径。
+// 行数过多时截断，并在末尾统一说明时区与优先级口径。
 export function describeChannelSchedules(
   inputs: ChannelScheduleInput[],
   timeZone: string = browserTimeZone(),
@@ -157,16 +171,14 @@ export function describeChannelSchedules(
     const channelSchedules = input.channelSchedules ?? [];
     if (modelSchedules.length === 0 && channelSchedules.length === 0) continue;
     if (multipleChannels && input.channelName) lines.push(`${input.channelName}：`);
-    for (const line of describeScheduleWindows(modelSchedules, timeZone, activeScheduleIndex(modelSchedules, now))) {
-      lines.push(`· 模型档 ${line}`);
-    }
-    for (const line of describeScheduleWindows(channelSchedules, timeZone, activeScheduleIndex(channelSchedules, now))) {
-      lines.push(`· 渠道档 ${line}`);
-    }
+    appendPrefixed(lines, "模型档", modelSchedules, timeZone, now);
+    appendPrefixed(lines, "渠道档", channelSchedules, timeZone, now);
   }
   if (lines.length === 0) return [];
   const capped = lines.slice(0, MAX_TOOLTIP_LINES);
   if (lines.length > capped.length) capped.push(`· …还有 ${lines.length - capped.length} 行`);
-  capped.push(`时间按你的浏览器时区（${timeZone}）显示；未命中任何档位时使用基础倍率。`);
+  capped.push(
+    `时间按你的浏览器时区（${timeZone}）显示；模型级优先，同层多档命中取最上面一档，未命中任何档位时使用基础倍率。`,
+  );
   return capped;
 }
