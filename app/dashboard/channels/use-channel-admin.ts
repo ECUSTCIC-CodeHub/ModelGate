@@ -53,6 +53,21 @@ function expiresAtFromInputValue(value: string): string {
   return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
 
+// 分时倍率换算失败时必须阻断提交，而不是把墙上时间当 UTC 静默落库。
+// 用返回值而不是直接 catch 赋值，避免依赖 try/catch 的确定赋值推断。
+type BuildResult<T> = { ok: true; value: T } | { ok: false; message: string };
+
+function tryBuild<T>(build: () => T): BuildResult<T> {
+  try {
+    return { ok: true, value: build() };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error && error.message ? error.message : "分时倍率换算失败，请检查时段设置。",
+    };
+  }
+}
+
 // 表单里按「每行 Name: Value」编辑，落库是 JSON 字符串
 function formatCustomHeadersInput(raw: unknown): string {
   if (typeof raw !== "string" || raw.trim() === "") return "";
@@ -356,6 +371,15 @@ export function useChannelAdmin() {
       return;
     }
 
+    // 分时档要把浏览器墙上时间换算成 UTC，换算不可行（如落在夏令时空档）时中断提交，
+    // 否则会把墙上时间当 UTC 存进库，整档时段静默偏移数小时
+    const quota = tryBuild(() => buildQuotaPayload(channelForm));
+    if (!quota.ok) {
+      toast({ variant: "error", description: quota.message });
+      return;
+    }
+    const quotaPayload = quota.value;
+
     if (channelEditingId === null) {
       const draftModels = channelModels
         .map((item) => ({
@@ -396,7 +420,7 @@ export function useChannelAdmin() {
           header_mappings: headerMappings,
           group_name: channelForm.group_name.trim(),
           retry_status_codes: normalizeRetryStatusCodes(channelForm.retry_status_codes),
-          ...buildQuotaPayload(channelForm),
+          ...quotaPayload,
           models: draftModels,
         }),
       });
@@ -430,7 +454,7 @@ export function useChannelAdmin() {
       header_mappings: headerMappings,
       group_name: channelForm.group_name.trim(),
       retry_status_codes: normalizeRetryStatusCodes(channelForm.retry_status_codes),
-      ...buildQuotaPayload(channelForm),
+      ...quotaPayload,
     };
     // 输入框留空表示不修改已保存的密钥：省略 api_key 字段，避免空串被当作清空
     if (channelEditingCanViewApiKey && channelForm.api_key !== "") updateBody.api_key = channelForm.api_key;
@@ -739,7 +763,12 @@ export function useChannelAdmin() {
     // 草稿里的分时档是浏览器墙上时间，必须换算成 UTC 再提交；
     // 精简版没有分时倍率判定，省略该字段让服务端保持原值，不能把草稿原样透传
     if (modelGateFeatures.periodQuota) {
-      body.multiplier_schedules = scheduleDraftsToPayload(modelForm.multiplier_schedules);
+      const converted = tryBuild(() => scheduleDraftsToPayload(modelForm.multiplier_schedules));
+      if (!converted.ok) {
+        toast({ variant: "error", description: converted.message });
+        return;
+      }
+      body.multiplier_schedules = converted.value;
     } else {
       delete body.multiplier_schedules;
     }

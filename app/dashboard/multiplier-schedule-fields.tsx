@@ -151,6 +151,10 @@ export function MultiplierScheduleFields({
             </div>
           </div>
 
+          {draft.start === draft.end ? (
+            <p className="text-xs text-[var(--color-destructive)]">开始时间不能等于结束时间，否则保存会被服务端拒绝。</p>
+          ) : null}
+
           {shadowedIndexes.has(index) ? (
             <p className="text-xs text-[var(--color-destructive)]">
               该档位的时段已被上方更靠前的档位整段覆盖，永远不会生效。多档同时命中时按从上到下的顺序取第一档。

@@ -7,8 +7,8 @@
 //    只平移时分会让「凌晨段归属前一日」落到错误的星期上；
 // 2. 草稿与落库载荷之间的字段映射。
 //
-// 档位是每周循环的，换算以当前时刻为参考解出偏移，夏令时切换前后同一档位仍会差 1 小时，
-// 与渠道「限制时段」的既有局限一致。
+// 档位是每周循环的，换算以参考日（默认当前时刻）解出偏移，夏令时切换前后同一档位仍会差 1 小时，
+// 与渠道「限制时段」的既有局限一致；落在夏令时跳表空档里的时刻无法换算，提交时直接报错而不是静默落库。
 
 import { browserTimeZone, utcTimeToWall, wallTimeToUtc } from "@/lib/shared/timezone";
 import { isScheduleDraftDiscarded, type ScheduleDraftWindow } from "@/lib/shared/multiplier-shadow";
@@ -27,6 +27,7 @@ export type MultiplierSchedulePayload = ScheduleWindow & {
 export type MultiplierScheduleDraft = ScheduleDraftWindow & { key: string };
 
 const DAYS_PER_WEEK = 7;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 function shiftDays(days: number[], deltaDays: number): number[] {
   const delta = ((deltaDays % DAYS_PER_WEEK) + DAYS_PER_WEEK) % DAYS_PER_WEEK;
@@ -37,50 +38,95 @@ function copyWindow(window: ScheduleWindow): ScheduleWindow {
   return { days: [...window.days], start: window.start, end: window.end };
 }
 
-// 编辑中还没填完的档位（未选星期、首尾相同）原样返回：换算它没有意义，
-// 提交时也已被 isScheduleDraftDiscarded 或服务端校验挡掉
+// 编辑中还没填完的档位（未选星期、首尾相同）：换算它没有意义，
+// 提交时已被 isScheduleDraftDiscarded 或服务端校验挡掉
 function isUnfinished(window: ScheduleWindow): boolean {
   return window.days.length === 0 || window.start === window.end;
 }
 
+// 需要真正换算的档位：时分格式合法、首尾不同、有星期。不满足的原样带给服务端校验
+function isConvertible(window: ScheduleWindow): boolean {
+  return window.days.length > 0
+    && window.start !== window.end
+    && TIME_RE.test(window.start)
+    && TIME_RE.test(window.end);
+}
+
 // UTC 时分 => 指定时区的墙上时分，星期按起点跨日的方向反向平移。
-// 起点换回 UTC 时的 dayShift 与正向换算同源，保证两个方向互逆。
-export function scheduleToLocal(window: ScheduleWindow, timeZone: string): ScheduleWindow {
-  if (isUnfinished(window)) return copyWindow(window);
-  const start = utcTimeToWall(window.start, timeZone);
-  const end = utcTimeToWall(window.end, timeZone);
-  // 墙上时间非法或落在夏令时缺口里时原样返回，交给服务端校验，不做猜测性平移
-  if (!start || !end) return copyWindow(window);
-  const dayShift = wallTimeToUtc(start, timeZone)?.dayShift ?? 0;
+// 起点换回 UTC 时的 dayShift 与正向换算同源，保证两个方向互逆；换算不可行时返回 null。
+export function tryScheduleToLocal(
+  window: ScheduleWindow,
+  timeZone: string,
+  base: Date = new Date(),
+): ScheduleWindow | null {
+  const start = utcTimeToWall(window.start, timeZone, base);
+  const end = utcTimeToWall(window.end, timeZone, base);
+  if (!start || !end) return null;
+  const dayShift = wallTimeToUtc(start, timeZone, base)?.dayShift ?? 0;
   return { days: shiftDays(window.days, -dayShift), start, end };
 }
 
 // 指定时区的墙上时分 => UTC 时分，星期按起点的跨日偏移平移。
-// 终点与起点各自解析：跨夏令时切换的档位两端按真实偏移换算，长度会随之变化（与真实时长一致）。
-export function scheduleToUtc(window: ScheduleWindow, timeZone: string): ScheduleWindow {
-  if (isUnfinished(window)) return copyWindow(window);
-  const start = wallTimeToUtc(window.start, timeZone);
-  const end = wallTimeToUtc(window.end, timeZone);
-  if (!start || !end) return copyWindow(window);
+// 终点与起点各自解析：跨夏令时切换的档位两端按真实偏移换算，长度随之变化（与真实时长一致）。
+// 墙上时间落在夏令时跳表空档里时无法换算，返回 null 由调用方决定是否阻断。
+export function tryScheduleToUtc(
+  window: ScheduleWindow,
+  timeZone: string,
+  base: Date = new Date(),
+): ScheduleWindow | null {
+  const start = wallTimeToUtc(window.start, timeZone, base);
+  const end = wallTimeToUtc(window.end, timeZone, base);
+  if (!start || !end) return null;
   return { days: shiftDays(window.days, start.dayShift), start: start.utc, end: end.utc };
 }
 
+// 展示用：换算不可行时原样返回，避免把界面上的时间改坏（提交路径不走这里）
+export function scheduleToLocal(window: ScheduleWindow, timeZone: string, base: Date = new Date()): ScheduleWindow {
+  if (isUnfinished(window)) return copyWindow(window);
+  return tryScheduleToLocal(window, timeZone, base) ?? copyWindow(window);
+}
+
+export function scheduleToUtc(window: ScheduleWindow, timeZone: string, base: Date = new Date()): ScheduleWindow {
+  if (isUnfinished(window)) return copyWindow(window);
+  return tryScheduleToUtc(window, timeZone, base) ?? copyWindow(window);
+}
+
+function parseDimension(value: string, index: number, label: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed === "") return null;
+  const num = Number(trimmed);
+  if (!Number.isFinite(num)) throw new Error(`第 ${index + 1} 档的${label}倍率不是有效数字。`);
+  return num;
+}
+
 // 时区默认取设置者浏览器时区；显式传入只用于验证脚本与跨时区场景。
+// 换算不可行时抛错：静默把墙上时间当 UTC 落库，会让整档时段偏移数小时且无人察觉。
 export function scheduleDraftsToPayload(
   drafts: MultiplierScheduleDraft[],
   timeZone: string = browserTimeZone(),
+  base: Date = new Date(),
 ): MultiplierSchedulePayload[] {
   const out: MultiplierSchedulePayload[] = [];
-  for (const draft of drafts) {
+  for (let index = 0; index < drafts.length; index += 1) {
+    const draft = drafts[index];
     // 与提交前的丢弃口径共用一份判定，避免「编辑器说不会生效、保存后其实还在」
     if (isScheduleDraftDiscarded(draft)) continue;
-    const window = scheduleToUtc(draft, timeZone);
+    const tokenMultiplier = parseDimension(draft.token_multiplier, index, "Token");
+    const requestMultiplier = parseDimension(draft.request_multiplier, index, "请求");
+    let window: ScheduleWindow = { days: draft.days, start: draft.start, end: draft.end };
+    if (isConvertible(window)) {
+      const converted = tryScheduleToUtc(window, timeZone, base);
+      if (!converted) {
+        throw new Error(`第 ${index + 1} 档的时段在 ${timeZone} 下无法换算（可能落在夏令时跳过的时段里），请调整时间。`);
+      }
+      window = converted;
+    }
     out.push({
       days: window.days,
       start: window.start,
       end: window.end,
-      token_multiplier: draft.token_multiplier.trim() === "" ? null : Number(draft.token_multiplier),
-      request_multiplier: draft.request_multiplier.trim() === "" ? null : Number(draft.request_multiplier),
+      token_multiplier: tokenMultiplier,
+      request_multiplier: requestMultiplier,
     });
   }
   return out;
@@ -89,9 +135,10 @@ export function scheduleDraftsToPayload(
 export function schedulesToDrafts(
   schedules: MultiplierSchedulePayload[],
   timeZone: string = browserTimeZone(),
+  base: Date = new Date(),
 ): MultiplierScheduleDraft[] {
   return schedules.map((schedule, index) => {
-    const window = scheduleToLocal(schedule, timeZone);
+    const window = scheduleToLocal(schedule, timeZone, base);
     return {
       key: `s${index}`,
       days: window.days,

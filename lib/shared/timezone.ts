@@ -10,7 +10,14 @@ export function browserTimeZone(): string {
   }
 }
 
-function partsInTimeZone(date: Date, timeZone: string): { hour: string; minute: string; weekday: string } {
+// 构造 DateTimeFormat 比 formatToParts 贵两个数量级，而 wallTimeToUtc 要按分钟扫一整个 UTC 日：
+// 按时区缓存，避免每档每次换算都重建上千个实例（档位上限 20 档，换算在点击保存时同步执行）。
+const FORMATTER_CACHE_LIMIT = 32;
+const formatters = new Map<string, Intl.DateTimeFormat>();
+
+function formatterInTimeZone(timeZone: string): Intl.DateTimeFormat {
+  const cached = formatters.get(timeZone);
+  if (cached) return cached;
   const fmt = new Intl.DateTimeFormat("en-US", {
     timeZone,
     hour: "2-digit",
@@ -18,15 +25,25 @@ function partsInTimeZone(date: Date, timeZone: string): { hour: string; minute: 
     weekday: "short",
     hour12: false,
   });
-  const parts = fmt.formatToParts(date);
+  // 时区来自下拉框，数量有限；仍设上限，避免被任意字符串撑爆内存
+  if (formatters.size >= FORMATTER_CACHE_LIMIT) formatters.clear();
+  formatters.set(timeZone, fmt);
+  return fmt;
+}
+
+// 时区非法或运行时不支持时返回 null：调用方据此判定「换算不可行」，
+// 不能伪造 00:00，否则会把换算失败伪装成一次成功的换算。
+function partsInTimeZone(date: Date, timeZone: string): { hour: string; minute: string; weekday: string } | null {
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = formatterInTimeZone(timeZone).formatToParts(date);
+  } catch {
+    return null;
+  }
   const hour = parts.find((p) => p.type === "hour")?.value ?? "00";
   const minute = parts.find((p) => p.type === "minute")?.value ?? "00";
   const weekday = parts.find((p) => p.type === "weekday")?.value ?? "";
-  try {
-    return { hour: hour === "24" ? "00" : hour, minute, weekday };
-  } catch {
-    return { hour: "00", minute: "00", weekday: "" };
-  }
+  return { hour: hour === "24" ? "00" : hour, minute, weekday };
 }
 
 const WEEKDAY_ORDER = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -41,12 +58,8 @@ export function utcTimeToWall(hhmm: string, timeZone: string, base: Date = new D
   if (!Number.isInteger(h) || !Number.isInteger(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
   const dayStart = Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate());
   const utcMs = dayStart + h * 3600_000 + m * 60_000;
-  try {
-    const { hour, minute } = partsInTimeZone(new Date(utcMs), timeZone);
-    return `${hour}:${minute}`;
-  } catch {
-    return null;
-  }
+  const parts = partsInTimeZone(new Date(utcMs), timeZone);
+  return parts ? `${parts.hour}:${parts.minute}` : null;
 }
 
 // 把某时区的墙上 HH:MM 换算成 UTC 的 HH:MM；dayShift 表示相对该时区当日的星期偏移（-1/0/1）。
@@ -58,13 +71,8 @@ export function wallTimeToUtc(hhmm: string, timeZone: string, base: Date = new D
   let best: { utcMs: number; tzWeekday: number } | null = null;
   // 以 base 当天 UTC 日起点为参考，按 1 分钟步长扫描一个 UTC 日，找墙上时间匹配的候选。
   for (let off = 0; off < 86400_000; off += 60_000) {
-    const candidate = new Date(dayStart + off);
-    let parts;
-    try {
-      parts = partsInTimeZone(candidate, timeZone);
-    } catch {
-      continue;
-    }
+    const parts = partsInTimeZone(new Date(dayStart + off), timeZone);
+    if (!parts) continue;
     if (`${parts.hour}:${parts.minute}` === target) {
       best = { utcMs: off, tzWeekday: weekdayToIso(parts.weekday) };
       break;

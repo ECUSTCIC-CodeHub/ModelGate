@@ -14,6 +14,7 @@ import {
   scheduleToLocal,
   schedulesToDrafts,
   scheduleToUtc,
+  tryScheduleToUtc,
 } from "@/lib/shared/multiplier-schedule-tz";
 
 let passed = 0;
@@ -167,6 +168,23 @@ check("时间非法或首尾相同时原样保留，交给服务端拒绝", () =
   assert.deepEqual(scheduleToUtc(draft, "Asia/Shanghai"), draft);
   const noDays = { days: [], start: "10:00", end: "12:00" };
   assert.deepEqual(scheduleToUtc(noDays, "Asia/Shanghai"), noDays);
+});
+
+check("夏令时跳表空档里的时段拒绝换算，而不是把墙上时间当 UTC 落库", () => {
+  const window = { days: [7], start: "02:30", end: "03:30" };
+  // 2024-03-10 是美东夏令时切换日，当地 02:00-03:00 这一小时不存在
+  const dstDay = new Date(Date.UTC(2024, 2, 10, 12, 0, 0));
+  assert.equal(tryScheduleToUtc(window, "America/New_York", dstDay), null);
+  const drafts = [{ key: "a", days: [7], start: "02:30", end: "03:30", token_multiplier: "0.5", request_multiplier: "" }];
+  assert.throws(() => scheduleDraftsToPayload(drafts, "America/New_York", dstDay), /第 1 档/);
+  // 非切换日同一档正常换算：美东冬令时 02:30 = UTC 07:30
+  const winterDay = new Date(Date.UTC(2024, 1, 18, 12, 0, 0));
+  assert.deepEqual(scheduleToUtc(window, "America/New_York", winterDay), { days: [7], start: "07:30", end: "08:30" });
+});
+
+check("倍率不是有效数字时直接报错，不静默降级", () => {
+  const drafts = [{ key: "a", days: [1], start: "09:00", end: "10:00", token_multiplier: "abc", request_multiplier: "" }];
+  assert.throws(() => scheduleDraftsToPayload(drafts, "UTC"), /不是有效数字/);
 });
 
 console.log("");
