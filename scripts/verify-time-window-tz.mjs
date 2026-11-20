@@ -13,7 +13,9 @@
 import assert from "node:assert/strict";
 import { findEffectiveScheduleIndex } from "@/lib/gateway/multiplier-schedule";
 import { findShadowedDraftIndexes } from "@/lib/shared/multiplier-shadow";
+import { isChannelTimeAllowed } from "@/lib/gateway/channel-time";
 import {
+  matchesWindow,
   parseTimeWindows,
   serializeTimeWindows,
   windowToWall,
@@ -136,6 +138,42 @@ check("逐分钟语义等价：墙上时间窗口与 UTC 窗口命中完全一�
           const hitUtc = findEffectiveScheduleIndex([utcWindow], utcDate) !== null;
           const hitWall = findEffectiveScheduleIndex([wallWindow], wallDate) !== null;
           if (hitWall !== hitUtc) {
+            assert.fail(
+              `${name} ${timeZone} base=${base.toISOString()} minute=${minute}`
+              + `（UTC ${JSON.stringify(utcWindow)} / 墙上 ${JSON.stringify(wallWindow)}）`,
+            );
+          }
+        }
+      }
+    }
+  }
+});
+
+check("跨零点窗口的凌晨段归属前一日", () => {
+  const window = { days: [1], start: "22:00", end: "06:00" };
+  assert.equal(matchesWindow(window, 1, 23 * 60), true, "周一 23:00");
+  assert.equal(matchesWindow(window, 2, 5 * 60), true, "周二 05:00");
+  assert.equal(matchesWindow(window, 1, 5 * 60), false, "周一 05:00 不在窗口内");
+  assert.equal(matchesWindow(window, 2, 23 * 60), false, "周二 23:00 不在窗口内");
+});
+
+check("渠道可用时段：墙上时间窗口与换算后的 UTC 窗口逐分钟一致", () => {
+  for (const baseMs of BASE_MS_LIST) {
+    const base = new Date(baseMs);
+    for (const { name, window } of WINDOWS) {
+      for (const timeZone of TIME_ZONES) {
+        const wallWindow = normalize(window);
+        const utcWindow = converted(windowToUtc, wallWindow, timeZone, base);
+        const offset = zoneOffsetMinutes(timeZone, base);
+        const json = JSON.stringify([utcWindow]);
+        for (let minute = 0; minute < MINUTES_PER_WEEK; minute += 1) {
+          const utcDate = new Date(baseMs + minute * 60_000);
+          const wallDate = new Date(utcDate.getTime() + offset * 60_000);
+          const wallDay = wallDate.getUTCDay() === 0 ? 7 : wallDate.getUTCDay();
+          const wallMinutes = wallDate.getUTCHours() * 60 + wallDate.getUTCMinutes();
+          const expected = matchesWindow(wallWindow, wallDay, wallMinutes);
+          const actual = isChannelTimeAllowed(json, utcDate);
+          if (actual !== expected) {
             assert.fail(
               `${name} ${timeZone} base=${base.toISOString()} minute=${minute}`
               + `（UTC ${JSON.stringify(utcWindow)} / 墙上 ${JSON.stringify(wallWindow)}）`,

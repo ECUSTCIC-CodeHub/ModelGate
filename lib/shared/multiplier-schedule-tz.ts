@@ -9,8 +9,6 @@ import { browserTimeZone } from "@/lib/shared/timezone";
 import { isConvertibleWindow, windowToUtc, windowToWall, type WallClockWindow } from "@/lib/shared/time-window";
 import { isScheduleDraftDiscarded, type ScheduleDraftWindow } from "@/lib/shared/multiplier-shadow";
 
-export type ScheduleWindow = WallClockWindow;
-
 export type MultiplierSchedulePayload = WallClockWindow & {
   token_multiplier: number | null;
   request_multiplier: number | null;

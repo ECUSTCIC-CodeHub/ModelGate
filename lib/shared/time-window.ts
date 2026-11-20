@@ -43,6 +43,24 @@ export function isConvertibleWindow(window: WallClockWindow): boolean {
     && TIME_RE.test(window.end);
 }
 
+// 判断某一时刻（UTC 星期 1..7 与当日分钟 0..1439）是否落在窗口内。
+// 命中判定为闭区间 [start, end]；跨零点窗口的凌晨段归属**前一日**的 days，
+// 与「22:00-06:00 勾周一 = 周一 22:00 至周二 06:00」的自然理解一致。
+// 渠道可用时段与分时倍率共用这一份判定，避免两处口径漂移。
+export function matchesWindow(window: WallClockWindow, day: number, minutes: number): boolean {
+  const [sh, sm] = window.start.split(":").map(Number);
+  const [eh, em] = window.end.split(":").map(Number);
+  if (!Number.isInteger(sh) || !Number.isInteger(sm) || !Number.isInteger(eh) || !Number.isInteger(em)) return false;
+  const startM = sh * 60 + sm;
+  const endM = eh * 60 + em;
+  if (endM > startM) {
+    return window.days.includes(day) && minutes >= startM && minutes <= endM;
+  }
+  const prevDay = day === 1 ? DAYS_PER_WEEK : day - 1;
+  return (window.days.includes(day) && minutes >= startM)
+    || (window.days.includes(prevDay) && minutes <= endM);
+}
+
 // 墙上时间 => UTC：星期按起点的跨日偏移平移。
 // 终点与起点各自解析：跨夏令时切换的档位两端按真实偏移换算，长度随之变化（与真实时长一致）。
 export function windowToUtc(

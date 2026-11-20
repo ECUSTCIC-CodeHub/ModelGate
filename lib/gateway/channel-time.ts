@@ -1,4 +1,5 @@
 import { toUtcDatetime, parseStoredUtc, utcWallTime } from "@/lib/core/db/datetime";
+import { matchesWindow } from "@/lib/shared/time-window";
 
 const MAX_WINDOWS = 20;
 const TIME_RE = /^\d{1,2}:\d{2}$/;
@@ -41,23 +42,14 @@ export function parseTimeRestrictions(raw: string | null | undefined): TimeWindo
 
 // 未配置时段则不限制（始终允许）；配置后仅窗口内允许。
 // start/end 存储为 UTC 时分，判断也按 UTC 墙上时间，不依赖服务器时区。
+// 命中判定与分时倍率共用 lib/shared/time-window.ts 的 matchesWindow：
+// 跨零点窗口的凌晨段归属**前一日**的 days（22:00-06:00 勾周一 = 周一 22:00 至周二 06:00），
+// 与编辑器里「结束时间早于开始时间表示跨午夜」的表述一致。
 export function isChannelTimeAllowed(raw: string | null | undefined, now: Date = new Date()): boolean {
   const windows = parseTimeRestrictions(raw);
   if (windows.length === 0) return true;
   const { day, minutes } = utcWallTime(now);
-  for (const win of windows) {
-    if (!win.days.includes(day)) continue;
-    const [sh, sm] = win.start.split(":").map(Number);
-    const [eh, em] = win.end.split(":").map(Number);
-    const startM = sh * 60 + sm;
-    const endM = eh * 60 + em;
-    if (endM > startM) {
-      if (minutes >= startM && minutes <= endM) return true;
-    } else {
-      if (minutes >= startM || minutes <= endM) return true;
-    }
-  }
-  return false;
+  return windows.some((win) => matchesWindow(win, day, minutes));
 }
 
 export function isChannelExpired(expiresAt: string | Date | null | undefined): boolean {

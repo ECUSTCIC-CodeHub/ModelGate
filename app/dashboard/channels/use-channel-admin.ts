@@ -382,7 +382,7 @@ export function useChannelAdmin() {
     if (restrictions.failed.length > 0) {
       toast({
         variant: "error",
-        description: `第 ${restrictions.failed.map((index) => index + 1).join("、")} 个限制时段在当前时区无法换算，请调整时间后再保存。`,
+        description: `第 ${restrictions.failed.map((index) => index + 1).join("、")} 个限制时段无法换算（开始时间等于结束时间，或该时分落在所选时区的夏令时空档里），请调整后再保存。`,
       });
       return;
     }

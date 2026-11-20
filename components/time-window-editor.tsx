@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { serializeTimeWindows, windowToUtc, windowToWall, type WallClockWindow } from "@/lib/shared/time-window";
+import { isIncompleteWindow, windowToUtc, windowToWall, type WallClockWindow } from "@/lib/shared/time-window";
 
 // 行的 start/end 是「编辑时区」的墙上时间：提交时换成 UTC 时分存库，回显时再换回来。
 // 时区由父级表单持有（time_restrictions_time_zone），否则父级按浏览器时区回填 JSON 会把
@@ -29,16 +29,21 @@ const WEEKDAYS: Array<{ value: number; label: string }> = [
   { value: 7, label: "日" },
 ];
 
-const EMPTY_WINDOW: TimeWindowDraft = { days: [], start: "09:00", end: "18:00" };
+// 服务端上限 20，这里同步封顶，避免填满后保存才被整单拒绝
+const MAX_WINDOWS = 20;
 
-function timezoneOptions(): string[] {
+function timezoneOptions(current: string): string[] {
+  let options: string[] = [];
   try {
-    const supported = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.("timeZone");
-    if (supported && supported.length > 0) return supported;
+    options = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.("timeZone") ?? [];
   } catch {
     // 老浏览器降级
   }
-  return ["UTC", "Asia/Shanghai", "Asia/Tokyo", "America/New_York", "America/Los_Angeles", "Europe/London"];
+  if (options.length === 0) {
+    options = ["UTC", "Asia/Shanghai", "Asia/Tokyo", "America/New_York", "America/Los_Angeles", "Europe/London"];
+  }
+  // 浏览器时区可能是列表之外的别名（如 Asia/Calcutta），不塞进去 Select 会显示空白
+  return options.includes(current) ? options : [current, ...options];
 }
 
 export function TimeWindowEditor({
@@ -50,9 +55,7 @@ export function TimeWindowEditor({
   timeZone: string;
   onChange: (windows: TimeWindowDraft[], timeZone: string) => void;
 }) {
-  const tzOptions = useMemo(() => timezoneOptions(), []);
-  // 换算不可行的行在这里标红；保存时由父组件用同一个函数判定并阻断
-  const failed = useMemo(() => new Set(serializeTimeWindows(windows, timeZone).failed), [windows, timeZone]);
+  const tzOptions = useMemo(() => timezoneOptions(timeZone), [timeZone]);
 
   function emit(next: TimeWindowDraft[], nextTimeZone: string = timeZone) {
     onChange(next, nextTimeZone);
@@ -84,7 +87,9 @@ export function TimeWindowEditor({
   }
 
   function add() {
-    emit([...windows, { ...EMPTY_WINDOW }]);
+    if (windows.length >= MAX_WINDOWS) return;
+    // days 每次给新数组，避免多行共享同一个数组引用
+    emit([...windows, { days: [], start: "09:00", end: "18:00" }]);
   }
 
   return (
@@ -140,20 +145,18 @@ export function TimeWindowEditor({
               <Input type="time" value={win.end} onChange={(e) => update(index, { end: e.target.value })} />
             </div>
           </div>
-          {win.start === win.end ? (
+          {isIncompleteWindow(win) ? (
+            <p className="text-xs text-[var(--color-foreground-muted)]">本时段未填完（未选星期或未填时间），保存时会被忽略。</p>
+          ) : win.start === win.end ? (
             <p className="text-xs text-[var(--color-danger)]">开始时间不能等于结束时间。</p>
-          ) : failed.has(index) ? (
-            <p className="text-xs text-[var(--color-danger)]">
-              该时段在 {timeZone} 下无法换算（时区不可用，或落在夏令时跳过的空档里），请调整后再保存。
-            </p>
           ) : null}
         </div>
       ))}
-      <Button type="button" variant="outline" className="w-full" onClick={add}>
+      <Button type="button" variant="outline" className="w-full" onClick={add} disabled={windows.length >= MAX_WINDOWS}>
         <Plus className="h-4 w-4" /> 添加时段
       </Button>
       <p className="text-xs text-[var(--color-foreground-muted)]">
-        配置后渠道仅在这些时段内可用。结束时间早于开始时间表示跨午夜。留空则不限制。
+        配置后渠道仅在这些时段内可用，最多 {MAX_WINDOWS} 个时段；结束时间早于开始时间表示跨午夜。留空则不限制。
       </p>
     </div>
   );

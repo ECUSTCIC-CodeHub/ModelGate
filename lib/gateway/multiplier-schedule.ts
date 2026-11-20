@@ -1,4 +1,5 @@
 import { utcWallTime } from "@/lib/core/db/datetime";
+import { matchesWindow } from "@/lib/shared/time-window";
 
 const MAX_SCHEDULES = 20;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -124,21 +125,10 @@ export function normalizeMultiplierSchedules(schedules: MultiplierSchedule[]): s
 }
 
 // 时段判断按 UTC 墙上时间解释，不依赖服务器时区；支持跨零点窗口。
-// 命中判定为闭区间 [start, end]（含两端），与渠道时段限制 channel-time 的口径一致。
-// 跨零点窗口（end <= start）的凌晨段归属**前一日**：22:00-06:00 勾选周一，
-// 则周一 22:00 至周二 06:00 都在窗口内，无需额外勾选周二。
+// 判定实现收在 lib/shared/time-window.ts，与渠道可用时段（channel-time）共用一份，
+// 避免「可用时段」与「计费时段」两处口径漂移。
 function windowMatches(schedule: Pick<MultiplierSchedule, "days" | "start" | "end">, day: number, minutes: number): boolean {
-  const [sh, sm] = schedule.start.split(":").map(Number);
-  const [eh, em] = schedule.end.split(":").map(Number);
-  const startM = sh * 60 + sm;
-  const endM = eh * 60 + em;
-  if (endM > startM) {
-    return schedule.days.includes(day) && minutes >= startM && minutes <= endM;
-  }
-  // 跨零点：当天 [start, 24:00] 属于当天，[00:00, end] 属于前一天
-  const prevDay = day === 1 ? 7 : day - 1;
-  return (schedule.days.includes(day) && minutes >= startM)
-    || (schedule.days.includes(prevDay) && minutes <= endM);
+  return matchesWindow(schedule, day, minutes);
 }
 
 export type ResolvedMultiplier = {
