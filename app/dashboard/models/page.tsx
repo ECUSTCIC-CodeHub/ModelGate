@@ -176,6 +176,8 @@ export default function AvailableModelsPage() {
   const initialProfile = useAuthProfile();
   const [role, setRole] = useState<"admin" | "user">(() => initialProfile?.role ?? getCachedProfile()?.role ?? "user");
   const [rows, setRows] = useState<ModelItem[]>([]);
+  // 数据加载时刻，用来让「此刻命中」标注与服务端算出的数值保持同一时点
+  const [rowsLoadedAt, setRowsLoadedAt] = useState(0);
   const [metricsMap, setMetricsMap] = useState<Record<string, ModelMetrics>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -255,6 +257,9 @@ export default function AvailableModelsPage() {
         }
 
         setRows(data?.data ?? []);
+        // 与数据同一时刻取「现在」：页面上显示的生效倍率由服务端在请求时算好，
+        // 档位标注必须用同一个时点，否则跨档位时会标着「此刻命中」却配着旧数值
+        setRowsLoadedAt(Date.now());
         if (Array.isArray(data?.brand_groups)) {
           setBrandGroups(data.brand_groups.filter(
             (g: unknown): g is BrandGroup => !!g && typeof g === "object" && typeof (g as BrandGroup).label === "string" && typeof (g as BrandGroup).pattern === "string",
@@ -345,14 +350,14 @@ export default function AvailableModelsPage() {
 
   // 每行的档位清单只算一次：Token 与请求两列、卡片与列表共用同一份，
   // 避免每次重渲染按渠道×层×档位重复做时区换算。
-  // 结果含「此刻命中」标注，所以要按分钟失效，否则页面停着不动标注会一直停在加载那一刻
-  const minuteBucket = Math.floor(Date.now() / 60_000);
+  // 时点固定为数据加载时刻：服务端算出的生效倍率就是那一刻的值，跟着页面停留时的
+  // 「现在」重算标注会和旁边显示的数值打架（要换档就重新加载页面）
   const scheduleLinesById = useMemo(() => {
-    const at = new Date(minuteBucket * 60_000);
+    const at = new Date(rowsLoadedAt || Date.now());
     const map = new Map<string, string[]>();
     for (const row of rows) map.set(row.id, scheduleWindowLines(row, at));
     return map;
-  }, [rows, minuteBucket]);
+  }, [rows, rowsLoadedAt]);
 
   function renderMultiplier(row: ModelItem, type: "token" | "request") {
     const effectiveMin = type === "token" ? row.effective_token_multiplier_min : row.effective_request_multiplier_min;

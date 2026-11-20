@@ -97,9 +97,9 @@ function appendLayer(lines: string[], heading: string, list: ScheduleTextItem[],
   const activeIndex = activeScheduleIndex(list, now);
   for (const line of describeScheduleWindows(listed, timeZone, activeIndex)) lines.push(`· ${line}`);
   if (list.length > listed.length) lines.push(`· …还有 ${list.length - listed.length} 档`);
-  // 命中的那档被折叠掉时单独补一行，否则用户看不到「现在是哪档」
+  // 命中的那档被折叠掉时单独补一行，否则用户看不到「现在是哪档」；行尾不再重复标注
   if (activeIndex !== null && activeIndex >= listed.length) {
-    const activeLine = describeScheduleWindows([list[activeIndex]], timeZone, 0)[0];
+    const activeLine = describeScheduleWindows([list[activeIndex]], timeZone, null)[0];
     lines.push(`· 此刻命中：${activeLine}`);
   }
 }
@@ -151,9 +151,9 @@ function appendPrefixed(lines: string[], prefix: string, list: ScheduleTextItem[
   const listed = list.slice(0, MAX_LISTED_WINDOWS);
   const activeIndex = activeScheduleIndex(list, now);
   // 命中的那档被折叠时先补一行：否则尾部补行会被整体行数上限截掉，
-  // 最需要知道「现在哪档」的时候反而看不到
+  // 最需要知道「现在哪档」的时候反而看不到。这里不再让行尾重复标注一次
   if (activeIndex !== null && activeIndex >= listed.length) {
-    lines.push(`· ${prefix} 此刻命中：${describeScheduleWindows([list[activeIndex]], timeZone, 0)[0]}`);
+    lines.push(`· ${prefix} 此刻命中：${describeScheduleWindows([list[activeIndex]], timeZone, null)[0]}`);
   }
   for (const line of describeScheduleWindows(listed, timeZone, activeIndex)) lines.push(`· ${prefix} ${line}`);
   if (list.length > listed.length) lines.push(`· ${prefix} 还有 ${list.length - listed.length} 档未列出`);
