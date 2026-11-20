@@ -625,7 +625,7 @@ export default function AvailableModelsPage() {
                                   基础倍率 {row.token_multiplier_min !== row.token_multiplier_max
                                     ? row.token_multiplier_min + "x~" + row.token_multiplier_max + "x"
                                     : row.token_multiplier_min + "x"}
-                                  {row.token_multiplier_from_model_schedule ? "；当前时段由模型级分时档覆盖" : ""}
+                                  {row.token_multiplier_from_model_schedule ? "；当前时段该维度部分或全部由模型级分时档覆盖" : ""}
                                 </TooltipContent>
                               </Tooltip>
                               <Tooltip>
@@ -645,16 +645,16 @@ export default function AvailableModelsPage() {
                                   基础倍率 {row.request_multiplier_min !== row.request_multiplier_max
                                     ? row.request_multiplier_min + "x~" + row.request_multiplier_max + "x"
                                     : row.request_multiplier_min + "x"}
-                                  {row.request_multiplier_from_model_schedule ? "；当前时段由模型级分时档覆盖" : ""}
+                                  {row.request_multiplier_from_model_schedule ? "；当前时段该维度部分或全部由模型级分时档覆盖" : ""}
                                 </TooltipContent>
                               </Tooltip>
                               {scheduled ? (
                                 <span
                                   className="inline-flex items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-foreground-secondary)]"
-                                  title={`当前时段命中${describeScheduleSource({
+                                  title={`当前时段命中的分时档：${describeScheduleSource({
                                     token: row.token_multiplier_from_model_schedule,
                                     request: row.request_multiplier_from_model_schedule,
-                                  })}分时档，显示的倍率已按分时档覆盖`}
+                                  })}（多渠道时按渠道各自命中），显示的倍率已按分时档覆盖`}
                                 >
                                   分时
                                 </span>

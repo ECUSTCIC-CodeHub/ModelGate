@@ -110,7 +110,8 @@ function expandWindow(window: ScheduleWindow): Array<{ day: number; start: numbe
 }
 
 // 网关每层只在第一条命中的档位上取值，同层后面命中的档位整段作废（不管有没有填维度）。
-// 所以判断「永远不会生效」只需看时段：被前面某几档拼起来盖住的时段，永远轮不到这一档。
+// 所以一旦整段时段都被前面若干档拼起来盖住，这一档就永远轮不到；只被盖住部分时段的档位仍会在剩余时段生效。
+// 这里只看时段：若将来网关改成同层逐维合并，判定要跟着改（verify-multiplier-layering 有对应断言）。
 function findShadowedSchedules(drafts: MultiplierScheduleDraft[]): Set<number> {
   const covered: Array<{ day: number; start: number; end: number }> = [];
   const shadowed = new Set<number>();

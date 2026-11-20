@@ -93,10 +93,10 @@ export function ModelCard({
           <TooltipContent side="top" className="max-w-64 text-xs">
             基础倍率 T {model.token_multiplier ?? 1}x / R {model.request_multiplier ?? 1}x。
             {effective.schedule_applied
-              ? `当前时段命中${describeScheduleSource({
+              ? `当前时段生效倍率由${describeScheduleSource({
                   token: effective.token_from_model_schedule,
                   request: effective.request_from_model_schedule,
-                })}分时档，显示的是实际生效倍率。`
+                })}，显示的是实际生效倍率。`
               : "当前时段未命中分时档。"}
           </TooltipContent>
         </Tooltip>
