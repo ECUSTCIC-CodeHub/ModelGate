@@ -28,6 +28,12 @@ function hasTimeWindow(tr?: string | null): boolean {
   }
 }
 
+// 配了时段却一条都用不了：网关会按「不可用」处理，列表上必须能看出来
+function isTimeWindowBroken(tr?: string | null): boolean {
+  if (!tr || tr.trim() === "") return false;
+  return hasTimeWindow(tr) && parseTimeRestrictions(tr).length === 0;
+}
+
 export function ChannelTable({
   channels,
   onCreate,
@@ -125,9 +131,11 @@ export function ChannelTable({
                   {isExpired(row.expires_at) && (
                     <Badge variant="destructive" title="过期渠道在路由中已不可用，将在管理员下次操作任意渠道后自动禁用">已过期</Badge>
                   )}
-                  {hasTimeWindow(row.time_restrictions) && (
+                  {isTimeWindowBroken(row.time_restrictions) ? (
+                    <Badge variant="destructive" title="限制时段配置无法解析，该渠道当前对所有请求不可用；请编辑后重新保存">时段异常</Badge>
+                  ) : hasTimeWindow(row.time_restrictions) ? (
                     <Badge variant="outline">限时段</Badge>
-                  )}
+                  ) : null}
                 </div>
               </TableCell>
               <TableCell>

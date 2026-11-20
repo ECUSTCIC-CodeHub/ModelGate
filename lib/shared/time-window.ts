@@ -20,6 +20,8 @@ export type WindowConversionResult = {
   windows: WallClockWindow[];
   // 换算不可行的行下标（保留原值），调用方据此提示并阻断保存
   failed: number[];
+  // 原文非空却一条可用时段都解析不出来：网关会按「不可用」处理，必须让管理端看到
+  broken: boolean;
 };
 
 const DAYS_PER_WEEK = 7;
@@ -41,6 +43,13 @@ export function isConvertibleWindow(window: WallClockWindow): boolean {
     && window.start !== window.end
     && TIME_RE.test(window.start)
     && TIME_RE.test(window.end);
+}
+
+// 填了值但不是合法时分（如历史数据里的 24:00）：属于数据坏了，
+// 不能当成「未填完」静默跳过，否则保存时会被无声删掉
+export function isMalformedWindow(window: WallClockWindow): boolean {
+  return (window.start !== "" && !TIME_RE.test(window.start))
+    || (window.end !== "" && !TIME_RE.test(window.end));
 }
 
 // 判断某一时刻（UTC 星期 1..7 与当日分钟 0..1439）是否落在窗口内。
@@ -102,8 +111,11 @@ export function serializeTimeWindows(
   const failed: number[] = [];
   const out: WallClockWindow[] = [];
   windows.forEach((window, index) => {
-    if (isIncompleteWindow(window)) return;
-    if (!isConvertibleWindow(window)) {
+    // 未选星期的行表达不了任何限制，编辑器已提示会被忽略，直接跳过
+    if (window.days.length === 0) return;
+    // 选了星期但时分缺失/非法/首尾相同：属于填写错误，必须报给调用方阻断保存，
+    // 不能当成没填而静默丢出落库结果（那等于无声解除限制）
+    if (isMalformedWindow(window) || isIncompleteWindow(window) || !isConvertibleWindow(window)) {
       failed.push(index);
       out.push({ days: [...window.days], start: window.start, end: window.end });
       return;
@@ -139,14 +151,15 @@ export function parseTimeWindows(
   timeZone: string,
   base: Date = new Date(),
 ): WindowConversionResult {
-  if (!raw) return { windows: [], failed: [] };
+  if (!raw || raw.trim() === "") return { windows: [], failed: [], broken: false };
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return { windows: [], failed: [] };
+    return { windows: [], failed: [], broken: true };
   }
-  if (!Array.isArray(parsed)) return { windows: [], failed: [] };
+  if (!Array.isArray(parsed)) return { windows: [], failed: [], broken: true };
+  if (parsed.length === 0) return { windows: [], failed: [], broken: false };
 
   const windows: WallClockWindow[] = [];
   const failed: number[] = [];
@@ -186,5 +199,6 @@ export function parseTimeWindows(
     }
     windows.push(converted);
   }
-  return { windows, failed };
+  // 一条可用时段都没解析出来：网关会按「不可用」处理，界面上必须能看出来
+  return { windows, failed, broken: windows.length === 0 };
 }

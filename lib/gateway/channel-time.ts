@@ -70,13 +70,16 @@ export function parseTimeRestrictions(raw: string | null | undefined): TimeWindo
 }
 
 const RESTRICTION_LOG_INTERVAL_MS = 60_000;
-let lastRestrictionLogAt = 0;
+// 按告警类型分别节流：共用一条时间戳会让「整份损坏」把「部分丢弃」的告警长期压掉
+const restrictionLogAt = new Map<string, number>();
 
-// 路由热路径按分钟级节流：损坏或部分丢弃都要留痕，但每 60s 每个进程最多一条
-function logRestrictionProblem(message: string, raw: string | null | undefined) {
+// 路由热路径按分钟级节流：损坏或部分丢弃都要留痕，但每类每 60s 每个进程最多一条
+function logRestrictionProblem(kind: string, message: string, raw: string | null | undefined) {
   const nowMs = Date.now();
-  if (nowMs - lastRestrictionLogAt < RESTRICTION_LOG_INTERVAL_MS) return;
-  lastRestrictionLogAt = nowMs;
+  const last = restrictionLogAt.get(kind) ?? 0;
+  // 时钟回拨时 diff 为负，重置锚点，避免从此长时间不再输出
+  if (nowMs >= last && nowMs - last < RESTRICTION_LOG_INTERVAL_MS) return;
+  restrictionLogAt.set(kind, nowMs);
   const preview = raw ? raw.slice(0, 120) : "";
   console.warn(`[channel-time] ${message}：${preview}`);
 }
@@ -92,11 +95,11 @@ export function isChannelTimeAllowed(raw: string | null | undefined, now: Date =
   // 配了但一条都用不了：无法确认是否该放行，按拒绝处理并告警，
   // 不能落到「不限制」上，否则配置损坏会让渠道静默变成 24/7 可用
   if (state.kind === "broken") {
-    logRestrictionProblem("time_restrictions 没有可用时段，按不可用处理", raw);
+    logRestrictionProblem("broken", "time_restrictions 没有可用时段，按不可用处理", raw);
     return false;
   }
   if (state.dropped > 0) {
-    logRestrictionProblem(`time_restrictions 有 ${state.dropped} 个时段非法已忽略`, raw);
+    logRestrictionProblem("dropped", `time_restrictions 有 ${state.dropped} 个时段非法已忽略`, raw);
   }
   const { day, minutes } = utcWallTime(now);
   return state.windows.some((win) => matchesWindow(win, day, minutes));

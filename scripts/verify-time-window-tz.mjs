@@ -194,6 +194,8 @@ check("限制时段配置损坏时按拒绝处理，而不是悄悄放开", () =
   assert.equal(isChannelTimeAllowed(null, now), true, "未配置 = 不限制");
   assert.equal(isChannelTimeAllowed("[]", now), true, "空数组 = 未配置");
   assert.equal(isChannelTimeAllowed("not-json", now), false, "解析失败 = 拒绝");
+  assert.equal(isChannelTimeAllowed("{}", now), false, "非数组 = 拒绝");
+  assert.equal(isChannelTimeAllowed("null", now), false, "null 文本 = 拒绝");
   assert.equal(
     isChannelTimeAllowed(JSON.stringify([{ days: [1], start: "10:00", end: "10:00" }]), now),
     false,
@@ -202,13 +204,27 @@ check("限制时段配置损坏时按拒绝处理，而不是悄悄放开", () =
 });
 
 check("回填时格式异常的时段报 failed，不会被当成未填完静默丢弃", () => {
+  const base = new Date(BASE_MS_LIST[0]);
   const parsed = parseTimeWindows(
     JSON.stringify([{ days: [1], start: "24:00", end: "18:00" }]),
     "UTC",
-    new Date(BASE_MS_LIST[0]),
+    base,
   );
   assert.deepEqual(parsed.failed, [0]);
   assert.deepEqual(parsed.windows, [{ days: [1], start: "24:00", end: "18:00" }]);
+  // 整份都不可用：要把 broken 报给管理端，否则界面看起来像「没配」
+  assert.equal(parsed.broken, false, "有可用行时不算整体损坏");
+  assert.equal(parseTimeWindows("not-json", "UTC", base).broken, true);
+  assert.equal(parseTimeWindows("[]", "UTC", base).broken, false);
+});
+
+check("选了星期但时分非法时阻断保存，未选星期的空行才允许忽略", () => {
+  const base = new Date(BASE_MS_LIST[0]);
+  const withDays = serializeTimeWindows([{ days: [1], start: "24:00", end: "" }], "UTC", base);
+  assert.deepEqual(withDays.failed, [0]);
+  const withoutDays = serializeTimeWindows([{ days: [], start: "24:00", end: "18:00" }], "UTC", base);
+  assert.deepEqual(withoutDays.failed, []);
+  assert.equal(withoutDays.json, "[]");
 });
 
 check("渠道可用时段：墙上时间窗口与换算后的 UTC 窗口逐分钟一致", () => {
@@ -298,7 +314,7 @@ check("限制时段：编辑行与落库 JSON 往返一致", () => {
   }
 });
 
-check("限制时段：未填完的行不落库，首尾相同的行标记为不可换算", () => {
+check("限制时段：未选星期的行不落库，选了星期但填写有误的行阻断保存", () => {
   const base = new Date(BASE_MS_LIST[0]);
   const windows = [
     { days: [], start: "09:00", end: "18:00" },
@@ -307,9 +323,10 @@ check("限制时段：未填完的行不落库，首尾相同的行标记为不�
     { days: [3], start: "08:00", end: "09:00" },
   ];
   const { json, failed: failedRows } = serializeTimeWindows(windows, "Asia/Shanghai", base);
-  // 前两行未填完：直接跳过；第三行首尾相同：保留原值并报错
-  assert.deepEqual(failedRows, [2]);
+  // 第 1 行未选星期：跳过；第 2、3 行选了星期却填错：保留原值并报错阻断保存
+  assert.deepEqual(failedRows, [1, 2]);
   assert.deepEqual(JSON.parse(json), [
+    { days: [1], start: "", end: "" },
     { days: [2], start: "10:00", end: "10:00" },
     { days: [3], start: "00:00", end: "01:00" },
   ]);

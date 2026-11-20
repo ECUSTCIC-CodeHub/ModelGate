@@ -218,10 +218,17 @@ export function useChannelAdmin() {
     // 每次打开都按当前浏览器时区把库里的 UTC 时段换算成墙上时间；时区变了只在本次编辑内有效
     const timeZone = browserTimeZone();
     const timeRestrictions = parseTimeWindows(row.time_restrictions ?? "", timeZone);
+    if (timeRestrictions.broken) {
+      toast({
+        variant: "error",
+        description: "该渠道的限制时段配置无法解析，当前对所有请求不可用；请重新配置或清空后保存。",
+        durationMs: 6000,
+      });
+    }
     if (timeRestrictions.failed.length > 0) {
       toast({
         variant: "error",
-        description: `第 ${timeRestrictions.failed.map((index) => index + 1).join("、")} 个限制时段回填时无法换算，请重新填写后再保存。`,
+        description: `第 ${timeRestrictions.failed.map((index) => index + 1).join("、")} 个限制时段填写有误（时间不完整、格式非法或无法换算），请重新填写后再保存。`,
       });
     }
     setChannelEditingId(row.id);
