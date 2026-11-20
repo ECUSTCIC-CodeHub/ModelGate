@@ -13,6 +13,7 @@ export function browserTimeZone(): string {
 // 构造 DateTimeFormat 比 formatToParts 贵两个数量级，而 wallTimeToUtc 要按分钟扫一整个 UTC 日：
 // 按时区缓存，避免每档每次换算都重建上千个实例（档位上限 20 档，换算在点击保存时同步执行）。
 const FORMATTER_CACHE_LIMIT = 32;
+const UNSUPPORTED_CACHE_LIMIT = 32;
 const formatters = new Map<string, Intl.DateTimeFormat>();
 // 非法时区单独记一份：wallTimeToUtc 要按分钟扫一整天，不记住就会反复构造并抛上千次异常
 const unsupportedTimeZones = new Set<string>();
@@ -31,7 +32,10 @@ function formatterInTimeZone(timeZone: string): Intl.DateTimeFormat | null {
       hour12: false,
     });
   } catch {
-    if (unsupportedTimeZones.size >= FORMATTER_CACHE_LIMIT) unsupportedTimeZones.clear();
+    if (unsupportedTimeZones.size >= UNSUPPORTED_CACHE_LIMIT) {
+      const oldest = unsupportedTimeZones.values().next().value;
+      if (oldest !== undefined) unsupportedTimeZones.delete(oldest);
+    }
     unsupportedTimeZones.add(timeZone);
     return null;
   }
@@ -64,9 +68,11 @@ function partsInTimeZone(date: Date, timeZone: string): { hour: string; minute: 
 }
 
 const WEEKDAY_ORDER = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-function weekdayToIso(weekday: string): number {
+// 认不出的星期返回 null：按周一兜底会让 dayShift 静默错一整天，宁可判定为「不可换算」
+function weekdayToIso(weekday: string): number | null {
   const idx = WEEKDAY_ORDER.indexOf(weekday);
-  return idx === -1 ? 1 : idx === 0 ? 7 : idx; // 0=周日..6=周六 → 1..7（周一..周日）
+  if (idx === -1) return null;
+  return idx === 0 ? 7 : idx; // 0=周日..6=周六 → 1..7（周一..周日）
 }
 
 // 把 UTC 的 HH:MM 换算成指定时区的墙上 HH:MM。
@@ -90,10 +96,11 @@ export function wallTimeToUtc(hhmm: string, timeZone: string, base: Date = new D
   for (let off = 0; off < 86400_000; off += 60_000) {
     const parts = partsInTimeZone(new Date(dayStart + off), timeZone);
     if (!parts) continue;
-    if (`${parts.hour}:${parts.minute}` === target) {
-      best = { utcMs: off, tzWeekday: weekdayToIso(parts.weekday) };
-      break;
-    }
+    if (`${parts.hour}:${parts.minute}` !== target) continue;
+    const tzWeekday = weekdayToIso(parts.weekday);
+    if (tzWeekday === null) continue;
+    best = { utcMs: off, tzWeekday };
+    break;
   }
   if (!best) return null;
   const utcDate = new Date(dayStart + best.utcMs);
