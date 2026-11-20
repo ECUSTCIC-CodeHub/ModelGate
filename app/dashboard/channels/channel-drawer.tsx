@@ -28,6 +28,7 @@ import { ModelDraftCard } from "./model-draft-card";
 import { ChannelQuotaFields } from "./channel-quota-fields";
 import { UaRestrictionsEditor, type UaRestrictionRuleDraft, rulesToJson, jsonToRules } from "@/components/ua-restrictions-editor";
 import { TimeWindowEditor, jsonToWindows } from "@/components/time-window-editor";
+import { MultiplierScheduleFields } from "@/app/dashboard/multiplier-schedule-fields";
 import {
   protocolOptions,
   type ChannelForm,
@@ -347,6 +348,18 @@ export function ChannelDrawer({
               />
               <p className="text-xs text-[var(--color-foreground-muted)]">
                 配置后渠道仅在这些时段内可用。留空则不限制。
+              </p>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <MultiplierScheduleFields
+                drafts={form.multiplier_schedules}
+                onChange={(drafts) => onFormChange({ multiplier_schedules: drafts })}
+                baseTokenMultiplier={null}
+                baseRequestMultiplier={null}
+              />
+              <p className="text-xs text-[var(--color-foreground-muted)]">
+                渠道分时倍率对下属全部模型生效，命中时覆盖模型侧倍率（含模型自己的分时档位），
+                便于整条渠道统一定价；未命中时沿用模型倍率。因此两处都配置时以渠道为准，需要模型差异化时只配模型侧。
               </p>
             </div>
           </div>

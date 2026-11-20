@@ -226,9 +226,9 @@ X-Model-Period-Quota-Requests-<id>: <remaining>
 
 ## 分时倍率
 
-模型支持按**时段指定倍率**：命中时段的请求按该档倍率计费，未命中时段沿用模型的基础倍率（`token_multiplier` / `request_multiplier`）。
+支持按**时段指定倍率**：命中时段的请求按该档倍率计费，未命中时段沿用基础倍率（`token_multiplier` / `request_multiplier`）。
 
-**字段**：`multiplier_schedules`，JSON 数组，按 TEXT 存储，仅模型支持。
+**字段**：`multiplier_schedules`，JSON 数组，按 TEXT 存储。渠道（`channels`）与模型（`models`）各自持有一份，结构完全相同。
 
 | 字段 | 类型 | 必填 | 默认 | 说明 |
 |:---|:---|:---|:---|:---|
@@ -258,6 +258,18 @@ X-Model-Period-Quota-Requests-<id>: <remaining>
 - 分时倍率是**覆盖**基础倍率，不是叠加：命中即用该档值替换基础值。
 - 提交空数组表示清空所有时段，全部请求使用基础倍率。
 
+**渠道侧与模型侧的叠加顺序**
+
+同一请求同时可能命中渠道档与模型档，最终倍率按下面的顺序逐步覆盖（每一层都只覆盖自己填了的维度）：
+
+1. 基础倍率：模型 `token_multiplier` / `request_multiplier`；
+2. 模型分时档命中 → 覆盖为模型档的倍率；
+3. 渠道分时档命中 → 覆盖为渠道档的倍率（模型侧的覆盖结果只在渠道未填写的维度上保留）。
+
+也就是说**渠道档优先级高于模型档**。这样同一渠道下的一批模型可以共享一份时段配置：只在渠道上配一次即可整体调价，不必逐个模型重复填写；个别模型要差异化时，再在模型侧配置（但该模型命中的模型档会被同渠道的渠道档覆盖，需要差异化时优先只在一侧配置）。
+
+渠道档与模型档各自独立解析，互不影响对方的命中判定：渠道未命中时模型档照常生效，模型未命中时渠道档照常生效。
+
 **响应字段**：`GET /api/user/model-quotas` 每项额外返回
 
 | 字段 | 类型 | 说明 |
@@ -265,9 +277,9 @@ X-Model-Period-Quota-Requests-<id>: <remaining>
 | channel_quota_mode | enum | 所属渠道的配额模式（`follow_group` / `bypass_group` / `independent` / `dual`），用于判断用户限额是否被渠道侧跳过；不包含渠道配额数值 |
 | effective_token_multiplier | number | 当前时刻实际生效的 Token 倍率 |
 | effective_request_multiplier | number | 当前时刻实际生效的请求倍率 |
-| multiplier_schedule_applied | bool | 当前是否命中某个分时档位 |
+| multiplier_schedule_applied | bool | 当前是否命中分时档位（渠道级或模型级任一命中即为 true） |
 
-> 精简版不支持该字段，提交会被忽略，倍率始终等于基础倍率。
+> 精简版不支持该字段，渠道与模型上的提交都会被忽略，倍率始终等于基础倍率。
 
 ## 认证方式
 
@@ -1664,6 +1676,9 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
     { "seconds": 86400, "quota_tokens": 500000, "quota_requests": null }
   ],
   "force_include_usage": true,
+  "multiplier_schedules": [
+    { "days": [1, 2, 3, 4, 5], "start": "00:00", "end": "08:00", "token_multiplier": 0.5, "request_multiplier": null }
+  ],
   "models": [
     {
       "alias": "gpt-4",
@@ -1705,6 +1720,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | quota_tokens | int\|null | 否 | null | 渠道总 Token 配额，null 表示不限制；仅 `quota_mode` 为 `independent` / `dual` 时参与判定 |
 | quota_requests | int\|null | 否 | null | 渠道总请求配额，null 表示不限制；仅 `quota_mode` 为 `independent` / `dual` 时参与判定 |
 | period_cycles | object[] | 否 | [] | 多档重置周期，见「多档重置周期」一节；为空数组表示清空已有档位（仅完整版）；仅 `quota_mode` 为 `independent` / `dual` 时参与判定 |
+| multiplier_schedules | object[] | 否 | [] | 渠道级分时倍率，见「分时倍率」一节，对该渠道下所有模型生效且优先级高于模型级；为空数组表示不配置（仅完整版） |
 | force_include_usage | bool | 否 | true | 流式请求时向上游发送 `stream_options.include_usage`，设为 false 可兼容不支持该参数的上游（如微软） |
 | request_body_omit | array\|null | 否 | null | 渠道级请求体字段剔除列表，字符串数组，元素为要从上游请求体中删除的**顶层**字段名（如 `["metadata"]`）。发往该渠道上游的所有请求都会先删除这些字段，用于兼容不接受特定字段的上游（如智谱不接受 `metadata`）。最多 16 项，单个字段名最长 64 字符且须为 `[A-Za-z_][A-Za-z0-9_]*` 形态的顶层字段名（不支持 `a.b`、`a[0]` 这类嵌套路径写法）；重复项自动去重，空字符串项被忽略。`model`、`messages`、`input`、`contents`、`prompt`、`system`、`stream` 承载请求语义，不允许剔除。留空或 null 表示不剔除。读取时容错：脏数据或含非法项时整份退回「不剔除」。`other` 通用转发路径请求体原样转发，该配置对其不生效 |
 | header_mappings | object[]\|null | 否 | null | 渠道级请求头映射，元素形如 `{"from":"x-session-id","to":"X-Opencode-Session"}`，表示把客户端请求里的 `from` 头**改名**后以 `to` 发往该渠道上游，值始终取自客户端。用于不同客户端与上游对同一语义使用不同头名的场景（如客户端的 `X-Session-Id` 映射成上游要的 `X-Opencode-Session`）。最多 10 项；两端名称须为 HTTP token 字符、最长 128 字符，且至少一端需带连字符（两端都不带时大概率是把源与目标写反了，写反会表现为「配了不生效」）；`to` 不允许是 `Authorization`、`X-Api-Key`、`Host`、`Content-Type`、`User-Agent` 等网关托管头，也不允许是 `X-Forwarded-For`、`X-Real-IP`、`X-Forwarded-Host`、`Forwarded`、`CF-Connecting-IP`、`X-Original-URL`、`Sec-Fetch-*` 这类转发链元数据（与 `custom_headers` 同一份黑名单），`to` 大小写不敏感地不允许重复。客户端未携带 `from`、或携带的 `from` 值为空时不下发 `to`，网关不会凭空造值。生效路径：标准转发（`chat_completions` / `responses` / `embeddings` / `images` / `anthropic_messages`）、`/api/v1/images/edits`、`other` 透传。优先级低于托管字段，高于 `custom_headers`；`other` 透传路径下会覆盖客户端的同名透传值。模型测试与模型列表探测不携带客户端请求，故不生效。读取时容错：脏数据逐项丢弃，非法项不影响其余项 |
@@ -1740,7 +1756,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 > 无添加人渠道指 `created_by` 为空，或其指向的用户已被删除、停用或不再是管理员（渠道不会因此被永久冻结，任意管理员可接管）。无添加人的私有渠道由本次修改者接管为新的添加人。公共渠道的 `created_by` 不会因为添加人失效而被清空，归属信息保留。开启 `api_key_private` 后，非添加人不能修改该渠道的 `base_url` 与 `proxy_url`（否则可把地址指向自己的服务器再借密钥读取接口取出密钥），违反时返回 403。
 
 
-**请求体:** 与 POST 相同，所有字段均为可选。`force_include_usage` 变更对后续新请求立即生效，不影响已建立的连接。`proxy_url` 传空字符串可清空代理配置。`custom_headers` 字段缺席时保持原值，传 `{}` 或 `null` 整份清空（与其它可清空字段一致）。`header_mappings` 字段缺席时保持原值，传 `[]` 或 `null` 整份清空。`request_body_omit` 字段缺席时保持原值，传 `[]` 或 `null` 清空剔除配置。`period_cycles` 字段缺席时保持原值，传 `[]` 清空所有周期档。
+**请求体:** 与 POST 相同，所有字段均为可选。`force_include_usage` 变更对后续新请求立即生效，不影响已建立的连接。`proxy_url` 传空字符串可清空代理配置。`custom_headers` 字段缺席时保持原值，传 `{}` 或 `null` 整份清空（与其它可清空字段一致）。`header_mappings` 字段缺席时保持原值，传 `[]` 或 `null` 整份清空。`request_body_omit` 字段缺席时保持原值，传 `[]` 或 `null` 清空剔除配置。`period_cycles` 字段缺席时保持原值，传 `[]` 清空所有周期档。`multiplier_schedules` 字段缺席时保持原值，传 `[]` 或 `null` 清空渠道级分时倍率。
 
 **模型同步:**
 

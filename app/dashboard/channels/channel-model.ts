@@ -105,6 +105,7 @@ export type Channel = {
   period_cycles: string | null;
   group_name: string;
   retry_status_codes: string | null;
+  multiplier_schedules: string | null;
   created_by?: number | null;
   created_by_username?: string | null;
   api_key_private?: number | null;
@@ -153,6 +154,7 @@ export type ChannelForm = {
   header_mappings: string;
   group_name: string;
   retry_status_codes: string;
+  multiplier_schedules: MultiplierScheduleDraft[];
 };
 
 export type ModelForm = {
@@ -235,6 +237,7 @@ export const initialChannelForm: ChannelForm = {
   header_mappings: "",
   group_name: "",
   retry_status_codes: "",
+  multiplier_schedules: [],
 };
 
 export const initialModelDraft: ChannelModelDraft = {

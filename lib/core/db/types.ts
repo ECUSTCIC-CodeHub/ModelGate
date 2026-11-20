@@ -33,6 +33,7 @@ export type DbChannel = {
   group_name: string | null;
   retry_status_codes: string | null;
   header_mappings: string | null;
+  multiplier_schedules: string | null;
 };
 
 export type QuotaMode = "follow_group" | "bypass_group" | "independent" | "dual";

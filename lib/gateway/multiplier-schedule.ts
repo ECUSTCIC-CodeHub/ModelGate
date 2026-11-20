@@ -3,7 +3,8 @@ import { utcWallTime } from "@/lib/core/db/datetime";
 const MAX_SCHEDULES = 20;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-// 时段倍率：命中 window 时用该档倍率，未命中任何时段时回退模型的基础倍率（覆盖语义，不相乘）。
+// 时段倍率：命中 window 时用该档倍率，未命中任何时段时回退基础倍率（覆盖语义，不相乘）。
+// 模型与渠道共用同一套结构：模型侧回答「这个模型此刻什么价」，渠道侧回答「这条线此刻什么价」。
 export type MultiplierSchedule = {
   days: number[]; // 1..7，周一..周日
   start: string; // HH:MM
@@ -126,7 +127,7 @@ export function normalizeMultiplierSchedules(schedules: MultiplierSchedule[]): s
 // 命中判定为闭区间 [start, end]（含两端），与渠道时段限制 channel-time 的口径一致。
 // 跨零点窗口（end <= start）的凌晨段归属**前一日**：22:00-06:00 勾选周一，
 // 则周一 22:00 至周二 06:00 都在窗口内，无需额外勾选周二。
-function windowMatches(schedule: MultiplierSchedule, day: number, minutes: number): boolean {
+function windowMatches(schedule: Pick<MultiplierSchedule, "days" | "start" | "end">, day: number, minutes: number): boolean {
   const [sh, sm] = schedule.start.split(":").map(Number);
   const [eh, em] = schedule.end.split(":").map(Number);
   const startM = sh * 60 + sm;
@@ -159,17 +160,26 @@ export function resolveEffectiveMultiplier(
     request_multiplier: baseRequestMultiplier,
     schedule_applied: false,
   };
-  if (schedules.length === 0) return base;
+  const hit = findEffectiveSchedule(schedules, now);
+  if (!hit) return base;
+  return {
+    ...base,
+    // 该档未填写的维度继续沿用基础倍率
+    token_multiplier: hit.token_multiplier ?? baseTokenMultiplier,
+    request_multiplier: hit.request_multiplier ?? baseRequestMultiplier,
+    schedule_applied: true,
+  };
+}
 
+// 取请求时刻第一个命中的档位；未配置或都未命中时返回 null。
+export function findEffectiveSchedule(
+  schedules: MultiplierSchedule[],
+  now: Date = new Date(),
+): MultiplierSchedule | null {
+  if (schedules.length === 0) return null;
   const { day, minutes } = utcWallTime(now);
   for (const schedule of schedules) {
-    if (!windowMatches(schedule, day, minutes)) continue;
-    // 该档未填写的维度继续沿用基础倍率
-    return {
-      token_multiplier: schedule.token_multiplier ?? baseTokenMultiplier,
-      request_multiplier: schedule.request_multiplier ?? baseRequestMultiplier,
-      schedule_applied: true,
-    };
+    if (windowMatches(schedule, day, minutes)) return schedule;
   }
-  return base;
+  return null;
 }
