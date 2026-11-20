@@ -224,6 +224,9 @@ export type ModelEffectiveMultiplier = {
   // 该维度由模型自己的分时档决定（否则由渠道档补足或就是基础倍率）
   token_from_model_schedule: boolean;
   request_from_model_schedule: boolean;
+  // 该维度命中了分时档（不论哪一层）。两者都为假时该维度的值就是基础倍率。
+  token_scheduled: boolean;
+  request_scheduled: boolean;
 };
 
 // 模型映射列表要回答「这条线此刻什么价」，与计费必须同口径，所以直接用网关的同一份分层解析，
@@ -240,6 +243,8 @@ export function effectiveMultiplierOf(model: ModelRow & { channel_multiplier_sch
     schedule_applied: resolved.schedule_applied,
     token_from_model_schedule: resolved.token_source === 0,
     request_from_model_schedule: resolved.request_source === 0,
+    token_scheduled: resolved.token_source !== null,
+    request_scheduled: resolved.request_source !== null,
   };
 }
 

@@ -17,7 +17,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { effectiveMultiplierOf, parseSupportedProtocols, shortProtocolLabel, type ModelWithChannel } from "./channel-model";
 import { ModelActions } from "./model-actions";
-import { describeScheduleSource, EffectiveScheduleTag } from "./effective-schedule-tag";
+import { EffectiveScheduleTag } from "./effective-schedule-tag";
+import { describeScheduleSource } from "@/lib/shared/multiplier-source";
 
 function isExpired(exp?: string | Date | null): boolean {
   if (!exp) return false;
@@ -93,10 +94,12 @@ export function ModelCard({
           <TooltipContent side="top" className="max-w-64 text-xs">
             基础倍率 T {model.token_multiplier ?? 1}x / R {model.request_multiplier ?? 1}x。
             {effective.schedule_applied
-              ? `当前时段生效倍率由${describeScheduleSource({
-                  token: effective.token_from_model_schedule,
-                  request: effective.request_from_model_schedule,
-                })}，显示的是实际生效倍率。`
+              ? `当前时段${describeScheduleSource({
+                  tokenFromModelSchedule: effective.token_from_model_schedule,
+                  requestFromModelSchedule: effective.request_from_model_schedule,
+                  tokenScheduled: effective.token_scheduled,
+                  requestScheduled: effective.request_scheduled,
+                })}。`
               : "当前时段未命中分时档。"}
           </TooltipContent>
         </Tooltip>

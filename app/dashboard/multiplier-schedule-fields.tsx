@@ -245,7 +245,7 @@ export function MultiplierScheduleFields({
                 step={0.1}
                 value={draft.token_multiplier}
                 onChange={(e) => update(draft.key, { token_multiplier: e.target.value })}
-                placeholder="留空沿用基础倍率"
+                placeholder="留空沿用下层倍率"
               />
             </div>
             <div className="space-y-2">
@@ -256,7 +256,7 @@ export function MultiplierScheduleFields({
                 step={0.1}
                 value={draft.request_multiplier}
                 onChange={(e) => update(draft.key, { request_multiplier: e.target.value })}
-                placeholder="留空沿用基础倍率"
+                placeholder="留空沿用下层倍率"
               />
             </div>
           </div>

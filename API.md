@@ -235,8 +235,8 @@ X-Model-Period-Quota-Requests-<id>: <remaining>
 | days | int[] | 是 | — | 生效星期，1（周一）~ 7（周日），不可为空 |
 | start | string | 是 | — | 开始时间，`HH:MM`，按 UTC 解释 |
 | end | string | 是 | — | 结束时间，`HH:MM`；`end <= start` 表示跨零点 |
-| token_multiplier | number/null | 否 | null | 该时段的 Token 倍率，null 表示沿用基础倍率 |
-| request_multiplier | number/null | 否 | null | 该时段的请求倍率，null 表示沿用基础倍率 |
+| token_multiplier | number/null | 否 | null | 该时段的 Token 倍率，null 表示该维度沿用下层倍率（渠道档没有下层，即基础倍率） |
+| request_multiplier | number/null | 否 | null | 该时段的请求倍率，null 表示该维度沿用下层倍率（渠道档没有下层，即基础倍率） |
 
 最多 20 档。
 
@@ -254,7 +254,7 @@ X-Model-Period-Quota-Requests-<id>: <remaining>
 - 命中判定为闭区间 `[start, end]`（含两端）；相邻时段在端点会同时命中，靠「按数组顺序取第一档」消歧。
 - 跨零点窗口（`end <= start`）的凌晨段归属**前一日**的 `days`：`22:00-06:00` 勾选周一，则周一 22:00 至周二 06:00 都在窗口内，无需额外勾选周二。此处的日期归属比渠道时段限制 `time_restrictions` 更宽松（后者凌晨段按当天 `days` 判定），计费场景以本口径为准。
 - 多档同时命中时，按数组顺序取**第一个**命中的档位。
-- 该档位未填写的维度沿用基础倍率，不是相乘。
+- 该档位未填写的维度沿用下层倍率，不是相乘；模型档的下层是渠道档，没有渠道档时才是基础倍率。
 - 分时倍率是**覆盖**基础倍率，不是叠加：命中即用该档值替换基础值。
 - 提交空数组表示清空所有时段，全部请求使用基础倍率。
 
@@ -289,7 +289,7 @@ X-Model-Period-Quota-Requests-<id>: <remaining>
 
 管理端与用户端的三处界面都只打**生效倍率**，基础倍率放在悬浮提示里，避免「显示值和配置值对不上」被当成 bug：
 
-- `/dashboard/models`（用户视角）：主数值为生效倍率并按它排序；命中分时档时跟一个细体「分时」小标；展开渠道明细后，每个渠道单独标注该维度的来源（`xxx_multiplier_from_model_schedule` 为真才标「模型分时」——这才是「单模型特殊价」的信号，渠道档或基础倍率不额外标注，只在悬浮提示里说明），因为同一渠道下不同别名可以命中不同的层。列表与卡片的主数值悬浮提示同样按**维度**说来源，不笼统写「模型级 / 渠道级」：模型档只填了 Token 时请求倍率仍可能来自渠道档，写层级会指错。
+- `/dashboard/models`（用户视角）：主数值为生效倍率并按它排序；命中分时档时跟一个细体「分时」小标；展开渠道明细后，每个渠道按**维度**单独标注来源——模型档覆盖标「模型分时」（「单模型特殊价」的信号），只有渠道档命中则标更弱的「渠道分时」，该维度未命中任何档位时值就是基础倍率、不标。之所以不比对「生效值 ≠ 基础值」，是因为渠道档的值恰好等于基础倍率时会漏标。同一渠道下不同别名可以命中不同的层，所以要逐渠道标。列表与卡片的主数值悬浮提示同样按维度说来源，不笼统写「模型级 / 渠道级」：模型档只填了 Token 时请求倍率仍可能来自渠道档或基础倍率，写层级会指错。
 - `/dashboard/channels` 的模型映射列表与卡片（管理员配置）：显示的同样是生效倍率 + 「分时」小标，第二行以更小的字号给基础倍率，悬浮提示写清命中的是模型级还是渠道级分时档。
 - 分时倍率编辑器：多档同时命中时按数组顺序取第一档，被上方档位（含多档拼起来）整段覆盖时段的档位直接标红提示「永远不会生效」，避免排了半天发现改了价没变化。
 
@@ -3161,8 +3161,8 @@ access token 过期但 refresh token 仍有效时按已登录处理（整页表�
       "effective_weight_min": 2,
       "effective_weight_max": 4,
       "channels": [
-        { "channel_id": 1, "channel_name": "openai-official", "token_multiplier": 2, "request_multiplier": 1, "effective_token_multiplier": 1, "effective_request_multiplier": 1, "multiplier_schedule_applied": true, "token_multiplier_from_model_schedule": true, "request_multiplier_from_model_schedule": false, "weight": 2, "effective_weight": 4 },
-        { "channel_id": 2, "channel_name": "openai-mirror", "token_multiplier": 1, "request_multiplier": 1, "effective_token_multiplier": 1, "effective_request_multiplier": 1, "multiplier_schedule_applied": false, "token_multiplier_from_model_schedule": false, "request_multiplier_from_model_schedule": false, "weight": 1, "effective_weight": 2 }
+        { "channel_id": 1, "channel_name": "openai-official", "token_multiplier": 2, "request_multiplier": 1, "effective_token_multiplier": 1, "effective_request_multiplier": 1, "multiplier_schedule_applied": true, "token_multiplier_from_model_schedule": true, "request_multiplier_from_model_schedule": false, "token_multiplier_scheduled": true, "request_multiplier_scheduled": false, "weight": 2, "effective_weight": 4 },
+        { "channel_id": 2, "channel_name": "openai-mirror", "token_multiplier": 1, "request_multiplier": 1, "effective_token_multiplier": 1, "effective_request_multiplier": 1, "multiplier_schedule_applied": false, "token_multiplier_from_model_schedule": false, "request_multiplier_from_model_schedule": false, "token_multiplier_scheduled": false, "request_multiplier_scheduled": false, "weight": 1, "effective_weight": 2 }
       ]
     },
     { "id": "claude-3", "object": "model", "supports_vision": false, "supported_protocols": ["anthropic_messages", "chat_completions"], "token_multiplier": 1.5, "request_multiplier": 1, "token_multiplier_min": 1.5, "token_multiplier_max": 1.5, "request_multiplier_min": 1, "request_multiplier_max": 1, "max_effective_weight": 1, "weight_min": 1, "weight_max": 1, "effective_weight_min": 1, "effective_weight_max": 1, "channels": [{ "channel_id": 3, "channel_name": "anthropic-main", "token_multiplier": 1.5, "request_multiplier": 1, "weight": 1, "effective_weight": 1 }] }
@@ -3173,6 +3173,8 @@ access token 过期但 refresh token 仍有效时按已登录处理（整页表�
 > `effective_token_multiplier_*` / `effective_request_multiplier_*` 为**当前时刻实际生效**的倍率范围（已按分时倍率覆盖，口径与计费一致），`multiplier_schedule_applied` 表示当前是否命中分时档位；`channels[]` 里的 `effective_*` 为单个渠道的生效倍率。分时倍率见「分时倍率」一节。
 
 > `token_multiplier_from_model_schedule` / `request_multiplier_from_model_schedule` 表示该维度的生效倍率是否**有渠道**由**模型级**分时档决定：为 `false` 时表示全部渠道都由渠道级分时档或基础倍率给出。聚合值为真只代表「至少一个渠道命中模型档」，多渠道时可能是部分命中，展示侧按「部分或全部」措辞，不能当成所有渠道都来自模型档。`channels[]` 里为单个渠道各自的来源。
+
+> `token_multiplier_scheduled` / `request_multiplier_scheduled`（仅出现在 `channels[]`）表示单个渠道该维度**是否命中分时档**（不分层级）。它与 `*_from_model_schedule` 组合才能区分三种情况：两者都真为模型档覆盖，前者真后者假为渠道档覆盖，两者都假则该维度的值就是基础倍率。只有 `multiplier_schedule_applied` 是不够的——它按渠道整体记「任一维度命中」，用它给两个维度标来源会把没被覆盖的维度也标上。
 
 > `token_multiplier` 和 `request_multiplier` 为**基础**计费倍率（取所有渠道中的最低值，不含分时覆盖），实际扣量 = 使用量 × 生效倍率。`token_multiplier_min/max` 和 `request_multiplier_min/max` 为各渠道倍率范围。`weight_min/max` 为各渠道模型权重范围（模型权重为配置原始值，不做下限钳制；字段为 NULL 时按 1 处理），`effective_weight_min/max` 为各渠道有效权重范围（有效权重 = max(1, 模型权重) × max(1, 渠道权重)，计算时对权重取下限 1），`max_effective_weight` 为该模型所有渠道中的最大有效权重，列表按此降序排列。`channels` 包含各渠道的倍率（基础 + 生效）、模型权重（`weight`）与有效权重（`effective_weight`）明细，按有效权重降序排列。`supported_protocols` 为该模型各渠道所支持协议的并集，取值：`chat_completions` / `responses` / `anthropic_messages` / `embeddings` / `images` / `other`。`brand_groups` 为管理员在系统设置中配置的模型品牌分组规则，前端据此按模型 ID 前缀归组筛选。
 

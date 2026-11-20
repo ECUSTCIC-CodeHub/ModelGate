@@ -9,6 +9,7 @@ import {
   resolveLayeredMultiplier,
   validateMultiplierSchedules,
 } from "@/lib/gateway/multiplier-schedule";
+import { describeAggregatedScheduleSource, describeScheduleSource } from "@/lib/shared/multiplier-source";
 
 let passed = 0;
 let failed = 0;
@@ -151,6 +152,56 @@ check("null 清空语义", () => {
   const r = validateMultiplierSchedules(null);
   assert.equal(r.valid, true);
   assert.deepEqual(r.schedules, []);
+});
+
+check("来源文案按维度说，不留「命中」和「来源」混用的语病", () => {
+  const bothModel = describeScheduleSource({
+    tokenFromModelSchedule: true,
+    requestFromModelSchedule: true,
+    tokenScheduled: true,
+    requestScheduled: true,
+  });
+  assert.equal(bothModel, "两个维度都来自模型级分时档");
+  const tokenModelOnly = describeScheduleSource({
+    tokenFromModelSchedule: true,
+    requestFromModelSchedule: false,
+    tokenScheduled: true,
+    requestScheduled: true,
+  });
+  assert.equal(tokenModelOnly, "Token 倍率来自模型级分时档，请求倍率来自渠道级分时档");
+  // 渠道档在该维度也留空时，值就是基础倍率，不能说成「渠道级分时档」
+  const noScheduleOnRequest = describeScheduleSource({
+    tokenFromModelSchedule: false,
+    requestFromModelSchedule: false,
+    tokenScheduled: true,
+    requestScheduled: false,
+  });
+  assert.equal(noScheduleOnRequest, "Token 倍率来自渠道级分时档，请求倍率来自基础倍率");
+});
+
+check("聚合来源文案带「有渠道」限定，不说成整体命中", () => {
+  const partial = describeAggregatedScheduleSource({
+    tokenFromModelSchedule: true,
+    requestFromModelSchedule: false,
+    tokenScheduled: true,
+    requestScheduled: true,
+  });
+  assert.equal(partial, "Token 倍率有渠道由模型级分时档覆盖，请求倍率没有渠道由模型级分时档覆盖");
+  const none = describeAggregatedScheduleSource({
+    tokenFromModelSchedule: false,
+    requestFromModelSchedule: false,
+    tokenScheduled: true,
+    requestScheduled: true,
+  });
+  assert.equal(none, "没有渠道由模型级分时档覆盖，倍率来自渠道级分时档或基础倍率");
+});
+
+check("渠道档只命中一个维度时，另一个维度不该被标成分时来源", () => {
+  // 明细行的「渠道分时」标记依赖维度级判断：用渠道整体的 schedule_applied 会把没被覆盖的维度也标上
+  const r = resolveLayeredMultiplier(2, 4, [[], [channelWeekday]], friday10);
+  assert.equal(r.schedule_applied, true);
+  assert.equal(r.token_source !== null, true);
+  assert.equal(r.request_source !== null, false);
 });
 
 console.log(`\n通过 ${passed} 项，失败 ${failed} 项`);

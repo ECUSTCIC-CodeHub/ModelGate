@@ -18,7 +18,8 @@ import { cn } from "@/lib/shared/utils";
 import { getApiMessage } from "@/lib/shared/api-message";
 import { authedFetch, ensureLoggedIn, getCachedProfile } from "@/lib/auth/client-auth";
 import { shortProtocolLabel, type Protocol } from "@/app/dashboard/channels/channel-model";
-import { describeScheduleSource } from "@/app/dashboard/channels/effective-schedule-tag";
+import { ScheduleSourceTag } from "@/app/dashboard/channels/effective-schedule-tag";
+import { describeAggregatedScheduleSource } from "@/lib/shared/multiplier-source";
 
 type ChannelMultiplier = {
   channel_id: number;
@@ -31,6 +32,9 @@ type ChannelMultiplier = {
   multiplier_schedule_applied: boolean;
   token_multiplier_from_model_schedule: boolean;
   request_multiplier_from_model_schedule: boolean;
+  // 该维度是否命中分时档（不分层）。与 from_model_schedule 一起才能区分「渠道档覆盖」和「就是基础倍率」。
+  token_multiplier_scheduled: boolean;
+  request_multiplier_scheduled: boolean;
   weight: number;
   effective_weight: number;
 };
@@ -309,13 +313,13 @@ export default function AvailableModelsPage() {
 
     // 来源按维度判：模型档只填了 token 时，请求倍率仍是渠道档或基础倍率给的，笼统说「模型/渠道」会指错。
     // 聚合值只代表「至少一个渠道命中」，多渠道时可能是部分命中，措辞要留余地。
-    const fromModelSchedule = type === "token"
-      ? row.token_multiplier_from_model_schedule
-      : row.request_multiplier_from_model_schedule;
     const tooltip = scheduled
-      ? `当前时段生效倍率，基础倍率 ${baseLabel}；${
-          fromModelSchedule ? "该维度当前时段部分或全部由模型级分时档覆盖" : "该维度的值来自渠道级分时档或基础倍率"
-        }`
+      ? `当前时段生效倍率，基础倍率 ${baseLabel}；${describeAggregatedScheduleSource({
+          tokenFromModelSchedule: row.token_multiplier_from_model_schedule,
+          requestFromModelSchedule: row.request_multiplier_from_model_schedule,
+          tokenScheduled: scheduled,
+          requestScheduled: scheduled,
+        })}`
       : `基础倍率 ${baseLabel}`;
 
     return (
@@ -562,11 +566,17 @@ export default function AvailableModelsPage() {
                                     </TableCell>
                                     <TableCell className="text-center font-mono text-sm">
                                       {ch.effective_token_multiplier}x
-                                      <ScheduleSourceTag applied={ch.token_multiplier_from_model_schedule} />
+                                      <ScheduleSourceTag
+                                        fromModel={ch.token_multiplier_from_model_schedule}
+                                        scheduled={ch.token_multiplier_scheduled}
+                                      />
                                     </TableCell>
                                     <TableCell className="text-center font-mono text-sm">
                                       {ch.effective_request_multiplier}x
-                                      <ScheduleSourceTag applied={ch.request_multiplier_from_model_schedule} />
+                                      <ScheduleSourceTag
+                                        fromModel={ch.request_multiplier_from_model_schedule}
+                                        scheduled={ch.request_multiplier_scheduled}
+                                      />
                                     </TableCell>
                                     <TableCell className="text-center font-mono text-sm">{ch.weight}x</TableCell>
                                     <TableCell className="text-center font-mono text-sm">{ch.effective_weight}x</TableCell>
@@ -626,7 +636,14 @@ export default function AvailableModelsPage() {
                                   基础倍率 {row.token_multiplier_min !== row.token_multiplier_max
                                     ? row.token_multiplier_min + "x~" + row.token_multiplier_max + "x"
                                     : row.token_multiplier_min + "x"}
-                                  {row.token_multiplier_from_model_schedule ? "；当前时段该维度部分或全部由模型级分时档覆盖" : ""}
+                                  {row.multiplier_schedule_applied
+                                    ? `；${describeAggregatedScheduleSource({
+                                        tokenFromModelSchedule: row.token_multiplier_from_model_schedule,
+                                        requestFromModelSchedule: row.request_multiplier_from_model_schedule,
+                                        tokenScheduled: true,
+                                        requestScheduled: true,
+                                      })}`
+                                    : ""}
                                 </TooltipContent>
                               </Tooltip>
                               <Tooltip>
@@ -646,16 +663,25 @@ export default function AvailableModelsPage() {
                                   基础倍率 {row.request_multiplier_min !== row.request_multiplier_max
                                     ? row.request_multiplier_min + "x~" + row.request_multiplier_max + "x"
                                     : row.request_multiplier_min + "x"}
-                                  {row.request_multiplier_from_model_schedule ? "；当前时段该维度部分或全部由模型级分时档覆盖" : ""}
+                                  {row.multiplier_schedule_applied
+                                    ? `；${describeAggregatedScheduleSource({
+                                        tokenFromModelSchedule: row.token_multiplier_from_model_schedule,
+                                        requestFromModelSchedule: row.request_multiplier_from_model_schedule,
+                                        tokenScheduled: true,
+                                        requestScheduled: true,
+                                      })}`
+                                    : ""}
                                 </TooltipContent>
                               </Tooltip>
                               {scheduled ? (
                                 <span
                                   className="inline-flex items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-foreground-secondary)]"
-                                  title={`当前时段命中的分时档：${describeScheduleSource({
-                                    token: row.token_multiplier_from_model_schedule,
-                                    request: row.request_multiplier_from_model_schedule,
-                                  })}（多渠道时按渠道各自命中），显示的倍率已按分时档覆盖`}
+                                  title={`当前时段生效倍率已按分时档覆盖：${describeAggregatedScheduleSource({
+                                    tokenFromModelSchedule: row.token_multiplier_from_model_schedule,
+                                    requestFromModelSchedule: row.request_multiplier_from_model_schedule,
+                                    tokenScheduled: true,
+                                    requestScheduled: true,
+                                  })}（多渠道时按渠道各自命中）`}
                                 >
                                   分时
                                 </span>
@@ -743,11 +769,17 @@ export default function AvailableModelsPage() {
                                     <span className="font-mono text-[var(--color-foreground-muted)]">W{ch.effective_weight}</span>
                                     <span className={cn("font-mono", ch.effective_token_multiplier !== 1 && "text-[var(--color-accent)] font-semibold")}>
                                       T{ch.effective_token_multiplier}x
-                                      <ScheduleSourceTag applied={ch.token_multiplier_from_model_schedule} />
+                                      <ScheduleSourceTag
+                                        fromModel={ch.token_multiplier_from_model_schedule}
+                                        scheduled={ch.token_multiplier_scheduled}
+                                      />
                                     </span>
                                     <span className={cn("font-mono", ch.effective_request_multiplier !== 1 && "text-[var(--color-accent)] font-semibold")}>
                                       R{ch.effective_request_multiplier}x
-                                      <ScheduleSourceTag applied={ch.request_multiplier_from_model_schedule} />
+                                      <ScheduleSourceTag
+                                        fromModel={ch.request_multiplier_from_model_schedule}
+                                        scheduled={ch.request_multiplier_scheduled}
+                                      />
                                     </span>
                                   </div>
                                 </div>
@@ -804,20 +836,6 @@ function SortButton({
         )}
       </span>
     </TableHead>
-  );
-}
-
-// 只在「该维度的值由模型自己的分时档给出」时才标：没命中模型档时，值可能来自渠道档也可能就是基础倍率，
-// 拿生效值和基础值比是分不出这两种情况的（渠道档恰好等于基础值时会被当成没命中）。
-function ScheduleSourceTag({ applied }: { applied: boolean }) {
-  if (!applied) return null;
-  return (
-    <span
-      className="ml-1 text-[10px] font-normal text-[var(--color-foreground-muted)]"
-      title="当前时段该维度由这个模型的模型级分时档覆盖"
-    >
-      模型分时
-    </span>
   );
 }
 

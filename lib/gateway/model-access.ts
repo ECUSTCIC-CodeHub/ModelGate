@@ -135,6 +135,9 @@ export type AccessibleModelChannel = {
   // 同一渠道下不同别名命中不同层，明细里要分开标，否则用户看不出为什么同渠道价格不一样。
   token_multiplier_from_model_schedule: boolean;
   request_multiplier_from_model_schedule: boolean;
+  // 该维度是否命中分时档（不分层）。为假说明生效值就是基础倍率，展示侧不能标成「渠道分时」。
+  token_multiplier_scheduled: boolean;
+  request_multiplier_scheduled: boolean;
   weight: number;
   effective_weight: number;
 };
@@ -204,6 +207,8 @@ export async function listAccessibleModels(user: Pick<DbUser, "id" | "role" | "g
       multiplier_schedule_applied: effective.schedule_applied,
       token_multiplier_from_model_schedule: effective.token_source === 0,
       request_multiplier_from_model_schedule: effective.request_source === 0,
+      token_multiplier_scheduled: effective.token_source !== null,
+      request_multiplier_scheduled: effective.request_source !== null,
       weight: row.model_weight ?? 1,
       effective_weight: ew,
     };

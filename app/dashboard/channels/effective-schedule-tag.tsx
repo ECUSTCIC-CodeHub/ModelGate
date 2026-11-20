@@ -13,13 +13,24 @@ export function EffectiveScheduleTag() {
   );
 }
 
-// 来源按维度说：模型档只填了 token 时，request 仍然是渠道档给的，笼统写「模型级」会指错地方。
-// 只在命中的维度上点出来源，两侧都命中同一层时合并成一句话；两侧都没命中模型档时说的是「落在渠道档或基础倍率」，
-// 不能写成「命中渠道级」——渠道档同样可以留空该维度，那时生效值就是基础倍率。
-export function describeScheduleSource(fromModel: { token: boolean; request: boolean }): string {
-  const { token, request } = fromModel;
-  if (token && request) return "模型级分时档";
-  if (token) return "模型级分时档（请求倍率来自渠道级分时档或基础倍率）";
-  if (request) return "模型级分时档（Token 倍率来自渠道级分时档或基础倍率）";
-  return "渠道级分时档或基础倍率";
+// 单独一维的来源小标。明细行按维度标记，值被覆盖了就说清是哪一层改的价：
+// 模型档生效标「模型分时」，只有渠道档命中则标更弱的「渠道分时」——两种都不会在值等于基础值时漏标。
+export function ScheduleSourceTag({ fromModel, scheduled }: { fromModel: boolean; scheduled: boolean }) {
+  if (!scheduled) return null;
+  return (
+    <span
+      className={
+        fromModel
+          ? "ml-1 text-[10px] font-normal text-[var(--color-accent)]"
+          : "ml-1 text-[10px] font-normal text-[var(--color-foreground-muted)]"
+      }
+      title={
+        fromModel
+          ? "当前时段该维度由这个模型的模型级分时档覆盖"
+          : "当前时段该维度由渠道级分时档覆盖；基础倍率见下方提示"
+      }
+    >
+      {fromModel ? "模型分时" : "渠道分时"}
+    </span>
+  );
 }
