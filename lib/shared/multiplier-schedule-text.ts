@@ -57,47 +57,21 @@ export function formatScheduleMultipliers(item: ScheduleTextItem): string {
   return parts.length > 0 ? parts.join(" / ") : "沿用下级倍率";
 }
 
-// 完整清单（悬浮时看全部档位）：`周五 00:00–08:00 · Token 0.5x`
-export function describeScheduleWindows(
-  schedules: ScheduleTextItem[],
-  timeZone: string = browserTimeZone(),
-): string[] {
-  return schedules.map((item) => {
-    const wall = windowToWall(item, timeZone);
-    const text = wall ?? item;
-    const place = wall ? "" : "（UTC，当前时区无法换算）";
-    return `${formatScheduleDays(text.days)} ${formatScheduleTime(text.start, text.end)} · ${formatScheduleMultipliers(item)}${place}`;
-  });
-}
-
 export type ScheduleTagInput = {
   modelSchedules?: ScheduleTextItem[];
   channelSchedules?: ScheduleTextItem[];
-  // 该维度此刻由哪一层给（true=模型档），用于挑出真正生效的那层的档位
-  tokenFromModelSchedule?: boolean;
-  requestFromModelSchedule?: boolean;
-  tokenScheduled?: boolean;
-  requestScheduled?: boolean;
 };
 
 type DimensionKey = "token_multiplier" | "request_multiplier";
 
-type LayerHint = {
-  fromModelSchedule?: boolean;
-  scheduled?: boolean;
-};
-
-// 该维度用哪一层的档位：模型档命中就看模型档；只有渠道档命中就看渠道档；
-// 当前没命中时，模型层配了这个维度就以模型层为准（模型级优先），否则看渠道层。
+// 该维度取哪一层的档位：模型层配了就用模型层（模型级优先），否则用渠道层。
+// 只看「配了什么」，不看此刻是否命中——标签内容不能随时刻漂移
 function pickLayerWindows(
   dimension: DimensionKey,
   modelSchedules: ScheduleTextItem[],
   channelSchedules: ScheduleTextItem[],
-  hint: LayerHint,
 ): ScheduleTextItem[] {
   const configured = (list: ScheduleTextItem[]) => list.filter((item) => item[dimension] !== null);
-  if (hint.fromModelSchedule) return configured(modelSchedules);
-  if (hint.scheduled) return configured(channelSchedules);
   const modelWindows = configured(modelSchedules);
   return modelWindows.length > 0 ? modelWindows : configured(channelSchedules);
 }
@@ -110,10 +84,13 @@ function summarizeDimension(
 ): string | null {
   if (windows.length === 0) return null;
   const listed = windows.slice(0, MAX_TAG_WINDOWS).map((item) => {
-    const wall = windowToWall(item, timeZone) ?? item;
+    const wall = windowToWall(item, timeZone);
+    // 首尾相同是非法配置（网关不命中），别按跨零点写成「全天」
+    if (item.start === item.end) return `${item[dimension]}x 时段配置无效`;
+    const text = wall ?? item;
     // 全周生效就不写星期，省下的宽度留给时段
-    const days = wall.days.length === 7 ? "" : `${formatScheduleDays(wall.days)} `;
-    return `${item[dimension]}x ${days}${formatScheduleTime(wall.start, wall.end)}`;
+    const days = text.days.length === 7 ? "" : `${formatScheduleDays(text.days)} `;
+    return `${item[dimension]}x ${days}${formatScheduleTime(text.start, text.end)}`;
   });
   const more = windows.length > listed.length ? ` 等${windows.length}档` : "";
   return `${label} ${listed.join("、")}${more}`;
@@ -128,19 +105,13 @@ export function summarizeScheduleTag(input: ScheduleTagInput, timeZone: string =
     summarizeDimension(
       "T",
       "token_multiplier",
-      pickLayerWindows("token_multiplier", modelSchedules, channelSchedules, {
-        fromModelSchedule: input.tokenFromModelSchedule,
-        scheduled: input.tokenScheduled,
-      }),
+      pickLayerWindows("token_multiplier", modelSchedules, channelSchedules),
       timeZone,
     ),
     summarizeDimension(
       "R",
       "request_multiplier",
-      pickLayerWindows("request_multiplier", modelSchedules, channelSchedules, {
-        fromModelSchedule: input.requestFromModelSchedule,
-        scheduled: input.requestScheduled,
-      }),
+      pickLayerWindows("request_multiplier", modelSchedules, channelSchedules),
       timeZone,
     ),
   ].filter((part): part is string => part !== null);
@@ -152,15 +123,14 @@ export function summarizeChannelScheduleTags(
   inputs: ScheduleTagInput[],
   timeZone: string = browserTimeZone(),
 ): string | null {
-  const seen = new Set<string>();
+  const seen: string[] = [];
   for (const input of inputs) {
     const tag = summarizeScheduleTag(input, timeZone);
-    if (tag) seen.add(tag);
-    if (seen.size > MAX_TAG_WINDOWS) break;
+    if (tag && !seen.includes(tag)) seen.push(tag);
   }
-  if (seen.size === 0) return null;
-  const tags = [...seen];
-  const listed = tags.slice(0, MAX_TAG_WINDOWS);
-  const more = tags.length > listed.length ? ` 等${tags.length}种` : "";
-  return `${listed.join(" · ")}${more}`;
+  if (seen.length === 0) return null;
+  const listed = seen.slice(0, MAX_TAG_WINDOWS);
+  const more = seen.length > listed.length ? ` 等${seen.length}种` : "";
+  // 多渠道之间用分号，避免与维度之间的「·」混在一起
+  return `${listed.join("；")}${more}`;
 }

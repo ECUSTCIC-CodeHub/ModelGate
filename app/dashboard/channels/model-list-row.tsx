@@ -56,10 +56,6 @@ export function ModelListRow({
       scheduleTag: summarizeScheduleTag({
         modelSchedules: parseMultiplierSchedules(model.multiplier_schedules),
         channelSchedules: model.channel_multiplier_schedules,
-        tokenFromModelSchedule: resolved.token_from_model_schedule,
-        requestFromModelSchedule: resolved.request_from_model_schedule,
-        tokenScheduled: resolved.token_scheduled,
-        requestScheduled: resolved.request_scheduled,
       }),
     };
   }, [model]);
@@ -113,10 +109,15 @@ export function ModelListRow({
           T {effective.token_multiplier}x / R {effective.request_multiplier}x
         </div>
         {scheduleTag ? (
-          // 配了分时就一直挂着，标签本身写清倍率与时段
-          <p className="mt-0.5 max-w-72 truncate text-[10px] text-[var(--color-accent)]">
-            分时 {scheduleTag}
-          </p>
+          // 配了分时就一直挂着，标签本身写清倍率与时段；基础倍率同样保留，便于对照
+          <>
+            <p className="mt-0.5 max-w-72 truncate text-[10px] text-[var(--color-accent)]">
+              分时 {scheduleTag}
+            </p>
+            <p className="text-[10px] text-[var(--color-foreground-muted)]">
+              基础 T {model.token_multiplier ?? 1}x / R {model.request_multiplier ?? 1}x
+            </p>
+          </>
         ) : (
           <p className="text-[10px] text-[var(--color-foreground-muted)]">
             基础 T {model.token_multiplier ?? 1}x / R {model.request_multiplier ?? 1}x

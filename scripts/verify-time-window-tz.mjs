@@ -28,7 +28,6 @@ import {
 } from "@/lib/shared/time-window";
 import { scheduleDraftsToPayload, schedulesToDrafts } from "@/lib/shared/multiplier-schedule-tz";
 import {
-  describeScheduleWindows,
   formatScheduleDays,
   formatScheduleMultipliers,
   formatScheduleTime,
@@ -424,18 +423,6 @@ check("分时档文案：星期、跨零点与倍率", () => {
   );
 });
 
-check("分时档清单：按浏览者时区展示每档的时段与倍率（仅用于编辑器/排障）", () => {
-  // 库里存的是 UTC：周四 16:00-00:00 = 东八区周五 00:00-08:00；周五 00:00-08:00（UTC）= 周五 08:00-16:00
-  const schedules = [
-    { days: [4], start: "16:00", end: "00:00", token_multiplier: 0.5, request_multiplier: null },
-    { days: [5], start: "00:00", end: "08:00", token_multiplier: 1.5, request_multiplier: 2 },
-  ];
-  assert.deepEqual(describeScheduleWindows(schedules, "Asia/Shanghai"), [
-    "周五 00:00–08:00 · Token 0.5x",
-    "周五 08:00–16:00 · Token 1.5x / 请求 2x",
-  ]);
-});
-
 check("分时标签：直接写出维度、倍率与时段，与当前是否命中无关", () => {
   // 标签是列表上唯一的分时信息，不再有悬浮明细，所以必须自带时段
   const schedules = [
@@ -465,6 +452,16 @@ check("分时标签：直接写出维度、倍率与时段，与当前是否命�
     request_multiplier: null,
   }));
   assert.equal(summarizeScheduleTag({ modelSchedules: many }, "UTC"), "T 1x 周一 00:00–01:00、2x 周一 01:00–02:00 等3档");
+  // 模型层配了就是模型层，不看此刻是否命中：标签内容不能随时刻漂移
+  const modelLayer = [{ days: [1, 2, 3, 4, 5, 6, 7], start: "00:00", end: "08:00", token_multiplier: 0.5, request_multiplier: null }];
+  const channelLayer = [{ days: [1, 2, 3, 4, 5, 6, 7], start: "08:00", end: "16:00", token_multiplier: 2, request_multiplier: 3 }];
+  assert.equal(
+    summarizeScheduleTag({ modelSchedules: modelLayer, channelSchedules: channelLayer }, "UTC"),
+    "T 0.5x 00:00–08:00 · R 3x 08:00–16:00",
+  );
+  // 首尾相同是非法配置，不能按跨零点写成「全天」
+  const broken = [{ days: [1], start: "10:00", end: "10:00", token_multiplier: 0.5, request_multiplier: null }];
+  assert.equal(summarizeScheduleTag({ modelSchedules: broken }, "UTC"), "T 0.5x 时段配置无效");
 });
 
 check("多渠道标签去重并截断", () => {
@@ -474,7 +471,7 @@ check("多渠道标签去重并截断", () => {
   const other = [{ days: [1, 2, 3, 4, 5, 6, 7], start: "08:00", end: "16:00", token_multiplier: 2, request_multiplier: null }];
   assert.equal(
     summarizeChannelScheduleTags([{ modelSchedules: schedules }, { modelSchedules: other }], "UTC"),
-    "T 0.5x 00:00–08:00 · T 2x 08:00–16:00",
+    "T 0.5x 00:00–08:00；T 2x 08:00–16:00",
   );
 });
 

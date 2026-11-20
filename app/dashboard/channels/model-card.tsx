@@ -52,10 +52,6 @@ export function ModelCard({
       scheduleTag: summarizeScheduleTag({
         modelSchedules: parseMultiplierSchedules(model.multiplier_schedules),
         channelSchedules: model.channel_multiplier_schedules,
-        tokenFromModelSchedule: resolved.token_from_model_schedule,
-        requestFromModelSchedule: resolved.request_from_model_schedule,
-        tokenScheduled: resolved.token_scheduled,
-        requestScheduled: resolved.request_scheduled,
       }),
     };
   }, [model]);

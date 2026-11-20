@@ -123,10 +123,6 @@ function scheduleTagOf(row: ModelItem): string | null {
     row.channels.map((channel) => ({
       modelSchedules: channel.multiplier_schedules,
       channelSchedules: channel.channel_multiplier_schedules,
-      tokenFromModelSchedule: channel.token_multiplier_from_model_schedule,
-      requestFromModelSchedule: channel.request_multiplier_from_model_schedule,
-      tokenScheduled: channel.token_multiplier_scheduled,
-      requestScheduled: channel.request_multiplier_scheduled,
     })),
   );
 }
