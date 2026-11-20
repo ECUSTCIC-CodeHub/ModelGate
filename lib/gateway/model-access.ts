@@ -2,7 +2,7 @@ import { gatewayDb, type DbUser } from "@/lib/core/db";
 import { getUserAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { getUserGroup } from "@/lib/gateway/effective-limits";
 import { parseSupportedProtocols, type GatewayProtocol } from "@/lib/gateway/protocols";
-import { parseMultiplierSchedules, resolveLayeredMultiplier } from "@/lib/gateway/multiplier-schedule";
+import { parseMultiplierSchedules, resolveLayeredMultiplier, type MultiplierSchedule } from "@/lib/gateway/multiplier-schedule";
 import { getUserScope, listRedeemScopes, scopeCoversPair, scopesCoverPair, scopesHaveAlias } from "@/lib/services/redeem-authorization";
 
 export function parseAllowedModelAliases(raw: string | null | undefined) {
@@ -140,6 +140,9 @@ export type AccessibleModelChannel = {
   request_multiplier_scheduled: boolean;
   weight: number;
   effective_weight: number;
+  // 两层档位原样带给前端（库里是 UTC），由前端按浏览者时区说明「什么时候、什么价」
+  multiplier_schedules: MultiplierSchedule[];
+  channel_multiplier_schedules: MultiplierSchedule[];
 };
 
 export type AccessibleModel = {
@@ -194,12 +197,9 @@ export async function listAccessibleModels(user: Pick<DbUser, "id" | "role" | "g
     const rm = row.request_multiplier ?? 1;
     const ew = Math.max(1, row.model_weight ?? 1) * Math.max(1, row.channel_weight ?? 1);
     const sv = row.supports_vision ?? 0;
-    const effective = resolveLayeredMultiplier(
-      tm,
-      rm,
-      [parseMultiplierSchedules(row.model_multiplier_schedules), parseMultiplierSchedules(row.channel_multiplier_schedules)],
-      now,
-    );
+    const modelSchedules = parseMultiplierSchedules(row.model_multiplier_schedules);
+    const channelSchedules = parseMultiplierSchedules(row.channel_multiplier_schedules);
+    const effective = resolveLayeredMultiplier(tm, rm, [modelSchedules, channelSchedules], now);
     const channel: AccessibleModelChannel = {
       channel_id: row.channel_id,
       channel_name: row.channel_name,
@@ -215,6 +215,8 @@ export async function listAccessibleModels(user: Pick<DbUser, "id" | "role" | "g
       request_multiplier_scheduled: effective.request_source !== null,
       weight: row.model_weight ?? 1,
       effective_weight: ew,
+      multiplier_schedules: modelSchedules,
+      channel_multiplier_schedules: channelSchedules,
     };
     const current = visible.get(row.alias);
     if (!current) {

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatNumber, formatTokenCount } from "@/lib/shared/utils";
 import type { PeriodQuotaEntry } from "@/lib/gateway/quota";
 import { isBypassQuotaMode, usesChannelSelfQuota } from "@/lib/gateway/quota-mode";
+import { describeChannelSchedules, type ScheduleTextItem } from "@/lib/shared/multiplier-schedule-text";
 
 export type ModelQuotaItem = {
   alias: string;
@@ -24,6 +25,9 @@ export type ModelQuotaItem = {
   effective_token_multiplier?: number;
   effective_request_multiplier?: number;
   multiplier_schedule_applied?: boolean;
+  // 两层档位原样带回（UTC），挂在「分时」标记的悬浮提示里按浏览器时区说明
+  multiplier_schedules?: ScheduleTextItem[];
+  channel_multiplier_schedules?: ScheduleTextItem[];
 };
 
 function QuotaBar({ used, total }: { used: number; total: number | null }) {
@@ -99,7 +103,12 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
                     {m.multiplier_schedule_applied ? (
                       <span
                         className="rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-foreground-muted)]"
-                        title="当前时段命中分时倍率"
+                        title={
+                          describeChannelSchedules([{
+                            modelSchedules: m.multiplier_schedules,
+                            channelSchedules: m.channel_multiplier_schedules,
+                          }]).join("\n") || "当前时段命中分时倍率"
+                        }
                       >
                         分时
                       </span>

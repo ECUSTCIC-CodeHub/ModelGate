@@ -238,11 +238,15 @@ export type ModelEffectiveMultiplier = {
 
 // 模型映射列表要回答「这条线此刻什么价」，与计费必须同口径，所以直接用网关的同一份分层解析，
 // 不在管理端另写一遍「模型档优先、渠道档补空维度」。
-export function effectiveMultiplierOf(model: ModelRow & { channel_multiplier_schedules: MultiplierSchedule[] }): ModelEffectiveMultiplier {
+export function effectiveMultiplierOf(
+  model: ModelRow & { channel_multiplier_schedules: MultiplierSchedule[] },
+  now: Date = new Date(),
+): ModelEffectiveMultiplier {
   const resolved = resolveLayeredMultiplier(
     model.token_multiplier ?? 1,
     model.request_multiplier ?? 1,
     [parseMultiplierSchedules(model.multiplier_schedules), model.channel_multiplier_schedules],
+    now,
   );
   return {
     token_multiplier: resolved.token_multiplier,

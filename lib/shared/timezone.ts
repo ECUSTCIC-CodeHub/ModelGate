@@ -86,29 +86,44 @@ export function utcTimeToWall(hhmm: string, timeZone: string, base: Date = new D
 }
 
 // 把某时区的墙上 HH:MM 换算成 UTC 的 HH:MM；dayShift 表示相对该时区当日的星期偏移（-1/0/1）。
+// 用「按参考日偏移反解 + 最多两次校正」代替逐分钟扫描：列表里每行都要换算，
+// 扫描 1440 次 formatToParts 会让几十行的表格卡住。夏令时切换当天第一轮解出的墙上时间
+// 会差一小时，校正一轮即可命中；跳表空档里不存在该时刻，两轮都对不上就返回 null。
 export function wallTimeToUtc(hhmm: string, timeZone: string, base: Date = new Date()): { utc: string; dayShift: number } | null {
   const [h, m] = hhmm.split(":").map(Number);
   if (!Number.isInteger(h) || !Number.isInteger(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
   const dayStart = Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate());
-  const target = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-  let best: { utcMs: number; tzWeekday: number } | null = null;
-  // 以 base 当天 UTC 日起点为参考，按 1 分钟步长扫描一个 UTC 日，找墙上时间匹配的候选。
-  for (let off = 0; off < 86400_000; off += 60_000) {
-    const parts = partsInTimeZone(new Date(dayStart + off), timeZone);
-    if (!parts) continue;
-    if (`${parts.hour}:${parts.minute}` !== target) continue;
-    const tzWeekday = weekdayToIso(parts.weekday);
-    // 星期认不出就整次判定为不可换算：跳过它继续扫，回拨日可能命中更晚的候选而给出 1 小时偏移的错值
-    if (tzWeekday === null) return null;
-    best = { utcMs: off, tzWeekday };
-    break;
+  const targetMinutes = h * 60 + m;
+
+  const origin = partsInTimeZone(new Date(dayStart), timeZone);
+  if (!origin) return null;
+  // 参考日 UTC 零点这一刻的本地偏移（分钟），只作为初值。
+  // 候选归一到参考日之内（跨日由 dayShift 表达），与原先「在 UTC 日内找匹配」的口径一致：
+  // 否则会命中前一天同一墙上时刻，把夏令时跳表空档误判成可换算。
+  const originOffset = Number(origin.hour) * 60 + Number(origin.minute);
+  const initialOffset = (((targetMinutes - originOffset) % 1440) + 1440) % 1440;
+  let candidateMs = dayStart + initialOffset * 60_000;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const parts = partsInTimeZone(new Date(candidateMs), timeZone);
+    if (!parts) return null;
+    const wallMinutes = Number(parts.hour) * 60 + Number(parts.minute);
+    if (wallMinutes === targetMinutes && candidateMs >= dayStart && candidateMs < dayStart + 86_400_000) {
+      const tzWeekday = weekdayToIso(parts.weekday);
+      // 星期认不出就整次判定为不可换算，不能按周一兜底把 dayShift 算错一整天
+      if (tzWeekday === null) return null;
+      const utcDate = new Date(candidateMs);
+      const utc = `${String(utcDate.getUTCHours()).padStart(2, "0")}:${String(utcDate.getUTCMinutes()).padStart(2, "0")}`;
+      // dayShift：匹配时刻的 UTC 星期 − 该时刻在所选时区下的星期（用户选「周一」时，UTC 可能落在周日）。
+      const utcDay = utcDate.getUTCDay();
+      const matchedUtcWd = utcDay === 0 ? 7 : utcDay;
+      const dayShift = ((matchedUtcWd - tzWeekday + 7) % 7);
+      const signed = dayShift > 3 ? dayShift - 7 : dayShift;
+      return { utc, dayShift: signed };
+    }
+    // 用最短带符号差校正：直接相减在「跨 0 点」时方向会反（差出 ±1439 分钟）
+    const delta = (((targetMinutes - wallMinutes) % 1440) + 2160) % 1440 - 720;
+    candidateMs += delta * 60_000;
   }
-  if (!best) return null;
-  const utcDate = new Date(dayStart + best.utcMs);
-  const utc = `${String(utcDate.getUTCHours()).padStart(2, "0")}:${String(utcDate.getUTCMinutes()).padStart(2, "0")}`;
-  // dayShift：匹配时刻的 UTC 星期 − 该时刻在所选时区下的星期（用户选「周一」时，UTC 可能落在周日）。
-  const matchedUtcWd = (() => { const d = utcDate.getUTCDay(); return d === 0 ? 7 : d; })();
-  const dayShift = ((matchedUtcWd - best.tzWeekday + 7) % 7);
-  const signed = dayShift > 3 ? dayShift - 7 : dayShift;
-  return { utc, dayShift: signed };
+  return null;
 }

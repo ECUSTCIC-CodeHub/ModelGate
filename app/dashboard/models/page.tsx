@@ -20,6 +20,15 @@ import { authedFetch, ensureLoggedIn, getCachedProfile } from "@/lib/auth/client
 import { shortProtocolLabel, type Protocol } from "@/app/dashboard/channels/channel-model";
 import { ScheduleSourceTag } from "@/app/dashboard/channels/schedule-source-tag";
 import { describeAggregatedScheduleSource, describeScheduleSource } from "@/lib/shared/multiplier-source";
+import { describeChannelSchedules } from "@/lib/shared/multiplier-schedule-text";
+
+type ScheduleWindow = {
+  days: number[];
+  start: string;
+  end: string;
+  token_multiplier: number | null;
+  request_multiplier: number | null;
+};
 
 type ChannelMultiplier = {
   channel_id: number;
@@ -36,6 +45,9 @@ type ChannelMultiplier = {
   request_multiplier_scheduled: boolean;
   weight: number;
   effective_weight: number;
+  // 两层分时档原样带回（库里是 UTC），由前端按浏览器时区换算展示
+  multiplier_schedules?: ScheduleWindow[];
+  channel_multiplier_schedules?: ScheduleWindow[];
 };
 
 type BrandGroup = {
@@ -123,6 +135,17 @@ function scheduleSourceLabel(row: ModelItem): string {
     tokenFromModelSchedule: row.token_multiplier_from_model_schedule,
     requestFromModelSchedule: row.request_multiplier_from_model_schedule,
   });
+}
+
+// 各渠道的分时档清单：时间按浏览者时区换算，并标出此刻命中的那一档
+function scheduleWindowLines(row: ModelItem): string[] {
+  return describeChannelSchedules(
+    row.channels.map((channel) => ({
+      channelName: channel.channel_name,
+      modelSchedules: channel.multiplier_schedules,
+      channelSchedules: channel.channel_multiplier_schedules,
+    })),
+  );
 }
 
 type SortField = "id" | "effective_token_multiplier" | "effective_request_multiplier" | "weight" | "effective_weight";
@@ -306,6 +329,14 @@ export default function AvailableModelsPage() {
     return sorted;
   }, [filtered, sortField, sortOrder]);
 
+  // 每行的档位清单只算一次：Token 与请求两列、卡片与列表共用同一份，
+  // 避免每次重渲染按渠道×层×档位重复做时区换算
+  const scheduleLinesById = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const row of rows) map.set(row.id, scheduleWindowLines(row));
+    return map;
+  }, [rows]);
+
   function renderMultiplier(row: ModelItem, type: "token" | "request") {
     const effectiveMin = type === "token" ? row.effective_token_multiplier_min : row.effective_request_multiplier_min;
     const effectiveMax = type === "token" ? row.effective_token_multiplier_max : row.effective_request_multiplier_max;
@@ -333,9 +364,12 @@ export default function AvailableModelsPage() {
     );
 
     // 来源按维度判：模型档只填了 token 时，请求倍率仍是渠道档或基础倍率给的，笼统说「模型/渠道」会指错。
-    const tooltip = scheduled
-      ? `当前时段生效倍率，基础倍率 ${baseLabel}；${scheduleSourceLabel(row)}`
-      : `基础倍率 ${baseLabel}`;
+    const tooltipLines = [
+      scheduled
+        ? `当前时段生效倍率，基础倍率 ${baseLabel}；${scheduleSourceLabel(row)}`
+        : `基础倍率 ${baseLabel}`,
+      ...(scheduleLinesById.get(row.id) ?? []),
+    ];
 
     return (
       <Tooltip>
@@ -353,10 +387,12 @@ export default function AvailableModelsPage() {
               <ChevronDown className={cn("h-3.5 w-3.5 text-[var(--color-foreground-muted)] transition-transform", expanded && "rotate-180")} />
             </button>
           ) : (
-            <span className="inline-flex cursor-default items-center gap-1 px-2 py-1">{content}</span>
+            <span tabIndex={0} className="inline-flex cursor-default items-center gap-1 px-2 py-1">{content}</span>
           )}
         </TooltipTrigger>
-        <TooltipContent side="top" className="text-xs">{tooltip}</TooltipContent>
+        <TooltipContent side="top" className="max-w-80 whitespace-pre-line text-xs">
+          {tooltipLines.join("\n")}
+        </TooltipContent>
       </Tooltip>
     );
   }
@@ -647,11 +683,13 @@ export default function AvailableModelsPage() {
                                       : row.effective_token_multiplier_min + "x"}
                                   </span>
                                 </TooltipTrigger>
-                                <TooltipContent side="top" className="text-xs">
-                                  基础倍率 {row.token_multiplier_min !== row.token_multiplier_max
-                                    ? row.token_multiplier_min + "x~" + row.token_multiplier_max + "x"
-                                    : row.token_multiplier_min + "x"}
-                                  {row.token_multiplier_scheduled ? `；${scheduleSourceLabel(row)}` : ""}
+                                <TooltipContent side="top" className="max-w-80 whitespace-pre-line text-xs">
+                                  {[
+                                    `基础倍率 ${row.token_multiplier_min !== row.token_multiplier_max
+                                      ? row.token_multiplier_min + "x~" + row.token_multiplier_max + "x"
+                                      : row.token_multiplier_min + "x"}${row.token_multiplier_scheduled ? `；${scheduleSourceLabel(row)}` : ""}`,
+                                    ...(scheduleLinesById.get(row.id) ?? []),
+                                  ].join("\n")}
                                 </TooltipContent>
                               </Tooltip>
                               <Tooltip>
@@ -667,17 +705,22 @@ export default function AvailableModelsPage() {
                                       : row.effective_request_multiplier_min + "x"}
                                   </span>
                                 </TooltipTrigger>
-                                <TooltipContent side="top" className="text-xs">
-                                  基础倍率 {row.request_multiplier_min !== row.request_multiplier_max
-                                    ? row.request_multiplier_min + "x~" + row.request_multiplier_max + "x"
-                                    : row.request_multiplier_min + "x"}
-                                  {row.request_multiplier_scheduled ? `；${scheduleSourceLabel(row)}` : ""}
+                                <TooltipContent side="top" className="max-w-80 whitespace-pre-line text-xs">
+                                  {[
+                                    `基础倍率 ${row.request_multiplier_min !== row.request_multiplier_max
+                                      ? row.request_multiplier_min + "x~" + row.request_multiplier_max + "x"
+                                      : row.request_multiplier_min + "x"}${row.request_multiplier_scheduled ? `；${scheduleSourceLabel(row)}` : ""}`,
+                                    ...(scheduleLinesById.get(row.id) ?? []),
+                                  ].join("\n")}
                                 </TooltipContent>
                               </Tooltip>
                               {scheduled ? (
                                 <span
                                   className="inline-flex items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-foreground-secondary)]"
-                                  title={`当前时段生效倍率已按分时档覆盖：${scheduleSourceLabel(row)}`}
+                                  title={[
+                                    `当前时段生效倍率已按分时档覆盖：${scheduleSourceLabel(row)}`,
+                                    ...(scheduleLinesById.get(row.id) ?? []),
+                                  ].join("\n")}
                                 >
                                   分时
                                 </span>

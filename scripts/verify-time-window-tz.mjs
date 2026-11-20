@@ -27,6 +27,14 @@ import {
   windowToUtc,
 } from "@/lib/shared/time-window";
 import { scheduleDraftsToPayload, schedulesToDrafts } from "@/lib/shared/multiplier-schedule-tz";
+import {
+  describeChannelSchedules,
+  describeScheduleTooltip,
+  describeScheduleWindows,
+  formatScheduleDays,
+  formatScheduleMultipliers,
+  formatScheduleTime,
+} from "@/lib/shared/multiplier-schedule-text";
 
 let passed = 0;
 let failed = 0;
@@ -42,7 +50,19 @@ function check(name, fn) {
 }
 
 // 覆盖东八区（无夏令时）、半小时时区、北美与南半球夏令时时区
-const TIME_ZONES = ["UTC", "Asia/Shanghai", "Asia/Kolkata", "America/New_York", "Australia/Sydney"];
+// 含两个极端偏移（+14 / -11）、45 分钟时区、半小时夏令时（Lord Howe）：
+// 墙上时间与 UTC 的换算在「跨日」「半小时偏移」「夏令时切换」上最容易出错
+const TIME_ZONES = [
+  "UTC",
+  "Asia/Shanghai",
+  "Asia/Kolkata",
+  "America/New_York",
+  "Australia/Sydney",
+  "Pacific/Kiritimati",
+  "Pacific/Midway",
+  "Asia/Kathmandu",
+  "Australia/Lord_Howe",
+];
 
 const WINDOWS = [
   { name: "普通白天档", window: { days: [5], start: "08:00", end: "14:00" } },
@@ -388,6 +408,58 @@ check("非法时区返回 null 而不是伪造 00:00", () => {
 check("倍率不是有效数字时直接报错，不静默降级", () => {
   const drafts = [{ key: "a", days: [1], start: "09:00", end: "10:00", token_multiplier: "abc", request_multiplier: "" }];
   assert.throws(() => scheduleDraftsToPayload(drafts, "UTC", new Date(BASE_MS_LIST[0])), /不是有效数字/);
+});
+
+check("分时档文案：星期、跨零点与倍率", () => {
+  assert.equal(formatScheduleDays([1, 2, 3, 4, 5]), "周一至周五");
+  assert.equal(formatScheduleDays([1, 2, 3, 4, 5, 6, 7]), "每天");
+  assert.equal(formatScheduleDays([1, 3, 5]), "周一、周三、周五");
+  assert.equal(formatScheduleDays([7, 1, 2]), "周日至周二");
+  assert.equal(formatScheduleDays([6]), "周六");
+  assert.equal(formatScheduleTime("22:00", "06:00"), "22:00–次日 06:00");
+  assert.equal(formatScheduleTime("08:00", "14:00"), "08:00–14:00");
+  assert.equal(
+    formatScheduleMultipliers({ days: [1], start: "08:00", end: "14:00", token_multiplier: 1.5, request_multiplier: null }),
+    "Token 1.5x",
+  );
+});
+
+check("分时档文案：按浏览者时区展示，并标出当前命中的档", () => {
+  // 库里存的是 UTC：周四 16:00-00:00 = 东八区周五 00:00-08:00；周五 00:00-08:00（UTC）= 周五 08:00-16:00
+  const schedules = [
+    { days: [4], start: "16:00", end: "00:00", token_multiplier: 0.5, request_multiplier: null },
+    { days: [5], start: "00:00", end: "08:00", token_multiplier: 1.5, request_multiplier: 2 },
+  ];
+  const lines = describeScheduleWindows(schedules, "Asia/Shanghai");
+  assert.deepEqual(lines, [
+    "周五 00:00–08:00 · Token 0.5x",
+    "周五 08:00–16:00 · Token 1.5x / 请求 2x",
+  ]);
+  // 2024-01-05T00:30Z = 东八区周五 08:30，命中的是第二档
+  const now = new Date(Date.UTC(2024, 0, 5, 0, 30));
+  const marked = describeScheduleWindows(schedules, "Asia/Shanghai", 1);
+  assert.equal(marked[1], "周五 08:00–16:00 · Token 1.5x / 请求 2x（当前生效）");
+  const tooltip = describeScheduleTooltip({
+    baseToken: 1,
+    baseRequest: 1,
+    effectiveToken: 1.5,
+    effectiveRequest: 2,
+    scheduleApplied: true,
+    source: "两个维度都来自模型级分时档",
+    modelSchedules: schedules,
+    now,
+    timeZone: "Asia/Shanghai",
+  });
+  assert.match(tooltip, /当前时段生效 Token 1\.5x \/ 请求 2x/);
+  assert.match(tooltip, /模型级：/);
+  assert.match(tooltip, /（当前生效）/);
+  const grouped = describeChannelSchedules(
+    [{ channelName: "渠道 A", modelSchedules: schedules }],
+    "Asia/Shanghai",
+    now,
+  );
+  assert.equal(grouped[0], "· 模型档 周五 00:00–08:00 · Token 0.5x");
+  assert.match(grouped[grouped.length - 1], /浏览器时区（Asia\/Shanghai）/);
 });
 
 console.log("");

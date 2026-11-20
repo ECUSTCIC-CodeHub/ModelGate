@@ -80,12 +80,10 @@ export async function GET(request: Request) {
     const usedRequests = m.period_used_requests;
     const periods = selfQuota ? parsePeriodCycles(m.period_cycles).map(toPeriodQuotaEntry) : [];
     // 展示当下实际生效的倍率，与计费口径一致：模型档优先，渠道档只补模型留空的维度。
-    const effective = resolveLayeredMultiplier(
-      m.token_multiplier ?? 1,
-      m.request_multiplier ?? 1,
-      [parseMultiplierSchedules(m.multiplier_schedules), parseMultiplierSchedules(m.channel_multiplier_schedules)],
-      now,
-    );
+    // 两层档位解析一次复用：既要参与分层解析，也要原样带给前端说明「什么时候、什么价」。
+    const modelSchedules = parseMultiplierSchedules(m.multiplier_schedules);
+    const channelSchedules = parseMultiplierSchedules(m.channel_multiplier_schedules);
+    const effective = resolveLayeredMultiplier(m.token_multiplier ?? 1, m.request_multiplier ?? 1, [modelSchedules, channelSchedules], now);
 
     return {
       alias: m.alias,
@@ -100,6 +98,9 @@ export async function GET(request: Request) {
       effective_token_multiplier: effective.token_multiplier,
       effective_request_multiplier: effective.request_multiplier,
       multiplier_schedule_applied: effective.schedule_applied,
+      // 前端要按浏览器时区把「什么时候、什么价」说清楚，这里把两层档位原样带上（仍是 UTC）
+      multiplier_schedules: modelSchedules,
+      channel_multiplier_schedules: channelSchedules,
       quota_requests: selfQuota ? m.quota_requests : null,
       quota_tokens: selfQuota ? m.quota_tokens : null,
       used_requests: selfQuota ? usedRequests : null,

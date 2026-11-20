@@ -16,11 +16,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { parseMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
 import type { ModelWithChannel } from "./channel-model";
 import { effectiveMultiplierOf, parseSupportedProtocols, shortProtocolLabel } from "./channel-model";
 import { ModelActions } from "./model-actions";
 import { ScheduleSourceTag } from "./schedule-source-tag";
 import { describeScheduleSource } from "@/lib/shared/multiplier-source";
+import { describeScheduleTooltip } from "@/lib/shared/multiplier-schedule-text";
 
 function isExpired(exp?: string | Date | null): boolean {
   if (!exp) return false;
@@ -48,7 +50,30 @@ export function ModelListRow({
   selection?: { checked: boolean; onToggle: () => void };
 }) {
   const [confirmToggle, setConfirmToggle] = useState(false);
-  const effective = effectiveMultiplierOf(model);
+  // 生效值与档位标注必须用同一个时点，否则跨分钟时会出现「未命中」却标了「当前生效」
+  const now = new Date();
+  const effective = effectiveMultiplierOf(model, now);
+  // 「分时」必须说清是哪一段时间、什么价：把两层档位都列出来，并标出此刻命中的那档
+  const modelSchedules = parseMultiplierSchedules(model.multiplier_schedules);
+  const channelSchedules = model.channel_multiplier_schedules;
+  const scheduleTooltip = describeScheduleTooltip({
+    baseToken: model.token_multiplier ?? 1,
+    baseRequest: model.request_multiplier ?? 1,
+    effectiveToken: effective.token_multiplier,
+    effectiveRequest: effective.request_multiplier,
+    scheduleApplied: effective.schedule_applied,
+    source: effective.schedule_applied
+      ? describeScheduleSource({
+        tokenFromModelSchedule: effective.token_from_model_schedule,
+        requestFromModelSchedule: effective.request_from_model_schedule,
+        tokenScheduled: effective.token_scheduled,
+        requestScheduled: effective.request_scheduled,
+      })
+      : undefined,
+    modelSchedules,
+    channelSchedules,
+    now,
+  });
 
   return (
     <TableRow className="group">
@@ -95,31 +120,22 @@ export function ModelListRow({
         {Math.max(1, model.weight) * Math.max(1, model.channel_weight)}x
       </TableCell>
       <TableCell className="whitespace-nowrap font-mono text-xs">
-        <div className="text-[var(--color-foreground-secondary)]">
-          T {effective.token_multiplier}x
-          <ScheduleSourceTag fromModel={effective.token_from_model_schedule} scheduled={effective.token_scheduled} />
-          {" / "}R {effective.request_multiplier}x
-          <ScheduleSourceTag fromModel={effective.request_from_model_schedule} scheduled={effective.request_scheduled} />
-        </div>
         <Tooltip>
           <TooltipTrigger asChild>
-            <p className="cursor-default text-[10px] text-[var(--color-foreground-muted)]">
-              基础 T {model.token_multiplier ?? 1}x / R {model.request_multiplier ?? 1}x
-            </p>
+            <div tabIndex={0} className="cursor-default text-[var(--color-foreground-secondary)]">
+              T {effective.token_multiplier}x
+              <ScheduleSourceTag fromModel={effective.token_from_model_schedule} scheduled={effective.token_scheduled} />
+              {" / "}R {effective.request_multiplier}x
+              <ScheduleSourceTag fromModel={effective.request_from_model_schedule} scheduled={effective.request_scheduled} />
+            </div>
           </TooltipTrigger>
-          <TooltipContent side="top" className="max-w-64 text-xs">
-            {effective.schedule_applied
-              ? `当前时段生效倍率为 ${effective.token_multiplier}x / ${effective.request_multiplier}x；${describeScheduleSource(
-                  {
-                    tokenFromModelSchedule: effective.token_from_model_schedule,
-                    requestFromModelSchedule: effective.request_from_model_schedule,
-                    tokenScheduled: effective.token_scheduled,
-                    requestScheduled: effective.request_scheduled,
-                  },
-                )}。`
-              : "当前时段未命中任何分时档，生效倍率等于基础倍率。"}
+          <TooltipContent side="top" className="max-w-80 whitespace-pre-line text-xs">
+            {scheduleTooltip}
           </TooltipContent>
         </Tooltip>
+        <p className="text-[10px] text-[var(--color-foreground-muted)]">
+          基础 T {model.token_multiplier ?? 1}x / R {model.request_multiplier ?? 1}x
+        </p>
       </TableCell>
       <TableCell className="whitespace-nowrap">{model.max_concurrency > 0 ? model.max_concurrency : "继承渠道"}</TableCell>
       <TableCell>

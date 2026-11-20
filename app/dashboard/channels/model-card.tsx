@@ -16,9 +16,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { effectiveMultiplierOf, parseSupportedProtocols, shortProtocolLabel, type ModelWithChannel } from "./channel-model";
+import { parseMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
 import { ModelActions } from "./model-actions";
 import { ScheduleSourceTag } from "./schedule-source-tag";
 import { describeScheduleSource } from "@/lib/shared/multiplier-source";
+import { describeScheduleTooltip } from "@/lib/shared/multiplier-schedule-text";
 
 function isExpired(exp?: string | Date | null): boolean {
   if (!exp) return false;
@@ -44,7 +46,29 @@ export function ModelCard({
   selection?: { checked: boolean; onToggle: () => void };
 }) {
   const [confirmToggle, setConfirmToggle] = useState(false);
-  const effective = effectiveMultiplierOf(model);
+  // 生效值与档位标注共用同一个时点，避免跨分钟时两者不一致
+  const now = new Date();
+  const effective = effectiveMultiplierOf(model, now);
+  const modelSchedules = parseMultiplierSchedules(model.multiplier_schedules);
+  const channelSchedules = model.channel_multiplier_schedules;
+  const scheduleTooltip = describeScheduleTooltip({
+    baseToken: model.token_multiplier ?? 1,
+    baseRequest: model.request_multiplier ?? 1,
+    effectiveToken: effective.token_multiplier,
+    effectiveRequest: effective.request_multiplier,
+    scheduleApplied: effective.schedule_applied,
+    source: effective.schedule_applied
+      ? describeScheduleSource({
+        tokenFromModelSchedule: effective.token_from_model_schedule,
+        requestFromModelSchedule: effective.request_from_model_schedule,
+        tokenScheduled: effective.token_scheduled,
+        requestScheduled: effective.request_scheduled,
+      })
+      : undefined,
+    modelSchedules,
+    channelSchedules,
+    now,
+  });
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 transition-shadow hover:shadow-[var(--shadow-md)]">
@@ -93,16 +117,8 @@ export function ModelCard({
               <ScheduleSourceTag fromModel={effective.request_from_model_schedule} scheduled={effective.request_scheduled} />
             </Badge>
           </TooltipTrigger>
-          <TooltipContent side="top" className="max-w-64 text-xs">
-            基础倍率 T {model.token_multiplier ?? 1}x / R {model.request_multiplier ?? 1}x。
-            {effective.schedule_applied
-              ? `当前时段${describeScheduleSource({
-                  tokenFromModelSchedule: effective.token_from_model_schedule,
-                  requestFromModelSchedule: effective.request_from_model_schedule,
-                  tokenScheduled: effective.token_scheduled,
-                  requestScheduled: effective.request_scheduled,
-                })}。`
-              : "当前时段未命中分时档。"}
+          <TooltipContent side="top" className="max-w-80 whitespace-pre-line text-xs">
+            {scheduleTooltip}
           </TooltipContent>
         </Tooltip>
         <Badge variant={model.is_public ? "default" : "secondary"}>
