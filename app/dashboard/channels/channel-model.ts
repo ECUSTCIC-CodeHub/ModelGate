@@ -157,6 +157,8 @@ export type ChannelForm = {
   // 时区只是表单态，不提交给服务端
   time_restrictions: WallClockWindow[];
   time_restrictions_time_zone: string;
+  // 打开时库里的时段无法解析：整份表单一行都没有，不能当成「管理员主动清空」
+  time_restrictions_broken: boolean;
   custom_headers: string;
   request_body_omit: string;
   header_mappings: string;
@@ -273,6 +275,7 @@ export const initialChannelForm: ChannelForm = {
   expires_at: "",
   time_restrictions: [],
   time_restrictions_time_zone: browserTimeZone(),
+  time_restrictions_broken: false,
   custom_headers: "",
   request_body_omit: "",
   header_mappings: "",

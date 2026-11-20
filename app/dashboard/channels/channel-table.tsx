@@ -21,11 +21,12 @@ function isExpired(exp?: string | Date | null): boolean {
 
 // 三态与运行时、回填共用同一份判断：none 不限制 / ok 限时段 / broken 渠道不可用
 function renderTimeRestrictionBadge(tr?: string | null) {
-  let state: "none" | "ok" | "broken" = "none";
+  let state: "none" | "ok" | "broken";
   try {
     state = describeTimeRestrictions(tr);
   } catch {
-    state = "none";
+    // 拿不到判定时按异常展示，与运行时「无法确认就拒绝」的口径一致
+    state = "broken";
   }
   if (state === "broken") {
     return <Badge variant="destructive" title="限制时段配置无法解析，该渠道当前对所有请求不可用；请编辑后重新保存">时段异常</Badge>;

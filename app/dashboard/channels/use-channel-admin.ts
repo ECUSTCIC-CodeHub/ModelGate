@@ -220,7 +220,8 @@ export function useChannelAdmin() {
     const timeZone = browserTimeZone();
     const timeRestrictions = parseTimeWindows(row.time_restrictions ?? "", timeZone);
     // 与运行时判定、列表徽标共用同一份三态判断：broken 时该渠道此刻对所有请求不可用
-    if (describeTimeRestrictions(row.time_restrictions ?? "") === "broken") {
+    const timeRestrictionsBroken = describeTimeRestrictions(row.time_restrictions ?? "") === "broken";
+    if (timeRestrictionsBroken) {
       toast({
         variant: "error",
         description: "该渠道的限制时段配置无法解析，当前对所有请求不可用；请重新配置或清空后保存。",
@@ -260,6 +261,7 @@ export function useChannelAdmin() {
       expires_at: expiresAtToInputValue(row.expires_at),
       time_restrictions: timeRestrictions.windows,
       time_restrictions_time_zone: timeZone,
+      time_restrictions_broken: timeRestrictionsBroken,
       custom_headers: formatCustomHeadersInput(row.custom_headers),
       request_body_omit: formatRequestBodyOmitInput(row.request_body_omit),
       header_mappings: formatHeaderMappingsInput(row.header_mappings),
@@ -416,6 +418,10 @@ export function useChannelAdmin() {
       return;
     }
     const timeRestrictionsJson = restrictions.json;
+    // 损坏的限制时段回填后是 0 行，和「管理员主动清空」无法区分：
+    // 这时不发送该字段（服务端保持原值、渠道继续不可用），避免一次无关修改就静默解除限制
+    const preserveBrokenRestrictions = channelForm.time_restrictions_broken
+      && channelForm.time_restrictions.length === 0;
 
     // 分时档要把浏览器墙上时间换算成 UTC，换算不可行（如落在夏令时空档）时中断提交，
     // 否则会把墙上时间当 UTC 存进库，整档时段静默偏移数小时
@@ -502,6 +508,15 @@ export function useChannelAdmin() {
       retry_status_codes: normalizeRetryStatusCodes(channelForm.retry_status_codes),
       ...quotaPayload,
     };
+    // 字段缺席 = 服务端保持原值：损坏且未回填的时段原样保留，渠道继续按不可用处理
+    if (preserveBrokenRestrictions) {
+      delete updateBody.time_restrictions;
+      toast({
+        variant: "info",
+        description: "限制时段配置已损坏且未回填，本次不会修改该字段；请重新填写时段后再保存。",
+        durationMs: 6000,
+      });
+    }
     // 输入框留空表示不修改已保存的密钥：省略 api_key 字段，避免空串被当作清空
     if (channelEditingCanViewApiKey && channelForm.api_key !== "") updateBody.api_key = channelForm.api_key;
     if (channelEditingCanManagePrivacy) updateBody.api_key_private = channelForm.api_key_private;
