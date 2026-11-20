@@ -164,6 +164,9 @@ export function findEffectiveSchedule(
 // 留空的维度继续沿用下层值（覆盖语义，不相乘）；都没命中时回退基础倍率。
 // 模型档与渠道档共用这一份实现，保证「模型侧优先、渠道侧补空维度」的口径不会散落在各处。
 // 多个时段同时命中时取该层的**第一档**（配置顺序即优先级），与 UI 上「从上到下优先」的提示一致。
+// 实现上从最低优先级的层往上覆盖：每一层只在自己填了的维度上落子，
+// 这样先落下（优先级低）的值不会被后落下（优先级高）的层的空维度冲掉。
+// 反过来从高往低写会因为「命中但该维度留空」而保留旧值，结果变成靠后的层说了算。
 export function resolveLayeredMultiplier(
   baseTokenMultiplier: number,
   baseRequestMultiplier: number,
@@ -173,12 +176,12 @@ export function resolveLayeredMultiplier(
   let tokenMultiplier = baseTokenMultiplier;
   let requestMultiplier = baseRequestMultiplier;
   let scheduleApplied = false;
-  for (const schedules of layers) {
-    const hit = findEffectiveSchedule(schedules, now);
+  for (let i = layers.length - 1; i >= 0; i -= 1) {
+    const hit = findEffectiveSchedule(layers[i], now);
     if (!hit) continue;
     scheduleApplied = true;
-    tokenMultiplier = hit.token_multiplier ?? tokenMultiplier;
-    requestMultiplier = hit.request_multiplier ?? requestMultiplier;
+    if (hit.token_multiplier !== null) tokenMultiplier = hit.token_multiplier;
+    if (hit.request_multiplier !== null) requestMultiplier = hit.request_multiplier;
   }
   return {
     token_multiplier: tokenMultiplier,

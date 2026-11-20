@@ -77,7 +77,11 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     }
   }
 
-  // 字段缺席保持原值，传 [] 或 null 清空渠道分时倍率
+  const existing = await gatewayDb.queryOne("SELECT * FROM channels WHERE id = ? AND deleted_at IS NULL", [id]);
+  if (!existing) return jsonError("渠道不存在", 404);
+
+  // 字段缺席保持原值，传 [] 或 null 清空渠道分时倍率。
+  // 先确认渠道存在再校验，避免对不存在的渠道返回参数错误。
   let channelMultiplierSchedules: string | null = null;
   let channelMultiplierSchedulesProvided = false;
   if (parsed.data.multiplier_schedules !== undefined) {
@@ -88,9 +92,6 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       : null;
     channelMultiplierSchedulesProvided = true;
   }
-
-  const existing = await gatewayDb.queryOne("SELECT * FROM channels WHERE id = ? AND deleted_at IS NULL", [id]);
-  if (!existing) return jsonError("渠道不存在", 404);
 
   let periodCycles: string | null = null;
   let periodCyclesProvided = false;

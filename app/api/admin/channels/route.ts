@@ -182,7 +182,7 @@ export async function POST(request: Request) {
     ? serializePeriodCycles(periodCyclesResult.cycles ?? []) || null
     : null;
 
-  const channelSchedulesResult = validateMultiplierSchedules(parsed.data.multiplier_schedules);
+  const channelSchedulesResult = validateMultiplierSchedules(parsed.data.multiplier_schedules ?? []);
   if (!channelSchedulesResult.valid) return jsonError(channelSchedulesResult.error, 400);
   const channelMultiplierSchedules = modelGateFeatures.periodQuota
     ? normalizeMultiplierSchedules(channelSchedulesResult.schedules) || null
