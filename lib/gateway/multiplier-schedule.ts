@@ -147,30 +147,6 @@ export type ResolvedMultiplier = {
   schedule_applied: boolean;
 };
 
-// 解析请求时刻应使用的倍率。多个时段同时命中时取**第一档**（配置顺序即优先级），
-// 与 UI 上「从上到下优先」的提示一致，避免同一个请求的倍率不确定。
-export function resolveEffectiveMultiplier(
-  baseTokenMultiplier: number,
-  baseRequestMultiplier: number,
-  schedules: MultiplierSchedule[],
-  now: Date = new Date(),
-): ResolvedMultiplier {
-  const base = {
-    token_multiplier: baseTokenMultiplier,
-    request_multiplier: baseRequestMultiplier,
-    schedule_applied: false,
-  };
-  const hit = findEffectiveSchedule(schedules, now);
-  if (!hit) return base;
-  return {
-    ...base,
-    // 该档未填写的维度继续沿用基础倍率
-    token_multiplier: hit.token_multiplier ?? baseTokenMultiplier,
-    request_multiplier: hit.request_multiplier ?? baseRequestMultiplier,
-    schedule_applied: true,
-  };
-}
-
 // 取请求时刻第一个命中的档位；未配置或都未命中时返回 null。
 export function findEffectiveSchedule(
   schedules: MultiplierSchedule[],
@@ -182,4 +158,31 @@ export function findEffectiveSchedule(
     if (windowMatches(schedule, day, minutes)) return schedule;
   }
   return null;
+}
+
+// 按优先级逐层解析请求时刻的倍率：layers 里靠前的层优先，每一层只覆盖自己填了的维度，
+// 留空的维度继续沿用下层值（覆盖语义，不相乘）；都没命中时回退基础倍率。
+// 模型档与渠道档共用这一份实现，保证「模型侧优先、渠道侧补空维度」的口径不会散落在各处。
+// 多个时段同时命中时取该层的**第一档**（配置顺序即优先级），与 UI 上「从上到下优先」的提示一致。
+export function resolveLayeredMultiplier(
+  baseTokenMultiplier: number,
+  baseRequestMultiplier: number,
+  layers: MultiplierSchedule[][],
+  now: Date = new Date(),
+): ResolvedMultiplier {
+  let tokenMultiplier = baseTokenMultiplier;
+  let requestMultiplier = baseRequestMultiplier;
+  let scheduleApplied = false;
+  for (const schedules of layers) {
+    const hit = findEffectiveSchedule(schedules, now);
+    if (!hit) continue;
+    scheduleApplied = true;
+    tokenMultiplier = hit.token_multiplier ?? tokenMultiplier;
+    requestMultiplier = hit.request_multiplier ?? requestMultiplier;
+  }
+  return {
+    token_multiplier: tokenMultiplier,
+    request_multiplier: requestMultiplier,
+    schedule_applied: scheduleApplied,
+  };
 }

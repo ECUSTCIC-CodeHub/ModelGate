@@ -263,10 +263,12 @@ X-Model-Period-Quota-Requests-<id>: <remaining>
 同一请求同时可能命中渠道档与模型档，最终倍率按下面的顺序逐步覆盖（每一层都只覆盖自己填了的维度）：
 
 1. 基础倍率：模型 `token_multiplier` / `request_multiplier`；
-2. 模型分时档命中 → 覆盖为模型档的倍率；
-3. 渠道分时档命中 → 覆盖为渠道档的倍率（模型侧的覆盖结果只在渠道未填写的维度上保留）。
+2. 渠道分时档命中 → 覆盖基础倍率；
+3. 模型分时档命中 → 覆盖为模型档的倍率（渠道档的结果只在模型档未填写的维度上保留）。
 
-也就是说**渠道档优先级高于模型档**。这样同一渠道下的一批模型可以共享一份时段配置：只在渠道上配一次即可整体调价，不必逐个模型重复填写；个别模型要差异化时，再在模型侧配置（但该模型命中的模型档会被同渠道的渠道档覆盖，需要差异化时优先只在一侧配置）。
+也就是说**模型档优先级高于渠道档**。渠道管一批模型的默认价，模型侧配的是这个模型的特殊价，两处都配时以更具体的模型设置为准；模型侧只填了一个维度时，另一个维度仍取渠道档。
+
+渠道档仍然解决「一次配置管一批模型」：模型侧不配分时倍率时，渠道配一次即可给整条线的模型定同一份时段价，改价只需改渠道。
 
 渠道档与模型档各自独立解析，互不影响对方的命中判定：渠道未命中时模型档照常生效，模型未命中时渠道档照常生效。
 
@@ -278,6 +280,8 @@ X-Model-Period-Quota-Requests-<id>: <remaining>
 | effective_token_multiplier | number | 当前时刻实际生效的 Token 倍率 |
 | effective_request_multiplier | number | 当前时刻实际生效的请求倍率 |
 | multiplier_schedule_applied | bool | 当前是否命中分时档位（渠道级或模型级任一命中即为 true） |
+
+> 渠道级与模型级的倍率通过同一个解析函数逐层覆盖，计费与 `effective_*` 展示永远同口径，不会出现「界面显示与实扣不一致」。
 
 > 精简版不支持该字段，渠道与模型上的提交都会被忽略，倍率始终等于基础倍率。
 
@@ -1720,7 +1724,7 @@ OIDC 身份组在每次登录或绑定账号时都会**重新评估**：若 Clai
 | quota_tokens | int\|null | 否 | null | 渠道总 Token 配额，null 表示不限制；仅 `quota_mode` 为 `independent` / `dual` 时参与判定 |
 | quota_requests | int\|null | 否 | null | 渠道总请求配额，null 表示不限制；仅 `quota_mode` 为 `independent` / `dual` 时参与判定 |
 | period_cycles | object[] | 否 | [] | 多档重置周期，见「多档重置周期」一节；为空数组表示清空已有档位（仅完整版）；仅 `quota_mode` 为 `independent` / `dual` 时参与判定 |
-| multiplier_schedules | object[] | 否 | [] | 渠道级分时倍率，见「分时倍率」一节，对该渠道下所有模型生效且优先级高于模型级；为空数组表示不配置（仅完整版） |
+| multiplier_schedules | object[] | 否 | [] | 渠道级分时倍率，见「分时倍率」一节，对该渠道下所有模型生效，模型自己也配了分时档位时以模型为准（渠道档只补模型留空的维度）；为空数组表示不配置（仅完整版） |
 | force_include_usage | bool | 否 | true | 流式请求时向上游发送 `stream_options.include_usage`，设为 false 可兼容不支持该参数的上游（如微软） |
 | request_body_omit | array\|null | 否 | null | 渠道级请求体字段剔除列表，字符串数组，元素为要从上游请求体中删除的**顶层**字段名（如 `["metadata"]`）。发往该渠道上游的所有请求都会先删除这些字段，用于兼容不接受特定字段的上游（如智谱不接受 `metadata`）。最多 16 项，单个字段名最长 64 字符且须为 `[A-Za-z_][A-Za-z0-9_]*` 形态的顶层字段名（不支持 `a.b`、`a[0]` 这类嵌套路径写法）；重复项自动去重，空字符串项被忽略。`model`、`messages`、`input`、`contents`、`prompt`、`system`、`stream` 承载请求语义，不允许剔除。留空或 null 表示不剔除。读取时容错：脏数据或含非法项时整份退回「不剔除」。`other` 通用转发路径请求体原样转发，该配置对其不生效 |
 | header_mappings | object[]\|null | 否 | null | 渠道级请求头映射，元素形如 `{"from":"x-session-id","to":"X-Opencode-Session"}`，表示把客户端请求里的 `from` 头**改名**后以 `to` 发往该渠道上游，值始终取自客户端。用于不同客户端与上游对同一语义使用不同头名的场景（如客户端的 `X-Session-Id` 映射成上游要的 `X-Opencode-Session`）。最多 10 项；两端名称须为 HTTP token 字符、最长 128 字符，且至少一端需带连字符（两端都不带时大概率是把源与目标写反了，写反会表现为「配了不生效」）；`to` 不允许是 `Authorization`、`X-Api-Key`、`Host`、`Content-Type`、`User-Agent` 等网关托管头，也不允许是 `X-Forwarded-For`、`X-Real-IP`、`X-Forwarded-Host`、`Forwarded`、`CF-Connecting-IP`、`X-Original-URL`、`Sec-Fetch-*` 这类转发链元数据（与 `custom_headers` 同一份黑名单），`to` 大小写不敏感地不允许重复。客户端未携带 `from`、或携带的 `from` 值为空时不下发 `to`，网关不会凭空造值。生效路径：标准转发（`chat_completions` / `responses` / `embeddings` / `images` / `anthropic_messages`）、`/api/v1/images/edits`、`other` 透传。优先级低于托管字段，高于 `custom_headers`；`other` 透传路径下会覆盖客户端的同名透传值。模型测试与模型列表探测不携带客户端请求，故不生效。读取时容错：脏数据逐项丢弃，非法项不影响其余项 |
@@ -3129,14 +3133,19 @@ access token 过期但 refresh token 仍有效时按已登录处理（整页表�
       "token_multiplier_max": 2,
       "request_multiplier_min": 1,
       "request_multiplier_max": 1,
+      "effective_token_multiplier_min": 1,
+      "effective_token_multiplier_max": 2,
+      "effective_request_multiplier_min": 1,
+      "effective_request_multiplier_max": 1,
+      "multiplier_schedule_applied": true,
       "max_effective_weight": 4,
       "weight_min": 1,
       "weight_max": 2,
       "effective_weight_min": 2,
       "effective_weight_max": 4,
       "channels": [
-        { "channel_id": 1, "channel_name": "openai-official", "token_multiplier": 2, "request_multiplier": 1, "weight": 2, "effective_weight": 4 },
-        { "channel_id": 2, "channel_name": "openai-mirror", "token_multiplier": 1, "request_multiplier": 1, "weight": 1, "effective_weight": 2 }
+        { "channel_id": 1, "channel_name": "openai-official", "token_multiplier": 2, "request_multiplier": 1, "effective_token_multiplier": 1, "effective_request_multiplier": 1, "multiplier_schedule_applied": true, "weight": 2, "effective_weight": 4 },
+        { "channel_id": 2, "channel_name": "openai-mirror", "token_multiplier": 1, "request_multiplier": 1, "effective_token_multiplier": 1, "effective_request_multiplier": 1, "multiplier_schedule_applied": false, "weight": 1, "effective_weight": 2 }
       ]
     },
     { "id": "claude-3", "object": "model", "supports_vision": false, "supported_protocols": ["anthropic_messages", "chat_completions"], "token_multiplier": 1.5, "request_multiplier": 1, "token_multiplier_min": 1.5, "token_multiplier_max": 1.5, "request_multiplier_min": 1, "request_multiplier_max": 1, "max_effective_weight": 1, "weight_min": 1, "weight_max": 1, "effective_weight_min": 1, "effective_weight_max": 1, "channels": [{ "channel_id": 3, "channel_name": "anthropic-main", "token_multiplier": 1.5, "request_multiplier": 1, "weight": 1, "effective_weight": 1 }] }
@@ -3144,7 +3153,9 @@ access token 过期但 refresh token 仍有效时按已登录处理（整页表�
 }
 ```
 
-> `token_multiplier` 和 `request_multiplier` 为计费倍率（取所有渠道中的最低值），实际扣量 = 使用量 × 倍率。`token_multiplier_min/max` 和 `request_multiplier_min/max` 为各渠道倍率范围。`weight_min/max` 为各渠道模型权重范围（模型权重为配置原始值，不做下限钳制；字段为 NULL 时按 1 处理），`effective_weight_min/max` 为各渠道有效权重范围（有效权重 = max(1, 模型权重) × max(1, 渠道权重)，计算时对权重取下限 1），`max_effective_weight` 为该模型所有渠道中的最大有效权重，列表按此降序排列。`channels` 包含各渠道的倍率、模型权重（`weight`）与有效权重（`effective_weight`）明细，按有效权重降序排列。`supported_protocols` 为该模型各渠道所支持协议的并集，取值：`chat_completions` / `responses` / `anthropic_messages` / `embeddings` / `images` / `other`。`brand_groups` 为管理员在系统设置中配置的模型品牌分组规则，前端据此按模型 ID 前缀归组筛选。
+> `effective_token_multiplier_*` / `effective_request_multiplier_*` 为**当前时刻实际生效**的倍率范围（已按分时倍率覆盖，口径与计费一致），`multiplier_schedule_applied` 表示当前是否命中分时档位；`channels[]` 里的 `effective_*` 为单个渠道的生效倍率。分时倍率见「分时倍率」一节。
+
+> `token_multiplier` 和 `request_multiplier` 为**基础**计费倍率（取所有渠道中的最低值，不含分时覆盖），实际扣量 = 使用量 × 生效倍率。`token_multiplier_min/max` 和 `request_multiplier_min/max` 为各渠道倍率范围。`weight_min/max` 为各渠道模型权重范围（模型权重为配置原始值，不做下限钳制；字段为 NULL 时按 1 处理），`effective_weight_min/max` 为各渠道有效权重范围（有效权重 = max(1, 模型权重) × max(1, 渠道权重)，计算时对权重取下限 1），`max_effective_weight` 为该模型所有渠道中的最大有效权重，列表按此降序排列。`channels` 包含各渠道的倍率（基础 + 生效）、模型权重（`weight`）与有效权重（`effective_weight`）明细，按有效权重降序排列。`supported_protocols` 为该模型各渠道所支持协议的并集，取值：`chat_completions` / `responses` / `anthropic_messages` / `embeddings` / `images` / `other`。`brand_groups` 为管理员在系统设置中配置的模型品牌分组规则，前端据此按模型 ID 前缀归组筛选。
 
 ### GET /api/dashboard/model-metrics
 

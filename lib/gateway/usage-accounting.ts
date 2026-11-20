@@ -12,7 +12,11 @@ import {
 } from "@/lib/gateway/period-cycles";
 import { resolveEnforcedCycles } from "@/lib/gateway/effective-limits";
 import { ensureCycleResets } from "@/lib/gateway/period-cycles-reset";
-import { findEffectiveSchedule, parseMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
+import {
+  parseMultiplierSchedules,
+  resolveLayeredMultiplier,
+  type MultiplierSchedule,
+} from "@/lib/gateway/multiplier-schedule";
 import { buildRedeemScope, scopeCoversPair, balanceHasRemaining } from "@/lib/services/redeem-authorization";
 
 function cleanFloat(value: number): number {
@@ -213,54 +217,53 @@ function logUsageFailure(message: string, error: unknown) {
 }
 
 // 按请求时刻解析分时倍率，口径分两层：
-// 1. 模型侧命中 → 该档覆盖模型基础倍率，得到「模型价」；
-// 2. 渠道侧命中 → 该档覆盖模型价，得到最终倍率（未命中则沿用模型价）。
-// 渠道价排在后面，是为了让同一渠道下的一批模型共享一份时段配置：
-// 只改渠道配置就能整体调价，不必逐个模型重复填写。
-// 查询失败不阻断计费：退化为基础倍率，避免因为一次读库异常丢掉整次用量累加。
+// 1. 模型侧命中 → 该档覆盖模型基础倍率；
+// 2. 渠道侧命中 → 只补上模型档留空的维度，模型档写了的维度以模型为准。
+// 模型侧排前面，是因为渠道管一批模型的默认价，模型侧配的是这个模型的特殊价，
+// 两处都配时应当让更具体的模型设置生效。渠道的价值仍然保留：模型侧没配，
+// 渠道配一次就能给整条线的模型定同一份时段价。
+// 查询失败不阻断计费：读不到的层直接跳过，避免因为一次读库异常丢掉整次用量累加。
 async function resolveScheduledMultiplier(
   modelId: number | undefined,
   channelId: number | undefined,
   baseTokenMultiplier: number,
   baseRequestMultiplier: number,
 ): Promise<{ token_multiplier: number; request_multiplier: number }> {
-  const modelPrice = { token_multiplier: baseTokenMultiplier, request_multiplier: baseRequestMultiplier };
-  if (modelId == null || !modelGateFeatures.periodQuota) return modelPrice;
+  const fallback = { token_multiplier: baseTokenMultiplier, request_multiplier: baseRequestMultiplier };
+  if (modelId == null || !modelGateFeatures.periodQuota) return fallback;
 
   const now = new Date();
-  let tokenMultiplier = baseTokenMultiplier;
-  let requestMultiplier = baseRequestMultiplier;
+  const modelSchedules: MultiplierSchedule[] = [];
+  const channelSchedules: MultiplierSchedule[] = [];
+  // 两层各读各的：任一层读失败只丢这一层，另一层照常参与解析
   try {
-    const modelRow = await gatewayDb.queryOne<{ multiplier_schedules: string | null }>(
+    const row = await gatewayDb.queryOne<{ multiplier_schedules: string | null }>(
       "SELECT multiplier_schedules FROM models WHERE id = ?",
       [modelId],
     );
-    const modelHit = findEffectiveSchedule(parseMultiplierSchedules(modelRow?.multiplier_schedules), now);
-    if (modelHit) {
-      tokenMultiplier = modelHit.token_multiplier ?? tokenMultiplier;
-      requestMultiplier = modelHit.request_multiplier ?? requestMultiplier;
-    }
+    modelSchedules.push(...parseMultiplierSchedules(row?.multiplier_schedules));
   } catch (error) {
-    logUsageFailure(`[usage] 模型分时倍率解析失败 model=${modelId}，回退基础倍率:`, error);
-    return modelPrice;
+    logUsageFailure(`[usage] 模型分时倍率解析失败 model=${modelId}，忽略模型档位:`, error);
+  }
+  if (channelId != null) {
+    try {
+      const row = await gatewayDb.queryOne<{ multiplier_schedules: string | null }>(
+        "SELECT multiplier_schedules FROM channels WHERE id = ?",
+        [channelId],
+      );
+      channelSchedules.push(...parseMultiplierSchedules(row?.multiplier_schedules));
+    } catch (error) {
+      logUsageFailure(`[usage] 渠道分时倍率解析失败 channel=${channelId}，忽略渠道档位:`, error);
+    }
   }
 
-  if (channelId == null) return { token_multiplier: tokenMultiplier, request_multiplier: requestMultiplier };
-  try {
-    const channelRow = await gatewayDb.queryOne<{ multiplier_schedules: string | null }>(
-      "SELECT multiplier_schedules FROM channels WHERE id = ?",
-      [channelId],
-    );
-    const channelHit = findEffectiveSchedule(parseMultiplierSchedules(channelRow?.multiplier_schedules), now);
-    if (channelHit) {
-      tokenMultiplier = channelHit.token_multiplier ?? tokenMultiplier;
-      requestMultiplier = channelHit.request_multiplier ?? requestMultiplier;
-    }
-  } catch (error) {
-    // 渠道侧读失败只丢这一层覆盖，模型侧结果仍然有效
-    logUsageFailure(`[usage] 渠道分时倍率解析失败 channel=${channelId}，沿用模型倍率:`, error);
-  }
-  return { token_multiplier: tokenMultiplier, request_multiplier: requestMultiplier };
+  const effective = resolveLayeredMultiplier(
+    baseTokenMultiplier,
+    baseRequestMultiplier,
+    [modelSchedules, channelSchedules],
+    now,
+  );
+  return { token_multiplier: effective.token_multiplier, request_multiplier: effective.request_multiplier };
 }
 
 export async function addUsage(userId: number, keyId: number, tokens: number, requests = 1, tokenMultiplier = 1, requestMultiplier = 1, channelId?: number, modelId?: number, modelAlias?: string | null, redeemBalanceId?: number | null) {
@@ -278,7 +281,7 @@ export async function addUsage(userId: number, keyId: number, tokens: number, re
 }
 
 async function addUsageOrThrow(userId: number, keyId: number, tokens: number, requests = 1, tokenMultiplier = 1, requestMultiplier = 1, channelId?: number, modelId?: number, modelAlias?: string | null, redeemBalanceId?: number | null) {
-  // 分时倍率在计费点统一解析：调用方传的仍是模型的基础倍率，这里按请求时刻覆盖（模型档先覆盖基础倍率，渠道档再覆盖模型档）。
+  // 分时倍率在计费点统一解析：调用方传的仍是模型的基础倍率，这里按请求时刻覆盖（模型档优先，渠道档补模型留空的维度）。
   // 放在这里而不是各个调用点，避免流式/非流式/透传多条路径各自实现导致口径漂移。
   const effective = await resolveScheduledMultiplier(modelId, channelId, tokenMultiplier, requestMultiplier);
   const billedTokens = cleanFloat(Math.max(0, tokens * effective.token_multiplier));

@@ -356,11 +356,8 @@ export function ChannelDrawer({
                 onChange={(drafts) => onFormChange({ multiplier_schedules: drafts })}
                 baseTokenMultiplier={null}
                 baseRequestMultiplier={null}
+                hint="渠道档对下属全部模型生效，用于整条渠道统一定价；模型自己也配了分时档位时以模型为准（渠道档只补模型留空的维度），需要单个模型差异化时在模型侧配置。"
               />
-              <p className="text-xs text-[var(--color-foreground-muted)]">
-                渠道分时倍率对下属全部模型生效，命中时覆盖模型侧倍率（含模型自己的分时档位），
-                便于整条渠道统一定价；未命中时沿用模型倍率。因此两处都配置时以渠道为准，需要模型差异化时只配模型侧。
-              </p>
             </div>
           </div>
 

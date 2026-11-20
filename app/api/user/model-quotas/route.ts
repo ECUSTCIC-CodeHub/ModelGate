@@ -8,7 +8,7 @@ import { parseAllowedChannelIds } from "@/lib/gateway/channel-access";
 import { getUserScope, listRedeemScopes, scopeCoversPair, scopesCoverPair } from "@/lib/services/redeem-authorization";
 import { parsePeriodCycles } from "@/lib/gateway/period-cycles";
 import { toPeriodQuotaEntry } from "@/lib/gateway/quota";
-import { findEffectiveSchedule, parseMultiplierSchedules, resolveEffectiveMultiplier } from "@/lib/gateway/multiplier-schedule";
+import { parseMultiplierSchedules, resolveLayeredMultiplier } from "@/lib/gateway/multiplier-schedule";
 import { normalizeChannelQuotaMode, normalizeModelQuotaMode, usesModelSelfQuota } from "@/lib/gateway/quota-mode";
 
 export async function GET(request: Request) {
@@ -79,21 +79,13 @@ export async function GET(request: Request) {
     const usedTokens = m.period_used_tokens;
     const usedRequests = m.period_used_requests;
     const periods = selfQuota ? parsePeriodCycles(m.period_cycles).map(toPeriodQuotaEntry) : [];
-    // 展示当下实际生效的倍率，与计费口径一致：先叠加模型侧分时倍率，再由渠道侧分时倍率覆盖。
-    const modelEffective = resolveEffectiveMultiplier(
+    // 展示当下实际生效的倍率，与计费口径一致：模型档优先，渠道档只补模型留空的维度。
+    const effective = resolveLayeredMultiplier(
       m.token_multiplier ?? 1,
       m.request_multiplier ?? 1,
-      parseMultiplierSchedules(m.multiplier_schedules),
+      [parseMultiplierSchedules(m.multiplier_schedules), parseMultiplierSchedules(m.channel_multiplier_schedules)],
       now,
     );
-    const channelHit = findEffectiveSchedule(parseMultiplierSchedules(m.channel_multiplier_schedules), now);
-    const effective = channelHit
-      ? {
-          token_multiplier: channelHit.token_multiplier ?? modelEffective.token_multiplier,
-          request_multiplier: channelHit.request_multiplier ?? modelEffective.request_multiplier,
-          schedule_applied: true,
-        }
-      : modelEffective;
 
     return {
       alias: m.alias,
