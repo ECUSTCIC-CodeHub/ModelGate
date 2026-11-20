@@ -135,6 +135,9 @@ export type AccessibleModelChannel = {
   // 同一渠道下不同别名命中不同层，明细里要分开标，否则用户看不出为什么同渠道价格不一样。
   token_multiplier_from_model_schedule: boolean;
   request_multiplier_from_model_schedule: boolean;
+  // 该维度是否命中分时档（不分层）。为假说明生效值就是基础倍率，展示侧不能标成「渠道分时」。
+  token_multiplier_scheduled: boolean;
+  request_multiplier_scheduled: boolean;
   weight: number;
   effective_weight: number;
 };
@@ -155,6 +158,13 @@ export type AccessibleModel = {
   effective_request_multiplier_min: number;
   effective_request_multiplier_max: number;
   multiplier_schedule_applied: boolean;
+  // 该维度是否有渠道的生效值出自模型级分时档；为真不代表所有渠道都命中，展示侧要按「部分」措辞。
+  token_multiplier_from_model_schedule: boolean;
+  request_multiplier_from_model_schedule: boolean;
+  // 该维度是否有渠道命中分时档（任一来源层）。为假说明生效值就是基础倍率，
+  // 按维度标「分时」要用它，不能用 `multiplier_schedule_applied`（任一维度命中即真）。
+  token_multiplier_scheduled: boolean;
+  request_multiplier_scheduled: boolean;
   weight_min: number;
   weight_max: number;
   effective_weight_min: number;
@@ -201,6 +211,8 @@ export async function listAccessibleModels(user: Pick<DbUser, "id" | "role" | "g
       multiplier_schedule_applied: effective.schedule_applied,
       token_multiplier_from_model_schedule: effective.token_source === 0,
       request_multiplier_from_model_schedule: effective.request_source === 0,
+      token_multiplier_scheduled: effective.token_source !== null,
+      request_multiplier_scheduled: effective.request_source !== null,
       weight: row.model_weight ?? 1,
       effective_weight: ew,
     };
@@ -258,6 +270,10 @@ export async function listAccessibleModels(user: Pick<DbUser, "id" | "role" | "g
         effective_request_multiplier_min: Math.min(...erms),
         effective_request_multiplier_max: Math.max(...erms),
         multiplier_schedule_applied: item.channels.some((c) => c.multiplier_schedule_applied),
+        token_multiplier_from_model_schedule: item.channels.some((c) => c.token_multiplier_from_model_schedule),
+        request_multiplier_from_model_schedule: item.channels.some((c) => c.request_multiplier_from_model_schedule),
+        token_multiplier_scheduled: item.channels.some((c) => c.token_multiplier_scheduled),
+        request_multiplier_scheduled: item.channels.some((c) => c.request_multiplier_scheduled),
         weight_min: Math.min(...ws),
         weight_max: Math.max(...ws),
         effective_weight_min: Math.min(...ews),

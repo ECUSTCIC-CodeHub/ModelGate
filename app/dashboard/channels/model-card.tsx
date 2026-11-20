@@ -17,7 +17,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { effectiveMultiplierOf, parseSupportedProtocols, shortProtocolLabel, type ModelWithChannel } from "./channel-model";
 import { ModelActions } from "./model-actions";
-import { EffectiveScheduleTag } from "./effective-schedule-tag";
+import { ScheduleSourceTag } from "./schedule-source-tag";
+import { describeScheduleSource } from "@/lib/shared/multiplier-source";
 
 function isExpired(exp?: string | Date | null): boolean {
   if (!exp) return false;
@@ -86,16 +87,21 @@ export function ModelCard({
         <Tooltip>
           <TooltipTrigger asChild>
             <Badge variant="outline" className="cursor-default">
-              T {effective.token_multiplier}x / R {effective.request_multiplier}x
-              {effective.schedule_applied ? <EffectiveScheduleTag /> : null}
+              T {effective.token_multiplier}x
+              <ScheduleSourceTag fromModel={effective.token_from_model_schedule} scheduled={effective.token_scheduled} />
+              {" / "}R {effective.request_multiplier}x
+              <ScheduleSourceTag fromModel={effective.request_from_model_schedule} scheduled={effective.request_scheduled} />
             </Badge>
           </TooltipTrigger>
           <TooltipContent side="top" className="max-w-64 text-xs">
             基础倍率 T {model.token_multiplier ?? 1}x / R {model.request_multiplier ?? 1}x。
             {effective.schedule_applied
-              ? `当前时段命中${
-                  effective.token_from_model_schedule || effective.request_from_model_schedule ? "模型级" : "渠道级"
-                }分时档，显示的是实际生效倍率。`
+              ? `当前时段${describeScheduleSource({
+                  tokenFromModelSchedule: effective.token_from_model_schedule,
+                  requestFromModelSchedule: effective.request_from_model_schedule,
+                  tokenScheduled: effective.token_scheduled,
+                  requestScheduled: effective.request_scheduled,
+                })}。`
               : "当前时段未命中分时档。"}
           </TooltipContent>
         </Tooltip>
