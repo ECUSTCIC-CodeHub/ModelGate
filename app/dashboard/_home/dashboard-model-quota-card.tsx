@@ -106,7 +106,7 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
                     ) : null}
                     {scheduleTag ? (
                       // 标签自己说明倍率与时段，不靠悬浮；放不下时换行而不是截断成看不懂的半句
-                      <span className="max-w-full break-words rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-foreground-muted)]">
+                      <span className="max-w-full break-words rounded-md bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-foreground-muted)]">
                         分时 {scheduleTag}
                       </span>
                     ) : null}

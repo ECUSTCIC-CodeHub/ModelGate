@@ -2723,7 +2723,7 @@ access token 过期但 refresh token 仍有效时按已登录处理（整页表�
 
 > `multiplier_schedules` / `channel_multiplier_schedules` 是该记录两层分时档的原始数组（时间为 UTC），前端按浏览者时区换算后展示具体时段与倍率，不需要另外请求。
 >
-> 返回当前用户有权访问的所有模型。`channel_id` 为模型所属渠道 ID，`channel_name` 为渠道名称。`follow_group` 模型的配额字段均为 `null`（受用户组配额约束）；`bypass_group` 模型的配额字段均为 `null`（不受配额限制）；`independent` 模型使用自身的配额额度；`dual` 模型同时受用户组配额与模型自身配额约束，配额字段同 `independent` 返回模型自身配额额度。`token_multiplier` 和 `request_multiplier` 表示模型的基础扣量倍率，`effective_*` 为按分时倍率解析后当前时刻实际生效的倍率，`multiplier_schedule_applied` 表示当前是否命中某个分时档位（见「分时倍率」一节）。
+> 返回当前用户有权访问的所有模型。`channel_id` 为模型所属渠道 ID，`channel_name` 为渠道名称。`follow_group` 模型的配额字段均为 `null`（受用户组配额约束）；`bypass_group` 模型的配额字段均为 `null`（不受配额限制）；`independent` 模型使用自身的配额额度；`dual` 模型同时受用户组配额与模型自身配额约束，配额字段同 `independent` 返回模型自身配额额度。`token_multiplier` 和 `request_multiplier` 表示模型的基础扣量倍率，`effective_*` 为按分时倍率解析后当前时刻实际生效的倍率，`multiplier_schedule_applied` 表示当前是否命中某个分时档位（见「分时倍率」一节），只反映此刻的命中状态，不用于决定「分时」标签是否显示。
 >
 > `quota_requests` / `quota_tokens` / `used_*` / `remaining_*` 为模型的**总请求/总 Token 配额**及其累计用量；`periods` 为多档重置周期的当前状态，仅 `independent` / `dual` 模型返回实际档位，其余模式返回 `[]`。
 >
