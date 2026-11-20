@@ -62,8 +62,10 @@ export function tryScheduleToLocal(
   const start = utcTimeToWall(window.start, timeZone, base);
   const end = utcTimeToWall(window.end, timeZone, base);
   if (!start || !end) return null;
-  const dayShift = wallTimeToUtc(start, timeZone, base)?.dayShift ?? 0;
-  return { days: shiftDays(window.days, -dayShift), start, end };
+  // 拿不到跨日偏移就不能只搬时分：星期会差一天，宁可判定为不可换算
+  const shifted = wallTimeToUtc(start, timeZone, base);
+  if (!shifted) return null;
+  return { days: shiftDays(window.days, -shifted.dayShift), start, end };
 }
 
 // 指定时区的墙上时分 => UTC 时分，星期按起点的跨日偏移平移。
@@ -117,7 +119,7 @@ export function scheduleDraftsToPayload(
     if (isConvertible(window)) {
       const converted = tryScheduleToUtc(window, timeZone, base);
       if (!converted) {
-        throw new Error(`第 ${index + 1} 档的时段在 ${timeZone} 下无法换算（可能落在夏令时跳过的时段里），请调整时间。`);
+        throw new Error(`第 ${index + 1} 档的时段在时区 ${timeZone} 下无法换算（时区不可用，或时段正好落在夏令时跳过的空档里），请调整时间。`);
       }
       window = converted;
     }

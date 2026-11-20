@@ -109,6 +109,15 @@ check("东八区凌晨档落到前一天的 UTC 时段", () => {
 check("逐分钟语义等价：墙上时间窗口与 UTC 窗口命中完全一致", () => {
   for (const baseMs of BASE_MS_LIST) {
     const base = new Date(baseMs);
+    // 用例前提：参考日是周一、且参考周内没有夏令时切换，否则单偏移假设不成立
+    assert.equal(base.getUTCDay(), 1, `参考日必须是周一：${base.toISOString()}`);
+    for (const timeZone of TIME_ZONES) {
+      assert.equal(
+        zoneOffsetMinutes(timeZone, base),
+        zoneOffsetMinutes(timeZone, new Date(baseMs + (MINUTES_PER_WEEK - 1) * 60_000)),
+        `${timeZone} 的参考周含夏令时切换，逐分钟等价用例不适用`,
+      );
+    }
     for (const { name, window } of WINDOWS) {
       for (const timeZone of TIME_ZONES) {
         const utcWindow = scheduleToUtc(normalize(window), timeZone, base);

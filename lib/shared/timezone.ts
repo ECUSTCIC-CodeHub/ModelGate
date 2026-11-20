@@ -98,7 +98,8 @@ export function wallTimeToUtc(hhmm: string, timeZone: string, base: Date = new D
     if (!parts) continue;
     if (`${parts.hour}:${parts.minute}` !== target) continue;
     const tzWeekday = weekdayToIso(parts.weekday);
-    if (tzWeekday === null) continue;
+    // 星期认不出就整次判定为不可换算：跳过它继续扫，回拨日可能命中更晚的候选而给出 1 小时偏移的错值
+    if (tzWeekday === null) return null;
     best = { utcMs: off, tzWeekday };
     break;
   }
