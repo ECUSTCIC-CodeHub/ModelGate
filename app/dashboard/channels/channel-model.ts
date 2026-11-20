@@ -2,6 +2,8 @@ import { normalizeRetryStatusCodes } from "@/lib/gateway/upstream-error";
 import { parseMultiplierSchedules, resolveLayeredMultiplier, type MultiplierSchedule } from "@/lib/gateway/multiplier-schedule";
 import type { PeriodCycleDraft } from "@/app/dashboard/period-cycle-fields";
 import type { MultiplierScheduleDraft } from "@/lib/shared/multiplier-schedule-tz";
+import type { WallClockWindow } from "@/lib/shared/time-window";
+import { browserTimeZone } from "@/lib/shared/timezone";
 
 export type Protocol = "chat_completions" | "responses" | "anthropic_messages" | "embeddings" | "images" | "other";
 
@@ -151,7 +153,10 @@ export type ChannelForm = {
   force_include_usage: boolean;
   ua_restrictions: string;
   expires_at: string;
-  time_restrictions: string;
+  // 表单里存墙上时间的行，提交时按 time_restrictions_time_zone 换算成 UTC JSON；
+  // 时区只是表单态，不提交给服务端
+  time_restrictions: WallClockWindow[];
+  time_restrictions_time_zone: string;
   custom_headers: string;
   request_body_omit: string;
   header_mappings: string;
@@ -266,7 +271,8 @@ export const initialChannelForm: ChannelForm = {
   force_include_usage: true,
   ua_restrictions: "",
   expires_at: "",
-  time_restrictions: "",
+  time_restrictions: [],
+  time_restrictions_time_zone: browserTimeZone(),
   custom_headers: "",
   request_body_omit: "",
   header_mappings: "",

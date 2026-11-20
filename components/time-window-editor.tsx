@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,13 +12,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { browserTimeZone, wallTimeToUtc, utcTimeToWall } from "@/lib/shared/timezone";
+import { serializeTimeWindows, windowToUtc, windowToWall, type WallClockWindow } from "@/lib/shared/time-window";
 
-export type TimeWindowDraft = {
-  days: number[]; // 1..7 周一..周日
-  start: string; // HH:MM，编辑时区墙上时间
-  end: string; // HH:MM，编辑时区墙上时间
-};
+// 行的 start/end 是「编辑时区」的墙上时间：提交时换成 UTC 时分存库，回显时再换回来。
+// 时区由父级表单持有（time_restrictions_time_zone），否则父级按浏览器时区回填 JSON 会把
+// 用户选的时区覆盖掉，下一次编辑就会二次换算。
+export type TimeWindowDraft = WallClockWindow;
 
 const WEEKDAYS: Array<{ value: number; label: string }> = [
   { value: 1, label: "一" },
@@ -32,54 +31,6 @@ const WEEKDAYS: Array<{ value: number; label: string }> = [
 
 const EMPTY_WINDOW: TimeWindowDraft = { days: [], start: "09:00", end: "18:00" };
 
-// draft 的 start/end 是编辑时区墙上时间，提交时按所选时区转成 UTC 时分存库；
-// days 也按 start 的 UTC 星期偏移重映射（处理跨 UTC 日，如上海周一凌晨 = UTC 周日）。
-function shiftDay(day: number, shift: number): number {
-  const next = ((day - 1 + shift) % 7 + 7) % 7 + 1; // 1..7 循环
-  return next;
-}
-
-export function windowsToJson(windows: TimeWindowDraft[], timeZone: string): string {
-  const cleaned = windows
-    .filter((win) => win.days.length > 0 && win.start && win.end)
-    .map((win) => {
-      const startInfo = wallTimeToUtc(win.start, timeZone);
-      const endInfo = wallTimeToUtc(win.end, timeZone);
-      const startUtc = startInfo?.utc ?? win.start;
-      const endUtc = endInfo?.utc ?? win.end;
-      const shift = startInfo?.dayShift ?? 0;
-      const days = [...new Set(win.days.map((d) => shiftDay(d, shift)))].sort((a, b) => a - b);
-      return { days, start: startUtc, end: endUtc };
-    });
-  return JSON.stringify(cleaned);
-}
-
-// 库里存的是 UTC 时分，回显时按显示时区转成墙上时间（默认访问者浏览器时区）。
-export function jsonToWindows(raw: string | undefined | null, timeZone: string = browserTimeZone()): TimeWindowDraft[] {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
-      .map((item) => {
-        const rawStart = typeof item.start === "string" ? item.start : "";
-        const rawEnd = typeof item.end === "string" ? item.end : "";
-        return {
-          days: Array.isArray(item.days)
-            ? (item.days as unknown[])
-                .map((d) => Number(d))
-                .filter((d) => Number.isInteger(d) && d >= 1 && d <= 7)
-            : [],
-          start: rawStart ? utcTimeToWall(rawStart, timeZone) ?? rawStart : "",
-          end: rawEnd ? utcTimeToWall(rawEnd, timeZone) ?? rawEnd : "",
-        };
-      });
-  } catch {
-    return [];
-  }
-}
-
 function timezoneOptions(): string[] {
   try {
     const supported = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.("timeZone");
@@ -92,72 +43,48 @@ function timezoneOptions(): string[] {
 
 export function TimeWindowEditor({
   windows,
+  timeZone,
   onChange,
 }: {
   windows: TimeWindowDraft[];
-  onChange: (json: string) => void;
+  timeZone: string;
+  onChange: (windows: TimeWindowDraft[], timeZone: string) => void;
 }) {
-  const [timeZone, setTimeZone] = useState<string>(browserTimeZone);
   const tzOptions = useMemo(() => timezoneOptions(), []);
-  const [internal, setInternal] = useState<TimeWindowDraft[]>(() => windows);
-  const lastEmitted = useRef<string>(windowsToJson(windows, timeZone));
+  // 换算不可行的行在这里标红；保存时由父组件用同一个函数判定并阻断
+  const failed = useMemo(() => new Set(serializeTimeWindows(windows, timeZone).failed), [windows, timeZone]);
 
-  useEffect(() => {
-    const serialized = windowsToJson(windows, timeZone);
-    if (serialized !== lastEmitted.current) {
-      setInternal(windows);
-    }
-  }, [windows, timeZone]);
-
-  function emit(next: TimeWindowDraft[]) {
-    const json = windowsToJson(next, timeZone);
-    lastEmitted.current = json;
-    onChange(json);
+  function emit(next: TimeWindowDraft[], nextTimeZone: string = timeZone) {
+    onChange(next, nextTimeZone);
   }
 
   function changeTimeZone(next: string) {
-    // 保持绝对时间不变：先把草稿按旧时区转 UTC，再按新时区反算墙上时间显示。
-    const prevUtc = internal.map((win) => ({
-      days: win.days,
-      start: wallTimeToUtc(win.start, timeZone)?.utc ?? win.start,
-      end: wallTimeToUtc(win.end, timeZone)?.utc ?? win.end,
-    }));
-    const remapped: TimeWindowDraft[] = prevUtc.map((win) => ({
-      days: win.days,
-      start: utcTimeToWall(win.start, next) ?? win.start,
-      end: utcTimeToWall(win.end, next) ?? win.end,
-    }));
-    setTimeZone(next);
-    setInternal(remapped);
-    const json = windowsToJson(remapped, next);
-    lastEmitted.current = json;
-    onChange(json);
+    // 保持绝对时间不变：先按旧时区换回 UTC（星期随跨日平移），再按新时区反算墙上时间与星期
+    const moved = windows.map((win) => {
+      if (win.days.length === 0 || !win.start || !win.end) return win;
+      const utc = windowToUtc(win, timeZone);
+      if (!utc) return win;
+      return windowToWall(utc, next) ?? win;
+    });
+    emit(moved, next);
   }
 
   function toggleDay(index: number, day: number) {
-    const win = internal[index];
+    const win = windows[index];
     const nextDays = win.days.includes(day) ? win.days.filter((d) => d !== day) : [...win.days, day];
-    const next = internal.map((item, i) => (i === index ? { ...item, days: nextDays } : item));
-    setInternal(next);
-    emit(next);
+    emit(windows.map((item, i) => (i === index ? { ...item, days: nextDays } : item)));
   }
 
   function update(index: number, patch: Partial<TimeWindowDraft>) {
-    const next = internal.map((item, i) => (i === index ? { ...item, ...patch } : item));
-    setInternal(next);
-    emit(next);
+    emit(windows.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   }
 
   function remove(index: number) {
-    const next = internal.filter((_, i) => i !== index);
-    setInternal(next);
-    emit(next);
+    emit(windows.filter((_, i) => i !== index));
   }
 
   function add() {
-    const next = [...internal, { ...EMPTY_WINDOW }];
-    setInternal(next);
-    emit(next);
+    emit([...windows, { ...EMPTY_WINDOW }]);
   }
 
   return (
@@ -176,7 +103,7 @@ export function TimeWindowEditor({
         </Select>
         <p className="text-xs text-[var(--color-foreground-muted)]">输入的时段按此时区解释，存储为 UTC；不同时区的访问者看到的时段会按各自浏览器时区换算。</p>
       </div>
-      {internal.map((win, index) => (
+      {windows.map((win, index) => (
         <div key={index} className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hover)] p-3">
           <div className="flex items-center justify-between gap-2">
             <Label className="text-xs">时段 #{index + 1}</Label>
@@ -213,9 +140,13 @@ export function TimeWindowEditor({
               <Input type="time" value={win.end} onChange={(e) => update(index, { end: e.target.value })} />
             </div>
           </div>
-          {win.days.length > 0 && win.start && win.end && win.start === win.end && (
+          {win.start === win.end ? (
             <p className="text-xs text-[var(--color-danger)]">开始时间不能等于结束时间。</p>
-          )}
+          ) : failed.has(index) ? (
+            <p className="text-xs text-[var(--color-danger)]">
+              该时段在 {timeZone} 下无法换算（时区不可用，或落在夏令时跳过的空档里），请调整后再保存。
+            </p>
+          ) : null}
         </div>
       ))}
       <Button type="button" variant="outline" className="w-full" onClick={add}>

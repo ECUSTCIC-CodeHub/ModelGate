@@ -1,25 +1,25 @@
-// 运行时验证分时档「浏览器墙上时间 <=> UTC」换算：
+// 运行时验证「时段窗口 ⇄ UTC」换算（渠道限制时段与分时倍率共用 lib/shared/time-window.ts）：
 // 1. 正反向互逆；
 // 2. 逐分钟语义等价（墙上时间窗口的命中集合与 UTC 窗口完全一致）；
 // 3. 编辑器「被覆盖档位」标红在墙上时间下与 UTC 下结果相同（平移是双射，覆盖关系不变）；
-// 4. 草稿与落库载荷的映射往返不丢字段；
+// 4. 编辑器行与落库 JSON 往返不丢字段，未填完的行不落库，首尾相同的行被标记为不可换算；
 // 5. 换算不可行（夏令时跳表空档、非法时区）与非法倍率必须报错，不能静默落库。
 //
 // 所有用例显式传参考日：默认值是「今天」，对比基准却是固定日期，会让用例随运行季节在
 // 夏令时时区上翻车；主用例再各跑一遍冬季与夏季参考日，避免某个实现分支忽略 base 时漏测。
 //
 // 运行：
-//   node --loader ./scripts/verify-channel-quota-mode-loader.mjs scripts/verify-multiplier-schedule-tz.mjs
+//   node --loader ./scripts/verify-channel-quota-mode-loader.mjs scripts/verify-time-window-tz.mjs
 import assert from "node:assert/strict";
 import { findEffectiveScheduleIndex } from "@/lib/gateway/multiplier-schedule";
 import { findShadowedDraftIndexes } from "@/lib/shared/multiplier-shadow";
 import {
-  scheduleDraftsToPayload,
-  scheduleToLocal,
-  schedulesToDrafts,
-  scheduleToUtc,
-  tryScheduleToUtc,
-} from "@/lib/shared/multiplier-schedule-tz";
+  parseTimeWindows,
+  serializeTimeWindows,
+  windowToWall,
+  windowToUtc,
+} from "@/lib/shared/time-window";
+import { scheduleDraftsToPayload, schedulesToDrafts } from "@/lib/shared/multiplier-schedule-tz";
 
 let passed = 0;
 let failed = 0;
@@ -58,6 +58,12 @@ function normalize(window) {
   };
 }
 
+function converted(fn, window, timeZone, base) {
+  const result = fn(window, timeZone, base);
+  assert.ok(result, `${timeZone} 窗口=${JSON.stringify(window)} 换算失败`);
+  return result;
+}
+
 // 指定时区在某时刻的墙上偏移（分钟）：本地 = UTC + offset
 function zoneOffsetMinutes(timeZone, date) {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -89,20 +95,20 @@ check("正反向换算互逆", () => {
     for (const { window } of WINDOWS) {
       for (const timeZone of TIME_ZONES) {
         const utc = normalize(window);
-        const local = scheduleToLocal(utc, timeZone, base);
-        assert.deepEqual(scheduleToUtc(local, timeZone, base), utc, `${timeZone} 窗口=${JSON.stringify(utc)}`);
-        assert.deepEqual(scheduleToLocal(scheduleToUtc(local, timeZone, base), timeZone, base), local);
+        const wall = converted(windowToWall, utc, timeZone, base);
+        assert.deepEqual(windowToUtc(wall, timeZone, base), utc, `${timeZone} 窗口=${JSON.stringify(utc)}`);
+        assert.deepEqual(windowToWall(converted(windowToUtc, wall, timeZone, base), timeZone, base), wall);
       }
     }
   }
 });
 
 check("东八区凌晨档落到前一天的 UTC 时段", () => {
-  const local = { days: [5], start: "00:00", end: "08:00" };
+  const wall = { days: [5], start: "00:00", end: "08:00" };
   for (const baseMs of BASE_MS_LIST) {
     const base = new Date(baseMs);
-    assert.deepEqual(scheduleToUtc(local, "Asia/Shanghai", base), { days: [4], start: "16:00", end: "00:00" });
-    assert.deepEqual(scheduleToLocal({ days: [4], start: "16:00", end: "00:00" }, "Asia/Shanghai", base), local);
+    assert.deepEqual(windowToUtc(wall, "Asia/Shanghai", base), { days: [4], start: "16:00", end: "00:00" });
+    assert.deepEqual(windowToWall({ days: [4], start: "16:00", end: "00:00" }, "Asia/Shanghai", base), wall);
   }
 });
 
@@ -120,19 +126,19 @@ check("逐分钟语义等价：墙上时间窗口与 UTC 窗口命中完全一�
     }
     for (const { name, window } of WINDOWS) {
       for (const timeZone of TIME_ZONES) {
-        const utcWindow = scheduleToUtc(normalize(window), timeZone, base);
-        const localWindow = scheduleToLocal(utcWindow, timeZone, base);
+        const utcWindow = converted(windowToUtc, normalize(window), timeZone, base);
+        const wallWindow = converted(windowToWall, utcWindow, timeZone, base);
         const offset = zoneOffsetMinutes(timeZone, base);
         for (let minute = 0; minute < MINUTES_PER_WEEK; minute += 1) {
           const utcDate = new Date(baseMs + minute * 60_000);
           // 把该时刻的墙上时间当作「UTC 字段」喂给同一个判定函数，比较两者的命中集合
           const wallDate = new Date(utcDate.getTime() + offset * 60_000);
           const hitUtc = findEffectiveScheduleIndex([utcWindow], utcDate) !== null;
-          const hitLocal = findEffectiveScheduleIndex([localWindow], wallDate) !== null;
-          if (hitLocal !== hitUtc) {
+          const hitWall = findEffectiveScheduleIndex([wallWindow], wallDate) !== null;
+          if (hitWall !== hitUtc) {
             assert.fail(
               `${name} ${timeZone} base=${base.toISOString()} minute=${minute}`
-              + `（UTC ${JSON.stringify(utcWindow)} / 本地 ${JSON.stringify(localWindow)}）`,
+              + `（UTC ${JSON.stringify(utcWindow)} / 墙上 ${JSON.stringify(wallWindow)}）`,
             );
           }
         }
@@ -152,13 +158,13 @@ check("被覆盖档位标红在墙上时间下不变", () => {
   for (const baseMs of BASE_MS_LIST) {
     const base = new Date(baseMs);
     for (const timeZone of TIME_ZONES) {
-      const localDrafts = utcDrafts.map((draft) => ({
-        ...scheduleToLocal(draft, timeZone, base),
+      const wallDrafts = utcDrafts.map((draft) => ({
+        ...converted(windowToWall, draft, timeZone, base),
         token_multiplier: draft.token_multiplier,
         request_multiplier: draft.request_multiplier,
       }));
       assert.deepEqual(
-        [...findShadowedDraftIndexes(localDrafts)].sort((a, b) => a - b),
+        [...findShadowedDraftIndexes(wallDrafts)].sort((a, b) => a - b),
         expected,
         timeZone,
       );
@@ -166,7 +172,7 @@ check("被覆盖档位标红在墙上时间下不变", () => {
   }
 });
 
-check("草稿与载荷往返不丢字段", () => {
+check("分时档草稿与载荷往返不丢字段", () => {
   for (const baseMs of BASE_MS_LIST) {
     const base = new Date(baseMs);
     for (const { window } of WINDOWS) {
@@ -184,7 +190,40 @@ check("草稿与载荷往返不丢字段", () => {
   }
 });
 
-check("留空与填 0 的语义不被映射改写", () => {
+check("限制时段：编辑行与落库 JSON 往返一致", () => {
+  for (const baseMs of BASE_MS_LIST) {
+    const base = new Date(baseMs);
+    for (const { window } of WINDOWS) {
+      for (const timeZone of TIME_ZONES) {
+        const windows = [normalize(window)];
+        const { json, failed: failedRows } = serializeTimeWindows(windows, timeZone, base);
+        assert.deepEqual(failedRows, [], timeZone);
+        const parsed = parseTimeWindows(json, timeZone, base);
+        assert.deepEqual(parsed.failed, [], timeZone);
+        assert.deepEqual(parsed.windows, windows, `${timeZone} 窗口=${JSON.stringify(windows)}`);
+      }
+    }
+  }
+});
+
+check("限制时段：未填完的行不落库，首尾相同的行标记为不可换算", () => {
+  const base = new Date(BASE_MS_LIST[0]);
+  const windows = [
+    { days: [], start: "09:00", end: "18:00" },
+    { days: [1], start: "", end: "" },
+    { days: [2], start: "10:00", end: "10:00" },
+    { days: [3], start: "08:00", end: "09:00" },
+  ];
+  const { json, failed: failedRows } = serializeTimeWindows(windows, "Asia/Shanghai", base);
+  // 前两行未填完：直接跳过；第三行首尾相同：保留原值并报错
+  assert.deepEqual(failedRows, [2]);
+  assert.deepEqual(JSON.parse(json), [
+    { days: [2], start: "10:00", end: "10:00" },
+    { days: [3], start: "00:00", end: "01:00" },
+  ]);
+});
+
+check("分时档留空与填 0 的语义不被映射改写", () => {
   const drafts = [
     { key: "a", days: [1], start: "09:00", end: "10:00", token_multiplier: "0", request_multiplier: "" },
     { key: "b", days: [1], start: "11:00", end: "12:00", token_multiplier: "", request_multiplier: "" },
@@ -195,37 +234,34 @@ check("留空与填 0 的语义不被映射改写", () => {
   assert.deepEqual(payload[0], { days: [1], start: "01:00", end: "02:00", token_multiplier: 0, request_multiplier: null });
 });
 
-check("时间非法或首尾相同时原样保留，交给服务端拒绝", () => {
-  const base = new Date(BASE_MS_LIST[0]);
-  const draft = { days: [3], start: "10:00", end: "10:00" };
-  assert.deepEqual(scheduleToLocal(draft, "Asia/Shanghai", base), draft);
-  assert.deepEqual(scheduleToUtc(draft, "Asia/Shanghai", base), draft);
-  const noDays = { days: [], start: "10:00", end: "12:00" };
-  assert.deepEqual(scheduleToUtc(noDays, "Asia/Shanghai", base), noDays);
-});
-
 check("夏令时跳表空档里的时段拒绝换算，而不是把墙上时间当 UTC 落库", () => {
   const window = { days: [7], start: "02:30", end: "03:30" };
   // 2024-03-10 是美东夏令时切换日，当地 02:00-03:00 这一小时不存在
   const dstDay = new Date(Date.UTC(2024, 2, 10, 12, 0, 0));
-  assert.equal(tryScheduleToUtc(window, "America/New_York", dstDay), null);
+  assert.equal(windowToUtc(window, "America/New_York", dstDay), null);
+  const serialized = serializeTimeWindows([window], "America/New_York", dstDay);
+  assert.deepEqual(serialized.failed, [0]);
   const drafts = [{ key: "a", days: [7], start: "02:30", end: "03:30", token_multiplier: "0.5", request_multiplier: "" }];
   assert.throws(() => scheduleDraftsToPayload(drafts, "America/New_York", dstDay), /第 1 档/);
   // 非切换日同一档正常换算：美东冬令时 02:30 = UTC 07:30
   const winterDay = new Date(Date.UTC(2024, 1, 18, 12, 0, 0));
-  assert.deepEqual(scheduleToUtc(window, "America/New_York", winterDay), { days: [7], start: "07:30", end: "08:30" });
+  assert.deepEqual(windowToUtc(window, "America/New_York", winterDay), { days: [7], start: "07:30", end: "08:30" });
+});
+
+check("非法时区返回 null 而不是伪造 00:00", () => {
+  const base = new Date(BASE_MS_LIST[0]);
+  const window = { days: [1], start: "09:00", end: "10:00" };
+  assert.equal(windowToUtc(window, "Not/AZone", base), null);
+  assert.equal(windowToWall(window, "Not/AZone", base), null);
+  assert.deepEqual(serializeTimeWindows([window], "Not/AZone", base).failed, [0]);
+  assert.deepEqual(parseTimeWindows(JSON.stringify([window]), "Not/AZone", base).failed, [0]);
+  const drafts = [{ key: "a", days: [1], start: "09:00", end: "10:00", token_multiplier: "0.5", request_multiplier: "" }];
+  assert.throws(() => scheduleDraftsToPayload(drafts, "Not/AZone", base), /第 1 档/);
 });
 
 check("倍率不是有效数字时直接报错，不静默降级", () => {
   const drafts = [{ key: "a", days: [1], start: "09:00", end: "10:00", token_multiplier: "abc", request_multiplier: "" }];
   assert.throws(() => scheduleDraftsToPayload(drafts, "UTC", new Date(BASE_MS_LIST[0])), /不是有效数字/);
-});
-
-check("非法时区返回 null 而不是伪造 00:00", () => {
-  const base = new Date(BASE_MS_LIST[0]);
-  assert.equal(tryScheduleToUtc({ days: [1], start: "09:00", end: "10:00" }, "Not/AZone", base), null);
-  const drafts = [{ key: "a", days: [1], start: "09:00", end: "10:00", token_multiplier: "0.5", request_multiplier: "" }];
-  assert.throws(() => scheduleDraftsToPayload(drafts, "Not/AZone", base), /第 1 档/);
 });
 
 console.log("");

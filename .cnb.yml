@@ -95,10 +95,10 @@
     image: docker.cnb.cool/scaffold/examples/nodejs:latest
     script: |
       node --loader ./scripts/verify-channel-quota-mode-loader.mjs scripts/verify-multiplier-layering.mjs
-  - name: verify multiplier schedule tz
+  - name: verify time window tz
     image: docker.cnb.cool/scaffold/examples/nodejs:latest
     script: |
-      node --loader ./scripts/verify-channel-quota-mode-loader.mjs scripts/verify-multiplier-schedule-tz.mjs
+      node --loader ./scripts/verify-channel-quota-mode-loader.mjs scripts/verify-time-window-tz.mjs
 
 .push: &push
   runner:

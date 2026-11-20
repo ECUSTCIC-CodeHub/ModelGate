@@ -33,6 +33,8 @@ import type { HeaderMapping } from "@/lib/gateway/custom-headers";
 import { parseMultiplierSchedules } from "@/lib/gateway/multiplier-schedule";
 import { cyclesToDrafts, draftsToPayload } from "@/app/dashboard/period-cycle-fields";
 import { scheduleDraftsToPayload, schedulesToDrafts } from "@/lib/shared/multiplier-schedule-tz";
+import { parseTimeWindows, serializeTimeWindows } from "@/lib/shared/time-window";
+import { browserTimeZone } from "@/lib/shared/timezone";
 import { useChannelRecords } from "./use-channel-records";
 import { useModelCleanup } from "./use-model-cleanup";
 import { useUpstreamModelPicker } from "./use-upstream-model-picker";
@@ -213,6 +215,8 @@ export function useChannelAdmin() {
   function openEditChannel(row: Channel) {
     const supportedProtocols = parseSupportedProtocols(row.supported_protocols);
     const canViewKey = row.can_view_api_key === true;
+    // 每次打开都按当前浏览器时区把库里的 UTC 时段换算成墙上时间；时区变了只在本次编辑内有效
+    const timeZone = browserTimeZone();
     setChannelEditingId(row.id);
     setChannelEditingCanViewApiKey(canViewKey);
     setChannelEditingCanManagePrivacy(row.can_manage_api_key_privacy === true);
@@ -238,7 +242,8 @@ export function useChannelAdmin() {
       force_include_usage: row.force_include_usage === 1,
       ua_restrictions: row.ua_restrictions ?? "",
       expires_at: expiresAtToInputValue(row.expires_at),
-      time_restrictions: row.time_restrictions ?? "",
+      time_restrictions: parseTimeWindows(row.time_restrictions ?? "", timeZone).windows,
+      time_restrictions_time_zone: timeZone,
       custom_headers: formatCustomHeadersInput(row.custom_headers),
       request_body_omit: formatRequestBodyOmitInput(row.request_body_omit),
       header_mappings: formatHeaderMappingsInput(row.header_mappings),
@@ -371,6 +376,18 @@ export function useChannelAdmin() {
       return;
     }
 
+    // 限制时段：表单里是墙上时间，提交前换算成 UTC。有行换算不可行（如落在夏令时空档）时
+    // 整份表单都不提交，避免存进一份错位的时段
+    const restrictions = serializeTimeWindows(channelForm.time_restrictions, channelForm.time_restrictions_time_zone);
+    if (restrictions.failed.length > 0) {
+      toast({
+        variant: "error",
+        description: `第 ${restrictions.failed.map((index) => index + 1).join("、")} 个限制时段在当前时区无法换算，请调整时间后再保存。`,
+      });
+      return;
+    }
+    const timeRestrictionsJson = restrictions.json;
+
     // 分时档要把浏览器墙上时间换算成 UTC，换算不可行（如落在夏令时空档）时中断提交，
     // 否则会把墙上时间当 UTC 存进库，整档时段静默偏移数小时
     const quota = tryBuild(() => buildQuotaPayload(channelForm));
@@ -414,7 +431,7 @@ export function useChannelAdmin() {
           force_include_usage: channelForm.force_include_usage,
           ua_restrictions: channelForm.ua_restrictions,
           expires_at: expiresAtFromInputValue(channelForm.expires_at),
-          time_restrictions: channelForm.time_restrictions,
+          time_restrictions: timeRestrictionsJson,
           custom_headers: customHeaders,
           request_body_omit: requestBodyOmit,
           header_mappings: headerMappings,
@@ -448,7 +465,7 @@ export function useChannelAdmin() {
       force_include_usage: channelForm.force_include_usage,
       ua_restrictions: channelForm.ua_restrictions,
       expires_at: expiresAtFromInputValue(channelForm.expires_at),
-      time_restrictions: channelForm.time_restrictions,
+      time_restrictions: timeRestrictionsJson,
       custom_headers: customHeaders,
       request_body_omit: requestBodyOmit,
       header_mappings: headerMappings,

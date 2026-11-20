@@ -27,7 +27,7 @@ import {
 import { ModelDraftCard } from "./model-draft-card";
 import { ChannelQuotaFields } from "./channel-quota-fields";
 import { UaRestrictionsEditor, type UaRestrictionRuleDraft, rulesToJson, jsonToRules } from "@/components/ua-restrictions-editor";
-import { TimeWindowEditor, jsonToWindows } from "@/components/time-window-editor";
+import { TimeWindowEditor } from "@/components/time-window-editor";
 import { MultiplierScheduleFields } from "@/app/dashboard/multiplier-schedule-fields";
 import {
   protocolOptions,
@@ -343,8 +343,12 @@ export function ChannelDrawer({
             <div className="space-y-2 md:col-span-2">
               <Label>限制时段</Label>
               <TimeWindowEditor
-                windows={jsonToWindows(form.time_restrictions)}
-                onChange={(json) => onFormChange({ time_restrictions: json })}
+                windows={form.time_restrictions}
+                timeZone={form.time_restrictions_time_zone}
+                onChange={(windows, timeZone) => onFormChange({
+                  time_restrictions: windows,
+                  time_restrictions_time_zone: timeZone,
+                })}
               />
               <p className="text-xs text-[var(--color-foreground-muted)]">
                 配置后渠道仅在这些时段内可用。留空则不限制。
