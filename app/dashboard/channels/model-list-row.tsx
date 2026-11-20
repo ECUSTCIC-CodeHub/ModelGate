@@ -19,7 +19,7 @@ import {
 import type { ModelWithChannel } from "./channel-model";
 import { effectiveMultiplierOf, parseSupportedProtocols, shortProtocolLabel } from "./channel-model";
 import { ModelActions } from "./model-actions";
-import { EffectiveScheduleTag } from "./effective-schedule-tag";
+import { describeScheduleSource, EffectiveScheduleTag } from "./effective-schedule-tag";
 
 function isExpired(exp?: string | Date | null): boolean {
   if (!exp) return false;
@@ -106,9 +106,12 @@ export function ModelListRow({
           </TooltipTrigger>
           <TooltipContent side="top" className="max-w-64 text-xs">
             {effective.schedule_applied
-              ? `当前时段生效倍率为 ${effective.token_multiplier}x / ${effective.request_multiplier}x，命中${
-                  effective.token_from_model_schedule || effective.request_from_model_schedule ? "模型级" : "渠道级"
-                }分时档；基础倍率仅在没有分时档命中时使用。`
+              ? `当前时段生效倍率为 ${effective.token_multiplier}x / ${effective.request_multiplier}x，命中${describeScheduleSource(
+                  {
+                    token: effective.token_from_model_schedule,
+                    request: effective.request_from_model_schedule,
+                  },
+                )}分时档；基础倍率仅在没有分时档命中时使用。`
               : "当前时段未命中任何分时档，生效倍率等于基础倍率。"}
           </TooltipContent>
         </Tooltip>

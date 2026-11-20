@@ -17,7 +17,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { effectiveMultiplierOf, parseSupportedProtocols, shortProtocolLabel, type ModelWithChannel } from "./channel-model";
 import { ModelActions } from "./model-actions";
-import { EffectiveScheduleTag } from "./effective-schedule-tag";
+import { describeScheduleSource, EffectiveScheduleTag } from "./effective-schedule-tag";
 
 function isExpired(exp?: string | Date | null): boolean {
   if (!exp) return false;
@@ -93,9 +93,10 @@ export function ModelCard({
           <TooltipContent side="top" className="max-w-64 text-xs">
             基础倍率 T {model.token_multiplier ?? 1}x / R {model.request_multiplier ?? 1}x。
             {effective.schedule_applied
-              ? `当前时段命中${
-                  effective.token_from_model_schedule || effective.request_from_model_schedule ? "模型级" : "渠道级"
-                }分时档，显示的是实际生效倍率。`
+              ? `当前时段命中${describeScheduleSource({
+                  token: effective.token_from_model_schedule,
+                  request: effective.request_from_model_schedule,
+                })}分时档，显示的是实际生效倍率。`
               : "当前时段未命中分时档。"}
           </TooltipContent>
         </Tooltip>

@@ -149,7 +149,8 @@ export type ResolvedMultiplier = {
   // 维度级而不是层级：模型档只填了 token 时，request 的来源仍是渠道档，展示侧要说清这点。
   token_source: number | null;
   request_source: number | null;
-  // 命中的档位在该层数组里的下标，便于展示「第几档」
+  // 各维度命中的档位在其来源层数组里的下标（来源层见 token_source / request_source）。
+  // 这一层只填了 token 时，request 可能来自下层，两个下标不是同一层的下标。
   token_schedule_index: number | null;
   request_schedule_index: number | null;
 };

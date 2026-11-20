@@ -18,6 +18,7 @@ import { cn } from "@/lib/shared/utils";
 import { getApiMessage } from "@/lib/shared/api-message";
 import { authedFetch, ensureLoggedIn, getCachedProfile } from "@/lib/auth/client-auth";
 import { shortProtocolLabel, type Protocol } from "@/app/dashboard/channels/channel-model";
+import { describeScheduleSource } from "@/app/dashboard/channels/effective-schedule-tag";
 
 type ChannelMultiplier = {
   channel_id: number;
@@ -560,17 +561,11 @@ export default function AvailableModelsPage() {
                                     </TableCell>
                                     <TableCell className="text-center font-mono text-sm">
                                       {ch.effective_token_multiplier}x
-                                      <ScheduleSourceTag
-                                        applied={ch.effective_token_multiplier !== ch.token_multiplier}
-                                        fromModel={ch.token_multiplier_from_model_schedule}
-                                      />
+                                      <ScheduleSourceTag applied={ch.token_multiplier_from_model_schedule} />
                                     </TableCell>
                                     <TableCell className="text-center font-mono text-sm">
                                       {ch.effective_request_multiplier}x
-                                      <ScheduleSourceTag
-                                        applied={ch.effective_request_multiplier !== ch.request_multiplier}
-                                        fromModel={ch.request_multiplier_from_model_schedule}
-                                      />
+                                      <ScheduleSourceTag applied={ch.request_multiplier_from_model_schedule} />
                                     </TableCell>
                                     <TableCell className="text-center font-mono text-sm">{ch.weight}x</TableCell>
                                     <TableCell className="text-center font-mono text-sm">{ch.effective_weight}x</TableCell>
@@ -630,6 +625,7 @@ export default function AvailableModelsPage() {
                                   基础倍率 {row.token_multiplier_min !== row.token_multiplier_max
                                     ? row.token_multiplier_min + "x~" + row.token_multiplier_max + "x"
                                     : row.token_multiplier_min + "x"}
+                                  {row.token_multiplier_from_model_schedule ? "；当前时段由模型级分时档覆盖" : ""}
                                 </TooltipContent>
                               </Tooltip>
                               <Tooltip>
@@ -649,12 +645,16 @@ export default function AvailableModelsPage() {
                                   基础倍率 {row.request_multiplier_min !== row.request_multiplier_max
                                     ? row.request_multiplier_min + "x~" + row.request_multiplier_max + "x"
                                     : row.request_multiplier_min + "x"}
+                                  {row.request_multiplier_from_model_schedule ? "；当前时段由模型级分时档覆盖" : ""}
                                 </TooltipContent>
                               </Tooltip>
                               {scheduled ? (
                                 <span
                                   className="inline-flex items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-foreground-secondary)]"
-                                  title={`当前时段命中${row.token_multiplier_from_model_schedule || row.request_multiplier_from_model_schedule ? "模型" : "渠道"}分时档，显示的倍率已按分时档覆盖`}
+                                  title={`当前时段命中${describeScheduleSource({
+                                    token: row.token_multiplier_from_model_schedule,
+                                    request: row.request_multiplier_from_model_schedule,
+                                  })}分时档，显示的倍率已按分时档覆盖`}
                                 >
                                   分时
                                 </span>
@@ -742,17 +742,11 @@ export default function AvailableModelsPage() {
                                     <span className="font-mono text-[var(--color-foreground-muted)]">W{ch.effective_weight}</span>
                                     <span className={cn("font-mono", ch.effective_token_multiplier !== 1 && "text-[var(--color-accent)] font-semibold")}>
                                       T{ch.effective_token_multiplier}x
-                                      <ScheduleSourceTag
-                                        applied={ch.effective_token_multiplier !== ch.token_multiplier}
-                                        fromModel={ch.token_multiplier_from_model_schedule}
-                                      />
+                                      <ScheduleSourceTag applied={ch.token_multiplier_from_model_schedule} />
                                     </span>
                                     <span className={cn("font-mono", ch.effective_request_multiplier !== 1 && "text-[var(--color-accent)] font-semibold")}>
                                       R{ch.effective_request_multiplier}x
-                                      <ScheduleSourceTag
-                                        applied={ch.effective_request_multiplier !== ch.request_multiplier}
-                                        fromModel={ch.request_multiplier_from_model_schedule}
-                                      />
+                                      <ScheduleSourceTag applied={ch.request_multiplier_from_model_schedule} />
                                     </span>
                                   </div>
                                 </div>
@@ -812,16 +806,16 @@ function SortButton({
   );
 }
 
-// 生效倍率与基础倍率不一致就是命中了分时档，此时才需要解释来源；
-// 一致时（哪怕恰好命中了一档同值配置）标出来只会让人去找一个并不存在的差异。
-function ScheduleSourceTag({ applied, fromModel }: { applied: boolean; fromModel: boolean }) {
+// 只在「该维度的值由模型自己的分时档给出」时才标：没命中模型档时，值可能来自渠道档也可能就是基础倍率，
+// 拿生效值和基础值比是分不出这两种情况的（渠道档恰好等于基础值时会被当成没命中）。
+function ScheduleSourceTag({ applied }: { applied: boolean }) {
   if (!applied) return null;
   return (
     <span
       className="ml-1 text-[10px] font-normal text-[var(--color-foreground-muted)]"
-      title={fromModel ? "当前时段由该模型的模型级分时档覆盖" : "当前时段由所属渠道的渠道级分时档覆盖"}
+      title="当前时段该维度由这个模型的模型级分时档覆盖"
     >
-      {fromModel ? "模型分时" : "渠道分时"}
+      模型分时
     </span>
   );
 }

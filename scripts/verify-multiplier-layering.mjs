@@ -110,6 +110,18 @@ check("同一层多档命中取第一档", () => {
   assert.equal(resolveLayeredMultiplier(1, 1, [[first, second]], friday10).token_multiplier, 0.4);
 });
 
+check("同一层多档命中时先取第一档，后面的档不再参与", () => {
+  // 当前实现只在每层取第一个命中的档位，后一档完全不生效（包括它填了的维度）。
+  // 这里把现状钉住：UI 提示、被覆盖档位的标红判定都必须按这个口径写，否则会骗人。
+  const first = { days: [5], start: "00:00", end: "12:00", token_multiplier: 0.4, request_multiplier: 2 };
+  const second = { days: [5], start: "00:00", end: "12:00", token_multiplier: null, request_multiplier: 7 };
+  const r = resolveLayeredMultiplier(1, 1, [[first, second]], friday10);
+  assert.equal(r.token_multiplier, 0.4);
+  assert.equal(r.request_multiplier, 2);
+  assert.equal(r.token_schedule_index, 0);
+  assert.equal(r.request_schedule_index, 0);
+});
+
 check("重复档位命中时按下标而不是按内容定位", () => {
   // 两档内容完全一致时，按对象反查会永远拿到第 0 档，展示侧就会标错「命中第几档」
   const dup = { days: [5], start: "00:00", end: "12:00", token_multiplier: 0.4, request_multiplier: null };

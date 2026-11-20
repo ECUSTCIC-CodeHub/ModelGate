@@ -109,24 +109,18 @@ function expandWindow(window: ScheduleWindow): Array<{ day: number; start: numbe
   return segments;
 }
 
-// 找出永远轮不到的档位下标。多档同时命中时网关按数组顺序取第一档，
-// 被前面的档整段覆盖的档等于白配，界面上必须说清楚，否则改价时只会以为是没生效。
+// 网关每层只在第一条命中的档位上取值，同层后面命中的档位整段作废（不管有没有填维度）。
+// 所以判断「永远不会生效」只需看时段：被前面某几档拼起来盖住的时段，永远轮不到这一档。
 function findShadowedSchedules(drafts: MultiplierScheduleDraft[]): Set<number> {
-  const expanded = drafts.map(expandWindow);
+  const covered: Array<{ day: number; start: number; end: number }> = [];
   const shadowed = new Set<number>();
-  for (let i = 0; i < expanded.length; i += 1) {
-    if (expanded[i].length === 0) continue;
-    let covered = true;
-    for (const segment of expanded[i]) {
-      const hit = expanded.some((other, j) =>
-        j < i && other.some((o) => o.day === segment.day && o.start <= segment.start && o.end >= segment.end),
-      );
-      if (!hit) {
-        covered = false;
-        break;
-      }
-    }
-    if (covered) shadowed.add(i);
+  for (let i = 0; i < drafts.length; i += 1) {
+    const segments = expandWindow(drafts[i]);
+    if (segments.length === 0) continue;
+    const isCovered = (segment: { day: number; start: number; end: number }) =>
+      covered.some((other) => other.day === segment.day && other.start <= segment.start && other.end >= segment.end);
+    if (segments.every(isCovered)) shadowed.add(i);
+    covered.push(...segments);
   }
   return shadowed;
 }
@@ -173,7 +167,7 @@ export function MultiplierScheduleFields({
           {baseTokenMultiplier === null || baseRequestMultiplier === null
             ? "基础倍率"
             : `上方基础倍率（${baseTokenMultiplier}x / ${baseRequestMultiplier}x）`}
-          。时段时间按 UTC 解释，可跨零点；多档同时命中时按从上到下的顺序取第一档。留空的维度沿用基础倍率。
+          。时段时间按 UTC 解释，可跨零点；多档同时命中时按从上到下的顺序取第一档，后面的档位此时不生效。留空的维度沿用下层倍率。
         </p>
         {hint ? <p className="mt-1 text-xs text-[var(--color-foreground-muted)]">{hint}</p> : null}
       </div>
@@ -242,7 +236,7 @@ export function MultiplierScheduleFields({
 
           {shadowedIndexes.has(index) ? (
             <p className="text-xs text-[var(--color-destructive)]">
-              该档位被上方更靠前的档位整段覆盖，永远不会生效。多档同时命中时按从上到下的顺序取第一档。
+              该档位的时段已被上方更靠前的档位整段覆盖，永远不会生效。多档同时命中时按从上到下的顺序取第一档。
             </p>
           ) : null}
 
