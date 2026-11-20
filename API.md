@@ -291,7 +291,7 @@ X-Model-Period-Quota-Requests-<id>: <remaining>
 
 **前端展示口径**
 
-管理端与用户端的三处界面都只打**生效倍率**，基础倍率放在次要位置（列表行的下一行小字号，其余在悬浮提示里），避免「显示值和配置值对不上」被当成 bug：
+管理端与用户端的三处界面都只打**生效倍率**，基础倍率放在次要位置（列表行在下一行小字号，卡片与其他位置并列显示，管理端不再提供悬浮来源说明），避免「显示值和配置值对不上」被当成 bug：
 
 - 生效倍率是主数值（`/dashboard/models` 还按它排序）；只要配了分时档，旁边就一直带一个「分时」标签，标签本身写明倍率与时段（见下条），不再按维度区分「模型分时 / 渠道分时」，也不再随此刻是否命中而增减。
 - `/dashboard/channels` 的模型映射列表与卡片（管理员配置）：显示的同样是生效倍率，未配分时档时下一行给出基础倍率。
@@ -3181,9 +3181,9 @@ access token 过期但 refresh token 仍有效时按已登录处理（整页表�
 
 > `effective_token_multiplier_*` / `effective_request_multiplier_*` 为**当前时刻实际生效**的倍率范围（已按分时倍率覆盖，口径与计费一致），`multiplier_schedule_applied` 表示当前是否命中分时档位；`channels[]` 里的 `effective_*` 为单个渠道的生效倍率。分时倍率见「分时倍率」一节。
 
-> `token_multiplier_from_model_schedule` / `request_multiplier_from_model_schedule` 表示该维度的生效倍率是否**有渠道**由**模型级**分时档决定：为 `false` 时表示全部渠道都由渠道级分时档或基础倍率给出。聚合值为真只代表「至少一个渠道命中模型档」，多渠道时可能是部分命中，展示侧按「至少有一条渠道」措辞，不能当成所有渠道都来自模型档。`channels[]` 里为单个渠道各自的来源。
+> `token_multiplier_from_model_schedule` / `request_multiplier_from_model_schedule` 表示该维度的生效倍率是否**有渠道**由**模型级**分时档决定：为 `false` 时表示全部渠道都由渠道级分时档或基础倍率给出。聚合值为真只代表「至少一个渠道命中模型档」，多渠道时可能是部分命中。`channels[]` 里为单个渠道各自的来源。
 
-> `token_multiplier_scheduled` / `request_multiplier_scheduled` 表示该维度**是否命中分时档**（不分层级）：顶层为「至少一个渠道命中」，`channels[]` 里为单个渠道各自的命中情况。它与 `*_from_model_schedule` 组合才能区分三种情况：两者都真为模型档覆盖，前者真后者假为渠道档覆盖，两者都假则该维度的值就是基础倍率。只有 `multiplier_schedule_applied` 是不够的——它记的是「任一维度命中」，用它给两个维度分别标注会把没被覆盖的维度也标上。
+> `token_multiplier_scheduled` / `request_multiplier_scheduled` 表示该维度**是否命中分时档**（不分层级）：顶层为「至少一个渠道命中」，`channels[]` 里为单个渠道各自的命中情况。它与 `*_from_model_schedule` 组合才能区分三种情况：两者都真为模型档覆盖，前者真后者假为渠道档覆盖，两者都假则该维度的值就是基础倍率。管理端用它说明「此刻是否在分时时段内」；列表上的「分时」标签只看是否配置了档位（`multiplier_schedules` / `channel_multiplier_schedules` 非空），与这两个字段无关。
 
 > `token_multiplier` 和 `request_multiplier` 为**基础**计费倍率（取所有渠道中的最低值，不含分时覆盖），实际扣量 = 使用量 × 生效倍率。`token_multiplier_min/max` 和 `request_multiplier_min/max` 为各渠道倍率范围。`weight_min/max` 为各渠道模型权重范围（模型权重为配置原始值，不做下限钳制；字段为 NULL 时按 1 处理），`effective_weight_min/max` 为各渠道有效权重范围（有效权重 = max(1, 模型权重) × max(1, 渠道权重)，计算时对权重取下限 1），`max_effective_weight` 为该模型所有渠道中的最大有效权重，列表按此降序排列。`channels` 包含各渠道的倍率（基础 + 生效）、模型权重（`weight`）与有效权重（`effective_weight`）明细，按有效权重降序排列。`supported_protocols` 为该模型各渠道所支持协议的并集，取值：`chat_completions` / `responses` / `anthropic_messages` / `embeddings` / `images` / `other`。`brand_groups` 为管理员在系统设置中配置的模型品牌分组规则，前端据此按模型 ID 前缀归组筛选。
 

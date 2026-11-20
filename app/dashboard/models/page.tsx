@@ -36,11 +36,6 @@ type ChannelMultiplier = {
   request_multiplier: number;
   effective_token_multiplier: number;
   effective_request_multiplier: number;
-  token_multiplier_from_model_schedule: boolean;
-  request_multiplier_from_model_schedule: boolean;
-  // 该维度是否命中分时档（不分层）。与 from_model_schedule 一起才能区分「渠道档覆盖」和「就是基础倍率」。
-  token_multiplier_scheduled: boolean;
-  request_multiplier_scheduled: boolean;
   weight: number;
   effective_weight: number;
   // 两层分时档原样带回（库里是 UTC），由前端按浏览器时区换算展示
@@ -103,11 +98,6 @@ type ModelItem = {
   effective_token_multiplier_max: number;
   effective_request_multiplier_min: number;
   effective_request_multiplier_max: number;
-  multiplier_schedule_applied: boolean;
-  token_multiplier_from_model_schedule: boolean;
-  request_multiplier_from_model_schedule: boolean;
-  token_multiplier_scheduled: boolean;
-  request_multiplier_scheduled: boolean;
   weight_min: number;
   weight_max: number;
   effective_weight_min: number;

@@ -106,7 +106,8 @@ export function DashboardModelQuotaCard({ modelQuotas }: { modelQuotas: ModelQuo
                       </span>
                     ) : null}
                     {scheduleTag ? (
-                      <span className="max-w-40 truncate rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-foreground-muted)]">
+                      // 不截断：标签本身就承担「说清倍率与时段」的职责，卡片宽度也放得下
+                      <span className="rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-foreground-muted)]">
                         分时 {scheduleTag}
                       </span>
                     ) : null}
