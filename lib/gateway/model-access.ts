@@ -161,6 +161,10 @@ export type AccessibleModel = {
   // 该维度是否有渠道的生效值出自模型级分时档；为真不代表所有渠道都命中，展示侧要按「部分」措辞。
   token_multiplier_from_model_schedule: boolean;
   request_multiplier_from_model_schedule: boolean;
+  // 该维度是否有渠道命中分时档（任一来源层）。为假说明生效值就是基础倍率，
+  // 按维度标「分时」要用它，不能用 `multiplier_schedule_applied`（任一维度命中即真）。
+  token_multiplier_scheduled: boolean;
+  request_multiplier_scheduled: boolean;
   weight_min: number;
   weight_max: number;
   effective_weight_min: number;
@@ -268,6 +272,8 @@ export async function listAccessibleModels(user: Pick<DbUser, "id" | "role" | "g
         multiplier_schedule_applied: item.channels.some((c) => c.multiplier_schedule_applied),
         token_multiplier_from_model_schedule: item.channels.some((c) => c.token_multiplier_from_model_schedule),
         request_multiplier_from_model_schedule: item.channels.some((c) => c.request_multiplier_from_model_schedule),
+        token_multiplier_scheduled: item.channels.some((c) => c.token_multiplier_scheduled),
+        request_multiplier_scheduled: item.channels.some((c) => c.request_multiplier_scheduled),
         weight_min: Math.min(...ws),
         weight_max: Math.max(...ws),
         effective_weight_min: Math.min(...ews),

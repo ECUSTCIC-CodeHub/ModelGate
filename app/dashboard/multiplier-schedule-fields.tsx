@@ -4,6 +4,11 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/shared/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  findShadowedDraftIndexes,
+  isScheduleDraftDiscarded,
+  type ScheduleDraftWindow,
+} from "@/lib/shared/multiplier-shadow";
 
 export const WEEKDAY_OPTIONS = [
   { value: 1, label: "一" },
@@ -15,14 +20,7 @@ export const WEEKDAY_OPTIONS = [
   { value: 7, label: "日" },
 ] as const;
 
-export type MultiplierScheduleDraft = {
-  key: string;
-  days: number[];
-  start: string;
-  end: string;
-  token_multiplier: string;
-  request_multiplier: string;
-};
+export type MultiplierScheduleDraft = ScheduleDraftWindow & { key: string };
 
 export function newScheduleDraft(): MultiplierScheduleDraft {
   return {
@@ -50,10 +48,9 @@ export function scheduleDraftsToPayload(drafts: MultiplierScheduleDraft[]): Arra
     request_multiplier: number | null;
   }> = [];
   for (const draft of drafts) {
-    if (draft.days.length === 0) continue;
+    if (isScheduleDraftDiscarded(draft)) continue;
     const tokens = draft.token_multiplier.trim() === "" ? null : Number(draft.token_multiplier);
     const requests = draft.request_multiplier.trim() === "" ? null : Number(draft.request_multiplier);
-    if (tokens === null && requests === null) continue;
     out.push({
       days: draft.days,
       start: draft.start,
@@ -82,76 +79,6 @@ export function schedulesToDrafts(schedules: Array<{
   }));
 }
 
-type ScheduleWindow = Pick<MultiplierScheduleDraft, "days" | "start" | "end">;
-
-function toMinutes(value: string): number | null {
-  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
-  if (!match) return null;
-  return Number(match[1]) * 60 + Number(match[2]);
-}
-
-type Segment = { day: number; start: number; end: number };
-
-// 把已收集的片段按天合并成不重叠的区间，才能判断「被前面几档拼起来盖住」。
-// 端点是闭区间：前一段结束时间与后一段开始时间相接（或重叠）即视为连续，看的是各自的结束位。
-function mergeSegments(segments: Segment[]): Map<number, Segment[]> {
-  const raw = new Map<number, Segment[]>();
-  for (const segment of segments) {
-    const list = raw.get(segment.day) ?? [];
-    list.push(segment);
-    raw.set(segment.day, list);
-  }
-  const merged = new Map<number, Segment[]>();
-  for (const [day, list] of raw) {
-    const sorted = [...list].sort((a, b) => a.start - b.start);
-    const out: Segment[] = [];
-    for (const segment of sorted) {
-      const last = out[out.length - 1];
-      if (last && segment.start <= last.end) last.end = Math.max(last.end, segment.end);
-      else out.push({ ...segment });
-    }
-    merged.set(day, out);
-  }
-  return merged;
-}
-
-// 把一档展开成「星期 + 分钟区间」片段，跨零点的拆成两段并归属对应的那几天。
-// 判定口径与网关 windowMatches 一致：凌晨段算前一日，且两端都含。
-function expandWindow(window: ScheduleWindow): Segment[] {
-  const start = toMinutes(window.start);
-  const end = toMinutes(window.end);
-  if (start === null || end === null || start === end) return [];
-  const segments: Segment[] = [];
-  for (const day of window.days) {
-    if (end > start) {
-      segments.push({ day, start, end });
-      continue;
-    }
-    segments.push({ day, start, end: 24 * 60 });
-    const nextDay = day === 7 ? 1 : day + 1;
-    segments.push({ day: nextDay, start: 0, end });
-  }
-  return segments;
-}
-
-// 网关每层只在第一条命中的档位上取值，同层后面命中的档位整段作废（不管有没有填维度）。
-// 所以一旦整段时段都被前面若干档拼起来盖住，这一档就永远轮不到；只被盖住部分时段的档位仍会在剩余时段生效。
-// 这里只看时段：若将来网关改成同层逐维合并，判定要跟着改（verify-multiplier-layering 有对应断言）。
-function findShadowedSchedules(drafts: MultiplierScheduleDraft[]): Set<number> {
-  const segments: Segment[] = [];
-  const shadowed = new Set<number>();
-  for (let i = 0; i < drafts.length; i += 1) {
-    const own = expandWindow(drafts[i]);
-    if (own.length === 0) continue;
-    const coverage = mergeSegments(segments);
-    const isCovered = (segment: Segment) =>
-      (coverage.get(segment.day) ?? []).some((other) => other.start <= segment.start && other.end >= segment.end);
-    if (own.every(isCovered)) shadowed.add(i);
-    segments.push(...own);
-  }
-  return shadowed;
-}
-
 type MultiplierScheduleFieldsProps = {
   drafts: MultiplierScheduleDraft[];
   onChange: (drafts: MultiplierScheduleDraft[]) => void;
@@ -174,7 +101,7 @@ export function MultiplierScheduleFields({
     onChange(drafts.map((draft) => (draft.key === key ? { ...draft, ...patch } : draft)));
   };
 
-  const shadowedIndexes = findShadowedSchedules(drafts);
+  const shadowedIndexes = findShadowedDraftIndexes(drafts);
 
   const toggleDay = (key: string, day: number) => {
     const draft = drafts.find((item) => item.key === key);

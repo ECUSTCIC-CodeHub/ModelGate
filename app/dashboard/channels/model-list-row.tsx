@@ -19,7 +19,7 @@ import {
 import type { ModelWithChannel } from "./channel-model";
 import { effectiveMultiplierOf, parseSupportedProtocols, shortProtocolLabel } from "./channel-model";
 import { ModelActions } from "./model-actions";
-import { EffectiveScheduleTag, ScheduleSourceTag } from "./effective-schedule-tag";
+import { ScheduleSourceTag } from "./schedule-source-tag";
 import { describeScheduleSource } from "@/lib/shared/multiplier-source";
 
 function isExpired(exp?: string | Date | null): boolean {
@@ -100,7 +100,6 @@ export function ModelListRow({
           <ScheduleSourceTag fromModel={effective.token_from_model_schedule} scheduled={effective.token_scheduled} />
           {" / "}R {effective.request_multiplier}x
           <ScheduleSourceTag fromModel={effective.request_from_model_schedule} scheduled={effective.request_scheduled} />
-          {effective.schedule_applied ? <EffectiveScheduleTag /> : null}
         </div>
         <Tooltip>
           <TooltipTrigger asChild>

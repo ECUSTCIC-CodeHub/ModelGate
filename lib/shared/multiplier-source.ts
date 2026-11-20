@@ -25,16 +25,20 @@ export function describeScheduleSource(source: MultiplierSource): string {
   return `Token 倍率来自${tokenOrigin}，请求倍率来自${requestOrigin}`;
 }
 
-// 模型列表的聚合倍率：一个 alias 可能挂多条渠道，而 tag 是跨渠道的聚合判定，
-// 只能说「部分或全部」，不能套用单条渠道那句「两个维度都来自……」。
-export function describeAggregatedScheduleSource(source: MultiplierSource): string {
-  if (source.tokenFromModelSchedule && source.requestFromModelSchedule) {
-    return "两个维度都有渠道由模型级分时档覆盖";
+// 一个 alias 挂多条渠道时的聚合来源。聚合值只代表「至少一条渠道命中模型档」，
+// 所以不能说成两个维度都来自模型档，也不能说某维度「都没有」——要写清是「没有渠道命中」。
+export function describeAggregatedScheduleSource(
+  source: Pick<MultiplierSource, "tokenFromModelSchedule" | "requestFromModelSchedule">,
+): string {
+  const { tokenFromModelSchedule, requestFromModelSchedule } = source;
+  if (tokenFromModelSchedule && requestFromModelSchedule) {
+    return "两个维度都至少有一条渠道由模型级分时档覆盖";
   }
-  if (source.tokenFromModelSchedule || source.requestFromModelSchedule) {
-    const token = source.tokenFromModelSchedule ? "有" : "没有";
-    const request = source.requestFromModelSchedule ? "有" : "没有";
-    return `Token 倍率${token}渠道由模型级分时档覆盖，请求倍率${request}渠道由模型级分时档覆盖`;
+  if (tokenFromModelSchedule) {
+    return "Token 倍率至少有一条渠道由模型级分时档覆盖，请求倍率没有任何渠道命中模型级分时档（来自渠道级分时档或基础倍率）";
   }
-  return "没有渠道由模型级分时档覆盖，倍率来自渠道级分时档或基础倍率";
+  if (requestFromModelSchedule) {
+    return "请求倍率至少有一条渠道由模型级分时档覆盖，Token 倍率没有任何渠道命中模型级分时档（来自渠道级分时档或基础倍率）";
+  }
+  return "没有任何渠道命中模型级分时档，倍率来自渠道级分时档或基础倍率";
 }

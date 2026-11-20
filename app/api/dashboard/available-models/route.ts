@@ -34,6 +34,8 @@ export async function GET(request: Request) {
       multiplier_schedule_applied: m.multiplier_schedule_applied,
       token_multiplier_from_model_schedule: m.token_multiplier_from_model_schedule,
       request_multiplier_from_model_schedule: m.request_multiplier_from_model_schedule,
+      token_multiplier_scheduled: m.token_multiplier_scheduled,
+      request_multiplier_scheduled: m.request_multiplier_scheduled,
       weight_min: m.weight_min,
       weight_max: m.weight_max,
       effective_weight_min: m.effective_weight_min,

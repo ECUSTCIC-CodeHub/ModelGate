@@ -18,8 +18,8 @@ import { cn } from "@/lib/shared/utils";
 import { getApiMessage } from "@/lib/shared/api-message";
 import { authedFetch, ensureLoggedIn, getCachedProfile } from "@/lib/auth/client-auth";
 import { shortProtocolLabel, type Protocol } from "@/app/dashboard/channels/channel-model";
-import { ScheduleSourceTag } from "@/app/dashboard/channels/effective-schedule-tag";
-import { describeAggregatedScheduleSource } from "@/lib/shared/multiplier-source";
+import { ScheduleSourceTag } from "@/app/dashboard/channels/schedule-source-tag";
+import { describeAggregatedScheduleSource, describeScheduleSource } from "@/lib/shared/multiplier-source";
 
 type ChannelMultiplier = {
   channel_id: number;
@@ -29,7 +29,6 @@ type ChannelMultiplier = {
   request_multiplier: number;
   effective_token_multiplier: number;
   effective_request_multiplier: number;
-  multiplier_schedule_applied: boolean;
   token_multiplier_from_model_schedule: boolean;
   request_multiplier_from_model_schedule: boolean;
   // 该维度是否命中分时档（不分层）。与 from_model_schedule 一起才能区分「渠道档覆盖」和「就是基础倍率」。
@@ -97,6 +96,8 @@ type ModelItem = {
   multiplier_schedule_applied: boolean;
   token_multiplier_from_model_schedule: boolean;
   request_multiplier_from_model_schedule: boolean;
+  token_multiplier_scheduled: boolean;
+  request_multiplier_scheduled: boolean;
   weight_min: number;
   weight_max: number;
   effective_weight_min: number;
@@ -104,6 +105,25 @@ type ModelItem = {
   max_effective_weight: number;
   channels: ChannelMultiplier[];
 };
+
+// 一条别名此刻的倍率来源。只有一个渠道时能按这一条渠道的维度来源直说；
+// 多渠道时聚合值只代表「至少一条渠道命中模型档」，措辞必须留余地，
+// 否则单渠道场景会出现「请求倍率没有渠道由模型级分时档覆盖」这种像在说整体的句子。
+function scheduleSourceLabel(row: ModelItem): string {
+  const onlyChannel = row.channels.length === 1 ? row.channels[0] : null;
+  if (onlyChannel) {
+    return describeScheduleSource({
+      tokenFromModelSchedule: onlyChannel.token_multiplier_from_model_schedule,
+      requestFromModelSchedule: onlyChannel.request_multiplier_from_model_schedule,
+      tokenScheduled: onlyChannel.token_multiplier_scheduled,
+      requestScheduled: onlyChannel.request_multiplier_scheduled,
+    });
+  }
+  return describeAggregatedScheduleSource({
+    tokenFromModelSchedule: row.token_multiplier_from_model_schedule,
+    requestFromModelSchedule: row.request_multiplier_from_model_schedule,
+  });
+}
 
 type SortField = "id" | "effective_token_multiplier" | "effective_request_multiplier" | "weight" | "effective_weight";
 type SortOrder = "asc" | "desc";
@@ -293,7 +313,8 @@ export default function AvailableModelsPage() {
     const baseMax = type === "token" ? row.token_multiplier_max : row.request_multiplier_max;
     const hasRange = effectiveMin !== effectiveMax;
     const hasMultipleChannels = row.channels.length > 1;
-    const scheduled = row.multiplier_schedule_applied;
+    // 按维度判：只有 Token 命中分时档时，请求列不该跟着标「分时」。
+    const scheduled = type === "token" ? row.token_multiplier_scheduled : row.request_multiplier_scheduled;
     const emphasized = effectiveMin !== 1 || effectiveMax !== 1 || hasRange;
     const expanded = expandedIds.has(row.id);
     const label = hasRange ? `${effectiveMin}x ~ ${effectiveMax}x` : `${effectiveMin}x`;
@@ -312,14 +333,8 @@ export default function AvailableModelsPage() {
     );
 
     // 来源按维度判：模型档只填了 token 时，请求倍率仍是渠道档或基础倍率给的，笼统说「模型/渠道」会指错。
-    // 聚合值只代表「至少一个渠道命中」，多渠道时可能是部分命中，措辞要留余地。
     const tooltip = scheduled
-      ? `当前时段生效倍率，基础倍率 ${baseLabel}；${describeAggregatedScheduleSource({
-          tokenFromModelSchedule: row.token_multiplier_from_model_schedule,
-          requestFromModelSchedule: row.request_multiplier_from_model_schedule,
-          tokenScheduled: scheduled,
-          requestScheduled: scheduled,
-        })}`
+      ? `当前时段生效倍率，基础倍率 ${baseLabel}；${scheduleSourceLabel(row)}`
       : `基础倍率 ${baseLabel}`;
 
     return (
@@ -636,14 +651,7 @@ export default function AvailableModelsPage() {
                                   基础倍率 {row.token_multiplier_min !== row.token_multiplier_max
                                     ? row.token_multiplier_min + "x~" + row.token_multiplier_max + "x"
                                     : row.token_multiplier_min + "x"}
-                                  {row.multiplier_schedule_applied
-                                    ? `；${describeAggregatedScheduleSource({
-                                        tokenFromModelSchedule: row.token_multiplier_from_model_schedule,
-                                        requestFromModelSchedule: row.request_multiplier_from_model_schedule,
-                                        tokenScheduled: true,
-                                        requestScheduled: true,
-                                      })}`
-                                    : ""}
+                                  {row.token_multiplier_scheduled ? `；${scheduleSourceLabel(row)}` : ""}
                                 </TooltipContent>
                               </Tooltip>
                               <Tooltip>
@@ -663,25 +671,13 @@ export default function AvailableModelsPage() {
                                   基础倍率 {row.request_multiplier_min !== row.request_multiplier_max
                                     ? row.request_multiplier_min + "x~" + row.request_multiplier_max + "x"
                                     : row.request_multiplier_min + "x"}
-                                  {row.multiplier_schedule_applied
-                                    ? `；${describeAggregatedScheduleSource({
-                                        tokenFromModelSchedule: row.token_multiplier_from_model_schedule,
-                                        requestFromModelSchedule: row.request_multiplier_from_model_schedule,
-                                        tokenScheduled: true,
-                                        requestScheduled: true,
-                                      })}`
-                                    : ""}
+                                  {row.request_multiplier_scheduled ? `；${scheduleSourceLabel(row)}` : ""}
                                 </TooltipContent>
                               </Tooltip>
                               {scheduled ? (
                                 <span
                                   className="inline-flex items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-foreground-secondary)]"
-                                  title={`当前时段生效倍率已按分时档覆盖：${describeAggregatedScheduleSource({
-                                    tokenFromModelSchedule: row.token_multiplier_from_model_schedule,
-                                    requestFromModelSchedule: row.request_multiplier_from_model_schedule,
-                                    tokenScheduled: true,
-                                    requestScheduled: true,
-                                  })}（多渠道时按渠道各自命中）`}
+                                  title={`当前时段生效倍率已按分时档覆盖：${scheduleSourceLabel(row)}`}
                                 >
                                   分时
                                 </span>
