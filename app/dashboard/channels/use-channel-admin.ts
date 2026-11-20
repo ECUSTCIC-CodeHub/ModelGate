@@ -753,25 +753,24 @@ export function useChannelAdmin() {
       return;
     }
 
+    // 草稿里的分时档是浏览器墙上时间，必须先换算成 UTC 再提交；精简版没有该功能，
+    // 字段留 undefined（JSON.stringify 会整个丢掉），服务端按「字段缺席保持原值」处理
+    const schedules = modelGateFeatures.periodQuota
+      ? tryBuild(() => scheduleDraftsToPayload(modelForm.multiplier_schedules))
+      : null;
+    if (schedules && !schedules.ok) {
+      toast({ variant: "error", description: schedules.message });
+      return;
+    }
+
     const body: Record<string, unknown> = {
       ...modelForm,
       expires_at: expiresAtFromInputValue(modelForm.expires_at),
       ua_restrictions: modelForm.ua_restrictions,
       retry_status_codes: normalizeRetryStatusCodes(modelForm.retry_status_codes),
       ...buildModelQuotaPayload(modelForm),
+      multiplier_schedules: schedules?.ok ? schedules.value : undefined,
     };
-    // 草稿里的分时档是浏览器墙上时间，必须换算成 UTC 再提交；
-    // 精简版没有分时倍率判定，省略该字段让服务端保持原值，不能把草稿原样透传
-    if (modelGateFeatures.periodQuota) {
-      const converted = tryBuild(() => scheduleDraftsToPayload(modelForm.multiplier_schedules));
-      if (!converted.ok) {
-        toast({ variant: "error", description: converted.message });
-        return;
-      }
-      body.multiplier_schedules = converted.value;
-    } else {
-      delete body.multiplier_schedules;
-    }
 
     const response = await authedFetch(`/api/admin/models/${modelEditingId}`, {
       method: "PUT",

@@ -14,19 +14,32 @@ export function browserTimeZone(): string {
 // 按时区缓存，避免每档每次换算都重建上千个实例（档位上限 20 档，换算在点击保存时同步执行）。
 const FORMATTER_CACHE_LIMIT = 32;
 const formatters = new Map<string, Intl.DateTimeFormat>();
+// 非法时区单独记一份：wallTimeToUtc 要按分钟扫一整天，不记住就会反复构造并抛上千次异常
+const unsupportedTimeZones = new Set<string>();
 
-function formatterInTimeZone(timeZone: string): Intl.DateTimeFormat {
+function formatterInTimeZone(timeZone: string): Intl.DateTimeFormat | null {
   const cached = formatters.get(timeZone);
   if (cached) return cached;
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hour: "2-digit",
-    minute: "2-digit",
-    weekday: "short",
-    hour12: false,
-  });
-  // 时区来自下拉框，数量有限；仍设上限，避免被任意字符串撑爆内存
-  if (formatters.size >= FORMATTER_CACHE_LIMIT) formatters.clear();
+  if (unsupportedTimeZones.has(timeZone)) return null;
+  let fmt: Intl.DateTimeFormat;
+  try {
+    fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      weekday: "short",
+      hour12: false,
+    });
+  } catch {
+    if (unsupportedTimeZones.size >= FORMATTER_CACHE_LIMIT) unsupportedTimeZones.clear();
+    unsupportedTimeZones.add(timeZone);
+    return null;
+  }
+  // 时区来自下拉框，数量有限；仍设上限，淘汰最旧一项而不是整表清空，避免周期性抖动重建
+  if (formatters.size >= FORMATTER_CACHE_LIMIT) {
+    const oldest = formatters.keys().next().value;
+    if (oldest !== undefined) formatters.delete(oldest);
+  }
   formatters.set(timeZone, fmt);
   return fmt;
 }
@@ -34,15 +47,19 @@ function formatterInTimeZone(timeZone: string): Intl.DateTimeFormat {
 // 时区非法或运行时不支持时返回 null：调用方据此判定「换算不可行」，
 // 不能伪造 00:00，否则会把换算失败伪装成一次成功的换算。
 function partsInTimeZone(date: Date, timeZone: string): { hour: string; minute: string; weekday: string } | null {
+  const formatter = formatterInTimeZone(timeZone);
+  if (!formatter) return null;
   let parts: Intl.DateTimeFormatPart[];
   try {
-    parts = formatterInTimeZone(timeZone).formatToParts(date);
+    parts = formatter.formatToParts(date);
   } catch {
     return null;
   }
-  const hour = parts.find((p) => p.type === "hour")?.value ?? "00";
-  const minute = parts.find((p) => p.type === "minute")?.value ?? "00";
-  const weekday = parts.find((p) => p.type === "weekday")?.value ?? "";
+  const hour = parts.find((p) => p.type === "hour")?.value;
+  const minute = parts.find((p) => p.type === "minute")?.value;
+  const weekday = parts.find((p) => p.type === "weekday")?.value;
+  // 三个字段缺一不可：weekday 缺失时按周一兜底会让 dayShift 静默算错一整天
+  if (!hour || !minute || !weekday) return null;
   return { hour: hour === "24" ? "00" : hour, minute, weekday };
 }
 
