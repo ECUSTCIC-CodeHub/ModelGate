@@ -307,14 +307,15 @@ export default function AvailableModelsPage() {
       </>
     );
 
-    const sources = type === "token"
-      ? row.channels.filter((c) => c.token_multiplier_from_model_schedule).length
-      : row.channels.filter((c) => c.request_multiplier_from_model_schedule).length;
-    // 模型档与渠道档都会导致「显示值和配置值对不上」，来源要分开写：模型档是单个模型的特殊价，
-    // 渠道档是整条线的默认价，用户排查定价时的第一反应就是问「这价谁定的」。
-    const scheduleSource = sources > 0 ? "模型分时档" : "渠道分时档";
+    // 来源按维度判：模型档只填了 token 时，请求倍率仍是渠道档或基础倍率给的，笼统说「模型/渠道」会指错。
+    // 聚合值只代表「至少一个渠道命中」，多渠道时可能是部分命中，措辞要留余地。
+    const fromModelSchedule = type === "token"
+      ? row.token_multiplier_from_model_schedule
+      : row.request_multiplier_from_model_schedule;
     const tooltip = scheduled
-      ? `当前时段生效倍率，基础倍率 ${baseLabel}；命中的是${scheduleSource}`
+      ? `当前时段生效倍率，基础倍率 ${baseLabel}；${
+          fromModelSchedule ? "该维度当前时段部分或全部由模型级分时档覆盖" : "该维度的值来自渠道级分时档或基础倍率"
+        }`
       : `基础倍率 ${baseLabel}`;
 
     return (

@@ -90,13 +90,38 @@ function toMinutes(value: string): number | null {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
+type Segment = { day: number; start: number; end: number };
+
+// 把已收集的片段按天合并成不重叠的区间，才能判断「被前面几档拼起来盖住」。
+// 端点是闭区间：前一段结束时间与后一段开始时间相接（或重叠）即视为连续，看的是各自的结束位。
+function mergeSegments(segments: Segment[]): Map<number, Segment[]> {
+  const raw = new Map<number, Segment[]>();
+  for (const segment of segments) {
+    const list = raw.get(segment.day) ?? [];
+    list.push(segment);
+    raw.set(segment.day, list);
+  }
+  const merged = new Map<number, Segment[]>();
+  for (const [day, list] of raw) {
+    const sorted = [...list].sort((a, b) => a.start - b.start);
+    const out: Segment[] = [];
+    for (const segment of sorted) {
+      const last = out[out.length - 1];
+      if (last && segment.start <= last.end) last.end = Math.max(last.end, segment.end);
+      else out.push({ ...segment });
+    }
+    merged.set(day, out);
+  }
+  return merged;
+}
+
 // 把一档展开成「星期 + 分钟区间」片段，跨零点的拆成两段并归属对应的那几天。
 // 判定口径与网关 windowMatches 一致：凌晨段算前一日，且两端都含。
-function expandWindow(window: ScheduleWindow): Array<{ day: number; start: number; end: number }> {
+function expandWindow(window: ScheduleWindow): Segment[] {
   const start = toMinutes(window.start);
   const end = toMinutes(window.end);
   if (start === null || end === null || start === end) return [];
-  const segments: Array<{ day: number; start: number; end: number }> = [];
+  const segments: Segment[] = [];
   for (const day of window.days) {
     if (end > start) {
       segments.push({ day, start, end });
@@ -113,15 +138,16 @@ function expandWindow(window: ScheduleWindow): Array<{ day: number; start: numbe
 // 所以一旦整段时段都被前面若干档拼起来盖住，这一档就永远轮不到；只被盖住部分时段的档位仍会在剩余时段生效。
 // 这里只看时段：若将来网关改成同层逐维合并，判定要跟着改（verify-multiplier-layering 有对应断言）。
 function findShadowedSchedules(drafts: MultiplierScheduleDraft[]): Set<number> {
-  const covered: Array<{ day: number; start: number; end: number }> = [];
+  const segments: Segment[] = [];
   const shadowed = new Set<number>();
   for (let i = 0; i < drafts.length; i += 1) {
-    const segments = expandWindow(drafts[i]);
-    if (segments.length === 0) continue;
-    const isCovered = (segment: { day: number; start: number; end: number }) =>
-      covered.some((other) => other.day === segment.day && other.start <= segment.start && other.end >= segment.end);
-    if (segments.every(isCovered)) shadowed.add(i);
-    covered.push(...segments);
+    const own = expandWindow(drafts[i]);
+    if (own.length === 0) continue;
+    const coverage = mergeSegments(segments);
+    const isCovered = (segment: Segment) =>
+      (coverage.get(segment.day) ?? []).some((other) => other.start <= segment.start && other.end >= segment.end);
+    if (own.every(isCovered)) shadowed.add(i);
+    segments.push(...own);
   }
   return shadowed;
 }
